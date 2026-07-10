@@ -1623,7 +1623,7 @@ class OntologyPropertyView(BaseModel):
     value_type: Annotated[
         str,
         Field(
-            description='Lowercase scalar value type: bool | i64 | f64 | datetime | keyword |\ntext | bytes | vector_f32.'
+            description='Lowercase value type: bool | i64 | f64 | datetime | keyword | text |\nbytes | vector_f32 | keyword_set | i64_set. The `*_set` types hold a\nsorted, deduplicated member set filterable by membership\n(`overlaps`/`contains_all`/`not_overlaps`).'
         ),
     ]
 
@@ -1872,6 +1872,33 @@ class PropertyValueInput6(BaseModel):
     """
 
     text: str
+
+
+class PropertyValueInput7(BaseModel):
+    """
+    Members of a `keyword_set` field. Order and duplicates don't matter on
+    the wire; the commit path canonicalizes (sorts, deduplicates) at rest.
+    """
+
+    keyword_set: Annotated[
+        list[str],
+        Field(
+            description="Members of a `keyword_set` field. Order and duplicates don't matter on\nthe wire; the commit path canonicalizes (sorts, deduplicates) at rest."
+        ),
+    ]
+
+
+class PropertyValueInput8(BaseModel):
+    """
+    Members of an `i64_set` field; canonicalized like `keyword_set`.
+    """
+
+    i64_set: Annotated[
+        list[int],
+        Field(
+            description='Members of an `i64_set` field; canonicalized like `keyword_set`.'
+        ),
+    ]
 
 
 class Kind6(Enum):
@@ -2358,56 +2385,68 @@ class Op23(Enum):
 
 
 class Op24(Enum):
-    contains_all_tokens = 'contains_all_tokens'
-
-
-class SearchFilterExpr13(BaseModel):
-    field: str
-    last_as_prefix: bool | None = None
-    op: Op24
-    query: str
+    overlaps = 'overlaps'
 
 
 class Op25(Enum):
-    contains_any_token = 'contains_any_token'
-
-
-class SearchFilterExpr14(BaseModel):
-    field: str
-    last_as_prefix: bool | None = None
-    op: Op25
-    query: str
+    contains_all = 'contains_all'
 
 
 class Op26(Enum):
-    glob = 'glob'
-
-
-class SearchFilterExpr15(BaseModel):
-    field: str
-    op: Op26
-    pattern: str
+    not_overlaps = 'not_overlaps'
 
 
 class Op27(Enum):
-    regex = 'regex'
+    contains_all_tokens = 'contains_all_tokens'
 
 
 class SearchFilterExpr16(BaseModel):
     field: str
+    last_as_prefix: bool | None = None
     op: Op27
-    pattern: str
+    query: str
 
 
 class Op28(Enum):
-    and_ = 'and'
+    contains_any_token = 'contains_any_token'
+
+
+class SearchFilterExpr17(BaseModel):
+    field: str
+    last_as_prefix: bool | None = None
+    op: Op28
+    query: str
 
 
 class Op29(Enum):
-    or_ = 'or'
+    glob = 'glob'
+
+
+class SearchFilterExpr18(BaseModel):
+    field: str
+    op: Op29
+    pattern: str
 
 
 class Op30(Enum):
+    regex = 'regex'
+
+
+class SearchFilterExpr19(BaseModel):
+    field: str
+    op: Op30
+    pattern: str
+
+
+class Op31(Enum):
+    and_ = 'and'
+
+
+class Op32(Enum):
+    or_ = 'or'
+
+
+class Op33(Enum):
     not_ = 'not'
 
 
@@ -4822,7 +4861,9 @@ class PropertyInput(BaseModel):
         | PropertyValueInput3
         | PropertyValueInput4
         | PropertyValueInput5
-        | PropertyValueInput6,
+        | PropertyValueInput6
+        | PropertyValueInput7
+        | PropertyValueInput8,
         Field(
             description="A typed literal value for ingest. The variant must match the field's declared\n`PropertyType`; `date_time` is an ISO-8601 string stored as microseconds."
         ),
@@ -5215,6 +5256,43 @@ class SearchFilterExpr12(BaseModel):
     field: str
     op: Op23
     value: bool | int | float | str | None
+
+
+class SearchFilterExpr13(BaseModel):
+    """
+    Set membership: matches when the field has **any** member equal to one of
+    `values`. On a scalar field this behaves like `in`. The natural
+    authorization filter: `{"op":"overlaps","field":"acl","values":[…]}`
+    admits a document whose ACL set intersects the caller's principals.
+    `contains_any` is accepted as an alias.
+    """
+
+    field: str
+    op: Op24
+    values: list[bool | int | float | str | None]
+
+
+class SearchFilterExpr14(BaseModel):
+    """
+    Set membership: matches when the field has a member equal to **every**
+    one of `values`. On a scalar field this only matches a single-element
+    `values` equal to the scalar.
+    """
+
+    field: str
+    op: Op25
+    values: list[bool | int | float | str | None]
+
+
+class SearchFilterExpr15(BaseModel):
+    """
+    Negated `overlaps`: matches when the field has **no** member equal to any
+    of `values` — including when the field is absent.
+    """
+
+    field: str
+    op: Op26
+    values: list[bool | int | float | str | None]
 
 
 class SearchIndexRunRequest(BaseModel):
@@ -6641,6 +6719,9 @@ class EmbeddingSearchRequest(BaseModel):
         | SearchFilterExpr17
         | SearchFilterExpr18
         | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22
         | None
     ) = None
     max_clusters: Annotated[int | None, Field(ge=0)] = None
@@ -6700,6 +6781,9 @@ class FullTextSearchRequest(BaseModel):
         | SearchFilterExpr17
         | SearchFilterExpr18
         | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22
         | None
     ) = None
     offset: Annotated[
@@ -6750,6 +6834,9 @@ class GraphRecallRequest(BaseModel):
         | SearchFilterExpr17
         | SearchFilterExpr18
         | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22
         | None
     ) = None
     max_clusters: Annotated[int | None, Field(ge=0)] = None
@@ -6804,6 +6891,9 @@ class SearchEngineOptions(BaseModel):
         | SearchFilterExpr17
         | SearchFilterExpr18
         | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22
         | None
     ) = None
     graph_anchor: GraphAnchor | None = None
@@ -6842,7 +6932,7 @@ class SearchEngineOptions(BaseModel):
     weights: SearchSignalWeights | None = None
 
 
-class SearchFilterExpr17(BaseModel):
+class SearchFilterExpr20(BaseModel):
     filters: list[
         SearchFilterExpr1
         | SearchFilterExpr2
@@ -6863,11 +6953,14 @@ class SearchFilterExpr17(BaseModel):
         | SearchFilterExpr17
         | SearchFilterExpr18
         | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22
     ]
-    op: Op28
+    op: Op31
 
 
-class SearchFilterExpr18(BaseModel):
+class SearchFilterExpr21(BaseModel):
     filters: list[
         SearchFilterExpr1
         | SearchFilterExpr2
@@ -6888,11 +6981,14 @@ class SearchFilterExpr18(BaseModel):
         | SearchFilterExpr17
         | SearchFilterExpr18
         | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22
     ]
-    op: Op29
+    op: Op32
 
 
-class SearchFilterExpr19(BaseModel):
+class SearchFilterExpr22(BaseModel):
     filter: (
         SearchFilterExpr1
         | SearchFilterExpr2
@@ -6913,8 +7009,11 @@ class SearchFilterExpr19(BaseModel):
         | SearchFilterExpr17
         | SearchFilterExpr18
         | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22
     )
-    op: Op30
+    op: Op33
 
 
 class SearchSessionCommitRequest(BaseModel):
@@ -7514,9 +7613,9 @@ GraphRecallRequest.model_rebuild()
 HybridMultiSearchRequest.model_rebuild()
 HybridSubquery.model_rebuild()
 SearchEngineOptions.model_rebuild()
-SearchFilterExpr17.model_rebuild()
-SearchFilterExpr18.model_rebuild()
-SearchFilterExpr19.model_rebuild()
+SearchFilterExpr20.model_rebuild()
+SearchFilterExpr21.model_rebuild()
+SearchFilterExpr22.model_rebuild()
 SearchSessionCommitRequest.model_rebuild()
 ShaclLogical.model_rebuild()
 ShaclNodeShape.model_rebuild()

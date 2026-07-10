@@ -7251,7 +7251,7 @@
             "type": "boolean"
           },
           "value_type": {
-            "description": "Lowercase scalar value type: bool | i64 | f64 | datetime | keyword |\ntext | bytes | vector_f32.",
+            "description": "Lowercase value type: bool | i64 | f64 | datetime | keyword | text |\nbytes | vector_f32 | keyword_set | i64_set. The `*_set` types hold a\nsorted, deduplicated member set filterable by membership\n(`overlaps`/`contains_all`/`not_overlaps`).",
             "type": "string"
           }
         },
@@ -8031,6 +8031,39 @@
             },
             "required": [
               "text"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Members of a `keyword_set` field. Order and duplicates don't matter on\nthe wire; the commit path canonicalizes (sorts, deduplicates) at rest.",
+            "properties": {
+              "keyword_set": {
+                "description": "Members of a `keyword_set` field. Order and duplicates don't matter on\nthe wire; the commit path canonicalizes (sorts, deduplicates) at rest.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "keyword_set"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Members of an `i64_set` field; canonicalized like `keyword_set`.",
+            "properties": {
+              "i64_set": {
+                "description": "Members of an `i64_set` field; canonicalized like `keyword_set`.",
+                "items": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "i64_set"
             ],
             "type": "object"
           }
@@ -10276,6 +10309,84 @@
             "required": [
               "field",
               "value",
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Set membership: matches when the field has **any** member equal to one of\n`values`. On a scalar field this behaves like `in`. The natural\nauthorization filter: `{\"op\":\"overlaps\",\"field\":\"acl\",\"values\":[…]}`\nadmits a document whose ACL set intersects the caller's principals.\n`contains_any` is accepted as an alias.",
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "overlaps"
+                ],
+                "type": "string"
+              },
+              "values": {
+                "items": {
+                  "$ref": "#/components/schemas/SearchFilterValue"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "field",
+              "values",
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Set membership: matches when the field has a member equal to **every**\none of `values`. On a scalar field this only matches a single-element\n`values` equal to the scalar.",
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "contains_all"
+                ],
+                "type": "string"
+              },
+              "values": {
+                "items": {
+                  "$ref": "#/components/schemas/SearchFilterValue"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "field",
+              "values",
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Negated `overlaps`: matches when the field has **no** member equal to any\nof `values` — including when the field is absent.",
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "op": {
+                "enum": [
+                  "not_overlaps"
+                ],
+                "type": "string"
+              },
+              "values": {
+                "items": {
+                  "$ref": "#/components/schemas/SearchFilterValue"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "field",
+              "values",
               "op"
             ],
             "type": "object"
