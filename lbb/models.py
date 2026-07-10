@@ -4109,6 +4109,18 @@ class EntityExplorerRow(BaseModel):
     out_degree: Annotated[int, Field(ge=0)]
 
 
+class EntityFilterResponse(BaseModel):
+    entities: list[EntityExplorerRow]
+    matched_count: Annotated[
+        int,
+        Field(
+            description='Total entities satisfying the predicate before `limit` is applied.',
+            ge=0,
+        ),
+    ]
+    snapshot: SnapshotView
+
+
 class EntityMetadataResponse(BaseModel):
     ann_indexed_commit_seq: CommitSeq | None = None
     bm25_indexed_commit_seq: CommitSeq | None = None
@@ -6763,6 +6775,49 @@ class EmbeddingSearchRequest(BaseModel):
     top_k: Annotated[int, Field(ge=0)]
 
 
+class EntityFilterRequest(BaseModel):
+    fields: Annotated[
+        list[str] | None,
+        Field(
+            description='Typed entity properties to return on each matched row. Empty keeps the\nlean row; `"*"` or `"all"` projects every property.'
+        ),
+    ] = None
+    filter: Annotated[
+        SearchFilterExpr1
+        | SearchFilterExpr2
+        | SearchFilterExpr3
+        | SearchFilterExpr4
+        | SearchFilterExpr5
+        | SearchFilterExpr6
+        | SearchFilterExpr7
+        | SearchFilterExpr8
+        | SearchFilterExpr9
+        | SearchFilterExpr10
+        | SearchFilterExpr11
+        | SearchFilterExpr12
+        | SearchFilterExpr13
+        | SearchFilterExpr14
+        | SearchFilterExpr15
+        | SearchFilterExpr16
+        | SearchFilterExpr17
+        | SearchFilterExpr18
+        | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22,
+        Field(
+            description='Property/metadata predicate evaluated against one loaded graph snapshot.'
+        ),
+    ]
+    limit: Annotated[
+        int | None,
+        Field(
+            description="Maximum rows returned. The response's `matched_count` still reports the\nfull number of matches before this limit is applied.",
+            ge=0,
+        ),
+    ] = None
+
+
 class FullTextSearchRequest(BaseModel):
     consistency: SearchConsistency | None = None
     explain: bool
@@ -7620,6 +7675,7 @@ class SparqlSelectRequest(BaseModel):
 
 
 EmbeddingSearchRequest.model_rebuild()
+EntityFilterRequest.model_rebuild()
 FullTextSearchRequest.model_rebuild()
 GraphRecallRequest.model_rebuild()
 HybridMultiSearchRequest.model_rebuild()
