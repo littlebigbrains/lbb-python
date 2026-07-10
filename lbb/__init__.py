@@ -1,4 +1,4 @@
-"""Python SDK for Little Big Brain.
+"""Python SDK for little big brain.
 
 The HTTP client (:class:`LbbClient`, :class:`AsyncLbbClient`) is the primary
 integration path. The legacy :class:`LbbLocalClient` shells out to

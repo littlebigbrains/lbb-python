@@ -15,14 +15,14 @@ If you can't use GitHub reporting, email
 `SECURITY` in the subject line.
 
 Please include a description of the issue, the affected
-`lbb-sdk` version, and a proof of concept or reproduction
+`lbb` version, and a proof of concept or reproduction
 steps if you have one.
 
 ## Scope
 
-- The published package `lbb-sdk` (PyPI) and the source in this
+- The published package `littlebigbrain` (PyPI) and the source in this
   repository.
-- For issues in the hosted Little Big Brain service itself
+- For issues in the hosted little big brain service itself
   (`*.littlebigbrain.com`), use the same channels — they reach the same team.
 
 ## Supported versions

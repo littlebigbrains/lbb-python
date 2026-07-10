@@ -396,7 +396,7 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(response.retry_count, 1)
         self.assertGreaterEqual(response.elapsed_ms, 0)
         self.assertEqual(seen[0].headers["x-client-trace"], "trace-1")
-        self.assertEqual(seen[0].headers["user-agent"], "lbb-sdk/0.1.0")
+        self.assertEqual(seen[0].headers["user-agent"], "littlebigbrain/0.3.0")
         self.assertEqual(events, ["request:GET", "response:503", "request:GET", "response:200"])
 
     def test_graph_edges_scopes_and_pages_entity_edges(self) -> None:
@@ -563,6 +563,7 @@ class SyncClientTests(unittest.TestCase):
                 body,
                 batch=500,
                 strict=True,
+                blank_node_scope="document-42",
                 resource_type="RdfResource",
                 edge_idempotency="append",
             )
@@ -574,11 +575,77 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(params["batch"], "500")
         self.assertEqual(params["strict"], "true")
         self.assertEqual(params["format"], "ntriples")
+        self.assertEqual(params["blank_node_scope"], "document-42")
         self.assertEqual(params["resource_type"], "RdfResource")
         self.assertEqual(params["edge_idempotency"], "append")
         self.assertEqual(request.headers["content-type"], "application/n-triples")
         self.assertRegex(request.headers["idempotency-key"], r"^import-rdf:")
         self.assertEqual(request.content.decode(), body)
+
+    def test_import_rdf_keeps_published_ntriples_keyword_compatible(self) -> None:
+        body = "<http://ex/s> <http://ex/p> <http://ex/o> .\n"
+        for scoped in (False, True):
+            seen: list[httpx.Request] = []
+            with LbbClient(
+                "http://h",
+                transport=capturing_transport(seen, {"json": {"imported_triplets": 1}}),
+            ) as client:
+                if scoped:
+                    result = client.graph("research").facts.import_rdf(ntriples=body)
+                else:
+                    result = client.import_rdf(ntriples=body)
+            self.assertEqual(result["imported_triplets"], 1)
+            self.assertEqual(seen[0].content.decode(), body)
+            self.assertEqual(seen[0].headers["content-type"], "application/n-triples")
+
+    def test_facts_import_rdf_supports_turtle_and_base_iri(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, {"json": {"imported_triplets": 1}}),
+        ) as client:
+            body = "@prefix ex: <http://ex/> . ex:s ex:p ex:o ."
+            result = client.graph("research").facts.import_rdf(
+                body,
+                format="turtle",
+                base_iri="http://base/",
+                graph_uri="http://ex/graph",
+            )
+        self.assertEqual(result["imported_triplets"], 1)
+        request = seen[0]
+        params = dict(request.url.params)
+        self.assertEqual(params["format"], "turtle")
+        self.assertEqual(params["base_iri"], "http://base/")
+        self.assertEqual(params["graph_uri"], "http://ex/graph")
+        self.assertEqual(request.headers["content-type"], "text/turtle")
+
+    def test_graph_export_rdf_returns_text(self) -> None:
+        seen: list[httpx.Request] = []
+        turtle = "<http://ex/s> <http://ex/p> <http://ex/o> <http://ex/g> .\n"
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen,
+                {
+                    "text": turtle,
+                    "headers": {"content-type": "application/n-quads; charset=utf-8"},
+                },
+            ),
+        ) as client:
+            result = client.graph("research", branch="draft").export_rdf(
+                format="nquads",
+                max_triples=500,
+                as_of_commit_seq=7,
+            )
+        self.assertEqual(result, turtle)
+        request = seen[0]
+        self.assertEqual(str(request.url).split("?")[0], "http://h/v1/graph/export/rdf")
+        params = dict(request.url.params)
+        self.assertEqual(params["graph"], "research")
+        self.assertEqual(params["branch"], "draft")
+        self.assertEqual(params["max_triples"], "500")
+        self.assertEqual(params["as_of_commit_seq"], "7")
+        self.assertEqual(params["format"], "nquads")
 
     def test_graph_retract_posts_edges(self) -> None:
         seen: list[httpx.Request] = []

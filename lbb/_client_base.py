@@ -1,4 +1,4 @@
-"""HTTP client for a Little Big Brain graph server.
+"""HTTP client for a little big brain graph server.
 
 Talks to ``lbb-server`` over HTTP with a stack API key
 (``lbb_sk_test_…`` / ``lbb_sk_live_…``) or
@@ -265,6 +265,23 @@ def _parse_error(status_code: int, body: str, request_id: str | None) -> LbbErro
     )
 
 
+def _decode_response_data(response: httpx.Response) -> Any:
+    if not response.content:
+        return None
+    content_type = response.headers.get("content-type", "").lower()
+    if any(
+        rdf_type in content_type
+        for rdf_type in (
+            "text/turtle",
+            "application/n-triples",
+            "application/trig",
+            "application/n-quads",
+        )
+    ):
+        return response.text
+    return response.json()
+
+
 def _retryable(status_code: int) -> bool:
     return status_code == 429 or status_code >= 500
 
@@ -304,15 +321,13 @@ def _raw_response(
     request_id = response.headers.get("x-request-id")
     if response.status_code // 100 != 2:
         raise _parse_error(response.status_code, response.text.strip(), request_id)
-    data: Any = None
-    if response.content:
-        try:
-            data = response.json()
-        except ValueError as error:
-            request = f" (request {request_id})" if request_id else ""
-            raise ValueError(
-                f"Little Big Brain returned invalid JSON with HTTP {response.status_code}{request}"
-            ) from error
+    try:
+        data = _decode_response_data(response)
+    except ValueError as error:
+        request = f" (request {request_id})" if request_id else ""
+        raise ValueError(
+            f"Little Big Brain returned invalid JSON with HTTP {response.status_code}{request}"
+        ) from error
     return RawLbbResponse(
         data=data,
         status_code=response.status_code,
@@ -361,7 +376,7 @@ class _BaseLbbClient:
     def _headers(self, idempotency_key: str | None = None) -> dict[str, str]:
         headers: dict[str, str] = {
             "lbb-version": self._api_version,
-            "user-agent": "lbb-sdk/0.1.0",
+            "user-agent": "littlebigbrain/0.3.0",
         }
         if self._api_key is not None:
             headers["authorization"] = f"Bearer {self._api_key}"
@@ -535,8 +550,13 @@ class _BaseLbbClient:
 
     def import_rdf(
         self,
-        ntriples: str,
+        rdf: str | None = None,
         *,
+        ntriples: str | None = None,
+        format: str = "ntriples",
+        base_iri: str | None = None,
+        graph_uri: str | None = None,
+        blank_node_scope: str | None = None,
         batch: int | None = None,
         strict: bool | None = None,
         observed_at: str | None = None,
@@ -544,12 +564,28 @@ class _BaseLbbClient:
         edge_idempotency: str | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
-        """Bulk-ingest N-Triples through the native RDF import endpoint.
+        """Bulk-ingest N-Triples, Turtle, N-Quads, or TriG through the native RDF import endpoint.
 
         Statements are committed through the fixed ``RDF_TRIPLE`` relation;
         source RDF predicates and literal term details are preserved as edge
         metadata.
         """
+        if rdf is not None and ntriples is not None:
+            raise TypeError("pass exactly one of rdf= or the deprecated ntriples=")
+        if rdf is None:
+            rdf = ntriples
+        if rdf is None:
+            raise TypeError("import_rdf() requires RDF text via rdf= or ntriples=")
+        if ntriples is not None and format != "ntriples":
+            raise ValueError("the deprecated ntriples= keyword requires format='ntriples'")
+        content_types = {
+            "ntriples": "application/n-triples",
+            "turtle": "text/turtle",
+            "nquads": "application/n-quads",
+            "trig": "application/trig",
+        }
+        if format not in content_types:
+            raise ValueError("format must be 'ntriples', 'turtle', 'nquads', or 'trig'")
         return self._request(
             "POST",
             "/v1/graph/import/rdf",
@@ -557,13 +593,42 @@ class _BaseLbbClient:
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
-                "format": "ntriples",
+                "format": format,
+                "base_iri": base_iri,
+                "graph_uri": graph_uri,
+                "blank_node_scope": blank_node_scope,
                 "resource_type": resource_type,
                 "edge_idempotency": edge_idempotency,
             },
-            content=ntriples,
-            content_type="application/n-triples",
+            content=rdf,
+            content_type=content_types[format],
             idempotency_key=idempotency_key or self.idempotency_key("import-rdf"),
+        )
+
+    def export_rdf(
+        self,
+        *,
+        format: str = "turtle",
+        max_triples: int | None = None,
+        as_of_valid_time: str | None = None,
+        as_of_commit_seq: int | None = None,
+        entailment: str | None = None,
+        reason: bool | None = None,
+    ) -> Any:
+        """Export the snapshot-visible RDF projection as Turtle, N-Triples, TriG, or N-Quads."""
+        if format not in {"turtle", "ntriples", "trig", "nquads"}:
+            raise ValueError("format must be 'turtle', 'ntriples', 'trig', or 'nquads'")
+        return self._request(
+            "GET",
+            "/v1/graph/export/rdf",
+            params={
+                "format": "nt" if format == "ntriples" else format,
+                "max_triples": max_triples,
+                "as_of_valid_time": as_of_valid_time,
+                "as_of_commit_seq": as_of_commit_seq,
+                "entailment": entailment,
+                "reason": reason,
+            },
         )
 
     def retract(self, body: Body, *, idempotency_key: str | None = None) -> Any:
@@ -594,7 +659,7 @@ class _BaseLbbClient:
         )
 
     def observe(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        """WS15 observe (``POST /v1/memory/observe``): store a conversation
+        """Observe (``POST /v1/memory/observe``): store a conversation
         episode verbatim as EPISODE evidence, anchor + gate extracted facts on an
         observe branch, and optionally auto-merge when validation is clean.
         Flag-gated server-side (``--enable-observe``).
@@ -606,7 +671,7 @@ class _BaseLbbClient:
             idempotency_key=idempotency_key or self.idempotency_key("observe"),
         )
 
-    # --- models as runs (WS9 registry + eval machinery) ---
+    # --- models as runs (training-run registry + eval machinery) ---
 
     def vocab_export(self, *, sections: list[str] | None = None, limit: int | None = None) -> Any:
         """The graph's grounding vocabulary as byte-sorted, deduped string
@@ -628,8 +693,8 @@ class _BaseLbbClient:
         to_seq: int | None = None,
         limit: int | None = None,
     ) -> Any:
-        """Captured signals by flush-seq range, oldest first — the flywheel
-        training feed; ``seq`` is the temporal-split coordinate
+        """Captured signals by flush-seq range, oldest first — the model-training
+        feed; ``seq`` is the temporal-split coordinate
         (``GET /v1/signals``)."""
         return self._request(
             "GET",
@@ -758,7 +823,7 @@ class _BaseLbbClient:
     def promote_extractor(self, *, run_id: str, allow_regression: bool | None = None) -> Any:
         """Promote a finished ``extractor_lora`` run (``POST
         /v1/models/promote-extractor``): gated on held-out fact F1, recorded
-        as a WS9 ``kind=extractor`` run whose adapter resident extraction
+        as a ``kind=extractor`` training run whose adapter resident extraction
         serves."""
         return self._request(
             "POST",
@@ -769,7 +834,7 @@ class _BaseLbbClient:
     def promote_planner(self, *, run_id: str, allow_regression: bool | None = None) -> Any:
         """Promote a finished ``planner_lora`` run (``POST
         /v1/models/promote-planner``): gated on held-out slot exactness,
-        recorded as a WS9 ``kind=planner`` run whose adapter ``/v1/ask``
+        recorded as a ``kind=planner`` training run whose adapter ``/v1/ask``
         serves."""
         return self._request(
             "POST",
@@ -800,7 +865,7 @@ class _BaseLbbClient:
     def search_feedback(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Append relevance labels for a set of search results.
 
-        How Little Big Brain gathers customer-specific qrels: after a search,
+        How little big brain gathers customer-specific qrels: after a search,
         grade the results (``3`` ideal/good, ``1`` partially relevant, ``0``
         bad), referencing the ``search_id`` from the search response so the
         labels tie back to that exact ranking. Labels are stored apart from
@@ -1144,6 +1209,34 @@ class _GraphNamespace:
             idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
         )
 
+    def export_rdf(
+        self,
+        *,
+        format: str = "turtle",
+        max_triples: int | None = None,
+        as_of_valid_time: str | None = None,
+        as_of_commit_seq: int | None = None,
+        entailment: str | None = None,
+        reason: bool | None = None,
+    ) -> Any:
+        """Export this graph's snapshot as Turtle, N-Triples, TriG, or N-Quads."""
+        if format not in {"turtle", "ntriples", "trig", "nquads"}:
+            raise ValueError("format must be 'turtle', 'ntriples', 'trig', or 'nquads'")
+        return self._client._request(
+            "GET",
+            "/v1/graph/export/rdf",
+            params={
+                "graph": self._graph,
+                "branch": self._branch,
+                "format": "nt" if format == "ntriples" else format,
+                "max_triples": max_triples,
+                "as_of_valid_time": as_of_valid_time,
+                "as_of_commit_seq": as_of_commit_seq,
+                "entailment": entailment,
+                "reason": reason,
+            },
+        )
+
 
 class _FactsNamespace:
     def __init__(self, client: _BaseLbbClient, graph: str, branch: str | None) -> None:
@@ -1207,8 +1300,13 @@ class _FactsNamespace:
 
     def import_rdf(
         self,
-        ntriples: str,
+        rdf: str | None = None,
         *,
+        ntriples: str | None = None,
+        format: str = "ntriples",
+        base_iri: str | None = None,
+        graph_uri: str | None = None,
+        blank_node_scope: str | None = None,
         batch: int | None = None,
         strict: bool | None = None,
         observed_at: str | None = None,
@@ -1216,7 +1314,23 @@ class _FactsNamespace:
         edge_idempotency: str | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
-        """Bulk-load N-Triples. See :meth:`LbbClient.import_rdf`."""
+        """Bulk-load N-Triples, Turtle, N-Quads, or TriG. See :meth:`LbbClient.import_rdf`."""
+        if rdf is not None and ntriples is not None:
+            raise TypeError("pass exactly one of rdf= or the deprecated ntriples=")
+        if rdf is None:
+            rdf = ntriples
+        if rdf is None:
+            raise TypeError("import_rdf() requires RDF text via rdf= or ntriples=")
+        if ntriples is not None and format != "ntriples":
+            raise ValueError("the deprecated ntriples= keyword requires format='ntriples'")
+        content_types = {
+            "ntriples": "application/n-triples",
+            "turtle": "text/turtle",
+            "nquads": "application/n-quads",
+            "trig": "application/trig",
+        }
+        if format not in content_types:
+            raise ValueError("format must be 'ntriples', 'turtle', 'nquads', or 'trig'")
         return self._client._request(
             "POST",
             "/v1/graph/import/rdf",
@@ -1226,12 +1340,15 @@ class _FactsNamespace:
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
-                "format": "ntriples",
+                "format": format,
+                "base_iri": base_iri,
+                "graph_uri": graph_uri,
+                "blank_node_scope": blank_node_scope,
                 "resource_type": resource_type,
                 "edge_idempotency": edge_idempotency,
             },
-            content=ntriples,
-            content_type="application/n-triples",
+            content=rdf,
+            content_type=content_types[format],
             idempotency_key=idempotency_key or self._client.idempotency_key("import-rdf"),
         )
 

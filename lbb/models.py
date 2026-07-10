@@ -810,7 +810,7 @@ class GraphRdfImportPredicate(BaseModel):
 
 class GraphRdfImportResponse(BaseModel):
     """
-    Aggregate outcome of an RDF import. Every N-Triples statement is committed
+    Aggregate outcome of an RDF import. Every RDF statement is committed
     through a fixed `RDF_TRIPLE` edge; source predicate and literal term metadata
     are stored on the edge so the RDF/SPARQL projection can emit source RDF terms
     while avoiding one ontology relation/property per source predicate.
