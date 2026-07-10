@@ -30,6 +30,7 @@ import httpx
 from pydantic import BaseModel
 
 from . import models
+from ._version import __version__
 
 DEFAULT_BASE_URL = "http://127.0.0.1:7400"
 # Generous default: commits over a large corpus and synchronous index builds run
@@ -376,7 +377,7 @@ class _BaseLbbClient:
     def _headers(self, idempotency_key: str | None = None) -> dict[str, str]:
         headers: dict[str, str] = {
             "lbb-version": self._api_version,
-            "user-agent": "littlebigbrain/0.3.0",
+            "user-agent": f"littlebigbrain/{__version__}",
         }
         if self._api_key is not None:
             headers["authorization"] = f"Bearer {self._api_key}"
@@ -452,6 +453,14 @@ class _BaseLbbClient:
         raise NotImplementedError
 
     # --- writes ---
+
+    def create_graph(self) -> Any:
+        """Create the scoped graph and branch with the built-in ontology.
+
+        To use a custom ontology, call :meth:`ontology.define` instead before
+        the first commit; defining an ontology also creates the graph head.
+        """
+        return self._model_request(models.CreateGraphResponse, "POST", "/v1/graph/create")
 
     def commit(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Commit triplets and optional entity embeddings."""
@@ -888,21 +897,29 @@ class _BaseLbbClient:
 
     # --- search ---
 
-    def graph_search(self, body: Body) -> Any:
+    def graph_search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
         """Full semantic hybrid search from a request body."""
-        return self._request("POST", "/v1/graph/search", body=body)
+        return self._request(
+            "POST", "/v1/graph/search", body=body, options=_read_options(options)
+        )
 
-    def multi_search(self, body: Body) -> Any:
+    def multi_search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
         """Reciprocal-rank-fusion across sub-queries."""
-        return self._request("POST", "/v1/search/multi", body=body)
+        return self._request(
+            "POST", "/v1/search/multi", body=body, options=_read_options(options)
+        )
 
-    def full_text_search(self, body: Body) -> Any:
+    def full_text_search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
         """BM25 search."""
-        return self._request("POST", "/v1/search/full-text", body=body)
+        return self._request(
+            "POST", "/v1/search/full-text", body=body, options=_read_options(options)
+        )
 
-    def embedding_search(self, body: Body) -> Any:
+    def embedding_search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
         """ANN/vector search."""
-        return self._request("POST", "/v1/search/embedding", body=body)
+        return self._request(
+            "POST", "/v1/search/embedding", body=body, options=_read_options(options)
+        )
 
     # --- search relevance feedback (training data) ---
 
@@ -1471,6 +1488,7 @@ class _SearchNamespace:
         )
 
     def hybrid(self, query_or_body: str | Body, **kwargs: Any) -> Any:
+        options = kwargs.get("options")
         if isinstance(query_or_body, str):
             params = {
                 "query": query_or_body,
@@ -1480,8 +1498,13 @@ class _SearchNamespace:
                 "targets": ",".join(kwargs["targets"]) if kwargs.get("targets") else None,
                 "profile": kwargs.get("profile"),
             }
-            return self._client._request("GET", "/v1/search", params=params)
-        return self._client._request("POST", "/v1/graph/search", body=query_or_body)
+            return self._client._request("GET", "/v1/search", params=params, options=options)
+        return self._client._request(
+            "POST",
+            "/v1/graph/search",
+            body=query_or_body,
+            options=_read_options(options),
+        )
 
 
 class _ContextNamespace:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "littlebigbrain"
-version = "0.4.0"
+dynamic = ["version"]
 description = "Python client for the little big brain graph + hybrid search HTTP API"
 readme = "README.md"
 license = "Apache-2.0"
@@ -49,6 +49,9 @@ include = ["lbb*"]
 
 [tool.setuptools.package-data]
 lbb = ["py.typed"]
+
+[tool.setuptools.dynamic]
+version = { attr = "lbb._version.__version__" }
 
 [tool.ruff]
 line-length = 100

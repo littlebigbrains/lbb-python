@@ -1,33 +1,56 @@
 name: release
 
-# Publishes the `littlebigbrain` package to PyPI from a signed vX.Y.Z tag via PyPI trusted
-# publishing (OIDC) — no long-lived registry tokens. Publishing is immutable:
-# a bad release is yanked and fixed forward, never re-published.
+# A canonical sync that lands a new package version on public main is the
+# release trigger. The preflight skips docs/source-only syncs whose version is
+# already on PyPI. A genuinely new version runs CI, pauses at the protected
+# `pypi` environment for human approval, publishes through trusted publishing,
+# then creates the matching tag and GitHub Release. No maintainer-side tag push
+# or long-lived registry token is required.
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-
-  version-check:
+  preflight:
     runs-on: ubuntu-24.04
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
-      - name: Tag matches package version
+      - id: version
+        name: Detect an unpublished package version
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          version=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          [ "$tag" = "$version" ] || { echo "::error::tag v${tag} != pyproject version ${version}"; exit 1; }
+          version=$(python3 -c "import runpy; print(runpy.run_path('lbb/_version.py')['__version__'])")
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::invalid package version: $version"; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if curl -fsS "https://pypi.org/pypi/littlebigbrain/$version/json" >/dev/null; then
+            echo "littlebigbrain $version is already published; release is a no-op"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "littlebigbrain $version is not on PyPI; release is required"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  ci:
+    needs: [preflight]
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
+    uses: ./.github/workflows/ci.yml
 
   publish-pypi:
-    needs: [ci, version-check]
+    needs: [preflight, ci]
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
     runs-on: ubuntu-24.04
     environment: pypi
     permissions:
@@ -43,26 +66,45 @@ jobs:
           python -m pip install 'build==1.5.1' 'twine==6.2.0' 'packaging==26.2'
           python -m build
           python -m twine check dist/*
+      - name: Verify built version
+        env:
+          EXPECTED_VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+          from packaging.utils import parse_wheel_filename
+
+          wheel = glob.glob("dist/*.whl")
+          if len(wheel) != 1:
+              raise SystemExit(f"expected one wheel, found: {wheel}")
+          built = str(parse_wheel_filename(wheel[0])[1])
+          expected = os.environ["EXPECTED_VERSION"]
+          if built != expected:
+              raise SystemExit(f"built version {built} != expected {expected}")
+          PY
       - name: Publish littlebigbrain to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
 
   github-release:
-    needs: [publish-pypi]
+    needs: [preflight, publish-pypi]
+    if: ${{ needs.preflight.outputs.publish == 'true' }}
     runs-on: ubuntu-24.04
     permissions:
-      contents: write # create the GitHub Release object for the tag
+      contents: write
     steps:
       - uses: actions/checkout@v5
-      - name: Create the GitHub Release for the tag (idempotent)
+      - name: Create the version tag and GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "release $tag already exists; nothing to do"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "release $RELEASE_TAG already exists; nothing to do"
           else
-            gh release create "$tag" --verify-tag --title "$tag" --generate-notes
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TAG" \
+              --generate-notes
           fi

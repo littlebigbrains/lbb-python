@@ -8,6 +8,7 @@ methods also expose ``*_model`` and ``*_page`` helpers for validated Pydantic
 responses.
 """
 
+from ._version import __version__ as __version__
 from .client import (
     AsyncLbbClient,
     LbbClient,
@@ -30,4 +31,3 @@ __all__ = [
     "LbbLocalClient",
     "LbbCommandError",
 ]
-__version__ = "0.1.0"

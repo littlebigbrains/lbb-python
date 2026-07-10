@@ -9,9 +9,10 @@ from unittest.mock import patch
 
 import httpx
 
-from lbb import AsyncLbbClient, LbbClient, LbbError, ListPage
+from lbb import AsyncLbbClient, LbbClient, LbbError, ListPage, __version__
 from lbb.models import (
     AskResponse,
+    CreateGraphResponse,
     EntityExplorerRow,
     GraphEdgeRow,
     GraphSummaryResponse,
@@ -134,6 +135,29 @@ def capturing_transport(
 
 
 class SyncClientTests(unittest.TestCase):
+    def test_create_graph_uses_http_scope_and_returns_typed_response(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "commit_seq": 0,
+            "graph": {"tenant_id": "tenant", "graph_id": "research", "branch_id": "analysis"},
+            "ontology_version": 1,
+        }
+        with LbbClient(
+            "http://h",
+            graph="research",
+            branch="analysis",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = client.create_graph()
+
+        self.assertIsInstance(result, CreateGraphResponse)
+        self.assertEqual(result.graph.graph_id, "research")
+        self.assertEqual(seen[0].method, "POST")
+        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/create")
+        self.assertEqual(
+            dict(seen[0].url.params), {"graph": "research", "branch": "analysis"}
+        )
+
     def test_namespace_facts_create_injects_auth_scope_version_and_idempotency(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -396,7 +420,7 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(response.retry_count, 1)
         self.assertGreaterEqual(response.elapsed_ms, 0)
         self.assertEqual(seen[0].headers["x-client-trace"], "trace-1")
-        self.assertEqual(seen[0].headers["user-agent"], "littlebigbrain/0.3.0")
+        self.assertEqual(seen[0].headers["user-agent"], f"littlebigbrain/{__version__}")
         self.assertEqual(events, ["request:GET", "response:503", "request:GET", "response:200"])
 
     def test_graph_edges_scopes_and_pages_entity_edges(self) -> None:
@@ -783,6 +807,51 @@ class SyncClientTests(unittest.TestCase):
                 client.status()
         sleep.assert_called_once_with(2.0)
 
+    def test_retries_read_only_post_searches(self) -> None:
+        calls = (
+            ("graph_search", "/v1/graph/search"),
+            ("multi_search", "/v1/search/multi"),
+            ("full_text_search", "/v1/search/full-text"),
+            ("embedding_search", "/v1/search/embedding"),
+        )
+        for method_name, path in calls:
+            with self.subTest(method=method_name):
+                seen: list[httpx.Request] = []
+                with LbbClient(
+                    "http://h",
+                    max_retries=1,
+                    retry_delay=0,
+                    transport=capturing_transport(
+                        seen,
+                        [
+                            {"status": 429, "headers": {"retry-after": "0"}, "json": {}},
+                            {"json": {"ok": True}},
+                        ],
+                    ),
+                ) as client:
+                    result = getattr(client, method_name)({"query": "identity"})
+                self.assertEqual(result, {"ok": True})
+                self.assertEqual(len(seen), 2)
+                self.assertEqual(str(seen[0].url).split("?")[0], f"http://h{path}")
+
+    def test_retries_body_based_hybrid_search(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            max_retries=1,
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {"status": 503, "json": {"error": {"message": "retry"}}},
+                    {"json": {"ok": True}},
+                ],
+            ),
+        ) as client:
+            result = client.search.hybrid({"query": "identity"})
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(len(seen), 2)
+
     def test_invalid_success_json_includes_response_context(self) -> None:
         with LbbClient(
             "http://h",
@@ -936,6 +1005,14 @@ class SyncClientTests(unittest.TestCase):
 
 
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_create_graph_returns_typed_response(self) -> None:
+        payload = {"commit_seq": 0, "graph": GRAPH, "ontology_version": 1}
+        async with AsyncLbbClient(
+            "http://h", transport=capturing_transport([], {"json": payload})
+        ) as client:
+            result = await client.create_graph()
+        self.assertIsInstance(result, CreateGraphResponse)
+
     async def test_async_retries_retryable_failures(self) -> None:
         seen: list[httpx.Request] = []
         async with AsyncLbbClient(
