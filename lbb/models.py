@@ -2221,6 +2221,12 @@ class ScoredEntityView(BaseModel):
             description="Other names this entity is known by: when SAME_AS-linked entities fold\nonto one canonical hit, the folded members' names (and record aliases)\nsurface here. Absent for entities with no SAME_AS component."
         ),
     ] = None
+    attributes: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description='Requested entity attributes, read from the same loaded snapshot used to\nrank this hit. Absent when the request did not ask for a projection.'
+        ),
+    ] = None
     entity: EntityView
     matched_concepts: list[str]
     score: float
@@ -7048,6 +7054,12 @@ class SemanticGraphSearchRequest(BaseModel):
         ),
     ] = None
     explain: bool | None = None
+    fields: Annotated[
+        list[str] | None,
+        Field(
+            description='Entity attributes to project onto each entity hit from the same graph\nsnapshot used for ranking. Omitted or empty keeps the lean response;\n`"*"` or `"all"` returns every attribute.'
+        ),
+    ] = None
     max_hops: Annotated[int | None, Field(ge=0)] = None
     ontology: OntologySearchOptions | None = None
     ontology_constraints: OntologySearchConstraints | None = None
