@@ -9398,6 +9398,17 @@
             },
             "type": "array"
           },
+          "attributes": {
+            "additionalProperties": {},
+            "description": "Requested entity attributes, read from the same loaded snapshot used to\nrank this hit. Absent when the request did not ask for a projection.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "entity": {
             "$ref": "#/components/schemas/EntityView"
           },
@@ -11119,6 +11130,13 @@
           },
           "explain": {
             "type": "boolean"
+          },
+          "fields": {
+            "description": "Entity attributes to project onto each entity hit from the same graph\nsnapshot used for ranking. Omitted or empty keeps the lean response;\n`\"*\"` or `\"all\"` returns every attribute.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "max_hops": {
             "format": "int32",
