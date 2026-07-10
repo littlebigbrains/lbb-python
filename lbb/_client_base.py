@@ -504,6 +504,50 @@ class _BaseLbbClient:
         """
         return self._request("POST", "/v1/graph/delete", params={"confirm": confirm})
 
+    def embedding_config(self, *, options: RequestOptions | None = None) -> Any:
+        """Read the scoped graph's managed embedding configuration."""
+        return self._model_request(
+            models.ManagedEmbeddingConfigResponse,
+            "GET",
+            "/v1/graph/embedding",
+            options=options,
+        )
+
+    def set_embedding_config(self, body: Body) -> Any:
+        """Set the scoped graph's default managed embedding model."""
+        return self._model_request(
+            models.ManagedEmbeddingConfigResponse,
+            "POST",
+            "/v1/graph/embedding",
+            body=body,
+        )
+
+    def backfill_embeddings(
+        self,
+        *,
+        batch_size: int | None = None,
+        limit: int | None = None,
+        full: bool | None = None,
+    ) -> Any:
+        """Embed the corpus and rebuild its Stored ANN index."""
+        return self._model_request(
+            models.ManagedEmbeddingBackfillResponse,
+            "POST",
+            "/v1/graph/embedding/backfill",
+            params={"batch_size": batch_size, "limit": limit, "full": full},
+        )
+
+    def promote_embedding(
+        self, *, run_id: str, allow_regression: bool | None = None
+    ) -> Any:
+        """Promote a successful fine-tuned embedding run to the graph default."""
+        return self._model_request(
+            models.ManagedEmbeddingPromoteResponse,
+            "POST",
+            "/v1/graph/embedding/promote",
+            params={"run_id": run_id, "allow_regression": allow_regression},
+        )
+
     def import_ndjson(
         self,
         lines: Sequence[Mapping[str, Any]] | str,
@@ -1188,6 +1232,59 @@ class _GraphNamespace:
         self._branch = branch
         self.facts = _FactsNamespace(client, graph, branch)
 
+    def embedding_config(self, *, options: RequestOptions | None = None) -> Any:
+        return self._client._model_request(
+            models.ManagedEmbeddingConfigResponse,
+            "GET",
+            "/v1/graph/embedding",
+            params={"graph": self._graph, "branch": self._branch},
+            options=options,
+        )
+
+    def set_embedding_config(self, body: Body) -> Any:
+        return self._client._model_request(
+            models.ManagedEmbeddingConfigResponse,
+            "POST",
+            "/v1/graph/embedding",
+            params={"graph": self._graph, "branch": self._branch},
+            body=body,
+        )
+
+    def backfill_embeddings(
+        self,
+        *,
+        batch_size: int | None = None,
+        limit: int | None = None,
+        full: bool | None = None,
+    ) -> Any:
+        return self._client._model_request(
+            models.ManagedEmbeddingBackfillResponse,
+            "POST",
+            "/v1/graph/embedding/backfill",
+            params={
+                "graph": self._graph,
+                "branch": self._branch,
+                "batch_size": batch_size,
+                "limit": limit,
+                "full": full,
+            },
+        )
+
+    def promote_embedding(
+        self, *, run_id: str, allow_regression: bool | None = None
+    ) -> Any:
+        return self._client._model_request(
+            models.ManagedEmbeddingPromoteResponse,
+            "POST",
+            "/v1/graph/embedding/promote",
+            params={
+                "graph": self._graph,
+                "branch": self._branch,
+                "run_id": run_id,
+                "allow_regression": allow_regression,
+            },
+        )
+
     def retract(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Retract edges/entities from the scoped graph. See :meth:`LbbClient.retract`."""
         return self._client._request(
@@ -1490,6 +1587,16 @@ class _OntologyNamespace:
     def evolve(self, body: Body) -> Any:
         return self._client._model_request(
             models.OntologyEvolveResponse, "POST", "/v1/ontology/evolve", body=body
+        )
+
+    def induce(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+        """Suggest ontology changes from the current graph without mutating it."""
+        return self._client._model_request(
+            models.OntologyInduceResponse,
+            "POST",
+            "/v1/ontology/induce",
+            body=body,
+            options=_read_options(options),
         )
 
 

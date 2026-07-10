@@ -71,6 +71,7 @@ answer = lbb.context.ask({"question": "what stores identity data?"})
 print(answer.answer, answer.citations)
 
 ontology = lbb.ontology.view(counts=True)
+suggestions = lbb.ontology.induce({"max_suggestions": 10})
 rows = lbb.query.structured({"patterns": [], "select": []})
 
 for entity in lbb.entities.iter(fields=["owner", "status"]):
@@ -89,10 +90,12 @@ Pass native `httpx` `event_hooks` to the client constructor for request/response
 instrumentation.
 
 Primary methods: `graph("main").facts.create`; `search.hybrid`;
+`embedding_config`; `set_embedding_config`; `backfill_embeddings`;
+`promote_embedding`;
 `indexes.run`; `entities.list`; `entities.filter_by_attributes`;
 `context.ask` / `context.suggest` / `context.resolve` / `context.decode` /
 `context.groundability`; `ontology.view` / `ontology.search` /
-`ontology.resolve`; `query.sparql` / `query.structured` / `query.analytics` /
+`ontology.resolve` / `ontology.induce`; `query.sparql` / `query.structured` / `query.analytics` /
 `query.shacl` / `query.infer` / `query.premises`;
 `schema.view` / `schema.preview` /
 `schema.publish` / `schema.audit`; plus lower-level `graph_search`,
