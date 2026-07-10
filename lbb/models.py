@@ -952,6 +952,40 @@ class LbbErrorEnvelope(BaseModel):
     error: LbbErrorBody
 
 
+class ManagedEmbeddingBackfillResponse(BaseModel):
+    """
+    Outcome of embedding the corpus and rebuilding its Stored ANN index.
+    """
+
+    batches: Annotated[int, Field(ge=0)]
+    embedded: Annotated[int, Field(ge=0)]
+    entities_total: Annotated[int, Field(ge=0)]
+    indexed_commit_seq: Annotated[int, Field(ge=0)]
+    model_id: str
+    skipped: Annotated[int, Field(ge=0)]
+    truncated: bool
+
+
+class ManagedEmbeddingPromotionEvals(BaseModel):
+    """
+    Quality comparison used when promoting a fine-tuned embedding run.
+    """
+
+    allow_regression: bool
+    baseline_ndcg: float
+    tier: str
+    trained_ndcg: float
+
+
+class ManagedEmbeddingSource(Enum):
+    """
+    Where a managed embedding model came from.
+    """
+
+    stock = 'stock'
+    fine_tuned = 'fine_tuned'
+
+
 class ModelArtifact(BaseModel):
     blake3: str
     bytes: Annotated[int, Field(ge=0)]
@@ -4109,6 +4143,18 @@ class EntityExplorerRow(BaseModel):
     out_degree: Annotated[int, Field(ge=0)]
 
 
+class EntityFilterResponse(BaseModel):
+    entities: list[EntityExplorerRow]
+    matched_count: Annotated[
+        int,
+        Field(
+            description='Total entities satisfying the predicate before `limit` is applied.',
+            ge=0,
+        ),
+    ]
+    snapshot: SnapshotView
+
+
 class EntityMetadataResponse(BaseModel):
     ann_indexed_commit_seq: CommitSeq | None = None
     bm25_indexed_commit_seq: CommitSeq | None = None
@@ -4501,6 +4547,57 @@ class InferenceRunResponse(BaseModel):
             description='True if a bound (rounds / derived edges / per-rule solutions) was hit, so\nthe derived set may be incomplete.'
         ),
     ]
+
+
+class ManagedEmbeddingConfig(BaseModel):
+    """
+    The resolved, versioned managed embedding configuration.
+    """
+
+    auto_embed_query: bool
+    base_model: str
+    created_at_micros: int
+    dim: Annotated[int, Field(ge=0)]
+    metric: VectorMetric
+    model_id: str
+    run_id: str | None = None
+    source: ManagedEmbeddingSource
+    version: Annotated[int, Field(ge=0)]
+
+
+class ManagedEmbeddingConfigRequest(BaseModel):
+    """
+    Set the graph branch's default managed embedding model.
+    """
+
+    auto_embed_query: bool | None = None
+    base_model: str | None = None
+    dim: Annotated[int, Field(ge=0)]
+    metric: VectorMetric | None = None
+    model_id: str
+    run_id: str | None = None
+    source: ManagedEmbeddingSource | None = None
+
+
+class ManagedEmbeddingConfigResponse(BaseModel):
+    """
+    Read/set response. Legacy hash-derived graphs return `configured=false` and no config.
+    """
+
+    config: ManagedEmbeddingConfig | None = None
+    configured: bool
+
+
+class ManagedEmbeddingPromoteResponse(BaseModel):
+    """
+    Response after promoting a finished training run to the graph default.
+    """
+
+    config: ManagedEmbeddingConfig
+    configured: bool
+    evals: ManagedEmbeddingPromotionEvals | None = None
+    promoted_run: str
+    registry: Any | None = None
 
 
 class ModelCheckFile(BaseModel):
@@ -6763,6 +6860,49 @@ class EmbeddingSearchRequest(BaseModel):
     top_k: Annotated[int, Field(ge=0)]
 
 
+class EntityFilterRequest(BaseModel):
+    fields: Annotated[
+        list[str] | None,
+        Field(
+            description='Typed entity properties to return on each matched row. Empty keeps the\nlean row; `"*"` or `"all"` projects every property.'
+        ),
+    ] = None
+    filter: Annotated[
+        SearchFilterExpr1
+        | SearchFilterExpr2
+        | SearchFilterExpr3
+        | SearchFilterExpr4
+        | SearchFilterExpr5
+        | SearchFilterExpr6
+        | SearchFilterExpr7
+        | SearchFilterExpr8
+        | SearchFilterExpr9
+        | SearchFilterExpr10
+        | SearchFilterExpr11
+        | SearchFilterExpr12
+        | SearchFilterExpr13
+        | SearchFilterExpr14
+        | SearchFilterExpr15
+        | SearchFilterExpr16
+        | SearchFilterExpr17
+        | SearchFilterExpr18
+        | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22,
+        Field(
+            description='Property/metadata predicate evaluated against one loaded graph snapshot.'
+        ),
+    ]
+    limit: Annotated[
+        int | None,
+        Field(
+            description="Maximum rows returned. The response's `matched_count` still reports the\nfull number of matches before this limit is applied.",
+            ge=0,
+        ),
+    ] = None
+
+
 class FullTextSearchRequest(BaseModel):
     consistency: SearchConsistency | None = None
     explain: bool
@@ -7620,6 +7760,7 @@ class SparqlSelectRequest(BaseModel):
 
 
 EmbeddingSearchRequest.model_rebuild()
+EntityFilterRequest.model_rebuild()
 FullTextSearchRequest.model_rebuild()
 GraphRecallRequest.model_rebuild()
 HybridMultiSearchRequest.model_rebuild()
