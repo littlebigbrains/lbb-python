@@ -73,12 +73,13 @@ jobs:
           python - <<'PY'
           import glob
           import os
+          from pathlib import Path
           from packaging.utils import parse_wheel_filename
 
           wheel = glob.glob("dist/*.whl")
           if len(wheel) != 1:
               raise SystemExit(f"expected one wheel, found: {wheel}")
-          built = str(parse_wheel_filename(wheel[0])[1])
+          built = str(parse_wheel_filename(Path(wheel[0]).name)[1])
           expected = os.environ["EXPECTED_VERSION"]
           if built != expected:
               raise SystemExit(f"built version {built} != expected {expected}")
