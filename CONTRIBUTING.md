@@ -35,9 +35,11 @@ ruff check . && mypy lbb && pytest
 
 ## Releases
 
-Maintainers release by pushing a signed `vX.Y.Z` tag matching the
-`pyproject.toml` version, which publishes `lbb-sdk` via PyPI trusted
-publishing after CI passes.
+When a canonical sync lands a package version that is not yet on PyPI, CI runs
+the release suite and pauses at the protected `pypi` environment. A maintainer
+approves that deployment; trusted publishing uploads `littlebigbrain`, then CI
+creates the matching `vX.Y.Z` tag and GitHub Release. No local tag push or
+registry token is required.
 
 ## Conduct & security
 

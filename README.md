@@ -21,6 +21,10 @@ with LbbClient(
     api_key="lbb_sk_live_...",
     graph="main",
 ) as lbb:
+    # Explicit graph creation uses the built-in ontology. Graphs also create
+    # lazily on first commit, so this call is optional.
+    lbb.create_graph()
+
     lbb.graph("main").facts.create({
         "triplets": [{
             "source": {"type": "SERVICE", "name": "auth-service"},
@@ -60,6 +64,11 @@ Safe reads and idempotency-keyed writes retry `429`/`5xx` and transport failures
 up to twice, honor `Retry-After` with a one-minute cap, and attach generated
 idempotency keys to NDJSON/RDF imports unless you provide one.
 
+`create_graph()` explicitly creates the scoped graph with the built-in
+ontology. If the graph needs a custom ontology, call
+`client.ontology.define(...)` **before the first commit** instead; defining the
+ontology creates the graph head, and it cannot be replaced after graph creation.
+
 ## Preferred typed surface
 
 The `context`, `ontology`, and `query` namespaces return generated Pydantic
@@ -89,7 +98,7 @@ and automatically classify read-only POSTs as retry-safe.
 Pass native `httpx` `event_hooks` to the client constructor for request/response
 instrumentation.
 
-Primary methods: `graph("main").facts.create`; `search.hybrid`;
+Primary methods: `create_graph`; `graph("main").facts.create`; `search.hybrid`;
 `embedding_config`; `set_embedding_config`; `backfill_embeddings`;
 `promote_embedding`;
 `indexes.run`; `entities.list`; `entities.filter_by_attributes`;
