@@ -4535,7 +4535,7 @@
         "type": "object"
       },
       "GraphRdfImportResponse": {
-        "description": "Aggregate outcome of an RDF import. Every N-Triples statement is committed\nthrough a fixed `RDF_TRIPLE` edge; source predicate and literal term metadata\nare stored on the edge so the RDF/SPARQL projection can emit source RDF terms\nwhile avoiding one ontology relation/property per source predicate.",
+        "description": "Aggregate outcome of an RDF import. Every RDF statement is committed\nthrough a fixed `RDF_TRIPLE` edge; source predicate and literal term metadata\nare stored on the edge so the RDF/SPARQL projection can emit source RDF terms\nwhile avoiding one ontology relation/property per source predicate.",
         "properties": {
           "batches": {
             "minimum": 0,
@@ -20608,6 +20608,336 @@
         ]
       }
     },
+    "/v1/graph/export/rdf": {
+      "get": {
+        "operationId": "get_v1_graph_export_rdf",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RDF format: turtle (default), nt/ntriples, trig, or nq/nquads",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional lower output ceiling; cannot exceed the server hard cap",
+            "in": "query",
+            "name": "max_triples",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC3339 valid-time snapshot pin",
+            "in": "query",
+            "name": "as_of_valid_time",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Commit-sequence snapshot pin",
+            "in": "query",
+            "name": "as_of_commit_seq",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "subclass (default) or none",
+            "in": "query",
+            "name": "entailment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include stored rule-derived facts when true",
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/n-quads": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/n-triples": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/trig": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/turtle": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "RDF graph",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export the snapshot-visible RDF projection as Turtle, N-Triples, TriG, or N-Quads (hard 100,000-statement materialization ceiling)",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
     "/v1/graph/groundability": {
       "get": {
         "operationId": "get_v1_graph_groundability",
@@ -21252,9 +21582,36 @@
             }
           },
           {
-            "description": "RDF format; only ntriples is supported today",
+            "description": "RDF format: ntriples (default), turtle, nquads, or trig",
             "in": "query",
             "name": "format",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional base IRI for resolving relative IRIs in Turtle or TriG",
+            "in": "query",
+            "name": "base_iri",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional named-graph IRI for N-Triples or Turtle input",
+            "in": "query",
+            "name": "graph_uri",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional stable document scope for blank-node labels across chunks; omit to preserve labels exactly across retries and chunk boundaries",
+            "in": "query",
+            "name": "blank_node_scope",
             "required": false,
             "schema": {
               "type": "string"
@@ -21493,7 +21850,7 @@
             "bearer": []
           }
         ],
-        "summary": "Bulk-ingest N-Triples directly through the fixed RDF_TRIPLE relation; source predicates and literal terms are preserved as edge metadata",
+        "summary": "Bulk-ingest N-Triples, Turtle, N-Quads, or TriG through the fixed RDF_TRIPLE relation; RDF terms and named-graph labels are preserved as edge metadata",
         "tags": [
           "graph"
         ]
@@ -36275,6 +36632,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Response format: json (default), turtle, or nt/ntriples",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -36284,9 +36650,19 @@
                 "schema": {
                   "$ref": "#/components/schemas/SchemaAuditReport"
                 }
+              },
+              "application/n-triples": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/turtle": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "OK",
+            "description": "SHACL validation report",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -36500,7 +36876,7 @@
             "bearer": []
           }
         ],
-        "summary": "Audit current graph data against the active SHACL schema bundle",
+        "summary": "Audit current graph data against the active SHACL schema bundle; JSON by default, or a standard RDF sh:ValidationReport as Turtle/N-Triples",
         "tags": [
           "schema"
         ]

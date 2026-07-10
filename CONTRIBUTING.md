@@ -1,10 +1,10 @@
 # Contributing
 
-Thanks for your interest in the Little Big Brain Python SDK!
+Thanks for your interest in the little big brain Python SDK!
 
 ## How this repository works
 
-This repository is a **one-way export** from the private Little Big Brain
+This repository is a **one-way export** from the private little big brain
 monorepo. Canonical development, code review, and CI happen there; every commit
 on `main` here is an allow-listed snapshot that already passed those gates.
 

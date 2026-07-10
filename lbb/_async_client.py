@@ -1,4 +1,4 @@
-"""Asynchronous transport for the Little Big Brain Python SDK."""
+"""Asynchronous transport for the little big brain Python SDK."""
 
 from __future__ import annotations
 

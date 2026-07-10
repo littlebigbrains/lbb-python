@@ -1,6 +1,6 @@
-# Little Big Brain Python SDK
+# little big brain Python SDK
 
-`lbb` is the Python client for a [Little Big Brain](https://littlebigbrain.com) graph server. The
+`lbb` is the Python client for a [little big brain](https://littlebigbrain.com) graph server. The
 HTTP client (`LbbClient` / `AsyncLbbClient`) is the integration path for
 applications; it talks to `lbb-server` with a stack API key (`lbb_sk_test_…`
 or `lbb_sk_live_…`) or
@@ -8,7 +8,7 @@ single-mode token as a bearer credential — the same surface the TypeScript SDK
 CLI, and MCP server use.
 
 ```sh
-pip install lbb-sdk      # provides the `lbb` package (httpx + pydantic)
+pip install littlebigbrain   # imports as `lbb` (httpx + pydantic)
 ```
 
 ## HTTP client
@@ -196,7 +196,7 @@ generated from the committed [`contracts/openapi.json`](https://github.com/littl
 
 `LbbLocalClient` shells out to `lbb-testctl` and operates directly on object
 storage — for tests, notebooks, and local demos, not application integration.
-It requires a full Little Big Brain **engine** checkout (`lbb-testctl` is
+It requires a full little big brain **engine** checkout (`lbb-testctl` is
 compiled with cargo), not just this SDK repository; point `repo_root` at that
 checkout. It is re-exported as `from lbb import LbbLocalClient`.
 

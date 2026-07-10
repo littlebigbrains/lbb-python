@@ -1,4 +1,4 @@
-"""Public HTTP client facade for Little Big Brain.
+"""Public HTTP client facade for little big brain.
 
 The implementation is split by responsibility while this module preserves the
 stable ``from lbb.client import LbbClient`` import path.
