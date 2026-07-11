@@ -4,9 +4,120 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, RootModel
+
+
+class Op(Enum):
+    add_entity_type = 'add_entity_type'
+
+
+class AddEntityTypeOp(BaseModel):
+    """
+    Declare a new entity type. Idempotent: a no-op if the name already exists.
+    Pair with `widen_relation` (in the same request, ordered before it) to add
+    a brand-new type to an existing relation's domain or range.
+    """
+
+    name: Annotated[str, Field(description='Display name of the new entity type.')]
+    op: Literal['add_entity_type']
+
+
+class Op1(Enum):
+    add_property = 'add_property'
+
+
+class AddPropertyOp(BaseModel):
+    """
+    Declare a new typed scalar property field (e.g. `status`, `dueDate`,
+    `budget`) so a commit's `entity_properties` can write it on a live graph.
+    Additive: every existing record stays valid and no migration is needed.
+    Unlike `define_ontology` (which recreates the graph ontology), this bumps
+    the ontology version and registers just the field. Idempotent — a no-op
+    if a field with this name already exists (the existing type is kept).
+    """
+
+    allowed_values: Annotated[
+        list[str] | None,
+        Field(
+            description='Optional **enforced** allowed-value set (a SHACL `sh:in`): a commit\nwhose value for this field is outside the set is rejected at write\ntime, so a controlled vocabulary is a one-line declaration instead of\na separate shapes graph. Only for enumerable types\n(`keyword`/`text`/`i64`/`bool`); rejected on `f64`/`date_time`/`bytes`.\nUse `set_property_constraint` to tighten an existing field.'
+        ),
+    ] = None
+    name: Annotated[
+        str,
+        Field(
+            description="Display name of the new property field (case-insensitive; a commit's\n`entity_properties[].field` resolves to it)."
+        ),
+    ]
+    op: Literal['add_property']
+    required: Annotated[
+        bool | None,
+        Field(
+            description='Advisory required flag recorded on the field (not enforced on commit).'
+        ),
+    ] = None
+    value_type: Annotated[
+        str | None,
+        Field(
+            description="`bool` | `i64` | `f64` | `date_time` | `keyword` | `text` (default) |\n`bytes`. The commit path rejects values whose type doesn't match."
+        ),
+    ] = None
+
+
+class Op2(Enum):
+    add_relation = 'add_relation'
+
+
+class AddRelationOp(BaseModel):
+    """
+    Declare a new relation type (e.g. `HAS_PHASE`, `ASSIGNED_TO`) with its own
+    domain and range, by name. The named domain/range entity types must
+    already exist (add them earlier in the same request with `add_entity_type`
+    if new). Idempotent: a no-op if a relation with this name already exists —
+    use `widen_relation` to grow an existing relation's domain/range. Optional
+    fields default exactly as the ontology spec importer does.
+    """
+
+    cardinality: Annotated[
+        str | None,
+        Field(
+            description='`one_to_one` | `one_to_many` | `many_to_one` | `many_to_many` (default).'
+        ),
+    ] = None
+    domain: Annotated[
+        list[str] | None,
+        Field(description='Entity-type names allowed as the source (domain).'),
+    ] = None
+    inverse_name: Annotated[
+        str | None, Field(description='Optional inverse-relation display name.')
+    ] = None
+    name: Annotated[str, Field(description='Display name of the new relation.')]
+    op: Literal['add_relation']
+    range: Annotated[
+        list[str] | None,
+        Field(description='Entity-type names allowed as the target (range).'),
+    ] = None
+    reducer: Annotated[
+        str | None,
+        Field(
+            description='State-reducer token (e.g. `append_only` (default), `latest_wins`,\n`valid_time_latest_wins`).'
+        ),
+    ] = None
+    symmetric: Annotated[
+        bool | None,
+        Field(description='Whether the relation is symmetric (default false).'),
+    ] = None
+    temporal_semantics: Annotated[
+        str | None,
+        Field(
+            description='`atemporal` | `valid_time` | `commit_time` | `bitemporal` (default).'
+        ),
+    ] = None
+    transitive: Annotated[
+        bool | None,
+        Field(description='Whether the relation is transitive (default false).'),
+    ] = None
 
 
 class AnalyticTerm1(BaseModel):
@@ -445,6 +556,7 @@ class EmbeddingIndexClusterView(BaseModel):
 class EmbeddingIndexSource(Enum):
     ephemeral = 'ephemeral'
     persisted = 'persisted'
+    persisted_only = 'persisted_only'
 
 
 class Kind(Enum):
@@ -589,6 +701,7 @@ class FacetResult(BaseModel):
 class FullTextIndexSource(Enum):
     ephemeral = 'ephemeral'
     persisted = 'persisted'
+    persisted_only = 'persisted_only'
 
 
 class FullTextSearchResult(BaseModel):
@@ -612,6 +725,13 @@ class FullTextTokenizerConfig(BaseModel):
     min_token_len: Annotated[int | None, Field(ge=0)] = None
     stemming: bool | None = None
     stopwords: list[str] | None = None
+
+
+class GovernedConflictGroup(BaseModel):
+    distinct_values: list[Any]
+    evidence_entity_ids: list[str]
+    evidence_truncated: bool
+    keys: dict[str, Any]
 
 
 class GraphBindMode(Enum):
@@ -1166,6 +1286,24 @@ class NamedEntityInput(BaseModel):
     type: str
 
 
+class Op3(Enum):
+    narrow_relation = 'narrow_relation'
+
+
+class NarrowRelationOp(BaseModel):
+    """
+    Remove entity types from a relation's domain and/or range (a subtractive
+    change). Conflicts when current edges of the relation already use a
+    removed source/target type — those edges stay (append-only) but begin to
+    warn. Blocked unless `allow_data_conflicts` is set on the request.
+    """
+
+    op: Literal['narrow_relation']
+    relation: str
+    remove_domain: list[str] | None = None
+    remove_range: list[str] | None = None
+
+
 class NarrowingRecall(BaseModel):
     """
     Whether the graph's own entities are retrievable by their names — a proxy
@@ -1206,6 +1344,11 @@ class ObserveTurn(BaseModel):
     ] = None
 
 
+class OntologyCompetencyQuestion(BaseModel):
+    id: str
+    question: str
+
+
 class OntologyConflict(BaseModel):
     """
     A current-data conflict found while previewing a subtractive ontology change.
@@ -1233,6 +1376,18 @@ class OntologyConflict(BaseModel):
             description='`class:<stable_id>` or `relation:<stable_id>` the conflict is about.'
         ),
     ]
+
+
+class OntologyCqAnalysis(BaseModel):
+    covered: bool
+    id: str
+    interpretation: str
+    object: str
+    predicate: str
+    query_outline: str
+    required_elements: list[str]
+    selected_pattern: str | None = None
+    subject: str
 
 
 class OntologyDefineRequest(BaseModel):
@@ -1263,315 +1418,25 @@ class OntologyDefineRequest(BaseModel):
     ]
 
 
-class Op(Enum):
-    widen_relation = 'widen_relation'
+class OntologyDraftStatus(Enum):
+    draft = 'draft'
+    validated = 'validated'
+    promoted = 'promoted'
+    rejected = 'rejected'
 
 
-class OntologyEvolveOp1(BaseModel):
-    """
-    Add already-declared entity types (by name) to a relation's declared
-    domain (`add_domain`) and/or range (`add_range`). The relation and every
-    named type must already exist. Ids already present are skipped, so the op
-    is idempotent and a re-run is a no-op.
-    """
-
-    add_domain: Annotated[
-        list[str] | None,
-        Field(
-            description="Entity-type names to add to the relation's domain (source types)."
-        ),
-    ] = None
-    add_range: Annotated[
-        list[str] | None,
-        Field(
-            description="Entity-type names to add to the relation's range (target types)."
-        ),
-    ] = None
-    op: Op
-    relation: Annotated[
-        str, Field(description='Relation to widen, by name (case-insensitive).')
-    ]
-
-
-class Op1(Enum):
-    add_entity_type = 'add_entity_type'
-
-
-class OntologyEvolveOp2(BaseModel):
-    """
-    Declare a new entity type. Idempotent: a no-op if the name already exists.
-    Pair with `widen_relation` (in the same request, ordered before it) to add
-    a brand-new type to an existing relation's domain or range.
-    """
-
-    name: Annotated[str, Field(description='Display name of the new entity type.')]
-    op: Op1
-
-
-class Op2(Enum):
-    add_relation = 'add_relation'
-
-
-class OntologyEvolveOp3(BaseModel):
-    """
-    Declare a new relation type (e.g. `HAS_PHASE`, `ASSIGNED_TO`) with its own
-    domain and range, by name. The named domain/range entity types must
-    already exist (add them earlier in the same request with `add_entity_type`
-    if new). Idempotent: a no-op if a relation with this name already exists —
-    use `widen_relation` to grow an existing relation's domain/range. Optional
-    fields default exactly as the ontology spec importer does.
-    """
-
-    cardinality: Annotated[
-        str | None,
-        Field(
-            description='`one_to_one` | `one_to_many` | `many_to_one` | `many_to_many` (default).'
-        ),
-    ] = None
-    domain: Annotated[
-        list[str] | None,
-        Field(description='Entity-type names allowed as the source (domain).'),
-    ] = None
-    inverse_name: Annotated[
-        str | None, Field(description='Optional inverse-relation display name.')
-    ] = None
-    name: Annotated[str, Field(description='Display name of the new relation.')]
-    op: Op2
-    range: Annotated[
-        list[str] | None,
-        Field(description='Entity-type names allowed as the target (range).'),
-    ] = None
-    reducer: Annotated[
-        str | None,
-        Field(
-            description='State-reducer token (e.g. `append_only` (default), `latest_wins`,\n`valid_time_latest_wins`).'
-        ),
-    ] = None
-    symmetric: Annotated[
-        bool | None,
-        Field(description='Whether the relation is symmetric (default false).'),
-    ] = None
-    temporal_semantics: Annotated[
-        str | None,
-        Field(
-            description='`atemporal` | `valid_time` | `commit_time` | `bitemporal` (default).'
-        ),
-    ] = None
-    transitive: Annotated[
-        bool | None,
-        Field(description='Whether the relation is transitive (default false).'),
-    ] = None
-
-
-class Op3(Enum):
-    add_property = 'add_property'
-
-
-class OntologyEvolveOp4(BaseModel):
-    """
-    Declare a new typed scalar property field (e.g. `status`, `dueDate`,
-    `budget`) so a commit's `entity_properties` can write it on a live graph.
-    Additive: every existing record stays valid and no migration is needed.
-    Unlike `define_ontology` (which recreates the graph ontology), this bumps
-    the ontology version and registers just the field. Idempotent — a no-op
-    if a field with this name already exists (the existing type is kept).
-    """
-
-    allowed_values: Annotated[
-        list[str] | None,
-        Field(
-            description='Optional **enforced** allowed-value set (a SHACL `sh:in`): a commit\nwhose value for this field is outside the set is rejected at write\ntime, so a controlled vocabulary is a one-line declaration instead of\na separate shapes graph. Only for enumerable types\n(`keyword`/`text`/`i64`/`bool`); rejected on `f64`/`date_time`/`bytes`.\nUse `set_property_constraint` to tighten an existing field.'
-        ),
-    ] = None
-    name: Annotated[
+class OntologyEvidenceSample(BaseModel):
+    evidence_ref: Annotated[
         str,
         Field(
-            description="Display name of the new property field (case-insensitive; a commit's\n`entity_properties[].field` resolves to it)."
+            description='Stable connector/source reference; sample content is never used as identity.'
         ),
     ]
-    op: Op3
-    required: Annotated[
-        bool | None,
+    record: Annotated[
+        Any,
         Field(
-            description='Advisory required flag recorded on the field (not enforced on commit).'
+            description='Representative connector record. Objects enable deterministic property\ninference; other JSON values remain evidence examples.'
         ),
-    ] = None
-    value_type: Annotated[
-        str | None,
-        Field(
-            description="`bool` | `i64` | `f64` | `date_time` | `keyword` | `text` (default) |\n`bytes`. The commit path rejects values whose type doesn't match."
-        ),
-    ] = None
-
-
-class Op4(Enum):
-    set_property_constraint = 'set_property_constraint'
-
-
-class OntologyEvolveOp5(BaseModel):
-    """
-    Set (or clear) the enforced allowed-value set on an **existing** property
-    field — the tightening path for a field already in use (e.g. constrain
-    `status` to its ADR vocabulary). A non-empty list installs the `sh:in`
-    constraint that future commits are checked against; an empty list clears
-    it. Enforcement is write-time only: values already stored are not
-    retroactively validated. Errors on an unknown field or a non-enumerable
-    type. Bumps the ontology version.
-    """
-
-    allowed_values: Annotated[
-        list[str] | None,
-        Field(description='Canonical allowed values; empty clears the constraint.'),
-    ] = None
-    op: Op4
-    property: Annotated[
-        str, Field(description='Name of the existing property field to constrain.')
-    ]
-
-
-class Op5(Enum):
-    rename_entity_type = 'rename_entity_type'
-
-
-class OntologyEvolveOp6(BaseModel):
-    """
-    Rename an entity type's display name. The frozen cross-version stable id
-    is unchanged, so every existing record keeps resolving (now to the new
-    name) and entity identity is preserved — only the display name and
-    future commits-by-name change. Errors if `to` already names a different
-    type. A no-op if the type is already named `to`.
-    """
-
-    from_: Annotated[str, Field(alias='from')]
-    op: Op5
-    to: str
-
-
-class Op6(Enum):
-    rename_relation = 'rename_relation'
-
-
-class OntologyEvolveOp7(BaseModel):
-    """
-    Rename a relation's display name (stable id frozen; existing edges keep
-    resolving to the new name). Errors on a collision with a different
-    relation; a no-op if already named `to`.
-    """
-
-    from_: Annotated[str, Field(alias='from')]
-    op: Op6
-    to: str
-
-
-class Op7(Enum):
-    set_relation_inverse = 'set_relation_inverse'
-
-
-class OntologyEvolveOp8(BaseModel):
-    """
-    Set (or replace) a relation's inverse-relation display name, enabling
-    one-hop reverse traversal (e.g. `PHASE_OF` for `HAS_PHASE`). Metadata
-    only — never touches stored edges.
-    """
-
-    inverse_name: str
-    op: Op7
-    relation: str
-
-
-class Op8(Enum):
-    set_relation_cardinality = 'set_relation_cardinality'
-
-
-class OntologyEvolveOp9(BaseModel):
-    """
-    Change a relation's cardinality (`one_to_one` | `one_to_many` |
-    `many_to_one` | `many_to_many`). Advisory metadata (it informs ranking and
-    query shaping, and is not enforced against stored edges), so it never
-    conflicts with existing data.
-    """
-
-    cardinality: str
-    op: Op8
-    relation: str
-
-
-class Op9(Enum):
-    narrow_relation = 'narrow_relation'
-
-
-class OntologyEvolveOp10(BaseModel):
-    """
-    Remove entity types from a relation's domain and/or range (a subtractive
-    change). Conflicts when current edges of the relation already use a
-    removed source/target type — those edges stay (append-only) but begin to
-    warn. Blocked unless `allow_data_conflicts` is set on the request.
-    """
-
-    op: Op9
-    relation: str
-    remove_domain: list[str] | None = None
-    remove_range: list[str] | None = None
-
-
-class Op10(Enum):
-    remove_entity_type = 'remove_entity_type'
-
-
-class OntologyEvolveOp11(BaseModel):
-    """
-    Tombstone an entity type: existing records of the type stay readable
-    (the def is retained, so they still resolve), but it is rejected for new
-    commits. Conflicts when current entities of the type exist; blocked unless
-    `allow_data_conflicts` is set.
-    """
-
-    name: str
-    op: Op10
-
-
-class Op11(Enum):
-    remove_relation = 'remove_relation'
-
-
-class OntologyEvolveOp12(BaseModel):
-    """
-    Tombstone a relation: existing edges stay readable but it is rejected for
-    new commits. Conflicts when current edges use it; blocked unless
-    `allow_data_conflicts` is set.
-    """
-
-    name: str
-    op: Op11
-
-
-class OntologyEvolveRequest(BaseModel):
-    """
-    Apply a list of additive ontology changes in order, writing a new ontology
-    version when anything actually changes. Ops are applied against the
-    in-progress ontology, so an `add_entity_type` earlier in the list is visible
-    to a later `widen_relation`.
-    """
-
-    allow_data_conflicts: Annotated[
-        bool | None,
-        Field(
-            description='Allow subtractive ops (narrow/remove) to apply even when current data\nconflicts. The affected records are never rewritten or dropped — they stay\nreadable and simply begin to warn. With this false (the default), a\nconflicting subtractive request is rejected without writing and the\nconflicts are reported instead.'
-        ),
-    ] = None
-    ops: list[
-        OntologyEvolveOp1
-        | OntologyEvolveOp2
-        | OntologyEvolveOp3
-        | OntologyEvolveOp4
-        | OntologyEvolveOp5
-        | OntologyEvolveOp6
-        | OntologyEvolveOp7
-        | OntologyEvolveOp8
-        | OntologyEvolveOp9
-        | OntologyEvolveOp10
-        | OntologyEvolveOp11
-        | OntologyEvolveOp12
     ]
 
 
@@ -2064,6 +1929,71 @@ class RelationshipHistoryRequest(BaseModel):
     source: EntitySelector
 
 
+class Op4(Enum):
+    remove_entity_type = 'remove_entity_type'
+
+
+class RemoveEntityTypeOp(BaseModel):
+    """
+    Tombstone an entity type: existing records of the type stay readable
+    (the def is retained, so they still resolve), but it is rejected for new
+    commits. Conflicts when current entities of the type exist; blocked unless
+    `allow_data_conflicts` is set.
+    """
+
+    name: str
+    op: Literal['remove_entity_type']
+
+
+class Op5(Enum):
+    remove_relation = 'remove_relation'
+
+
+class RemoveRelationOp(BaseModel):
+    """
+    Tombstone a relation: existing edges stay readable but it is rejected for
+    new commits. Conflicts when current edges use it; blocked unless
+    `allow_data_conflicts` is set.
+    """
+
+    name: str
+    op: Literal['remove_relation']
+
+
+class Op6(Enum):
+    rename_entity_type = 'rename_entity_type'
+
+
+class RenameEntityTypeOp(BaseModel):
+    """
+    Rename an entity type's display name. The frozen cross-version stable id
+    is unchanged, so every existing record keeps resolving (now to the new
+    name) and entity identity is preserved — only the display name and
+    future commits-by-name change. Errors if `to` already names a different
+    type. A no-op if the type is already named `to`.
+    """
+
+    from_: Annotated[str, Field(alias='from')]
+    op: Literal['rename_entity_type']
+    to: str
+
+
+class Op7(Enum):
+    rename_relation = 'rename_relation'
+
+
+class RenameRelationOp(BaseModel):
+    """
+    Rename a relation's display name (stable id frozen; existing edges keep
+    resolving to the new name). Errors on a collision with a different
+    relation; a no-op if already named `to`.
+    """
+
+    from_: Annotated[str, Field(alias='from')]
+    op: Literal['rename_relation']
+    to: str
+
+
 class ResolutionAlternative(BaseModel):
     confidence: float
     id: str
@@ -2315,10 +2245,27 @@ class SearchFeedbackExportRole(Enum):
     ignored = 'ignored'
 
 
+class SearchFeedbackGradeCounts(BaseModel):
+    grade_0: Annotated[int, Field(ge=0)]
+    grade_1: Annotated[int, Field(ge=0)]
+    grade_2: Annotated[int, Field(ge=0)]
+    grade_3: Annotated[int, Field(ge=0)]
+
+
+class SearchFeedbackPromotedModel(BaseModel):
+    kind: str
+    run: Annotated[int, Field(ge=0)]
+
+
 class SearchFeedbackSplit(Enum):
     train = 'train'
     eval = 'eval'
     unspecified = 'unspecified'
+
+
+class SearchFeedbackSplitCounts(BaseModel):
+    eval: Annotated[int, Field(ge=0)]
+    train: Annotated[int, Field(ge=0)]
 
 
 class Kind8(Enum):
@@ -2358,135 +2305,135 @@ class SearchFeedbackTarget4(BaseModel):
     name: str | None = None
 
 
-class Op12(Enum):
+class Op8(Enum):
     true = 'true'
 
 
 class SearchFilterExpr1(BaseModel):
-    op: Op12
+    op: Op8
 
 
-class Op13(Enum):
+class Op9(Enum):
     false = 'false'
 
 
 class SearchFilterExpr2(BaseModel):
-    op: Op13
+    op: Op9
 
 
-class Op14(Enum):
+class Op10(Enum):
     eq = 'eq'
 
 
-class Op15(Enum):
+class Op11(Enum):
     not_eq = 'not_eq'
 
 
-class Op16(Enum):
+class Op12(Enum):
     in_ = 'in'
 
 
-class Op17(Enum):
+class Op13(Enum):
     not_in = 'not_in'
 
 
-class Op18(Enum):
+class Op14(Enum):
     exists = 'exists'
 
 
 class SearchFilterExpr7(BaseModel):
     field: str
-    op: Op18
+    op: Op14
 
 
-class Op19(Enum):
+class Op15(Enum):
     not_exists = 'not_exists'
 
 
 class SearchFilterExpr8(BaseModel):
     field: str
-    op: Op19
+    op: Op15
 
 
-class Op20(Enum):
+class Op16(Enum):
     lt = 'lt'
 
 
-class Op21(Enum):
+class Op17(Enum):
     lte = 'lte'
 
 
-class Op22(Enum):
+class Op18(Enum):
     gt = 'gt'
 
 
-class Op23(Enum):
+class Op19(Enum):
     gte = 'gte'
 
 
-class Op24(Enum):
+class Op20(Enum):
     overlaps = 'overlaps'
 
 
-class Op25(Enum):
+class Op21(Enum):
     contains_all = 'contains_all'
 
 
-class Op26(Enum):
+class Op22(Enum):
     not_overlaps = 'not_overlaps'
 
 
-class Op27(Enum):
+class Op23(Enum):
     contains_all_tokens = 'contains_all_tokens'
 
 
 class SearchFilterExpr16(BaseModel):
     field: str
     last_as_prefix: bool | None = None
-    op: Op27
+    op: Op23
     query: str
 
 
-class Op28(Enum):
+class Op24(Enum):
     contains_any_token = 'contains_any_token'
 
 
 class SearchFilterExpr17(BaseModel):
     field: str
     last_as_prefix: bool | None = None
-    op: Op28
+    op: Op24
     query: str
 
 
-class Op29(Enum):
+class Op25(Enum):
     glob = 'glob'
 
 
 class SearchFilterExpr18(BaseModel):
     field: str
-    op: Op29
+    op: Op25
     pattern: str
 
 
-class Op30(Enum):
+class Op26(Enum):
     regex = 'regex'
 
 
 class SearchFilterExpr19(BaseModel):
     field: str
-    op: Op30
+    op: Op26
     pattern: str
 
 
-class Op31(Enum):
+class Op27(Enum):
     and_ = 'and'
 
 
-class Op32(Enum):
+class Op28(Enum):
     or_ = 'or'
 
 
-class Op33(Enum):
+class Op29(Enum):
     not_ = 'not'
 
 
@@ -2698,6 +2645,64 @@ class SemanticTraverseExplain(BaseModel):
     seeds_considered: Annotated[int, Field(ge=0)]
     seeds_selected: Annotated[int, Field(ge=0)]
     vector_candidates: Annotated[int, Field(ge=0)]
+
+
+class Op30(Enum):
+    set_property_constraint = 'set_property_constraint'
+
+
+class SetPropertyConstraintOp(BaseModel):
+    """
+    Set (or clear) the enforced allowed-value set on an **existing** property
+    field — the tightening path for a field already in use (e.g. constrain
+    `status` to its ADR vocabulary). A non-empty list installs the `sh:in`
+    constraint that future commits are checked against; an empty list clears
+    it. Enforcement is write-time only: values already stored are not
+    retroactively validated. Errors on an unknown field or a non-enumerable
+    type. Bumps the ontology version.
+    """
+
+    allowed_values: Annotated[
+        list[str] | None,
+        Field(description='Canonical allowed values; empty clears the constraint.'),
+    ] = None
+    op: Literal['set_property_constraint']
+    property: Annotated[
+        str, Field(description='Name of the existing property field to constrain.')
+    ]
+
+
+class Op31(Enum):
+    set_relation_cardinality = 'set_relation_cardinality'
+
+
+class SetRelationCardinalityOp(BaseModel):
+    """
+    Change a relation's cardinality (`one_to_one` | `one_to_many` |
+    `many_to_one` | `many_to_many`). Advisory metadata (it informs ranking and
+    query shaping, and is not enforced against stored edges), so it never
+    conflicts with existing data.
+    """
+
+    cardinality: str
+    op: Literal['set_relation_cardinality']
+    relation: str
+
+
+class Op32(Enum):
+    set_relation_inverse = 'set_relation_inverse'
+
+
+class SetRelationInverseOp(BaseModel):
+    """
+    Set (or replace) a relation's inverse-relation display name, enabling
+    one-hop reverse traversal (e.g. `PHASE_OF` for `HAS_PHASE`). Metadata
+    only — never touches stored edges.
+    """
+
+    inverse_name: str
+    op: Literal['set_relation_inverse']
+    relation: str
 
 
 class ShaclConstraintComponent(Enum):
@@ -2935,10 +2940,10 @@ class SkippedEdge(BaseModel):
 class SnapshotView(BaseModel):
     as_of_commit_seq: CommitSeq | None = None
     commit_seq: Annotated[int, Field(ge=0)]
-    indexed_seq: Annotated[
+    compacted_seq: Annotated[
         int,
         Field(
-            description="Highest commit folded into the **compacted graph snapshot base** (the\nmaterialized segment base). Commits in `(indexed_seq, commit_seq]` live in\nthe WAL tail and are replayed on read — so `indexed_seq: 0` is the normal\nstate of a small or freshly-created graph (no base built yet) and does\n**not** mean the data is unreadable: every read replays the full tail.\n\nThis is *not* search-index coverage. Whether BM25/vector search indexes\nare built — what `/v1/index/run` advances — is reported separately as\n`bm25_indexed_commit_seq` / `ann_indexed_commit_seq` on\n`GET /v1/graph/metadata` and on the entity read's metadata.",
+            description="Highest commit folded into the **compacted graph snapshot base** (the\nmaterialized segment base). Commits in `(compacted_seq, commit_seq]` live in\nthe WAL tail and are replayed on read — so `compacted_seq: 0` is the normal\nstate of a small or freshly-created graph (no base built yet) and does\n**not** mean the data is unreadable: every read replays the full tail.\n\nThis is *not* search-index coverage. Whether BM25/vector search indexes\nare built — what `/v1/index/run` advances — is reported separately as\n`bm25_indexed_commit_seq` / `ann_indexed_commit_seq` on\n`GET /v1/graph/metadata` and on the entity read's metadata.",
             ge=0,
         ),
     ]
@@ -3603,6 +3608,12 @@ class TrainModelRequest(BaseModel):
             description='Bring-your-own labeled probes (captured signals, hand-written evals).\n`None` ⇒ execution-verified synthetic pairs from the graph itself.'
         ),
     ] = None
+    source_job_id: Annotated[
+        str | None,
+        Field(
+            description='Server-assigned durable execution identity. Clients normally omit it;\nit is persisted into the model manifest to make worker redelivery safe.'
+        ),
+    ] = None
 
 
 class TrainModelResponse(BaseModel):
@@ -3761,7 +3772,7 @@ class WalCompactResponse(BaseModel):
     compacted_seq: Annotated[
         int,
         Field(
-            description='Highest commit folded; equals `snapshot.indexed_seq` after success.',
+            description='Highest commit folded; equals `snapshot.compacted_seq` after success.',
             ge=0,
         ),
     ]
@@ -3836,6 +3847,49 @@ class WhyResponse(BaseModel):
     evidence: list[str]
     previous_edges: list[str]
     snapshot: SnapshotView
+
+
+class Op33(Enum):
+    widen_relation = 'widen_relation'
+
+
+class WidenRelationOp(BaseModel):
+    """
+    Add already-declared entity types (by name) to a relation's declared
+    domain (`add_domain`) and/or range (`add_range`). The relation and every
+    named type must already exist. Ids already present are skipped, so the op
+    is idempotent and a re-run is a no-op.
+    """
+
+    add_domain: Annotated[
+        list[str] | None,
+        Field(
+            description="Entity-type names to add to the relation's domain (source types)."
+        ),
+    ] = None
+    add_range: Annotated[
+        list[str] | None,
+        Field(
+            description="Entity-type names to add to the relation's range (target types)."
+        ),
+    ] = None
+    op: Literal['widen_relation']
+    relation: Annotated[
+        str, Field(description='Relation to widen, by name (case-insensitive).')
+    ]
+
+
+class AdditiveOntologyEvolveRequest(BaseModel):
+    """
+    Additive-only ontology proposal helper for structured-output systems.
+    """
+
+    ops: list[
+        Annotated[
+            WidenRelationOp | AddEntityTypeOp | AddRelationOp | AddPropertyOp,
+            Field(discriminator='op'),
+        ]
+    ]
 
 
 class AmbiguousTerm(BaseModel):
@@ -4272,6 +4326,18 @@ class FusionServingDefaults(BaseModel):
     weights: SearchSignalWeights
 
 
+class GovernedConflictAggregationResponse(BaseModel):
+    authorized_entities: Annotated[int, Field(ge=0)]
+    entities_scanned: Annotated[int, Field(ge=0)]
+    grouped_entities: Annotated[int, Field(ge=0)]
+    groups: list[GovernedConflictGroup]
+    snapshot: SnapshotView
+    truncated: Annotated[
+        bool,
+        Field(description='Scan or output-group ceiling made the result incomplete.'),
+    ]
+
+
 class GraphAnchor(BaseModel):
     """
     A structural co-bind constraint: restrict (or boost) the text/vector
@@ -4634,6 +4700,12 @@ class ModelRunManifest(BaseModel):
     ]
     signature: ModelSignature | None = None
     snapshot_token: str
+    source_job_id: Annotated[
+        str | None,
+        Field(
+            description="Durable background job that produced this run. The server assigns this\nfrom the queue's stable job ID so redelivery returns the same run."
+        ),
+    ] = None
     trained_at_commit_seq: Annotated[
         int,
         Field(
@@ -4723,6 +4795,18 @@ class OntologyDefineResponse(BaseModel):
     warnings: list[str]
 
 
+class OntologyDraftCreateRequest(BaseModel):
+    """
+    Create a reviewable induction artifact without inserting samples into the graph.
+    """
+
+    competency_questions: list[OntologyCompetencyQuestion] | None = None
+    connector_name: str
+    samples: list[OntologyEvidenceSample]
+    selected_patterns: list[str] | None = None
+    user_stories: list[str] | None = None
+
+
 class OntologyEntityTypeView(BaseModel):
     """
     The full definition of one entity type (class) in the active ontology.
@@ -4740,6 +4824,39 @@ class OntologyEntityTypeView(BaseModel):
     since_version: Annotated[int, Field(ge=0)]
 
 
+class OntologyEvolveRequest(BaseModel):
+    """
+    Apply a list of additive ontology changes in order, writing a new ontology
+    version when anything actually changes. Ops are applied against the
+    in-progress ontology, so an `add_entity_type` earlier in the list is visible
+    to a later `widen_relation`.
+    """
+
+    allow_data_conflicts: Annotated[
+        bool | None,
+        Field(
+            description='Allow subtractive ops (narrow/remove) to apply even when current data\nconflicts. The affected records are never rewritten or dropped — they stay\nreadable and simply begin to warn. With this false (the default), a\nconflicting subtractive request is rejected without writing and the\nconflicts are reported instead.'
+        ),
+    ] = None
+    ops: list[
+        Annotated[
+            WidenRelationOp
+            | AddEntityTypeOp
+            | AddRelationOp
+            | AddPropertyOp
+            | SetPropertyConstraintOp
+            | RenameEntityTypeOp
+            | RenameRelationOp
+            | SetRelationInverseOp
+            | SetRelationCardinalityOp
+            | NarrowRelationOp
+            | RemoveEntityTypeOp
+            | RemoveRelationOp,
+            Field(discriminator='op'),
+        ]
+    ]
+
+
 class OntologyEvolveResponse(BaseModel):
     applied: Annotated[
         list[SchemaDiffEntry],
@@ -4754,13 +4871,31 @@ class OntologyEvolveResponse(BaseModel):
             description='Current-data conflicts from subtractive ops. When non-empty and the\nrequest did not set `allow_data_conflicts`, nothing was written and\n`ontology_version` is unchanged.'
         ),
     ] = None
+    dry_run: Annotated[
+        bool,
+        Field(
+            description='True when this response came from `?dry_run=true` and no ontology object\nor graph-head update was written.'
+        ),
+    ]
     graph: GraphKey
     messages: list[str]
+    no_op: Annotated[
+        bool,
+        Field(
+            description='Every requested operation was already satisfied, so publishing would not\ncreate a new ontology version.'
+        ),
+    ]
     ontology_version: Annotated[
         int,
         Field(
-            description='Active version after the call. Equal to `base_ontology_version` when the\nrequest was a no-op (every change already satisfied).',
+            description='Active version after a publish, or the predicted resulting version for a\ndry run. Equal to `base_ontology_version` for a no-op or blocked preview.',
             ge=0,
+        ),
+    ]
+    publishable: Annotated[
+        bool,
+        Field(
+            description='Whether the exact request can be published. False for a data-conflicting\nsubtractive preview unless `allow_data_conflicts` was explicitly set.'
         ),
     ]
 
@@ -4829,18 +4964,21 @@ class OntologySuggestion(BaseModel):
     ]
     suggested_ops: Annotated[
         list[
-            OntologyEvolveOp1
-            | OntologyEvolveOp2
-            | OntologyEvolveOp3
-            | OntologyEvolveOp4
-            | OntologyEvolveOp5
-            | OntologyEvolveOp6
-            | OntologyEvolveOp7
-            | OntologyEvolveOp8
-            | OntologyEvolveOp9
-            | OntologyEvolveOp10
-            | OntologyEvolveOp11
-            | OntologyEvolveOp12
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
         ],
         Field(
             description='Ready-to-apply ops: pass verbatim as `OntologyEvolveRequest.ops` to\naccept this suggestion. Never applied by this engine.'
@@ -4971,6 +5109,24 @@ class PropertyInput(BaseModel):
             description="A typed literal value for ingest. The variant must match the field's declared\n`PropertyType`; `date_time` is an ISO-8601 string stored as microseconds."
         ),
     ]
+
+
+class RdfExportPreviewResponse(BaseModel):
+    """
+    JSON envelope returned by `GET /v1/graph/export/rdf?truncate=true`.
+    """
+
+    data: Annotated[
+        str,
+        Field(
+            description='RDF serialization (Turtle, N-Triples, TriG, or N-Quads) encoded as a JSON\nstring so the preview metadata stays in one typed response.'
+        ),
+    ]
+    format: str
+    returned_triples: Annotated[int, Field(ge=0)]
+    snapshot: SnapshotView
+    total_triples: Annotated[int, Field(ge=0)]
+    truncated: bool
 
 
 class RelationSearchResult(BaseModel):
@@ -5310,54 +5466,87 @@ class SearchFeedbackResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     feedback_graph: GraphKey
     idempotent_replay: bool
+    untrainable_labels: Annotated[
+        int | None,
+        Field(
+            description='Accepted labels that cannot currently produce a training-export row.\nThis is an explicit warning signal: the append-only audit event is kept,\nbut a trainer will exclude it until that target kind is supported.',
+            ge=0,
+        ),
+    ] = None
     visibility_token: str
+
+
+class SearchFeedbackSummaryResponse(BaseModel):
+    """
+    Constant-size administration view over the feedback ledger. Unlike the
+    qrels export this never returns label or impression rows.
+    """
+
+    deduped_events: Annotated[int, Field(ge=0)]
+    excluded_targets: Annotated[int, Field(ge=0)]
+    feedback_graph: GraphKey
+    grades: SearchFeedbackGradeCounts
+    graph: GraphKey
+    latest_label_micros: int | None = None
+    latest_label_sequence: Annotated[
+        int,
+        Field(
+            description='Append-only event count for polling. Exact unless `truncated` is true;\nidempotent replays do not advance it and retractions do.',
+            ge=0,
+        ),
+    ]
+    objects_scanned: Annotated[int, Field(ge=0)]
+    promoted_models: list[SearchFeedbackPromotedModel]
+    raw_events: Annotated[int, Field(ge=0)]
+    splits: SearchFeedbackSplitCounts
+    truncated: bool
 
 
 class SearchFilterExpr3(BaseModel):
     field: str
-    op: Op14
+    op: Op10
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr4(BaseModel):
     field: str
-    op: Op15
+    op: Op11
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr5(BaseModel):
     field: str
-    op: Op16
+    op: Op12
     values: list[bool | int | float | str | None]
 
 
 class SearchFilterExpr6(BaseModel):
     field: str
-    op: Op17
+    op: Op13
     values: list[bool | int | float | str | None]
 
 
 class SearchFilterExpr9(BaseModel):
     field: str
-    op: Op20
+    op: Op16
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr10(BaseModel):
     field: str
-    op: Op21
+    op: Op17
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr11(BaseModel):
     field: str
-    op: Op22
+    op: Op18
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr12(BaseModel):
     field: str
-    op: Op23
+    op: Op19
     value: bool | int | float | str | None
 
 
@@ -5371,7 +5560,7 @@ class SearchFilterExpr13(BaseModel):
     """
 
     field: str
-    op: Op24
+    op: Op20
     values: list[bool | int | float | str | None]
 
 
@@ -5383,7 +5572,7 @@ class SearchFilterExpr14(BaseModel):
     """
 
     field: str
-    op: Op25
+    op: Op21
     values: list[bool | int | float | str | None]
 
 
@@ -5394,7 +5583,7 @@ class SearchFilterExpr15(BaseModel):
     """
 
     field: str
-    op: Op26
+    op: Op22
     values: list[bool | int | float | str | None]
 
 
@@ -5672,6 +5861,26 @@ class StateEntry(BaseModel):
     relation: RelationView
     target: EntityView
     valid_time: ValidTime
+
+
+class TrainModelJobStatusResponse(BaseModel):
+    """
+    Durable background trainer status. The terminal `result` carries the full
+    snapshot lineage, held-out gate evidence, and recorded run number.
+    """
+
+    attempts: Annotated[int, Field(ge=0)]
+    enqueued_at_micros: int
+    graph: GraphKey
+    job_id: str
+    kind: str
+    result: TrainModelResponse | None = None
+    stage: str | None = None
+    status: Annotated[
+        str, Field(description='`pending` | `running` | `succeeded` | `failed`.')
+    ]
+    terminal_error: str | None = None
+    updated_at_micros: int
 
 
 class TransitionEntry(BaseModel):
@@ -6492,6 +6701,45 @@ class ObserveResponse(BaseModel):
     validation: SchemaAuditReport | None = None
 
 
+class OntologyDraft(BaseModel):
+    """
+    Durable, portable ontology review artifact owned by the graph database.
+    """
+
+    base_ontology_version: Annotated[int, Field(ge=0)]
+    base_snapshot: SnapshotView
+    confidence: float
+    cq_analyses: list[OntologyCqAnalysis]
+    cq_coverage: float
+    draft_id: str
+    evidence_refs: list[str]
+    graph: GraphKey
+    promoted_ontology_version: Annotated[int | None, Field(ge=0)] = None
+    proposed_ops: list[
+        Annotated[
+            WidenRelationOp
+            | AddEntityTypeOp
+            | AddRelationOp
+            | AddPropertyOp
+            | SetPropertyConstraintOp
+            | RenameEntityTypeOp
+            | RenameRelationOp
+            | SetRelationInverseOp
+            | SetRelationCardinalityOp
+            | NarrowRelationOp
+            | RemoveEntityTypeOp
+            | RemoveRelationOp,
+            Field(discriminator='op'),
+        ]
+    ]
+    rejection_reason: str | None = None
+    request: OntologyDraftCreateRequest
+    status: OntologyDraftStatus
+    structural_pitfalls: list[str]
+    superfluous_element_rate: float
+    validation: OntologyEvolveResponse | None = None
+
+
 class OntologyInduceResponse(BaseModel):
     candidate_population: Annotated[
         int,
@@ -6578,6 +6826,24 @@ class SearchFeedbackExportResponse(BaseModel):
         ),
     ] = None
     rows: list[SearchFeedbackExportRow]
+
+
+class SearchIndexJobStatusResponse(BaseModel):
+    """
+    Durable background full-index job status with per-family terminal result.
+    """
+
+    attempts: Annotated[int, Field(ge=0)]
+    enqueued_at_micros: int
+    graph: GraphKey
+    job_id: str
+    result: SearchIndexRunResponse | None = None
+    stage: str | None = None
+    status: Annotated[
+        str, Field(description='`pending` | `running` | `succeeded` | `failed`.')
+    ]
+    terminal_error: str | None = None
+    updated_at_micros: int
 
 
 class SearchSessionCommitResponse(BaseModel):
@@ -6958,6 +7224,45 @@ class FullTextSearchRequest(BaseModel):
     top_k: Annotated[int, Field(ge=0)]
 
 
+class GovernedConflictAggregationRequest(BaseModel):
+    """
+    Snapshot-pinned governed fact-conflict aggregation. Authorization is a
+    required filter and is evaluated before any grouping or value collection.
+    """
+
+    as_of_commit_seq: Annotated[int | None, Field(ge=0)] = None
+    entity_type: str
+    key_fields: list[str]
+    limit: Annotated[int | None, Field(ge=0)] = None
+    max_entities_scanned: Annotated[int | None, Field(ge=0)] = None
+    max_evidence_per_group: Annotated[int | None, Field(ge=0)] = None
+    value_field: str
+    visibility_filter: (
+        SearchFilterExpr1
+        | SearchFilterExpr2
+        | SearchFilterExpr3
+        | SearchFilterExpr4
+        | SearchFilterExpr5
+        | SearchFilterExpr6
+        | SearchFilterExpr7
+        | SearchFilterExpr8
+        | SearchFilterExpr9
+        | SearchFilterExpr10
+        | SearchFilterExpr11
+        | SearchFilterExpr12
+        | SearchFilterExpr13
+        | SearchFilterExpr14
+        | SearchFilterExpr15
+        | SearchFilterExpr16
+        | SearchFilterExpr17
+        | SearchFilterExpr18
+        | SearchFilterExpr19
+        | SearchFilterExpr20
+        | SearchFilterExpr21
+        | SearchFilterExpr22
+    )
+
+
 class GraphRecallRequest(BaseModel):
     dim: Annotated[int | None, Field(ge=0)] = None
     filters: (
@@ -7103,7 +7408,7 @@ class SearchFilterExpr20(BaseModel):
         | SearchFilterExpr21
         | SearchFilterExpr22
     ]
-    op: Op31
+    op: Op27
 
 
 class SearchFilterExpr21(BaseModel):
@@ -7131,7 +7436,7 @@ class SearchFilterExpr21(BaseModel):
         | SearchFilterExpr21
         | SearchFilterExpr22
     ]
-    op: Op32
+    op: Op28
 
 
 class SearchFilterExpr22(BaseModel):
@@ -7159,7 +7464,7 @@ class SearchFilterExpr22(BaseModel):
         | SearchFilterExpr21
         | SearchFilterExpr22
     )
-    op: Op33
+    op: Op29
 
 
 class SearchSessionCommitRequest(BaseModel):
@@ -7762,6 +8067,7 @@ class SparqlSelectRequest(BaseModel):
 EmbeddingSearchRequest.model_rebuild()
 EntityFilterRequest.model_rebuild()
 FullTextSearchRequest.model_rebuild()
+GovernedConflictAggregationRequest.model_rebuild()
 GraphRecallRequest.model_rebuild()
 HybridMultiSearchRequest.model_rebuild()
 HybridSubquery.model_rebuild()

@@ -8,19 +8,31 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
+from pydantic import ValidationError
 
 from lbb import AsyncLbbClient, LbbClient, LbbError, ListPage, __version__
 from lbb.models import (
+    AddEntityTypeOp,
+    AdditiveOntologyEvolveRequest,
     AskResponse,
     CreateGraphResponse,
     EntityExplorerRow,
+    EntityFilterResponse,
+    GovernedConflictAggregationResponse,
     GraphEdgeRow,
     GraphSummaryResponse,
+    OntologyDraft,
+    OntologyEvolveRequest,
+    RdfExportPreviewResponse,
     SchemaBundleView,
+    SearchFeedbackExportResponse,
+    SearchFeedbackSummaryResponse,
+    SearchIndexJobStatusResponse,
     SparqlSelectResponse,
+    TrainModelJobStatusResponse,
 )
 
-SNAPSHOT = {"commit_seq": 7, "indexed_seq": 7}
+SNAPSHOT = {"commit_seq": 7, "compacted_seq": 7}
 GRAPH = {"tenant_id": "tenant", "graph_id": "main", "branch_id": "main"}
 
 
@@ -219,6 +231,47 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(params["limit"], "10")
         self.assertEqual(params["q"], "billing")
 
+    def test_entities_filter_is_typed_and_retry_safe(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "snapshot": SNAPSHOT,
+            "matched_count": 1,
+            "entities": entity_list_payload()["data"],
+        }
+        body = {
+            "filter": {"field": "document_id", "op": "eq", "value": "doc-1"},
+            "fields": ["title", "acl_principals"],
+            "limit": 20,
+        }
+        with LbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = client.entities.filter(body)
+
+        self.assertIsInstance(result, EntityFilterResponse)
+        self.assertEqual(result.matched_count, 1)
+        self.assertEqual(result.snapshot.commit_seq, 7)
+        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/entities/filter")
+        self.assertEqual(json.loads(seen[0].content), body)
+
+    def test_ontology_evolve_models_have_stable_discriminated_names(self) -> None:
+        op = AddEntityTypeOp(op="add_entity_type", name="CUSTOMER")
+        request = AdditiveOntologyEvolveRequest(ops=[op])
+        self.assertEqual(
+            request.model_dump(mode="json"),
+            {"ops": [{"name": "CUSTOMER", "op": "add_entity_type"}]},
+        )
+
+        with self.assertRaises(ValidationError) as raised:
+            OntologyEvolveRequest.model_validate(
+                {"ops": [{"kind": "add_entity_type", "name": "CUSTOMER"}]}
+            )
+        errors = raised.exception.errors()
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("op", errors[0]["msg"])
+
     def test_sparql_select_posts_structured_body_with_group_keys(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient("http://h", graph="g", transport=capturing_transport(seen)) as client:
@@ -243,7 +296,32 @@ class SyncClientTests(unittest.TestCase):
 
     def test_search_feedback_posts_labels_and_exports(self) -> None:
         seen: list[httpx.Request] = []
-        with LbbClient("http://h", graph="g", transport=capturing_transport(seen)) as client:
+        export_payload = {
+            "graph": {"tenant_id": "default", "graph_id": "g", "branch_id": "main"},
+            "feedback_graph": {
+                "tenant_id": "default",
+                "graph_id": "__lbb_feedback",
+                "branch_id": "main",
+            },
+            "rows": [],
+            "counts": {
+                "raw_events": 0,
+                "deduped_events": 0,
+                "positives": 0,
+                "hard_negatives": 0,
+                "ignored": 0,
+                "train": 0,
+                "eval": 0,
+                "excluded_targets": 0,
+            },
+        }
+        with LbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(
+                seen, [{"json": {}}, {"json": export_payload}]
+            ),
+        ) as client:
             client.search_feedback(
                 {
                     "query": "customer identity",
@@ -261,7 +339,9 @@ class SyncClientTests(unittest.TestCase):
                 },
                 idempotency_key="fb_1",
             )
-            client.search_feedback_export()
+            exported = client.search_feedback_export()
+        self.assertIsInstance(exported, SearchFeedbackExportResponse)
+        self.assertEqual(exported.counts.excluded_targets, 0)
         post = seen[0]
         self.assertEqual(post.method, "POST")
         self.assertEqual(str(post.url).split("?")[0], "http://h/v1/search/feedback")
@@ -270,6 +350,40 @@ class SyncClientTests(unittest.TestCase):
         export = seen[1]
         self.assertEqual(export.method, "GET")
         self.assertEqual(str(export.url).split("?")[0], "http://h/v1/search/feedback/export")
+
+    def test_search_feedback_summary_returns_constant_size_model(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "graph": {"tenant_id": "default", "graph_id": "g", "branch_id": "main"},
+            "feedback_graph": {
+                "tenant_id": "default",
+                "graph_id": "__lbb_feedback",
+                "branch_id": "main",
+            },
+            "raw_events": 12,
+            "deduped_events": 10,
+            "grades": {"grade_0": 2, "grade_1": 1, "grade_2": 3, "grade_3": 4},
+            "splits": {"train": 8, "eval": 2},
+            "excluded_targets": 1,
+            "latest_label_sequence": 12,
+            "latest_label_micros": 123456,
+            "promoted_models": [{"kind": "fusion", "run": 7}],
+            "objects_scanned": 12,
+            "truncated": False,
+        }
+        with LbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            summary = client.search_feedback_summary()
+
+        self.assertIsInstance(summary, SearchFeedbackSummaryResponse)
+        self.assertEqual(summary.latest_label_sequence, 12)
+        self.assertEqual(summary.promoted_models[0].run, 7)
+        self.assertEqual(
+            str(seen[0].url).split("?")[0], "http://h/v1/search/feedback/summary"
+        )
 
     def test_ask_posts_question_and_returns_grounded_answer(self) -> None:
         seen: list[httpx.Request] = []
@@ -522,6 +636,151 @@ class SyncClientTests(unittest.TestCase):
         self.assertNotIn("counts", dict(seen[0].url.params))
         self.assertEqual(dict(seen[1].url.params)["counts"], "true")
 
+    def test_ontology_evolve_dry_run_is_typed_and_explicit(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "graph": GRAPH,
+            "base_ontology_version": 1,
+            "ontology_version": 2,
+            "dry_run": True,
+            "publishable": True,
+            "no_op": False,
+            "applied": [],
+            "messages": ["dry run"],
+        }
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = client.ontology.evolve(
+                {"ops": [{"op": "add_entity_type", "name": "CUSTOMER"}]},
+                dry_run=True,
+            )
+        self.assertTrue(result.dry_run)
+        self.assertTrue(result.publishable)
+        self.assertFalse(result.no_op)
+        self.assertEqual(dict(seen[0].url.params)["dry_run"], "true")
+
+    def test_ontology_draft_lifecycle_is_typed_and_retry_safe(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "draft_id": "draft-1",
+            "graph": GRAPH,
+            "status": "validated",
+            "base_snapshot": SNAPSHOT,
+            "base_ontology_version": 3,
+            "request": {
+                "connector_name": "finance",
+                "user_stories": [],
+                "competency_questions": [],
+                "selected_patterns": [],
+                "samples": [{"evidence_ref": "record-1", "record": {"id": 1}}],
+            },
+            "evidence_refs": ["record-1"],
+            "proposed_ops": [{"op": "add_entity_type", "name": "CONNECTOR_FINANCE"}],
+            "cq_analyses": [],
+            "cq_coverage": 1.0,
+            "superfluous_element_rate": 0.0,
+            "structural_pitfalls": [],
+            "confidence": 0.05,
+        }
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}] * 5),
+        ) as client:
+            created = client.ontology.draft_create(payload["request"])
+            fetched = client.ontology.draft_get("draft-1")
+            validated = client.ontology.draft_validate("draft-1")
+            promoted = client.ontology.draft_promote(
+                "draft-1", idempotency_key="promote-draft-1"
+            )
+            rejected = client.ontology.draft_reject("draft-1", "not selected")
+        for result in [created, fetched, validated, promoted, rejected]:
+            self.assertIsInstance(result, OntologyDraft)
+        self.assertEqual(seen[1].url.params["draft_id"], "draft-1")
+        self.assertEqual(seen[3].headers["idempotency-key"], "promote-draft-1")
+        self.assertEqual(seen[4].url.params["reason"], "not selected")
+
+    def test_durable_trainer_submit_and_poll_are_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "job_id": "train_model:abc",
+            "status": "pending",
+            "graph": GRAPH,
+            "kind": "fusion",
+            "attempts": 0,
+            "enqueued_at_micros": 10,
+            "updated_at_micros": 10,
+        }
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            submitted = client.train_submit(
+                {"kind": "fusion", "force": True},
+                idempotency_key="fiqa-fusion-1",
+            )
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            polled = client.train_job(submitted.job_id)
+        self.assertIsInstance(submitted, TrainModelJobStatusResponse)
+        self.assertIsInstance(polled, TrainModelJobStatusResponse)
+        self.assertEqual(seen[0].headers["idempotency-key"], "fiqa-fusion-1")
+        self.assertEqual(dict(seen[1].url.params)["job_id"], "train_model:abc")
+
+    def test_durable_index_submit_and_poll_are_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "job_id": "index_run:abc",
+            "status": "pending",
+            "graph": GRAPH,
+            "attempts": 0,
+            "enqueued_at_micros": 10,
+            "updated_at_micros": 10,
+        }
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": payload})
+        ) as client:
+            submitted = client.index_submit({}, idempotency_key="fiqa-index-1")
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": payload})
+        ) as client:
+            polled = client.index_job(submitted.job_id)
+        self.assertIsInstance(submitted, SearchIndexJobStatusResponse)
+        self.assertIsInstance(polled, SearchIndexJobStatusResponse)
+        self.assertEqual(seen[0].headers["idempotency-key"], "fiqa-index-1")
+        self.assertEqual(dict(seen[1].url.params)["job_id"], "index_run:abc")
+
+    def test_governed_conflicts_returns_generated_model(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "snapshot": SNAPSHOT,
+            "groups": [],
+            "entities_scanned": 100,
+            "authorized_entities": 20,
+            "grouped_entities": 18,
+            "truncated": False,
+        }
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": payload})
+        ) as client:
+            result = client.governed_conflicts(
+                {
+                    "entity_type": "OBSERVATION",
+                    "visibility_filter": {
+                        "op": "overlaps",
+                        "field": "acl",
+                        "values": ["team:a"],
+                    },
+                    "key_fields": ["subject", "metric", "period"],
+                    "value_field": "value",
+                }
+            )
+        self.assertIsInstance(result, GovernedConflictAggregationResponse)
+        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/query/conflicts")
+
     def test_schema_namespace_uses_v1_schema_routes(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient("http://h", graph="main", transport=capturing_transport(seen)) as client:
@@ -670,6 +929,37 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(params["max_triples"], "500")
         self.assertEqual(params["as_of_commit_seq"], "7")
         self.assertEqual(params["format"], "nquads")
+
+    def test_graph_export_rdf_preview_returns_typed_bounded_slice(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "snapshot": SNAPSHOT,
+            "format": "ntriples",
+            "data": "<http://ex/s> <http://ex/p> <http://ex/o> .\n",
+            "returned_triples": 1,
+            "total_triples": 109,
+            "truncated": True,
+        }
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = client.graph("research", branch="draft").export_rdf_preview(
+                format="ntriples",
+                max_triples=1,
+                as_of_commit_seq=7,
+            )
+        self.assertIsInstance(result, RdfExportPreviewResponse)
+        self.assertEqual(result.returned_triples, 1)
+        self.assertEqual(result.total_triples, 109)
+        self.assertTrue(result.truncated)
+        params = dict(seen[0].url.params)
+        self.assertEqual(params["graph"], "research")
+        self.assertEqual(params["branch"], "draft")
+        self.assertEqual(params["format"], "nt")
+        self.assertEqual(params["max_triples"], "1")
+        self.assertEqual(params["truncate"], "true")
+        self.assertEqual(params["as_of_commit_seq"], "7")
 
     def test_graph_retract_posts_edges(self) -> None:
         seen: list[httpx.Request] = []
@@ -1071,17 +1361,23 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
                 [
                     {"json": summary_payload()},
                     {"json": entity_list_payload()},
+                    {"json": edge_list_payload()},
                 ],
             ),
         ) as client:
             summary = await client.summary_model()
             page = await client.entities.list_page(fields=["slo"])
+            edges = await client.graph_edges_page(
+                type="SERVICE", name="auth-service", direction="out"
+            )
 
         self.assertIsInstance(summary, GraphSummaryResponse)
         self.assertEqual(summary.current_edge_count, 3)
         self.assertIsInstance(page, ListPage)
         self.assertIsInstance(page.data[0], EntityExplorerRow)
+        self.assertIsInstance(edges.data[0], GraphEdgeRow)
         self.assertEqual(dict(seen[1].url.params)["fields"], "slo")
+        self.assertEqual(dict(seen[2].url.params)["direction"], "out")
 
     async def test_async_entity_iterator_follows_cursors(self) -> None:
         seen: list[httpx.Request] = []

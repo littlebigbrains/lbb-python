@@ -23,6 +23,8 @@ from ._client_base import (
     _BaseLbbClient,
     _ContextNamespace,
     _EntityNamespace,
+    _FactsNamespace,
+    _GraphNamespace,
     _OntologyNamespace,
     _parse_model,
     _QueryNamespace,
@@ -30,6 +32,7 @@ from ._client_base import (
     _retry_allowed,
     _retry_delay_seconds,
     _retryable,
+    _SchemaNamespace,
 )
 
 
@@ -91,8 +94,44 @@ class _AsyncOntologyNamespace(_OntologyNamespace):
     async def define(self, body: Body) -> models.OntologyDefineResponse:
         return cast(models.OntologyDefineResponse, await super().define(body))
 
-    async def evolve(self, body: Body) -> models.OntologyEvolveResponse:
-        return cast(models.OntologyEvolveResponse, await super().evolve(body))
+    async def evolve(
+        self, body: Body, *, dry_run: bool = False
+    ) -> models.OntologyEvolveResponse:
+        return cast(
+            models.OntologyEvolveResponse,
+            await super().evolve(body, dry_run=dry_run),
+        )
+
+    async def induce(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.OntologyInduceResponse:
+        return cast(
+            models.OntologyInduceResponse,
+            await super().induce(body, options=options),
+        )
+
+    async def draft_create(self, body: Body) -> models.OntologyDraft:
+        return cast(models.OntologyDraft, await super().draft_create(body))
+
+    async def draft_get(self, draft_id: str) -> models.OntologyDraft:
+        return cast(models.OntologyDraft, await super().draft_get(draft_id))
+
+    async def draft_validate(self, draft_id: str) -> models.OntologyDraft:
+        return cast(models.OntologyDraft, await super().draft_validate(draft_id))
+
+    async def draft_promote(
+        self, draft_id: str, *, idempotency_key: str | None = None
+    ) -> models.OntologyDraft:
+        return cast(
+            models.OntologyDraft,
+            await super().draft_promote(draft_id, idempotency_key=idempotency_key),
+        )
+
+    async def draft_reject(self, draft_id: str, reason: str) -> models.OntologyDraft:
+        return cast(
+            models.OntologyDraft,
+            await super().draft_reject(draft_id, reason),
+        )
 
 
 class _AsyncQueryNamespace(_QueryNamespace):
@@ -154,10 +193,136 @@ class _AsyncQueryNamespace(_QueryNamespace):
             await super().premises(body, options=options),
         )
 
+    async def conflicts(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.GovernedConflictAggregationResponse:
+        return cast(
+            models.GovernedConflictAggregationResponse,
+            await super().conflicts(body, options=options),
+        )
+
+
+class _AsyncFactsNamespace(_FactsNamespace):
+    async def create_model(
+        self, body: Body, *, idempotency_key: str | None = None
+    ) -> models.GraphCommitResponse:
+        return cast(
+            models.GraphCommitResponse,
+            await super().create_model(body, idempotency_key=idempotency_key),
+        )
+
+
+class _AsyncGraphNamespace(_GraphNamespace):
+    facts: _AsyncFactsNamespace
+
+    def __init__(self, client: _BaseLbbClient, graph: str, branch: str | None) -> None:
+        super().__init__(client, graph, branch)
+        self.facts = _AsyncFactsNamespace(client, graph, branch)
+
+    async def embedding_config(
+        self, *, options: RequestOptions | None = None
+    ) -> models.ManagedEmbeddingConfigResponse:
+        return cast(
+            models.ManagedEmbeddingConfigResponse,
+            await super().embedding_config(options=options),
+        )
+
+    async def set_embedding_config(
+        self, body: Body
+    ) -> models.ManagedEmbeddingConfigResponse:
+        return cast(
+            models.ManagedEmbeddingConfigResponse,
+            await super().set_embedding_config(body),
+        )
+
+    async def backfill_embeddings(
+        self,
+        *,
+        batch_size: int | None = None,
+        limit: int | None = None,
+        full: bool | None = None,
+    ) -> models.ManagedEmbeddingBackfillResponse:
+        return cast(
+            models.ManagedEmbeddingBackfillResponse,
+            await super().backfill_embeddings(
+                batch_size=batch_size, limit=limit, full=full
+            ),
+        )
+
+    async def promote_embedding(
+        self, *, run_id: str, allow_regression: bool | None = None
+    ) -> models.ManagedEmbeddingPromoteResponse:
+        return cast(
+            models.ManagedEmbeddingPromoteResponse,
+            await super().promote_embedding(
+                run_id=run_id, allow_regression=allow_regression
+            ),
+        )
+
+    async def retract_model(
+        self, body: Body, *, idempotency_key: str | None = None
+    ) -> models.GraphRetractResponse:
+        return cast(
+            models.GraphRetractResponse,
+            await super().retract_model(body, idempotency_key=idempotency_key),
+        )
+
+    async def export_rdf_preview(
+        self,
+        *,
+        format: str = "turtle",
+        max_triples: int = 100,
+        as_of_valid_time: str | None = None,
+        as_of_commit_seq: int | None = None,
+        entailment: str | None = None,
+        reason: bool | None = None,
+    ) -> models.RdfExportPreviewResponse:
+        return cast(
+            models.RdfExportPreviewResponse,
+            await super().export_rdf_preview(
+                format=format,
+                max_triples=max_triples,
+                as_of_valid_time=as_of_valid_time,
+                as_of_commit_seq=as_of_commit_seq,
+                entailment=entailment,
+                reason=reason,
+            ),
+        )
+
+
+class _AsyncSchemaNamespace(_SchemaNamespace):
+    async def view_model(self, *, audit: bool = False) -> models.SchemaBundleView:
+        return cast(models.SchemaBundleView, await super().view_model(audit=audit))
+
+    async def preview_model(self, body: Body) -> models.SchemaPreviewResponse:
+        return cast(models.SchemaPreviewResponse, await super().preview_model(body))
+
+    async def publish_model(self, body: Body) -> models.SchemaPublishResponse:
+        return cast(models.SchemaPublishResponse, await super().publish_model(body))
+
+    async def audit_model(self) -> models.SchemaAuditReport:
+        return cast(models.SchemaAuditReport, await super().audit_model())
+
 
 class _AsyncEntityNamespace(_EntityNamespace):
     async def list_page(self, **kwargs: Any) -> ListPage[models.EntityExplorerRow]:
         return cast(ListPage[models.EntityExplorerRow], await super().list_page(**kwargs))
+
+    async def filter(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.EntityFilterResponse:
+        return cast(
+            models.EntityFilterResponse,
+            await super().filter(body, options=options),
+        )
+
+    async def filter_by_attributes_model(
+        self, **kwargs: Any
+    ) -> models.SparqlSelectResponse:
+        return cast(
+            models.SparqlSelectResponse,
+            await super().filter_by_attributes_model(**kwargs),
+        )
 
     def pages(self, **kwargs: Any) -> AsyncIterator[ListPage[models.EntityExplorerRow]]:
         return cast(AsyncIterator[ListPage[models.EntityExplorerRow]], super().pages(**kwargs))
@@ -173,6 +338,7 @@ class AsyncLbbClient(_BaseLbbClient):
     entities: _AsyncEntityNamespace
     ontology: _AsyncOntologyNamespace
     query: _AsyncQueryNamespace
+    schema: _AsyncSchemaNamespace
 
     def __init__(
         self,
@@ -201,9 +367,152 @@ class AsyncLbbClient(_BaseLbbClient):
         self.entities = _AsyncEntityNamespace(self)
         self.ontology = _AsyncOntologyNamespace(self)
         self.query = _AsyncQueryNamespace(self)
+        self.schema = _AsyncSchemaNamespace(self)
         self._http = httpx.AsyncClient(
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )
+
+    def graph(self, name: str, *, branch: str | None = None) -> _AsyncGraphNamespace:
+        return _AsyncGraphNamespace(self, name, branch)
+
+    async def create_graph(self) -> models.CreateGraphResponse:
+        return cast(models.CreateGraphResponse, await super().create_graph())
+
+    async def commit_model(
+        self, body: Body, *, idempotency_key: str | None = None
+    ) -> models.GraphCommitResponse:
+        return cast(
+            models.GraphCommitResponse,
+            await super().commit_model(body, idempotency_key=idempotency_key),
+        )
+
+    async def commit_dry_run_model(self, body: Body) -> models.GraphCommitDryRunResponse:
+        return cast(models.GraphCommitDryRunResponse, await super().commit_dry_run_model(body))
+
+    async def embedding_config(
+        self, *, options: RequestOptions | None = None
+    ) -> models.ManagedEmbeddingConfigResponse:
+        return cast(
+            models.ManagedEmbeddingConfigResponse,
+            await super().embedding_config(options=options),
+        )
+
+    async def set_embedding_config(
+        self, body: Body
+    ) -> models.ManagedEmbeddingConfigResponse:
+        return cast(
+            models.ManagedEmbeddingConfigResponse,
+            await super().set_embedding_config(body),
+        )
+
+    async def backfill_embeddings(
+        self,
+        *,
+        batch_size: int | None = None,
+        limit: int | None = None,
+        full: bool | None = None,
+    ) -> models.ManagedEmbeddingBackfillResponse:
+        return cast(
+            models.ManagedEmbeddingBackfillResponse,
+            await super().backfill_embeddings(
+                batch_size=batch_size, limit=limit, full=full
+            ),
+        )
+
+    async def promote_embedding(
+        self, *, run_id: str, allow_regression: bool | None = None
+    ) -> models.ManagedEmbeddingPromoteResponse:
+        return cast(
+            models.ManagedEmbeddingPromoteResponse,
+            await super().promote_embedding(
+                run_id=run_id, allow_regression=allow_regression
+            ),
+        )
+
+    async def export_rdf_preview(
+        self,
+        *,
+        format: str = "turtle",
+        max_triples: int = 100,
+        as_of_valid_time: str | None = None,
+        as_of_commit_seq: int | None = None,
+        entailment: str | None = None,
+        reason: bool | None = None,
+    ) -> models.RdfExportPreviewResponse:
+        return cast(
+            models.RdfExportPreviewResponse,
+            await super().export_rdf_preview(
+                format=format,
+                max_triples=max_triples,
+                as_of_valid_time=as_of_valid_time,
+                as_of_commit_seq=as_of_commit_seq,
+                entailment=entailment,
+                reason=reason,
+            ),
+        )
+
+    async def train_submit(
+        self, body: Body, *, idempotency_key: str
+    ) -> models.TrainModelJobStatusResponse:
+        return cast(
+            models.TrainModelJobStatusResponse,
+            await super().train_submit(body, idempotency_key=idempotency_key),
+        )
+
+    async def train_job(self, job_id: str) -> models.TrainModelJobStatusResponse:
+        return cast(models.TrainModelJobStatusResponse, await super().train_job(job_id))
+
+    async def search_feedback_export(self) -> models.SearchFeedbackExportResponse:
+        return cast(
+            models.SearchFeedbackExportResponse,
+            await super().search_feedback_export(),
+        )
+
+    async def search_feedback_summary(self) -> models.SearchFeedbackSummaryResponse:
+        return cast(
+            models.SearchFeedbackSummaryResponse,
+            await super().search_feedback_summary(),
+        )
+
+    async def sparql_select_model(self, body: Body) -> models.SparqlSelectResponse:
+        return cast(models.SparqlSelectResponse, await super().sparql_select_model(body))
+
+    async def governed_conflicts(
+        self, body: Body
+    ) -> models.GovernedConflictAggregationResponse:
+        return cast(
+            models.GovernedConflictAggregationResponse,
+            await super().governed_conflicts(body),
+        )
+
+    async def ontology_conformance_model(self) -> models.SchemaAuditReport:
+        return cast(models.SchemaAuditReport, await super().ontology_conformance_model())
+
+    async def ontology_view_model(self, *, counts: bool = False) -> models.OntologyView:
+        return cast(models.OntologyView, await super().ontology_view_model(counts=counts))
+
+    async def index_submit(
+        self, body: Body | None = None, *, idempotency_key: str
+    ) -> models.SearchIndexJobStatusResponse:
+        return cast(
+            models.SearchIndexJobStatusResponse,
+            await super().index_submit(body, idempotency_key=idempotency_key),
+        )
+
+    async def index_job(self, job_id: str) -> models.SearchIndexJobStatusResponse:
+        return cast(models.SearchIndexJobStatusResponse, await super().index_job(job_id))
+
+    async def metadata_model(self) -> models.GraphMetadataResponse:
+        return cast(models.GraphMetadataResponse, await super().metadata_model())
+
+    async def summary_model(self) -> models.GraphSummaryResponse:
+        return cast(models.GraphSummaryResponse, await super().summary_model())
+
+    async def graph_edges_page(self, **kwargs: Any) -> ListPage[models.GraphEdgeRow]:
+        return cast(ListPage[models.GraphEdgeRow], await super().graph_edges_page(**kwargs))
+
+    async def list_graphs_model(self) -> models.GraphListResponse:
+        return cast(models.GraphListResponse, await super().list_graphs_model())
 
     async def raw_request(
         self,

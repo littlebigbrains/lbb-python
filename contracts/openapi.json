@@ -1,6 +1,175 @@
 {
   "components": {
     "schemas": {
+      "AddEntityTypeOp": {
+        "description": "Declare a new entity type. Idempotent: a no-op if the name already exists.\nPair with `widen_relation` (in the same request, ordered before it) to add\na brand-new type to an existing relation's domain or range.",
+        "properties": {
+          "name": {
+            "description": "Display name of the new entity type.",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "add_entity_type"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "op"
+        ],
+        "type": "object"
+      },
+      "AddPropertyOp": {
+        "description": "Declare a new typed scalar property field (e.g. `status`, `dueDate`,\n`budget`) so a commit's `entity_properties` can write it on a live graph.\nAdditive: every existing record stays valid and no migration is needed.\nUnlike `define_ontology` (which recreates the graph ontology), this bumps\nthe ontology version and registers just the field. Idempotent — a no-op\nif a field with this name already exists (the existing type is kept).",
+        "properties": {
+          "allowed_values": {
+            "description": "Optional **enforced** allowed-value set (a SHACL `sh:in`): a commit\nwhose value for this field is outside the set is rejected at write\ntime, so a controlled vocabulary is a one-line declaration instead of\na separate shapes graph. Only for enumerable types\n(`keyword`/`text`/`i64`/`bool`); rejected on `f64`/`date_time`/`bytes`.\nUse `set_property_constraint` to tighten an existing field.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "Display name of the new property field (case-insensitive; a commit's\n`entity_properties[].field` resolves to it).",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "add_property"
+            ],
+            "type": "string"
+          },
+          "required": {
+            "description": "Advisory required flag recorded on the field (not enforced on commit).",
+            "type": "boolean"
+          },
+          "value_type": {
+            "description": "`bool` | `i64` | `f64` | `date_time` | `keyword` | `text` (default) |\n`bytes`. The commit path rejects values whose type doesn't match.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "op"
+        ],
+        "type": "object"
+      },
+      "AddRelationOp": {
+        "description": "Declare a new relation type (e.g. `HAS_PHASE`, `ASSIGNED_TO`) with its own\ndomain and range, by name. The named domain/range entity types must\nalready exist (add them earlier in the same request with `add_entity_type`\nif new). Idempotent: a no-op if a relation with this name already exists —\nuse `widen_relation` to grow an existing relation's domain/range. Optional\nfields default exactly as the ontology spec importer does.",
+        "properties": {
+          "cardinality": {
+            "description": "`one_to_one` | `one_to_many` | `many_to_one` | `many_to_many` (default).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "domain": {
+            "description": "Entity-type names allowed as the source (domain).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "inverse_name": {
+            "description": "Optional inverse-relation display name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Display name of the new relation.",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "add_relation"
+            ],
+            "type": "string"
+          },
+          "range": {
+            "description": "Entity-type names allowed as the target (range).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reducer": {
+            "description": "State-reducer token (e.g. `append_only` (default), `latest_wins`,\n`valid_time_latest_wins`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symmetric": {
+            "description": "Whether the relation is symmetric (default false).",
+            "type": "boolean"
+          },
+          "temporal_semantics": {
+            "description": "`atemporal` | `valid_time` | `commit_time` | `bitemporal` (default).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transitive": {
+            "description": "Whether the relation is transitive (default false).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "op"
+        ],
+        "type": "object"
+      },
+      "AdditiveOntologyEvolveOp": {
+        "description": "Governed proposal operation restricted to additive ontology changes.",
+        "discriminator": {
+          "mapping": {
+            "add_entity_type": "#/components/schemas/AddEntityTypeOp",
+            "add_property": "#/components/schemas/AddPropertyOp",
+            "add_relation": "#/components/schemas/AddRelationOp",
+            "widen_relation": "#/components/schemas/WidenRelationOp"
+          },
+          "propertyName": "op"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/WidenRelationOp"
+          },
+          {
+            "$ref": "#/components/schemas/AddEntityTypeOp"
+          },
+          {
+            "$ref": "#/components/schemas/AddRelationOp"
+          },
+          {
+            "$ref": "#/components/schemas/AddPropertyOp"
+          }
+        ]
+      },
+      "AdditiveOntologyEvolveRequest": {
+        "description": "Additive-only ontology proposal helper for structured-output systems.",
+        "properties": {
+          "ops": {
+            "items": {
+              "$ref": "#/components/schemas/AdditiveOntologyEvolveOp"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ops"
+        ],
+        "type": "object"
+      },
       "AmbiguousTerm": {
         "properties": {
           "candidates": {
@@ -1819,7 +1988,8 @@
       "EmbeddingIndexSource": {
         "enum": [
           "ephemeral",
-          "persisted"
+          "persisted",
+          "persisted_only"
         ],
         "type": "string"
       },
@@ -2623,7 +2793,7 @@
               },
               {
                 "$ref": "#/components/schemas/CommitSeq",
-                "description": "Highest commit covered by the **BM25 full-text index**, or `None` when no\nfull-text index has been built. Together with `ann_indexed_commit_seq`\nthis answers \"is this graph indexed for search?\" directly from the entity\nread — unlike `snapshot.indexed_seq`, which is the graph snapshot base.\nLag behind `snapshot.commit_seq` is the unindexed tail."
+                "description": "Highest commit covered by the **BM25 full-text index**, or `None` when no\nfull-text index has been built. Together with `ann_indexed_commit_seq`\nthis answers \"is this graph indexed for search?\" directly from the entity\nread — unlike `snapshot.compacted_seq`, which is the graph snapshot base.\nLag behind `snapshot.commit_seq` is the unindexed tail."
               }
             ]
           },
@@ -3376,7 +3546,8 @@
       "FullTextIndexSource": {
         "enum": [
           "ephemeral",
-          "persisted"
+          "persisted",
+          "persisted_only"
         ],
         "type": "string"
       },
@@ -3685,6 +3856,122 @@
         "required": [
           "run",
           "weights"
+        ],
+        "type": "object"
+      },
+      "GovernedConflictAggregationRequest": {
+        "description": "Snapshot-pinned governed fact-conflict aggregation. Authorization is a\nrequired filter and is evaluated before any grouping or value collection.",
+        "properties": {
+          "as_of_commit_seq": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "key_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_entities_scanned": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_evidence_per_group": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "value_field": {
+            "type": "string"
+          },
+          "visibility_filter": {
+            "$ref": "#/components/schemas/SearchFilterExpr"
+          }
+        },
+        "required": [
+          "entity_type",
+          "visibility_filter",
+          "key_fields",
+          "value_field"
+        ],
+        "type": "object"
+      },
+      "GovernedConflictAggregationResponse": {
+        "properties": {
+          "authorized_entities": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entities_scanned": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "grouped_entities": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GovernedConflictGroup"
+            },
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotView"
+          },
+          "truncated": {
+            "description": "Scan or output-group ceiling made the result incomplete.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "snapshot",
+          "groups",
+          "entities_scanned",
+          "authorized_entities",
+          "grouped_entities",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "GovernedConflictGroup": {
+        "properties": {
+          "distinct_values": {
+            "items": {},
+            "type": "array"
+          },
+          "evidence_entity_ids": {
+            "items": {
+              "$ref": "#/components/schemas/EntityId"
+            },
+            "type": "array"
+          },
+          "evidence_truncated": {
+            "type": "boolean"
+          },
+          "keys": {
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "keys",
+          "distinct_values",
+          "evidence_entity_ids",
+          "evidence_truncated"
         ],
         "type": "object"
       },
@@ -6223,6 +6510,13 @@
           "snapshot_token": {
             "type": "string"
           },
+          "source_job_id": {
+            "description": "Durable background job that produced this run. The server assigns this\nfrom the queue's stable job ID so redelivery returns the same run.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "trained_at_commit_seq": {
             "description": "The snapshot the run was derived from. Trainers MUST train on data\n≤ this commit and evaluate on > it (the temporal-split obligation);\nrecording it here is what lets audits verify the split.",
             "format": "int64",
@@ -6487,6 +6781,37 @@
         "required": [
           "type",
           "name"
+        ],
+        "type": "object"
+      },
+      "NarrowRelationOp": {
+        "description": "Remove entity types from a relation's domain and/or range (a subtractive\nchange). Conflicts when current edges of the relation already use a\nremoved source/target type — those edges stay (append-only) but begin to\nwarn. Blocked unless `allow_data_conflicts` is set on the request.",
+        "properties": {
+          "op": {
+            "enum": [
+              "narrow_relation"
+            ],
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "remove_domain": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "remove_range": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relation",
+          "op"
         ],
         "type": "object"
       },
@@ -6845,6 +7170,21 @@
         ],
         "type": "object"
       },
+      "OntologyCompetencyQuestion": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "question"
+        ],
+        "type": "object"
+      },
       "OntologyConflict": {
         "description": "A current-data conflict found while previewing a subtractive ontology change.\nReported back so the caller can decide whether to re-run with\n`allow_data_conflicts` (which keeps the affected records — Little Big Brain never\nrewrites or drops them — and applies the change in warn mode).",
         "properties": {
@@ -6871,6 +7211,54 @@
           "kind",
           "affected",
           "message"
+        ],
+        "type": "object"
+      },
+      "OntologyCqAnalysis": {
+        "properties": {
+          "covered": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "interpretation": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "query_outline": {
+            "type": "string"
+          },
+          "required_elements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "selected_pattern": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "interpretation",
+          "subject",
+          "predicate",
+          "object",
+          "required_elements",
+          "query_outline",
+          "covered"
         ],
         "type": "object"
       },
@@ -6948,6 +7336,153 @@
         ],
         "type": "object"
       },
+      "OntologyDraft": {
+        "description": "Durable, portable ontology review artifact owned by the graph database.",
+        "properties": {
+          "base_ontology_version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "base_snapshot": {
+            "$ref": "#/components/schemas/SnapshotView"
+          },
+          "confidence": {
+            "format": "float",
+            "type": "number"
+          },
+          "cq_analyses": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyCqAnalysis"
+            },
+            "type": "array"
+          },
+          "cq_coverage": {
+            "format": "float",
+            "type": "number"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "promoted_ontology_version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "proposed_ops": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyEvolveOp"
+            },
+            "type": "array"
+          },
+          "rejection_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/OntologyDraftCreateRequest"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OntologyDraftStatus"
+          },
+          "structural_pitfalls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "superfluous_element_rate": {
+            "format": "float",
+            "type": "number"
+          },
+          "validation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OntologyEvolveResponse"
+              }
+            ]
+          }
+        },
+        "required": [
+          "draft_id",
+          "graph",
+          "status",
+          "base_snapshot",
+          "base_ontology_version",
+          "request",
+          "evidence_refs",
+          "proposed_ops",
+          "cq_analyses",
+          "cq_coverage",
+          "superfluous_element_rate",
+          "structural_pitfalls",
+          "confidence"
+        ],
+        "type": "object"
+      },
+      "OntologyDraftCreateRequest": {
+        "description": "Create a reviewable induction artifact without inserting samples into the graph.",
+        "properties": {
+          "competency_questions": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyCompetencyQuestion"
+            },
+            "type": "array"
+          },
+          "connector_name": {
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyEvidenceSample"
+            },
+            "type": "array"
+          },
+          "selected_patterns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "user_stories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "connector_name",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "OntologyDraftStatus": {
+        "enum": [
+          "draft",
+          "validated",
+          "promoted",
+          "rejected"
+        ],
+        "type": "string"
+      },
       "OntologyEntityTypeView": {
         "description": "The full definition of one entity type (class) in the active ontology.",
         "properties": {
@@ -6986,358 +7521,77 @@
         ],
         "type": "object"
       },
+      "OntologyEvidenceSample": {
+        "properties": {
+          "evidence_ref": {
+            "description": "Stable connector/source reference; sample content is never used as identity.",
+            "type": "string"
+          },
+          "record": {
+            "description": "Representative connector record. Objects enable deterministic property\ninference; other JSON values remain evidence examples."
+          }
+        },
+        "required": [
+          "evidence_ref",
+          "record"
+        ],
+        "type": "object"
+      },
       "OntologyEvolveOp": {
         "description": "One additive ontology change for [`OntologyEvolveRequest`]. Additive by\nconstruction — it widens a relation's domain/range or declares a new entity\ntype, but never narrows or removes — so every record written under an earlier\nversion stays valid (its positional type/relation ids are preserved). This is\nthe supported \"ontology evolution\" path; identity-breaking changes (removals,\nnarrowing) still require an explicit expand→migrate→contract plan.",
+        "discriminator": {
+          "mapping": {
+            "add_entity_type": "#/components/schemas/AddEntityTypeOp",
+            "add_property": "#/components/schemas/AddPropertyOp",
+            "add_relation": "#/components/schemas/AddRelationOp",
+            "narrow_relation": "#/components/schemas/NarrowRelationOp",
+            "remove_entity_type": "#/components/schemas/RemoveEntityTypeOp",
+            "remove_relation": "#/components/schemas/RemoveRelationOp",
+            "rename_entity_type": "#/components/schemas/RenameEntityTypeOp",
+            "rename_relation": "#/components/schemas/RenameRelationOp",
+            "set_property_constraint": "#/components/schemas/SetPropertyConstraintOp",
+            "set_relation_cardinality": "#/components/schemas/SetRelationCardinalityOp",
+            "set_relation_inverse": "#/components/schemas/SetRelationInverseOp",
+            "widen_relation": "#/components/schemas/WidenRelationOp"
+          },
+          "propertyName": "op"
+        },
         "oneOf": [
           {
-            "description": "Add already-declared entity types (by name) to a relation's declared\ndomain (`add_domain`) and/or range (`add_range`). The relation and every\nnamed type must already exist. Ids already present are skipped, so the op\nis idempotent and a re-run is a no-op.",
-            "properties": {
-              "add_domain": {
-                "description": "Entity-type names to add to the relation's domain (source types).",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "add_range": {
-                "description": "Entity-type names to add to the relation's range (target types).",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "op": {
-                "enum": [
-                  "widen_relation"
-                ],
-                "type": "string"
-              },
-              "relation": {
-                "description": "Relation to widen, by name (case-insensitive).",
-                "type": "string"
-              }
-            },
-            "required": [
-              "relation",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/WidenRelationOp"
           },
           {
-            "description": "Declare a new entity type. Idempotent: a no-op if the name already exists.\nPair with `widen_relation` (in the same request, ordered before it) to add\na brand-new type to an existing relation's domain or range.",
-            "properties": {
-              "name": {
-                "description": "Display name of the new entity type.",
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "add_entity_type"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "name",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/AddEntityTypeOp"
           },
           {
-            "description": "Declare a new relation type (e.g. `HAS_PHASE`, `ASSIGNED_TO`) with its own\ndomain and range, by name. The named domain/range entity types must\nalready exist (add them earlier in the same request with `add_entity_type`\nif new). Idempotent: a no-op if a relation with this name already exists —\nuse `widen_relation` to grow an existing relation's domain/range. Optional\nfields default exactly as the ontology spec importer does.",
-            "properties": {
-              "cardinality": {
-                "description": "`one_to_one` | `one_to_many` | `many_to_one` | `many_to_many` (default).",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "domain": {
-                "description": "Entity-type names allowed as the source (domain).",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "inverse_name": {
-                "description": "Optional inverse-relation display name.",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "name": {
-                "description": "Display name of the new relation.",
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "add_relation"
-                ],
-                "type": "string"
-              },
-              "range": {
-                "description": "Entity-type names allowed as the target (range).",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "reducer": {
-                "description": "State-reducer token (e.g. `append_only` (default), `latest_wins`,\n`valid_time_latest_wins`).",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "symmetric": {
-                "description": "Whether the relation is symmetric (default false).",
-                "type": "boolean"
-              },
-              "temporal_semantics": {
-                "description": "`atemporal` | `valid_time` | `commit_time` | `bitemporal` (default).",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "transitive": {
-                "description": "Whether the relation is transitive (default false).",
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "name",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/AddRelationOp"
           },
           {
-            "description": "Declare a new typed scalar property field (e.g. `status`, `dueDate`,\n`budget`) so a commit's `entity_properties` can write it on a live graph.\nAdditive: every existing record stays valid and no migration is needed.\nUnlike `define_ontology` (which recreates the graph ontology), this bumps\nthe ontology version and registers just the field. Idempotent — a no-op\nif a field with this name already exists (the existing type is kept).",
-            "properties": {
-              "allowed_values": {
-                "description": "Optional **enforced** allowed-value set (a SHACL `sh:in`): a commit\nwhose value for this field is outside the set is rejected at write\ntime, so a controlled vocabulary is a one-line declaration instead of\na separate shapes graph. Only for enumerable types\n(`keyword`/`text`/`i64`/`bool`); rejected on `f64`/`date_time`/`bytes`.\nUse `set_property_constraint` to tighten an existing field.",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "name": {
-                "description": "Display name of the new property field (case-insensitive; a commit's\n`entity_properties[].field` resolves to it).",
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "add_property"
-                ],
-                "type": "string"
-              },
-              "required": {
-                "description": "Advisory required flag recorded on the field (not enforced on commit).",
-                "type": "boolean"
-              },
-              "value_type": {
-                "description": "`bool` | `i64` | `f64` | `date_time` | `keyword` | `text` (default) |\n`bytes`. The commit path rejects values whose type doesn't match.",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "required": [
-              "name",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/AddPropertyOp"
           },
           {
-            "description": "Set (or clear) the enforced allowed-value set on an **existing** property\nfield — the tightening path for a field already in use (e.g. constrain\n`status` to its ADR vocabulary). A non-empty list installs the `sh:in`\nconstraint that future commits are checked against; an empty list clears\nit. Enforcement is write-time only: values already stored are not\nretroactively validated. Errors on an unknown field or a non-enumerable\ntype. Bumps the ontology version.",
-            "properties": {
-              "allowed_values": {
-                "description": "Canonical allowed values; empty clears the constraint.",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "op": {
-                "enum": [
-                  "set_property_constraint"
-                ],
-                "type": "string"
-              },
-              "property": {
-                "description": "Name of the existing property field to constrain.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "property",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/SetPropertyConstraintOp"
           },
           {
-            "description": "Rename an entity type's display name. The frozen cross-version stable id\nis unchanged, so every existing record keeps resolving (now to the new\nname) and entity identity is preserved — only the display name and\nfuture commits-by-name change. Errors if `to` already names a different\ntype. A no-op if the type is already named `to`.",
-            "properties": {
-              "from": {
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "rename_entity_type"
-                ],
-                "type": "string"
-              },
-              "to": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "from",
-              "to",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/RenameEntityTypeOp"
           },
           {
-            "description": "Rename a relation's display name (stable id frozen; existing edges keep\nresolving to the new name). Errors on a collision with a different\nrelation; a no-op if already named `to`.",
-            "properties": {
-              "from": {
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "rename_relation"
-                ],
-                "type": "string"
-              },
-              "to": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "from",
-              "to",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/RenameRelationOp"
           },
           {
-            "description": "Set (or replace) a relation's inverse-relation display name, enabling\none-hop reverse traversal (e.g. `PHASE_OF` for `HAS_PHASE`). Metadata\nonly — never touches stored edges.",
-            "properties": {
-              "inverse_name": {
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "set_relation_inverse"
-                ],
-                "type": "string"
-              },
-              "relation": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "relation",
-              "inverse_name",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/SetRelationInverseOp"
           },
           {
-            "description": "Change a relation's cardinality (`one_to_one` | `one_to_many` |\n`many_to_one` | `many_to_many`). Advisory metadata (it informs ranking and\nquery shaping, and is not enforced against stored edges), so it never\nconflicts with existing data.",
-            "properties": {
-              "cardinality": {
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "set_relation_cardinality"
-                ],
-                "type": "string"
-              },
-              "relation": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "relation",
-              "cardinality",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/SetRelationCardinalityOp"
           },
           {
-            "description": "Remove entity types from a relation's domain and/or range (a subtractive\nchange). Conflicts when current edges of the relation already use a\nremoved source/target type — those edges stay (append-only) but begin to\nwarn. Blocked unless `allow_data_conflicts` is set on the request.",
-            "properties": {
-              "op": {
-                "enum": [
-                  "narrow_relation"
-                ],
-                "type": "string"
-              },
-              "relation": {
-                "type": "string"
-              },
-              "remove_domain": {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "remove_range": {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "relation",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/NarrowRelationOp"
           },
           {
-            "description": "Tombstone an entity type: existing records of the type stay readable\n(the def is retained, so they still resolve), but it is rejected for new\ncommits. Conflicts when current entities of the type exist; blocked unless\n`allow_data_conflicts` is set.",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "remove_entity_type"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "name",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/RemoveEntityTypeOp"
           },
           {
-            "description": "Tombstone a relation: existing edges stay readable but it is rejected for\nnew commits. Conflicts when current edges use it; blocked unless\n`allow_data_conflicts` is set.",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "op": {
-                "enum": [
-                  "remove_relation"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "name",
-              "op"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/RemoveRelationOp"
           }
         ]
       },
@@ -7381,6 +7635,10 @@
             },
             "type": "array"
           },
+          "dry_run": {
+            "description": "True when this response came from `?dry_run=true` and no ontology object\nor graph-head update was written.",
+            "type": "boolean"
+          },
           "graph": {
             "$ref": "#/components/schemas/GraphKey"
           },
@@ -7390,17 +7648,28 @@
             },
             "type": "array"
           },
+          "no_op": {
+            "description": "Every requested operation was already satisfied, so publishing would not\ncreate a new ontology version.",
+            "type": "boolean"
+          },
           "ontology_version": {
-            "description": "Active version after the call. Equal to `base_ontology_version` when the\nrequest was a no-op (every change already satisfied).",
+            "description": "Active version after a publish, or the predicted resulting version for a\ndry run. Equal to `base_ontology_version` for a no-op or blocked preview.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "publishable": {
+            "description": "Whether the exact request can be published. False for a data-conflicting\nsubtractive preview unless `allow_data_conflicts` was explicitly set.",
+            "type": "boolean"
           }
         },
         "required": [
           "graph",
           "base_ontology_version",
           "ontology_version",
+          "dry_run",
+          "publishable",
+          "no_op",
           "applied",
           "messages"
         ],
@@ -8558,6 +8827,41 @@
         ],
         "type": "object"
       },
+      "RdfExportPreviewResponse": {
+        "description": "JSON envelope returned by `GET /v1/graph/export/rdf?truncate=true`.",
+        "properties": {
+          "data": {
+            "description": "RDF serialization (Turtle, N-Triples, TriG, or N-Quads) encoded as a JSON\nstring so the preview metadata stays in one typed response.",
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "returned_triples": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotView"
+          },
+          "total_triples": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "snapshot",
+          "format",
+          "data",
+          "returned_triples",
+          "total_triples",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "RelationSearchResult": {
         "properties": {
           "name": {
@@ -8634,6 +8938,90 @@
           "source",
           "history",
           "snapshot"
+        ],
+        "type": "object"
+      },
+      "RemoveEntityTypeOp": {
+        "description": "Tombstone an entity type: existing records of the type stay readable\n(the def is retained, so they still resolve), but it is rejected for new\ncommits. Conflicts when current entities of the type exist; blocked unless\n`allow_data_conflicts` is set.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "remove_entity_type"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "op"
+        ],
+        "type": "object"
+      },
+      "RemoveRelationOp": {
+        "description": "Tombstone a relation: existing edges stay readable but it is rejected for\nnew commits. Conflicts when current edges use it; blocked unless\n`allow_data_conflicts` is set.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "remove_relation"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "op"
+        ],
+        "type": "object"
+      },
+      "RenameEntityTypeOp": {
+        "description": "Rename an entity type's display name. The frozen cross-version stable id\nis unchanged, so every existing record keeps resolving (now to the new\nname) and entity identity is preserved — only the display name and\nfuture commits-by-name change. Errors if `to` already names a different\ntype. A no-op if the type is already named `to`.",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "rename_entity_type"
+            ],
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "op"
+        ],
+        "type": "object"
+      },
+      "RenameRelationOp": {
+        "description": "Rename a relation's display name (stable id frozen; existing edges keep\nresolving to the new name). Errors on a collision with a different\nrelation; a no-op if already named `to`.",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "rename_relation"
+            ],
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "op"
         ],
         "type": "object"
       },
@@ -10140,6 +10528,33 @@
         ],
         "type": "object"
       },
+      "SearchFeedbackGradeCounts": {
+        "properties": {
+          "grade_0": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "grade_1": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "grade_2": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "grade_3": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "grade_0",
+          "grade_1",
+          "grade_2",
+          "grade_3"
+        ],
+        "type": "object"
+      },
       "SearchFeedbackLabel": {
         "properties": {
           "grade": {
@@ -10181,6 +10596,23 @@
         "required": [
           "target",
           "grade"
+        ],
+        "type": "object"
+      },
+      "SearchFeedbackPromotedModel": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "run": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "run"
         ],
         "type": "object"
       },
@@ -10255,6 +10687,11 @@
           "idempotent_replay": {
             "type": "boolean"
           },
+          "untrainable_labels": {
+            "description": "Accepted labels that cannot currently produce a training-export row.\nThis is an explicit warning signal: the append-only audit event is kept,\nbut a trainer will exclude it until that target kind is supported.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "visibility_token": {
             "type": "string"
           }
@@ -10275,6 +10712,92 @@
           "unspecified"
         ],
         "type": "string"
+      },
+      "SearchFeedbackSplitCounts": {
+        "properties": {
+          "eval": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "train": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "train",
+          "eval"
+        ],
+        "type": "object"
+      },
+      "SearchFeedbackSummaryResponse": {
+        "description": "Constant-size administration view over the feedback ledger. Unlike the\nqrels export this never returns label or impression rows.",
+        "properties": {
+          "deduped_events": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "excluded_targets": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "feedback_graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "grades": {
+            "$ref": "#/components/schemas/SearchFeedbackGradeCounts"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "latest_label_micros": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "latest_label_sequence": {
+            "description": "Append-only event count for polling. Exact unless `truncated` is true;\nidempotent replays do not advance it and retractions do.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "objects_scanned": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "promoted_models": {
+            "items": {
+              "$ref": "#/components/schemas/SearchFeedbackPromotedModel"
+            },
+            "type": "array"
+          },
+          "raw_events": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "splits": {
+            "$ref": "#/components/schemas/SearchFeedbackSplitCounts"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "graph",
+          "feedback_graph",
+          "raw_events",
+          "deduped_events",
+          "grades",
+          "splits",
+          "excluded_targets",
+          "latest_label_sequence",
+          "promoted_models",
+          "objects_scanned",
+          "truncated"
+        ],
+        "type": "object"
       },
       "SearchFeedbackTarget": {
         "oneOf": [
@@ -10901,6 +11424,65 @@
           "indexed_commit_seq_after",
           "skipped",
           "objects_written"
+        ],
+        "type": "object"
+      },
+      "SearchIndexJobStatusResponse": {
+        "description": "Durable background full-index job status with per-family terminal result.",
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enqueued_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchIndexRunResponse"
+              }
+            ]
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "`pending` | `running` | `succeeded` | `failed`.",
+            "type": "string"
+          },
+          "terminal_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "graph",
+          "attempts",
+          "enqueued_at_micros",
+          "updated_at_micros"
         ],
         "type": "object"
       },
@@ -12049,6 +12631,79 @@
         ],
         "type": "object"
       },
+      "SetPropertyConstraintOp": {
+        "description": "Set (or clear) the enforced allowed-value set on an **existing** property\nfield — the tightening path for a field already in use (e.g. constrain\n`status` to its ADR vocabulary). A non-empty list installs the `sh:in`\nconstraint that future commits are checked against; an empty list clears\nit. Enforcement is write-time only: values already stored are not\nretroactively validated. Errors on an unknown field or a non-enumerable\ntype. Bumps the ontology version.",
+        "properties": {
+          "allowed_values": {
+            "description": "Canonical allowed values; empty clears the constraint.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "op": {
+            "enum": [
+              "set_property_constraint"
+            ],
+            "type": "string"
+          },
+          "property": {
+            "description": "Name of the existing property field to constrain.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property",
+          "op"
+        ],
+        "type": "object"
+      },
+      "SetRelationCardinalityOp": {
+        "description": "Change a relation's cardinality (`one_to_one` | `one_to_many` |\n`many_to_one` | `many_to_many`). Advisory metadata (it informs ranking and\nquery shaping, and is not enforced against stored edges), so it never\nconflicts with existing data.",
+        "properties": {
+          "cardinality": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "set_relation_cardinality"
+            ],
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation",
+          "cardinality",
+          "op"
+        ],
+        "type": "object"
+      },
+      "SetRelationInverseOp": {
+        "description": "Set (or replace) a relation's inverse-relation display name, enabling\none-hop reverse traversal (e.g. `PHASE_OF` for `HAS_PHASE`). Metadata\nonly — never touches stored edges.",
+        "properties": {
+          "inverse_name": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "set_relation_inverse"
+            ],
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation",
+          "inverse_name",
+          "op"
+        ],
+        "type": "object"
+      },
       "ShaclConstraintComponent": {
         "description": "Which constraint failed (SHACL `sourceConstraintComponent`).",
         "enum": [
@@ -13141,14 +13796,14 @@
           "commit_seq": {
             "$ref": "#/components/schemas/CommitSeq"
           },
-          "indexed_seq": {
+          "compacted_seq": {
             "$ref": "#/components/schemas/CommitSeq",
-            "description": "Highest commit folded into the **compacted graph snapshot base** (the\nmaterialized segment base). Commits in `(indexed_seq, commit_seq]` live in\nthe WAL tail and are replayed on read — so `indexed_seq: 0` is the normal\nstate of a small or freshly-created graph (no base built yet) and does\n**not** mean the data is unreadable: every read replays the full tail.\n\nThis is *not* search-index coverage. Whether BM25/vector search indexes\nare built — what `/v1/index/run` advances — is reported separately as\n`bm25_indexed_commit_seq` / `ann_indexed_commit_seq` on\n`GET /v1/graph/metadata` and on the entity read's metadata."
+            "description": "Highest commit folded into the **compacted graph snapshot base** (the\nmaterialized segment base). Commits in `(compacted_seq, commit_seq]` live in\nthe WAL tail and are replayed on read — so `compacted_seq: 0` is the normal\nstate of a small or freshly-created graph (no base built yet) and does\n**not** mean the data is unreadable: every read replays the full tail.\n\nThis is *not* search-index coverage. Whether BM25/vector search indexes\nare built — what `/v1/index/run` advances — is reported separately as\n`bm25_indexed_commit_seq` / `ann_indexed_commit_seq` on\n`GET /v1/graph/metadata` and on the entity read's metadata."
           }
         },
         "required": [
           "commit_seq",
-          "indexed_seq"
+          "compacted_seq"
         ],
         "type": "object"
       },
@@ -14321,6 +14976,69 @@
         ],
         "type": "object"
       },
+      "TrainModelJobStatusResponse": {
+        "description": "Durable background trainer status. The terminal `result` carries the full\nsnapshot lineage, held-out gate evidence, and recorded run number.",
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enqueued_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TrainModelResponse"
+              }
+            ]
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "`pending` | `running` | `succeeded` | `failed`.",
+            "type": "string"
+          },
+          "terminal_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "graph",
+          "kind",
+          "attempts",
+          "enqueued_at_micros",
+          "updated_at_micros"
+        ],
+        "type": "object"
+      },
       "TrainModelRequest": {
         "description": "`POST /v1/models/train` — run the deterministic trainer once for one\nkind: build an execution-verified probe set, search a bounded candidate\nspace on the train slice, gate challenger vs champion on the held-out\neval slice, record the run in the WS9 registry either way, and promote\nonly when the gate passes. This is the same tick the auto-train cadence\nfires; calling it by hand is always safe (bounded, snapshot-pinned).",
         "properties": {
@@ -14347,6 +15065,13 @@
             },
             "type": [
               "array",
+              "null"
+            ]
+          },
+          "source_job_id": {
+            "description": "Server-assigned durable execution identity. Clients normally omit it;\nit is persisted into the model manifest to make worker redelivery safe.",
+            "type": [
+              "string",
               "null"
             ]
           }
@@ -14916,7 +15641,7 @@
           },
           "compacted_seq": {
             "$ref": "#/components/schemas/CommitSeq",
-            "description": "Highest commit folded; equals `snapshot.indexed_seq` after success."
+            "description": "Highest commit folded; equals `snapshot.compacted_seq` after success."
           },
           "merged": {
             "description": "True when this compaction merged the existing segments into one.",
@@ -15056,6 +15781,40 @@
           "previous_edges",
           "evidence",
           "snapshot"
+        ],
+        "type": "object"
+      },
+      "WidenRelationOp": {
+        "description": "Add already-declared entity types (by name) to a relation's declared\ndomain (`add_domain`) and/or range (`add_range`). The relation and every\nnamed type must already exist. Ids already present are skipped, so the op\nis idempotent and a re-run is a no-op.",
+        "properties": {
+          "add_domain": {
+            "description": "Entity-type names to add to the relation's domain (source types).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "add_range": {
+            "description": "Entity-type names to add to the relation's range (target types).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "op": {
+            "enum": [
+              "widen_relation"
+            ],
+            "type": "string"
+          },
+          "relation": {
+            "description": "Relation to widen, by name (case-insensitive).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation",
+          "op"
         ],
         "type": "object"
       }
@@ -22466,9 +23225,18 @@
             }
           },
           {
-            "description": "Optional lower output ceiling; cannot exceed the server hard cap",
+            "description": "Output ceiling; rejects the full export, or bounds the JSON preview when truncate=true",
             "in": "query",
             "name": "max_triples",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return a deterministic bounded JSON preview instead of rejecting when the graph is larger than max_triples",
+            "in": "query",
+            "name": "truncate",
             "required": false,
             "schema": {
               "type": "string"
@@ -22514,6 +23282,11 @@
         "responses": {
           "200": {
             "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RdfExportPreviewResponse"
+                }
+              },
               "application/n-quads": {
                 "schema": {
                   "type": "string"
@@ -27569,6 +28342,554 @@
           }
         ],
         "summary": "Preview or delete superseded persisted index runs",
+        "tags": [
+          "indexes"
+        ]
+      }
+    },
+    "/v1/index/jobs": {
+      "get": {
+        "operationId": "get_v1_index_jobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable id returned by the submit call",
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchIndexJobStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Poll a graph-scoped index job for progress, terminal error, and per-family coverage",
+        "tags": [
+          "indexes"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_index_jobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexBuildOptions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchIndexJobStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idempotently enqueue a durable full-index job with typed per-family terminal status",
         "tags": [
           "indexes"
         ]
@@ -33159,6 +34480,554 @@
         ]
       }
     },
+    "/v1/models/train-jobs": {
+      "get": {
+        "operationId": "get_v1_models_train_jobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable job id returned by the submit call",
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainModelJobStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read durable trainer job state, progress, terminal error, and the full gated training result",
+        "tags": [
+          "system"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_models_train_jobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainModelJobStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Idempotently enqueue a durable background trainer job; reconnect through the returned stable job id",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/v1/models/train-tick": {
       "post": {
         "operationId": "post_v1_models_train_tick",
@@ -34780,6 +36649,1400 @@
         ]
       }
     },
+    "/v1/ontology/drafts": {
+      "get": {
+        "operationId": "get_v1_ontology_drafts",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable ontology draft identifier",
+            "in": "query",
+            "name": "draft_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyDraft"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read a durable ontology review artifact",
+        "tags": [
+          "ontology"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_ontology_drafts",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OntologyDraftCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyDraft"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a deterministic, snapshot-pinned ontology proposal from connector samples without inserting those samples",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/drafts/promote": {
+      "post": {
+        "operationId": "post_v1_ontology_drafts_promote",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable ontology draft identifier",
+            "in": "query",
+            "name": "draft_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyDraft"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Atomically publish a validated ontology draft; requires Idempotency-Key",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/drafts/reject": {
+      "post": {
+        "operationId": "post_v1_ontology_drafts_reject",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable ontology draft identifier",
+            "in": "query",
+            "name": "draft_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Auditable rejection reason",
+            "in": "query",
+            "name": "reason",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyDraft"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reject a reviewable ontology draft without changing the graph ontology",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/drafts/validate": {
+      "post": {
+        "operationId": "post_v1_ontology_drafts_validate",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable ontology draft identifier",
+            "in": "query",
+            "name": "draft_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyDraft"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revalidate the exact proposed operations at the draft's pinned graph snapshot",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
     "/v1/ontology/evolve": {
       "post": {
         "operationId": "post_v1_ontology_evolve",
@@ -34815,6 +38078,15 @@
             "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Validate and return the exact predicted evolution without writing an ontology object or graph head",
+            "in": "query",
+            "name": "dry_run",
             "required": false,
             "schema": {
               "type": "string"
@@ -35054,7 +38326,7 @@
             "bearer": []
           }
         ],
-        "summary": "Evolve the scoped graph's ontology with additive changes (widen relation domains/ranges, add entity types); bumps the ontology version, preserving every existing record",
+        "summary": "Evolve the scoped graph's ontology with ordered operations, or preview the exact diff, conflicts, and resulting version without mutation",
         "tags": [
           "ontology"
         ]
@@ -36175,6 +39447,286 @@
           }
         ],
         "summary": "Basic-graph-pattern (BGP) analytic query over the permutation view",
+        "tags": [
+          "query"
+        ]
+      }
+    },
+    "/v1/query/conflicts": {
+      "post": {
+        "operationId": "post_v1_query_conflicts",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GovernedConflictAggregationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GovernedConflictAggregationResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "ACL-first snapshot aggregation returning only keys with multiple distinct values and bounded evidence entity ids",
         "tags": [
           "query"
         ]
@@ -40652,6 +44204,267 @@
           }
         ],
         "summary": "Export relevance labels as qrels-style rows for training",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/v1/search/feedback/summary": {
+      "get": {
+        "operationId": "get_v1_search_feedback_summary",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchFeedbackSummaryResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read constant-size feedback counts and promoted-model status",
         "tags": [
           "search"
         ]

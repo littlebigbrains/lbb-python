@@ -80,8 +80,13 @@ class _SyncOntologyNamespace(_OntologyNamespace):
     def define(self, body: Body) -> models.OntologyDefineResponse:
         return cast(models.OntologyDefineResponse, super().define(body))
 
-    def evolve(self, body: Body) -> models.OntologyEvolveResponse:
-        return cast(models.OntologyEvolveResponse, super().evolve(body))
+    def evolve(
+        self, body: Body, *, dry_run: bool = False
+    ) -> models.OntologyEvolveResponse:
+        return cast(
+            models.OntologyEvolveResponse,
+            super().evolve(body, dry_run=dry_run),
+        )
 
 
 class _SyncQueryNamespace(_QueryNamespace):

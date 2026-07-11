@@ -101,7 +101,8 @@ instrumentation.
 Primary methods: `create_graph`; `graph("main").facts.create`; `search.hybrid`;
 `embedding_config`; `set_embedding_config`; `backfill_embeddings`;
 `promote_embedding`;
-`indexes.run`; `entities.list`; `entities.filter_by_attributes`;
+`indexes.run`; `entities.list`; `entities.filter` (the snapshot-pinned native
+filter route); `entities.filter_by_attributes` (structured SPARQL);
 `context.ask` / `context.suggest` / `context.resolve` / `context.decode` /
 `context.groundability`; `ontology.view` / `ontology.search` /
 `ontology.resolve` / `ontology.induce`; `query.sparql` / `query.structured` / `query.analytics` /
@@ -115,6 +116,7 @@ SELECT/ASK/aggregate — GROUP BY entity, property, or date bucket), `analytics`
 `ontology_view` (pass `counts=True` for per-relation `edge_count`),
 `ontology_search`, `ontology_resolve`, `search_feedback` (grade results 3/1/0 →
 customer qrels for embedding fine-tuning) and `search_feedback_export`,
+`search_feedback_summary` (constant-size administration counts),
 `graph_edges`, `index_build`, `index_run`, `index_delta`, `index_gc`, `compact`,
 `status`, `metadata`, and `summary`.
 
@@ -144,7 +146,31 @@ cover the remaining high-use surfaces: `commit_model`, `commit_dry_run_model`, `
 `list_graphs_model`, `ontology_view_model`, `ontology_conformance_model`,
 `sparql_select_model`, `schema.view_model`, `schema.preview_model`,
 `schema.publish_model`, `schema.audit_model`, `entities.list_page`,
-`entities.filter_by_attributes_model`, and `graph_edges_page`.
+`entities.filter`, `entities.filter_by_attributes_model`, and
+`graph_edges_page`. `ontology.induce`, `ontology.evolve`, and
+`search_feedback_export` also return generated models directly.
+
+Long trainer ticks can stay behind the gateway: `train_submit(body,
+idempotency_key="...")` returns a typed durable job, and `train_job(job_id)`
+reconnects to its progress, terminal error, or complete gated result.
+
+Use `index_submit(body, idempotency_key="...")` and `index_job(job_id)` for
+gateway-safe full indexing with typed per-family status. Search sources accept
+`persisted_only` when a request must fail instead of rebuilding ephemerally.
+
+`governed_conflicts(request)` (or `query.conflicts`) runs ACL-first distinct-
+value grouping in the database and returns typed conflict groups with bounded
+evidence IDs, snapshot lineage, and explicit truncation.
+
+Ontology evolution exports stable discriminated operation models such as
+`AddEntityTypeOp`, `AddRelationOp`, `AddPropertyOp`, and `WidenRelationOp`.
+`AdditiveOntologyEvolveRequest` is the additive-only schema helper for governed
+LLM proposals; invalid operations are selected by the `op` discriminator rather
+than being tried against every union member.
+
+Call `client.ontology.evolve(request, dry_run=True)` before acceptance to get
+the exact typed diff, predicted ontology version, data conflicts,
+`publishable`, and `no_op` without mutating the graph.
 
 Async clients expose the same helpers as awaitables:
 
