@@ -13799,6 +13799,17 @@
           "compacted_seq": {
             "$ref": "#/components/schemas/CommitSeq",
             "description": "Highest commit folded into the **compacted graph snapshot base** (the\nmaterialized segment base). Commits in `(compacted_seq, commit_seq]` live in\nthe WAL tail and are replayed on read — so `compacted_seq: 0` is the normal\nstate of a small or freshly-created graph (no base built yet) and does\n**not** mean the data is unreadable: every read replays the full tail.\n\nThis is *not* search-index coverage. Whether BM25/vector search indexes\nare built — what `/v1/index/run` advances — is reported separately as\n`bm25_indexed_commit_seq` / `ann_indexed_commit_seq` on\n`GET /v1/graph/metadata` and on the entity read's metadata."
+          },
+          "stale": {
+            "description": "F2 (roadmap 18.3): true when this snapshot was served from the in-memory\ncache while storage was degraded and the latest head could not be\nverified — so `commit_seq` may not be the current head. Absent (false) on\nevery normal read; writes never serve stale. Omitted from the wire form\nwhen false so healthy responses are byte-identical to before.",
+            "type": "boolean"
+          },
+          "stale_reason": {
+            "description": "The reason a read is `stale` (F2). `\"storage_degraded\"` today; omitted\nwhen not stale.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -23179,6 +23190,841 @@
           }
         ],
         "summary": "Entity point lookup with its out/in neighborhood",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/export": {
+      "get": {
+        "operationId": "get_v1_graph_export",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Records (entity+edge lines) per page (default 1000, clamped 1-50000)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque page cursor from a prior page's meta.next_cursor; pins the snapshot across pages",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Pin the export to a past snapshot commit_seq (first page only)",
+            "in": "query",
+            "name": "as_of_commit_seq",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Stream a full-fidelity NDJSON export (inverse of /v1/graph/import): a kind-tagged meta header (with the source ontology), then entity and edge lines that reconstruct an equivalent graph on re-import. Paginated via meta.next_cursor echoed as ?cursor=",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/export/job": {
+      "get": {
+        "operationId": "get_v1_graph_export_job",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The export job id returned by the enqueue call",
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Poll an enqueued background export job by ?job_id= (scoped to the requesting tenant)",
+        "tags": [
+          "graph"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_graph_export_job",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Pin the export to a past snapshot commit_seq",
+            "in": "query",
+            "name": "as_of_commit_seq",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Enqueue a background full-fidelity export for a large tenant; writes zstd NDJSON parts + a manifest under tenants/<tenant>/exports/<id>/. Returns the job id; poll with GET /v1/graph/export/job?job_id=",
         "tags": [
           "graph"
         ]
