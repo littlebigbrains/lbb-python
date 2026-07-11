@@ -2947,6 +2947,18 @@ class SnapshotView(BaseModel):
             ge=0,
         ),
     ]
+    stale: Annotated[
+        bool | None,
+        Field(
+            description='F2 (roadmap 18.3): true when this snapshot was served from the in-memory\ncache while storage was degraded and the latest head could not be\nverified — so `commit_seq` may not be the current head. Absent (false) on\nevery normal read; writes never serve stale. Omitted from the wire form\nwhen false so healthy responses are byte-identical to before.'
+        ),
+    ] = None
+    stale_reason: Annotated[
+        str | None,
+        Field(
+            description='The reason a read is `stale` (F2). `"storage_degraded"` today; omitted\nwhen not stale.'
+        ),
+    ] = None
 
 
 class SparqlAggregateFunc(Enum):
