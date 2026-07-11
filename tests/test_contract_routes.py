@@ -13,6 +13,7 @@ asserts each is a real operation in ``contracts/openapi.json``.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import unittest
@@ -84,6 +85,101 @@ class ContractRouteCoverage(unittest.TestCase):
             "client calls route(s) absent from contracts/openapi.json — a typo or "
             "a route removed from the server. Fix the client, or regenerate the "
             f"contract from the canonical monorepo. Offending: {missing}",
+        )
+
+    def test_every_model_request_declares_its_generated_response_type(self) -> None:
+        source = (_CLIENT_PACKAGE / "_client_base.py").read_text()
+        tree = ast.parse(source)
+        mismatches: list[str] = []
+        checked = 0
+        for owner in (node for node in tree.body if isinstance(node, ast.ClassDef)):
+            for method in (
+                node for node in owner.body if isinstance(node, ast.FunctionDef)
+            ):
+                calls = [
+                    call
+                    for call in ast.walk(method)
+                    if isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "_model_request"
+                    and call.args
+                ]
+                if not calls:
+                    continue
+                checked += 1
+                declared = ast.unparse(method.returns) if method.returns else ""
+                generated = ast.unparse(calls[0].args[0])
+                if declared != generated:
+                    mismatches.append(
+                        f"{owner.name}.{method.name}: {declared or '<missing>'} != {generated}"
+                    )
+        self.assertGreater(checked, 20, "model-return audit became vacuous")
+        self.assertEqual(
+            mismatches,
+            [],
+            "high-level generated-model methods must declare exactly the model "
+            f"they validate and return: {mismatches}",
+        )
+
+    def test_async_surface_awaits_every_generated_model_helper(self) -> None:
+        base_tree = ast.parse((_CLIENT_PACKAGE / "_client_base.py").read_text())
+        async_tree = ast.parse((_CLIENT_PACKAGE / "_async_client.py").read_text())
+        async_methods = {
+            owner.name: {
+                method.name: method
+                for method in owner.body
+                if isinstance(method, ast.AsyncFunctionDef)
+            }
+            for owner in async_tree.body
+            if isinstance(owner, ast.ClassDef)
+        }
+        counterparts = {
+            "_BaseLbbClient": "AsyncLbbClient",
+            "_GraphNamespace": "_AsyncGraphNamespace",
+            "_FactsNamespace": "_AsyncFactsNamespace",
+            "_ContextNamespace": "_AsyncContextNamespace",
+            "_OntologyNamespace": "_AsyncOntologyNamespace",
+            "_QueryNamespace": "_AsyncQueryNamespace",
+            "_SchemaNamespace": "_AsyncSchemaNamespace",
+            "_EntityNamespace": "_AsyncEntityNamespace",
+        }
+        missing: list[str] = []
+        mismatches: list[str] = []
+        checked = 0
+        for owner in (
+            node
+            for node in base_tree.body
+            if isinstance(node, ast.ClassDef) and node.name in counterparts
+        ):
+            for method in (
+                node for node in owner.body if isinstance(node, ast.FunctionDef)
+            ):
+                if not any(
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "_model_request"
+                    for call in ast.walk(method)
+                ):
+                    continue
+                checked += 1
+                async_owner = counterparts[owner.name]
+                async_method = async_methods.get(async_owner, {}).get(method.name)
+                label = f"{owner.name}.{method.name}"
+                if async_method is None:
+                    missing.append(label)
+                    continue
+                declared = ast.unparse(method.returns) if method.returns else ""
+                async_declared = (
+                    ast.unparse(async_method.returns) if async_method.returns else ""
+                )
+                if async_declared != declared:
+                    mismatches.append(f"{label}: {async_declared} != {declared}")
+        self.assertGreater(checked, 30, "async generated-model audit became vacuous")
+        self.assertEqual(missing, [], f"async helpers returned bare coroutines: {missing}")
+        self.assertEqual(
+            mismatches,
+            [],
+            f"async helpers must resolve to the same generated model: {mismatches}",
         )
 
 

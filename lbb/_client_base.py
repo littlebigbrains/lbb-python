@@ -454,7 +454,7 @@ class _BaseLbbClient:
 
     # --- writes ---
 
-    def create_graph(self) -> Any:
+    def create_graph(self) -> models.CreateGraphResponse:
         """Create the scoped graph and branch with the built-in ontology.
 
         To use a custom ontology, call :meth:`ontology.define` instead before
@@ -471,7 +471,9 @@ class _BaseLbbClient:
             idempotency_key=idempotency_key or self.idempotency_key("facts.create"),
         )
 
-    def commit_model(self, body: Body, *, idempotency_key: str | None = None) -> Any:
+    def commit_model(
+        self, body: Body, *, idempotency_key: str | None = None
+    ) -> models.GraphCommitResponse:
         """Commit and validate the response as ``GraphCommitResponse``."""
         return self._model_request(
             models.GraphCommitResponse,
@@ -495,7 +497,7 @@ class _BaseLbbClient:
             params={"dry_run": "true"},
         )
 
-    def commit_dry_run_model(self, body: Body) -> Any:
+    def commit_dry_run_model(self, body: Body) -> models.GraphCommitDryRunResponse:
         """Validate-only preflight with a typed ``GraphCommitDryRunResponse``."""
         return self._model_request(
             models.GraphCommitDryRunResponse,
@@ -513,7 +515,9 @@ class _BaseLbbClient:
         """
         return self._request("POST", "/v1/graph/delete", params={"confirm": confirm})
 
-    def embedding_config(self, *, options: RequestOptions | None = None) -> Any:
+    def embedding_config(
+        self, *, options: RequestOptions | None = None
+    ) -> models.ManagedEmbeddingConfigResponse:
         """Read the scoped graph's managed embedding configuration."""
         return self._model_request(
             models.ManagedEmbeddingConfigResponse,
@@ -522,7 +526,7 @@ class _BaseLbbClient:
             options=options,
         )
 
-    def set_embedding_config(self, body: Body) -> Any:
+    def set_embedding_config(self, body: Body) -> models.ManagedEmbeddingConfigResponse:
         """Set the scoped graph's default managed embedding model."""
         return self._model_request(
             models.ManagedEmbeddingConfigResponse,
@@ -537,7 +541,7 @@ class _BaseLbbClient:
         batch_size: int | None = None,
         limit: int | None = None,
         full: bool | None = None,
-    ) -> Any:
+    ) -> models.ManagedEmbeddingBackfillResponse:
         """Embed the corpus and rebuild its Stored ANN index."""
         return self._model_request(
             models.ManagedEmbeddingBackfillResponse,
@@ -548,7 +552,7 @@ class _BaseLbbClient:
 
     def promote_embedding(
         self, *, run_id: str, allow_regression: bool | None = None
-    ) -> Any:
+    ) -> models.ManagedEmbeddingPromoteResponse:
         """Promote a successful fine-tuned embedding run to the graph default."""
         return self._model_request(
             models.ManagedEmbeddingPromoteResponse,
@@ -684,6 +688,34 @@ class _BaseLbbClient:
             },
         )
 
+    def export_rdf_preview(
+        self,
+        *,
+        format: str = "turtle",
+        max_triples: int = 100,
+        as_of_valid_time: str | None = None,
+        as_of_commit_seq: int | None = None,
+        entailment: str | None = None,
+        reason: bool | None = None,
+    ) -> models.RdfExportPreviewResponse:
+        """Return a deterministic bounded RDF slice plus truncation metadata."""
+        if format not in {"turtle", "ntriples", "trig", "nquads"}:
+            raise ValueError("format must be 'turtle', 'ntriples', 'trig', or 'nquads'")
+        return self._model_request(
+            models.RdfExportPreviewResponse,
+            "GET",
+            "/v1/graph/export/rdf",
+            params={
+                "format": "nt" if format == "ntriples" else format,
+                "max_triples": max_triples,
+                "truncate": "true",
+                "as_of_valid_time": as_of_valid_time,
+                "as_of_commit_seq": as_of_commit_seq,
+                "entailment": entailment,
+                "reason": reason,
+            },
+        )
+
     def retract(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Retract specific edges and/or every edge touching given entities.
 
@@ -806,6 +838,27 @@ class _BaseLbbClient:
         eval gate -> record the run either way -> CAS promote only when the
         gate passes. The same tick the ``auto_train`` cadence fires."""
         return self._request("POST", "/v1/models/train-tick", body=body)
+
+    def train_submit(
+        self, body: Body, *, idempotency_key: str
+    ) -> models.TrainModelJobStatusResponse:
+        """Submit a durable background trainer job with a reconnect-safe id."""
+        return self._model_request(
+            models.TrainModelJobStatusResponse,
+            "POST",
+            "/v1/models/train-jobs",
+            body=body,
+            idempotency_key=idempotency_key,
+        )
+
+    def train_job(self, job_id: str) -> models.TrainModelJobStatusResponse:
+        """Read progress, terminal failure, or the complete gated result."""
+        return self._model_request(
+            models.TrainModelJobStatusResponse,
+            "GET",
+            "/v1/models/train-jobs",
+            params={"job_id": job_id},
+        )
 
     def training_config(self) -> Any:
         """The graph's automatic-training configuration (default: off)
@@ -940,9 +993,17 @@ class _BaseLbbClient:
             "POST", "/v1/search/feedback", body=body, idempotency_key=idempotency_key
         )
 
-    def search_feedback_export(self) -> Any:
-        """Export the stored relevance labels as qrels-style rows for training."""
-        return self._request("GET", "/v1/search/feedback/export")
+    def search_feedback_export(self) -> models.SearchFeedbackExportResponse:
+        """Export labels as a typed ``SearchFeedbackExportResponse``."""
+        return self._model_request(
+            models.SearchFeedbackExportResponse, "GET", "/v1/search/feedback/export"
+        )
+
+    def search_feedback_summary(self) -> models.SearchFeedbackSummaryResponse:
+        """Read constant-size feedback counts and promoted-model status."""
+        return self._model_request(
+            models.SearchFeedbackSummaryResponse, "GET", "/v1/search/feedback/summary"
+        )
 
     # --- traversal ---
 
@@ -990,7 +1051,7 @@ class _BaseLbbClient:
         """
         return self._request("POST", "/v1/query/sparql", body=body)
 
-    def sparql_select_model(self, body: Body) -> Any:
+    def sparql_select_model(self, body: Body) -> models.SparqlSelectResponse:
         """Structured SPARQL response validated as ``SparqlSelectResponse``."""
         return self._model_request(
             models.SparqlSelectResponse, "POST", "/v1/query/sparql", body=body
@@ -1005,6 +1066,18 @@ class _BaseLbbClient:
         query needs an optional/union/negated leg rather than a grouped aggregate.
         """
         return self._request("POST", "/v1/query/analytics", body=body)
+
+    def governed_conflicts(
+        self, body: Body
+    ) -> models.GovernedConflictAggregationResponse:
+        """Return ACL-first distinct-value conflicts without raw corpus transfer."""
+        return self._model_request(
+            models.GovernedConflictAggregationResponse,
+            "POST",
+            "/v1/query/conflicts",
+            body=body,
+            options=_read_options(None),
+        )
 
     def _sparql_text_envelope(
         self,
@@ -1058,7 +1131,7 @@ class _BaseLbbClient:
         """
         return self._request("GET", "/v1/ontology/conformance")
 
-    def ontology_conformance_model(self) -> Any:
+    def ontology_conformance_model(self) -> models.SchemaAuditReport:
         """Ontology conformance report validated as ``SchemaAuditReport``."""
         return self._model_request(models.SchemaAuditReport, "GET", "/v1/ontology/conformance")
 
@@ -1074,7 +1147,7 @@ class _BaseLbbClient:
         params = {"counts": "true"} if counts else None
         return self._request("GET", "/v1/ontology", params=params)
 
-    def ontology_view_model(self, *, counts: bool = False) -> Any:
+    def ontology_view_model(self, *, counts: bool = False) -> models.OntologyView:
         """Active ontology validated as ``OntologyView``."""
         params = {"counts": "true"} if counts else None
         return self._model_request(models.OntologyView, "GET", "/v1/ontology", params=params)
@@ -1103,6 +1176,27 @@ class _BaseLbbClient:
         """
         return self._request(
             "POST", "/v1/index/run", params={"background": "true" if background else None}
+        )
+
+    def index_submit(
+        self, body: Body | None = None, *, idempotency_key: str
+    ) -> models.SearchIndexJobStatusResponse:
+        """Submit a durable full-index job with a reconnect-safe id."""
+        return self._model_request(
+            models.SearchIndexJobStatusResponse,
+            "POST",
+            "/v1/index/jobs",
+            body=body or {},
+            idempotency_key=idempotency_key,
+        )
+
+    def index_job(self, job_id: str) -> models.SearchIndexJobStatusResponse:
+        """Poll per-family index progress or terminal failure."""
+        return self._model_request(
+            models.SearchIndexJobStatusResponse,
+            "GET",
+            "/v1/index/jobs",
+            params={"job_id": job_id},
         )
 
     def index_delta(self) -> Any:
@@ -1135,7 +1229,7 @@ class _BaseLbbClient:
         """Graph footprint, WAL tail, and index coverage."""
         return self._request("GET", "/v1/graph/metadata")
 
-    def metadata_model(self) -> Any:
+    def metadata_model(self) -> models.GraphMetadataResponse:
         """Graph metadata validated as ``GraphMetadataResponse``."""
         return self._model_request(models.GraphMetadataResponse, "GET", "/v1/graph/metadata")
 
@@ -1143,7 +1237,7 @@ class _BaseLbbClient:
         """Graph counts and type/relation buckets."""
         return self._request("GET", "/v1/graph/summary")
 
-    def summary_model(self) -> Any:
+    def summary_model(self) -> models.GraphSummaryResponse:
         """Graph counts validated as ``GraphSummaryResponse``."""
         return self._model_request(models.GraphSummaryResponse, "GET", "/v1/graph/summary")
 
@@ -1191,7 +1285,7 @@ class _BaseLbbClient:
             },
         )
 
-    def graph_edges_page(self, **kwargs: Any) -> Any:
+    def graph_edges_page(self, **kwargs: Any) -> ListPage[models.GraphEdgeRow]:
         """Paged edges with rows validated as ``GraphEdgeRow``."""
         return self._page_request(models.GraphEdgeRow, self.graph_edges(**kwargs))
 
@@ -1199,7 +1293,7 @@ class _BaseLbbClient:
         """List the graphs (and branches) under the scoped tenant."""
         return self._request("GET", "/v1/graphs")
 
-    def list_graphs_model(self) -> Any:
+    def list_graphs_model(self) -> models.GraphListResponse:
         """List graphs with a typed ``GraphListResponse``."""
         return self._model_request(models.GraphListResponse, "GET", "/v1/graphs")
 
@@ -1249,7 +1343,9 @@ class _GraphNamespace:
         self._branch = branch
         self.facts = _FactsNamespace(client, graph, branch)
 
-    def embedding_config(self, *, options: RequestOptions | None = None) -> Any:
+    def embedding_config(
+        self, *, options: RequestOptions | None = None
+    ) -> models.ManagedEmbeddingConfigResponse:
         return self._client._model_request(
             models.ManagedEmbeddingConfigResponse,
             "GET",
@@ -1258,7 +1354,7 @@ class _GraphNamespace:
             options=options,
         )
 
-    def set_embedding_config(self, body: Body) -> Any:
+    def set_embedding_config(self, body: Body) -> models.ManagedEmbeddingConfigResponse:
         return self._client._model_request(
             models.ManagedEmbeddingConfigResponse,
             "POST",
@@ -1273,7 +1369,7 @@ class _GraphNamespace:
         batch_size: int | None = None,
         limit: int | None = None,
         full: bool | None = None,
-    ) -> Any:
+    ) -> models.ManagedEmbeddingBackfillResponse:
         return self._client._model_request(
             models.ManagedEmbeddingBackfillResponse,
             "POST",
@@ -1289,7 +1385,7 @@ class _GraphNamespace:
 
     def promote_embedding(
         self, *, run_id: str, allow_regression: bool | None = None
-    ) -> Any:
+    ) -> models.ManagedEmbeddingPromoteResponse:
         return self._client._model_request(
             models.ManagedEmbeddingPromoteResponse,
             "POST",
@@ -1312,7 +1408,9 @@ class _GraphNamespace:
             idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
         )
 
-    def retract_model(self, body: Body, *, idempotency_key: str | None = None) -> Any:
+    def retract_model(
+        self, body: Body, *, idempotency_key: str | None = None
+    ) -> models.GraphRetractResponse:
         """Retract and validate the response as ``GraphRetractResponse``."""
         return self._client._model_request(
             models.GraphRetractResponse,
@@ -1351,6 +1449,36 @@ class _GraphNamespace:
             },
         )
 
+    def export_rdf_preview(
+        self,
+        *,
+        format: str = "turtle",
+        max_triples: int = 100,
+        as_of_valid_time: str | None = None,
+        as_of_commit_seq: int | None = None,
+        entailment: str | None = None,
+        reason: bool | None = None,
+    ) -> models.RdfExportPreviewResponse:
+        """Return a bounded typed RDF preview for this explicit graph scope."""
+        if format not in {"turtle", "ntriples", "trig", "nquads"}:
+            raise ValueError("format must be 'turtle', 'ntriples', 'trig', or 'nquads'")
+        return self._client._model_request(
+            models.RdfExportPreviewResponse,
+            "GET",
+            "/v1/graph/export/rdf",
+            params={
+                "graph": self._graph,
+                "branch": self._branch,
+                "format": "nt" if format == "ntriples" else format,
+                "max_triples": max_triples,
+                "truncate": "true",
+                "as_of_valid_time": as_of_valid_time,
+                "as_of_commit_seq": as_of_commit_seq,
+                "entailment": entailment,
+                "reason": reason,
+            },
+        )
+
 
 class _FactsNamespace:
     def __init__(self, client: _BaseLbbClient, graph: str, branch: str | None) -> None:
@@ -1368,7 +1496,9 @@ class _FactsNamespace:
             idempotency_key=idempotency_key or self._client.idempotency_key("facts.create"),
         )
 
-    def create_model(self, body: Body, *, idempotency_key: str | None = None) -> Any:
+    def create_model(
+        self, body: Body, *, idempotency_key: str | None = None
+    ) -> models.GraphCommitResponse:
         """Create facts and validate the response as ``GraphCommitResponse``."""
         params = {"graph": self._graph, "branch": self._branch}
         return self._client._model_request(
@@ -1513,7 +1643,7 @@ class _ContextNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
 
-    def ask(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def ask(self, body: Body, *, options: RequestOptions | None = None) -> models.AskResponse:
         return self._client._model_request(
             models.AskResponse,
             "POST",
@@ -1522,7 +1652,9 @@ class _ContextNamespace:
             options=_read_options(options),
         )
 
-    def suggest(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def suggest(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.SearchSuggestResponse:
         return self._client._model_request(
             models.SearchSuggestResponse,
             "POST",
@@ -1531,7 +1663,9 @@ class _ContextNamespace:
             options=_read_options(options),
         )
 
-    def resolve(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def resolve(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.ResolveTermResponse:
         return self._client._model_request(
             models.ResolveTermResponse,
             "POST",
@@ -1540,7 +1674,9 @@ class _ContextNamespace:
             options=_read_options(options),
         )
 
-    def decode(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def decode(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.DecodeResponse:
         return self._client._model_request(
             models.DecodeResponse,
             "POST",
@@ -1551,7 +1687,7 @@ class _ContextNamespace:
 
     def groundability(
         self, *, sample: int | None = None, options: RequestOptions | None = None
-    ) -> Any:
+    ) -> models.GroundabilityReport:
         return self._client._model_request(
             models.GroundabilityReport,
             "GET",
@@ -1567,7 +1703,9 @@ class _OntologyNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
 
-    def view(self, *, counts: bool = False, options: RequestOptions | None = None) -> Any:
+    def view(
+        self, *, counts: bool = False, options: RequestOptions | None = None
+    ) -> models.OntologyView:
         return self._client._model_request(
             models.OntologyView,
             "GET",
@@ -1576,7 +1714,9 @@ class _OntologyNamespace:
             options=options,
         )
 
-    def conformance(self, *, options: RequestOptions | None = None) -> Any:
+    def conformance(
+        self, *, options: RequestOptions | None = None
+    ) -> models.SchemaAuditReport:
         return self._client._model_request(
             models.SchemaAuditReport,
             "GET",
@@ -1584,7 +1724,9 @@ class _OntologyNamespace:
             options=options,
         )
 
-    def search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def search(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.OntologySearchResponse:
         return self._client._model_request(
             models.OntologySearchResponse,
             "POST",
@@ -1593,7 +1735,9 @@ class _OntologyNamespace:
             options=_read_options(options),
         )
 
-    def resolve(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def resolve(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.OntologyResolveResponse:
         return self._client._model_request(
             models.OntologyResolveResponse,
             "POST",
@@ -1602,17 +1746,26 @@ class _OntologyNamespace:
             options=_read_options(options),
         )
 
-    def define(self, body: Body) -> Any:
+    def define(self, body: Body) -> models.OntologyDefineResponse:
         return self._client._model_request(
             models.OntologyDefineResponse, "POST", "/v1/ontology/define", body=body
         )
 
-    def evolve(self, body: Body) -> Any:
+    def evolve(
+        self, body: Body, *, dry_run: bool = False
+    ) -> models.OntologyEvolveResponse:
+        """Apply an ontology patch, or preview it without mutation."""
         return self._client._model_request(
-            models.OntologyEvolveResponse, "POST", "/v1/ontology/evolve", body=body
+            models.OntologyEvolveResponse,
+            "POST",
+            "/v1/ontology/evolve",
+            params={"dry_run": "true" if dry_run else None},
+            body=body,
         )
 
-    def induce(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def induce(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.OntologyInduceResponse:
         """Suggest ontology changes from the current graph without mutating it."""
         return self._client._model_request(
             models.OntologyInduceResponse,
@@ -1622,6 +1775,49 @@ class _OntologyNamespace:
             options=_read_options(options),
         )
 
+    def draft_create(self, body: Body) -> models.OntologyDraft:
+        """Create a durable proposal from samples without ingesting them."""
+        return self._client._model_request(
+            models.OntologyDraft, "POST", "/v1/ontology/drafts", body=body
+        )
+
+    def draft_get(self, draft_id: str) -> models.OntologyDraft:
+        return self._client._model_request(
+            models.OntologyDraft,
+            "GET",
+            "/v1/ontology/drafts",
+            params={"draft_id": draft_id},
+        )
+
+    def draft_validate(self, draft_id: str) -> models.OntologyDraft:
+        return self._client._model_request(
+            models.OntologyDraft,
+            "POST",
+            "/v1/ontology/drafts/validate",
+            params={"draft_id": draft_id},
+            options=_read_options(),
+        )
+
+    def draft_promote(
+        self, draft_id: str, *, idempotency_key: str | None = None
+    ) -> models.OntologyDraft:
+        return self._client._model_request(
+            models.OntologyDraft,
+            "POST",
+            "/v1/ontology/drafts/promote",
+            params={"draft_id": draft_id},
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("ontology-draft-promote"),
+        )
+
+    def draft_reject(self, draft_id: str, reason: str) -> models.OntologyDraft:
+        return self._client._model_request(
+            models.OntologyDraft,
+            "POST",
+            "/v1/ontology/drafts/reject",
+            params={"draft_id": draft_id, "reason": reason},
+        )
+
 
 class _QueryNamespace:
     """Typed structured, SPARQL-text, analytical, and reasoning queries."""
@@ -1629,7 +1825,9 @@ class _QueryNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
 
-    def structured(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def structured(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.SparqlSelectResponse:
         return self._client._model_request(
             models.SparqlSelectResponse,
             "POST",
@@ -1659,7 +1857,9 @@ class _QueryNamespace:
             offset=offset,
         )
 
-    def analytics(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def analytics(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.AnalyticQueryResponse:
         return self._client._model_request(
             models.AnalyticQueryResponse,
             "POST",
@@ -1668,7 +1868,20 @@ class _QueryNamespace:
             options=_read_options(options),
         )
 
-    def shacl(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def conflicts(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.GovernedConflictAggregationResponse:
+        return self._client._model_request(
+            models.GovernedConflictAggregationResponse,
+            "POST",
+            "/v1/query/conflicts",
+            body=body,
+            options=_read_options(options),
+        )
+
+    def shacl(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.ShaclQueryResponse:
         return self._client._model_request(
             models.ShaclQueryResponse,
             "POST",
@@ -1677,7 +1890,9 @@ class _QueryNamespace:
             options=_read_options(options),
         )
 
-    def infer(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def infer(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.InferenceRunResponse:
         return self._client._model_request(
             models.InferenceRunResponse,
             "POST",
@@ -1686,7 +1901,9 @@ class _QueryNamespace:
             options=_read_options(options),
         )
 
-    def premises(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def premises(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.RetrievalPremiseResponse:
         return self._client._model_request(
             models.RetrievalPremiseResponse,
             "POST",
@@ -1708,7 +1925,7 @@ class _SchemaNamespace:
             params={"audit": "true" if audit else None},
         )
 
-    def view_model(self, *, audit: bool = False) -> Any:
+    def view_model(self, *, audit: bool = False) -> models.SchemaBundleView:
         """Active schema bundle validated as ``SchemaBundleView``."""
         return self._client._model_request(
             models.SchemaBundleView,
@@ -1721,7 +1938,7 @@ class _SchemaNamespace:
         """Preview a proposed RDF/SHACL schema bundle and audit current data."""
         return self._client._request("POST", "/v1/schema/preview", body=body)
 
-    def preview_model(self, body: Body) -> Any:
+    def preview_model(self, body: Body) -> models.SchemaPreviewResponse:
         """Schema preview validated as ``SchemaPreviewResponse``."""
         return self._client._model_request(
             models.SchemaPreviewResponse, "POST", "/v1/schema/preview", body=body
@@ -1731,7 +1948,7 @@ class _SchemaNamespace:
         """Activate a previewed SHACL schema bundle for this graph branch."""
         return self._client._request("POST", "/v1/schema/publish", body=body)
 
-    def publish_model(self, body: Body) -> Any:
+    def publish_model(self, body: Body) -> models.SchemaPublishResponse:
         """Schema publish response validated as ``SchemaPublishResponse``."""
         return self._client._model_request(
             models.SchemaPublishResponse, "POST", "/v1/schema/publish", body=body
@@ -1741,7 +1958,7 @@ class _SchemaNamespace:
         """Audit current data against the active SHACL schema bundle."""
         return self._client._request("POST", "/v1/schema/audit")
 
-    def audit_model(self) -> Any:
+    def audit_model(self) -> models.SchemaAuditReport:
         """Schema audit validated as ``SchemaAuditReport``."""
         return self._client._model_request(models.SchemaAuditReport, "POST", "/v1/schema/audit")
 
@@ -1809,6 +2026,18 @@ class _EntityNamespace:
         """Paged entities with rows validated as ``EntityExplorerRow``."""
         return self._client._page_request(models.EntityExplorerRow, self.list(**kwargs))
 
+    def filter(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.EntityFilterResponse:
+        """Snapshot-pinned entity filtering with typed projected attributes."""
+        return self._client._model_request(
+            models.EntityFilterResponse,
+            "POST",
+            "/v1/graph/entities/filter",
+            body=body,
+            options=_read_options(options),
+        )
+
     def pages(self, **kwargs: Any) -> Any:
         """Follow list cursors and yield typed :class:`ListPage` envelopes."""
         return self._client._iter_entity_pages(**kwargs)
@@ -1860,7 +2089,7 @@ class _EntityNamespace:
             ),
         )
 
-    def filter_by_attributes_model(self, **kwargs: Any) -> Any:
+    def filter_by_attributes_model(self, **kwargs: Any) -> models.SparqlSelectResponse:
         """Relation-bound attribute query validated as ``SparqlSelectResponse``."""
         return self._client._model_request(
             models.SparqlSelectResponse,
