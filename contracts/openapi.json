@@ -527,7 +527,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/AskStructuredQuery",
+                "$ref": "#/components/schemas/AskStructuredPlanV2",
                 "description": "With `corrected`: the plan that should have been decoded."
               }
             ]
@@ -554,10 +554,47 @@
           "accepted": {
             "description": "True when the verdict was captured. False when signal capture is off\non this deployment — the request contract is identical either way, so\nclients never break when the flag flips.",
             "type": "boolean"
+          },
+          "accepted_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "excluded_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exclusions": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "receipt_id": {
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "trainable_count": {
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
-          "accepted"
+          "accepted",
+          "receipt_id",
+          "event_id",
+          "replayed",
+          "accepted_count",
+          "trainable_count",
+          "excluded_count"
         ],
         "type": "object"
       },
@@ -569,6 +606,41 @@
           "corrected"
         ],
         "type": "string"
+      },
+      "AskFilterOperatorV2": {
+        "enum": [
+          "eq",
+          "ne",
+          "in",
+          "contains",
+          "gt",
+          "gte",
+          "lt",
+          "lte"
+        ],
+        "type": "string"
+      },
+      "AskGraphAnchorBehaviorV2": {
+        "enum": [
+          "filter",
+          "boost"
+        ],
+        "type": "string"
+      },
+      "AskGraphAnchorV2": {
+        "properties": {
+          "behavior": {
+            "$ref": "#/components/schemas/AskGraphAnchorBehaviorV2"
+          },
+          "entity": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "behavior"
+        ],
+        "type": "object"
       },
       "AskGrounding": {
         "properties": {
@@ -627,6 +699,14 @@
         ],
         "type": "object"
       },
+      "AskPlanExecutionModeV2": {
+        "enum": [
+          "entity_search",
+          "path_search",
+          "hybrid"
+        ],
+        "type": "string"
+      },
       "AskQuery": {
         "properties": {
           "query": {
@@ -644,6 +724,17 @@
               }
             ]
           },
+          "structured_v2": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskStructuredPlanV2",
+                "description": "Complete versioned execution contract. Present for every constrained\nplanner result; V1 remains as a compatibility projection."
+              }
+            ]
+          },
           "top_k": {
             "minimum": 0,
             "type": "integer"
@@ -652,6 +743,29 @@
         "required": [
           "query",
           "top_k"
+        ],
+        "type": "object"
+      },
+      "AskRelationDirectionV2": {
+        "enum": [
+          "outgoing",
+          "incoming",
+          "either"
+        ],
+        "type": "string"
+      },
+      "AskRelationStepV2": {
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/AskRelationDirectionV2"
+          },
+          "relation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation",
+          "direction"
         ],
         "type": "object"
       },
@@ -680,9 +794,34 @@
               "null"
             ]
           },
+          "fields": {
+            "description": "Entity attributes retained as evidence on the internal execution trace.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "filters": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchFilterExpr",
+                "description": "Authorization/attribute filter applied to grounding prepasses and final\nexecution at the same snapshot."
+              }
+            ]
+          },
           "question": {
             "description": "The natural-language question.",
             "type": "string"
+          },
+          "snapshot_token": {
+            "description": "Opaque alternative to `as_of_commit_seq`. Exactly one pin spelling may\nbe supplied; grounding, validation, execution, trace, and citations all\nuse the resolved commit.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "top_k": {
             "description": "Max citations to return (default 8, clamped to 25).",
@@ -763,6 +902,75 @@
         ],
         "type": "object"
       },
+      "AskStructuredPlanV2": {
+        "properties": {
+          "execution_mode": {
+            "$ref": "#/components/schemas/AskPlanExecutionModeV2"
+          },
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/AskTypedFilterV2"
+            },
+            "type": "array"
+          },
+          "frontier_limit": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graph_anchor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskGraphAnchorV2"
+              }
+            ]
+          },
+          "hop_limit": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path_limit": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relation_steps": {
+            "items": {
+              "$ref": "#/components/schemas/AskRelationStepV2"
+            },
+            "type": "array"
+          },
+          "result_limit": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "v": {
+            "description": "Contract version; must be exactly 2.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "target_types",
+          "relation_steps",
+          "hop_limit",
+          "result_limit",
+          "path_limit",
+          "frontier_limit",
+          "execution_mode"
+        ],
+        "type": "object"
+      },
       "AskStructuredQuery": {
         "description": "The constrained structured plan: the entity type the answer set is\nrestricted to (the QALD-class-task shape), plus — when the question admits\nthem — a relation and an anchor entity. Every slot is real vocabulary by\nconstruction (decoded under the shortlist trie or forced by a type\nsignature, and server-verified ⊆ the shortlist either way).",
         "properties": {
@@ -829,6 +1037,23 @@
           "ground_ms",
           "retrieve_ms",
           "total_ms"
+        ],
+        "type": "object"
+      },
+      "AskTypedFilterV2": {
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "operator": {
+            "$ref": "#/components/schemas/AskFilterOperatorV2"
+          },
+          "value": {}
+        },
+        "required": [
+          "field",
+          "operator",
+          "value"
         ],
         "type": "object"
       },
@@ -2775,6 +3000,17 @@
       },
       "EntityMetadataResponse": {
         "properties": {
+          "adjacency_indexed_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Highest commit covered by the ranged adjacency family."
+              }
+            ]
+          },
           "ann_indexed_commit_seq": {
             "oneOf": [
               {
@@ -2799,6 +3035,16 @@
           },
           "entity": {
             "$ref": "#/components/schemas/EntityView"
+          },
+          "index_lineage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IndexLineage"
+              }
+            ]
           },
           "last_commit": {
             "oneOf": [
@@ -3223,6 +3469,117 @@
         },
         "required": [
           "vector"
+        ],
+        "type": "object"
+      },
+      "ExternalPlannerTraceV1": {
+        "properties": {
+          "ask_id": {
+            "type": "string"
+          },
+          "citations": {
+            "items": {},
+            "type": "array"
+          },
+          "cost": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "entities": {
+            "items": {},
+            "type": "array"
+          },
+          "execution_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution_outcome": {
+            "type": "string"
+          },
+          "failure_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "final_user_outcome": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latency_ms": {
+            "format": "double",
+            "type": "number"
+          },
+          "original_question": {
+            "type": "string"
+          },
+          "paths": {
+            "items": {},
+            "type": "array"
+          },
+          "planner_model": {
+            "type": "string"
+          },
+          "planner_provider": {
+            "type": "string"
+          },
+          "prompt_hash": {
+            "type": "string"
+          },
+          "prompt_version": {
+            "type": "string"
+          },
+          "raw_output": {},
+          "snapshot_token": {
+            "type": "string"
+          },
+          "tokens": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "v": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "validated_plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskStructuredPlanV2"
+              }
+            ]
+          },
+          "validation_result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "v",
+          "ask_id",
+          "original_question",
+          "snapshot_token",
+          "planner_provider",
+          "planner_model",
+          "prompt_version",
+          "prompt_hash",
+          "raw_output",
+          "validation_result",
+          "execution_outcome",
+          "latency_ms"
         ],
         "type": "object"
       },
@@ -4571,6 +4928,14 @@
           "graph_created": {
             "type": "boolean"
           },
+          "idempotency_key": {
+            "description": "The caller key, or the server-minted key when the caller omitted one.",
+            "type": "string"
+          },
+          "idempotent_replay": {
+            "description": "True when every internal mutation batch was the already-committed\nreceipt for this idempotency key.",
+            "type": "boolean"
+          },
           "index": {
             "oneOf": [
               {
@@ -4588,6 +4953,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "mutation_receipt_id": {
+            "description": "Stable identity for the whole multi-batch mutation. Replays return this\nexact receipt and the original terminal commit sequence.",
+            "type": "string"
+          },
           "properties": {
             "minimum": 0,
             "type": "integer"
@@ -4599,6 +4968,9 @@
         },
         "required": [
           "graph_created",
+          "idempotent_replay",
+          "idempotency_key",
+          "mutation_receipt_id",
           "lines_read",
           "triplets",
           "properties",
@@ -4703,6 +5075,16 @@
       },
       "GraphMetadataResponse": {
         "properties": {
+          "adjacency_indexed_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
           "ann_indexed_commit_seq": {
             "oneOf": [
               {
@@ -4736,6 +5118,16 @@
             "type": [
               "boolean",
               "null"
+            ]
+          },
+          "index_lineage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IndexLineage"
+              }
             ]
           },
           "object_bytes": {
@@ -5712,6 +6104,62 @@
         ],
         "type": "object"
       },
+      "IndexLineage": {
+        "description": "Typed convergence view over the persisted serving families.",
+        "properties": {
+          "adjacency_indexed_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "ann_indexed_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "bm25_indexed_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "caught_up": {
+            "type": "boolean"
+          },
+          "head_commit_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          },
+          "manifest_view_token": {
+            "description": "Content identity of the head generation plus the exact three manifest\nviews observed while constructing this response.",
+            "type": "string"
+          },
+          "observed_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "head_commit_seq",
+          "caught_up",
+          "manifest_view_token",
+          "observed_at_micros"
+        ],
+        "type": "object"
+      },
       "IndexRunView": {
         "properties": {
           "bytes": {
@@ -5921,12 +6369,185 @@
         ],
         "type": "object"
       },
+      "ManagedEmbeddingBackfillJobProgress": {
+        "properties": {
+          "continuation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embedded": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "final_index_job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "heartbeat_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "index_lineage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IndexLineage"
+              }
+            ]
+          },
+          "missing": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "processed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "skipped": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source_commit_seq": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source_snapshot_token": {
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "worker": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "total",
+          "processed",
+          "embedded",
+          "skipped",
+          "missing",
+          "failed",
+          "source_commit_seq",
+          "source_snapshot_token",
+          "heartbeat_micros"
+        ],
+        "type": "object"
+      },
+      "ManagedEmbeddingBackfillJobRequest": {
+        "properties": {
+          "batch_size": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "full": {
+            "type": "boolean"
+          },
+          "limit": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ManagedEmbeddingBackfillJobStatusResponse": {
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enqueued_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ManagedEmbeddingBackfillJobProgress"
+              }
+            ]
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ManagedEmbeddingBackfillResponse"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "terminal_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "graph",
+          "idempotency_key",
+          "attempts",
+          "enqueued_at_micros",
+          "updated_at_micros"
+        ],
+        "type": "object"
+      },
       "ManagedEmbeddingBackfillResponse": {
         "description": "Outcome of embedding the corpus and rebuilding its Stored ANN index.",
         "properties": {
           "batches": {
             "minimum": 0,
             "type": "integer"
+          },
+          "continuation": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "embedded": {
             "minimum": 0,
@@ -5936,17 +6557,53 @@
             "minimum": 0,
             "type": "integer"
           },
+          "failed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "final_index_job_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "index_lineage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IndexLineage"
+              }
+            ]
+          },
           "indexed_commit_seq": {
             "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missing": {
             "minimum": 0,
             "type": "integer"
           },
           "model_id": {
             "type": "string"
           },
+          "processed": {
+            "minimum": 0,
+            "type": "integer"
+          },
           "skipped": {
             "minimum": 0,
             "type": "integer"
+          },
+          "source_commit_seq": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source_snapshot_token": {
+            "type": "string"
           },
           "truncated": {
             "type": "boolean"
@@ -5954,10 +6611,15 @@
         },
         "required": [
           "entities_total",
+          "processed",
           "embedded",
           "skipped",
+          "missing",
+          "failed",
           "batches",
           "truncated",
+          "source_commit_seq",
+          "source_snapshot_token",
           "indexed_commit_seq",
           "model_id"
         ],
@@ -7607,6 +8269,16 @@
               "$ref": "#/components/schemas/OntologyEvolveOp"
             },
             "type": "array"
+          },
+          "preconditions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WritePreconditions"
+              }
+            ]
           }
         },
         "required": [
@@ -8352,8 +9024,20 @@
       "PlannerExample": {
         "description": "One planner training example: a question and the gold structured plan,\nplus (for real-feedback rows) the recorded shortlists that rebuild the\nexact serving prompt.",
         "properties": {
+          "ask_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "example_id": {
+            "type": "string"
+          },
           "plan": {
             "$ref": "#/components/schemas/AskStructuredQuery"
+          },
+          "plan_v2": {
+            "$ref": "#/components/schemas/AskStructuredPlanV2"
           },
           "question": {
             "type": "string"
@@ -8367,8 +9051,10 @@
           }
         },
         "required": [
+          "example_id",
           "question",
           "plan",
+          "plan_v2",
           "source"
         ],
         "type": "object"
@@ -8429,14 +9115,47 @@
       "PlannerPreferencePair": {
         "description": "One planner preference pair — the DPO pass's training row: the same\nquestion with a plan the user preferred and one they rejected. Corrected\nverdicts yield the strongest pairs (chosen = the correction, rejected =\nthe plan the model actually decoded, same shortlists); plain rejections\npair with a same-question accepted plan when one exists; synthetic pairs\ncorrupt one slot of an execution-verified gold plan.",
         "properties": {
+          "ask_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "chosen": {
             "$ref": "#/components/schemas/AskStructuredQuery"
+          },
+          "chosen_v2": {
+            "$ref": "#/components/schemas/AskStructuredPlanV2"
+          },
+          "original_absent": {
+            "description": "True when the corrected ask produced no original structured plan. Such\na row is retained as an explicit absent-original preference pair.",
+            "type": "boolean"
+          },
+          "pair_id": {
+            "type": "string"
           },
           "question": {
             "type": "string"
           },
           "rejected": {
-            "$ref": "#/components/schemas/AskStructuredQuery"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskStructuredQuery"
+              }
+            ]
+          },
+          "rejected_v2": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskStructuredPlanV2"
+              }
+            ]
           },
           "shortlists": {
             "description": "The `ask_trace` shortlists for feedback pairs; `None` for synthetic."
@@ -8447,9 +9166,11 @@
           }
         },
         "required": [
+          "pair_id",
           "question",
           "chosen",
-          "rejected",
+          "chosen_v2",
+          "original_absent",
           "source"
         ],
         "type": "object"
@@ -9133,6 +9854,14 @@
       "ResolveTermRequest": {
         "description": "WS11 — snap-back resolve: map a piece of free text (a model's guess at a\nclass, relation, property, or value) to the nearest item that actually\nexists in the graph's vocabulary. The output is a subset of real vocabulary\nby construction — the resolver never fabricates a term.",
         "properties": {
+          "as_of_commit_seq": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "candidates": {
             "description": "Restrict resolution to this explicit candidate set (the narrowed\nshortlist — e.g. relations WS10 admitted for a type pair). Each candidate\nis classified against the ontology for its `kind`. When absent the\nresolver draws candidates from the graph's schema vocabulary.",
             "items": {
@@ -9150,6 +9879,12 @@
             },
             "type": "array"
           },
+          "snapshot_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "text": {
             "description": "The free text to snap to real vocabulary (1..=256 chars).",
             "type": "string"
@@ -9160,6 +9895,16 @@
             "type": [
               "integer",
               "null"
+            ]
+          },
+          "vocabulary_filter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VocabularyFilter"
+              }
             ]
           }
         },
@@ -9182,12 +9927,16 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotView"
+          },
+          "snapshot_token": {
+            "type": "string"
           }
         },
         "required": [
           "matches",
           "method",
-          "snapshot"
+          "snapshot",
+          "snapshot_token"
         ],
         "type": "object"
       },
@@ -9243,6 +9992,16 @@
         "properties": {
           "kind": {
             "$ref": "#/components/schemas/SuggestKind"
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VocabularyProvenance"
+              }
+            ]
           },
           "score": {
             "description": "Similarity to the input in [0, 1]; higher is closer.",
@@ -10081,6 +10840,17 @@
               "null"
             ]
           },
+          "contributions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchHitContributions",
+                "description": "Auditable fusion accounting. Present only when `explain=true`; the\nweighted channel contributions plus `post_fusion_adjustment` reproduce\n`final_score` within floating-point tolerance."
+              }
+            ]
+          },
           "entity": {
             "$ref": "#/components/schemas/EntityView"
           },
@@ -10125,6 +10895,28 @@
           "id",
           "source_id",
           "score"
+        ],
+        "type": "object"
+      },
+      "SearchChannelContribution": {
+        "properties": {
+          "raw_score": {
+            "format": "float",
+            "type": "number"
+          },
+          "weight": {
+            "format": "float",
+            "type": "number"
+          },
+          "weighted_score": {
+            "format": "float",
+            "type": "number"
+          }
+        },
+        "required": [
+          "raw_score",
+          "weight",
+          "weighted_score"
         ],
         "type": "object"
       },
@@ -11388,6 +12180,102 @@
           }
         ]
       },
+      "SearchHitContributions": {
+        "properties": {
+          "adjacency_indexed_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "bm25": {
+            "$ref": "#/components/schemas/SearchChannelContribution"
+          },
+          "bm25_indexed_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "bm25_manifest_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filter_pruned": {
+            "type": "boolean"
+          },
+          "final_score": {
+            "format": "float",
+            "type": "number"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/SearchChannelContribution"
+          },
+          "lexical": {
+            "$ref": "#/components/schemas/SearchChannelContribution"
+          },
+          "ontology": {
+            "$ref": "#/components/schemas/SearchChannelContribution"
+          },
+          "post_fusion_adjustment": {
+            "description": "Type boosts, score floors/clamps, graph-anchor boosts, observation-owner\npromotion, and class-intent promotion are accounted for here.",
+            "format": "float",
+            "type": "number"
+          },
+          "snapshot_commit_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          },
+          "trained_fusion_run": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "vector": {
+            "$ref": "#/components/schemas/SearchChannelContribution"
+          },
+          "vector_indexed_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "vector_manifest_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lexical",
+          "bm25",
+          "vector",
+          "ontology",
+          "graph",
+          "post_fusion_adjustment",
+          "final_score",
+          "filter_pruned",
+          "snapshot_commit_seq"
+        ],
+        "type": "object"
+      },
       "SearchIndexFamilyRun": {
         "properties": {
           "family": {
@@ -11594,6 +12482,10 @@
               }
             ]
           },
+          "index_lineage": {
+            "$ref": "#/components/schemas/IndexLineage",
+            "description": "One coherent observation of every serving index family after this run.\nUnlike the per-family build outcomes, this also includes families the\nrequest did not rebuild and is therefore the convergence contract."
+          },
           "permutation": {
             "oneOf": [
               {
@@ -11609,7 +12501,8 @@
           }
         },
         "required": [
-          "snapshot"
+          "snapshot",
+          "index_lineage"
         ],
         "type": "object"
       },
@@ -11853,6 +12746,15 @@
       "SearchSuggestRequest": {
         "description": "Turn-level grounding: complete a prefix from the index's own vocabulary\n(BM25 term dictionary, attribute directory) and the graph ontology\n(classes, relations, properties). Never reads doc/postings blocks; the\ncompletions are strings that provably exist in the graph at this snapshot.",
         "properties": {
+          "as_of_commit_seq": {
+            "description": "Transaction-time vocabulary pin. Mutually exclusive with\n`snapshot_token`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "context": {
             "oneOf": [
               {
@@ -11899,6 +12801,23 @@
                 "description": "Explicit ranker-weight override. Precedence per field:\nrequest > trained serving defaults (a promoted `suggest_ranker` run) >\nthe shipped kind weights. Mirrors `SearchSignalWeights` on search."
               }
             ]
+          },
+          "snapshot_token": {
+            "description": "Opaque graph snapshot identity previously returned by LBB. Mutually\nexclusive with `as_of_commit_seq`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vocabulary_filter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VocabularyFilter"
+              }
+            ]
           }
         },
         "required": [
@@ -11910,6 +12829,10 @@
         "properties": {
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotView"
+          },
+          "snapshot_token": {
+            "description": "Opaque vocabulary token binding graph epoch, commit, and ontology\nversion. Feed it to a subsequent suggest/resolve request to fail closed\non vocabulary drift.",
+            "type": "string"
           },
           "suggestions": {
             "items": {
@@ -11934,6 +12857,7 @@
         "required": [
           "suggestions",
           "snapshot",
+          "snapshot_token",
           "truncated"
         ],
         "type": "object"
@@ -11957,6 +12881,16 @@
           },
           "kind": {
             "$ref": "#/components/schemas/SuggestKind"
+          },
+          "provenance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VocabularyProvenance"
+              }
+            ]
           },
           "score": {
             "format": "float",
@@ -13674,16 +14608,53 @@
             "minimum": 0,
             "type": "integer"
           },
+          "accepted_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "excluded_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exclusions": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "object_key": {
             "description": "The object the batch was flushed to, absent when nothing was written.",
             "type": [
               "string",
               "null"
             ]
+          },
+          "receipt_id": {
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "trainable_count": {
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
-          "accepted"
+          "accepted",
+          "receipt_id",
+          "event_id",
+          "replayed",
+          "accepted_count",
+          "trainable_count",
+          "excluded_count"
         ],
         "type": "object"
       },
@@ -13724,7 +14695,8 @@
           "tool_error",
           "speculation_summary",
           "ask_trace",
-          "ask_feedback"
+          "ask_feedback",
+          "external_planner_trace"
         ],
         "type": "string"
       },
@@ -14844,6 +15816,74 @@
         ],
         "type": "object"
       },
+      "SuggestionAdoptedV1": {
+        "properties": {
+          "candidate_id": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "rank": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "suggestion_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "v": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "suggestion_id",
+          "candidate_id",
+          "prefix",
+          "text",
+          "rank"
+        ],
+        "type": "object"
+      },
+      "SuggestionShownV1": {
+        "properties": {
+          "candidate_id": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "rank": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "suggestion_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "v": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "suggestion_id",
+          "candidate_id",
+          "prefix",
+          "text",
+          "rank"
+        ],
+        "type": "object"
+      },
       "SyntheticEvalResponse": {
         "description": "`GET /v1/models/synthetic-eval` — execution-verified QA pairs generated\nFROM the graph: each question is templated from a current edge and its\nexpected answer IS the executed projection, so labels are verified by\nconstruction, never hallucinated. Deterministic per snapshot.",
         "properties": {
@@ -14970,6 +16010,13 @@
             "format": "float",
             "type": "number"
           },
+          "hit_rate_delta": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "labeled": {
             "description": "Labeled eval probes the decision is over.",
             "minimum": 0,
@@ -14995,12 +16042,49 @@
             "minimum": 0,
             "type": "integer"
           },
+          "mrr_delta": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ndcg_ci95_lower": {
+            "description": "Deterministic paired-bootstrap 95% interval for challenger − champion\nnDCG@10. Promotion requires the lower bound to be at least zero.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ndcg_ci95_upper": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "non_inferiority_boundary": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "passed": {
             "type": "boolean"
           },
           "reason": {
             "description": "Human-readable one-liner for the console status surface.",
             "type": "string"
+          },
+          "recall_delta": {
+            "description": "Fusion-only paired held-out deltas. All must be non-negative.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
           }
         },
         "required": [
@@ -15018,12 +16102,11 @@
       "TrainModelJobProgress": {
         "description": "Bounded in-flight work counters for a durable trainer job.",
         "properties": {
-          "completed_candidates": {
+          "candidates_completed": {
             "minimum": 0,
             "type": "integer"
           },
-          "completed_probes": {
-            "description": "Completed expensive probe replays, not merely distinct input probes.",
+          "candidates_total": {
             "minimum": 0,
             "type": "integer"
           },
@@ -15050,21 +16133,33 @@
             "description": "`preparing` | `candidate_search` | `held_out_gate` | kind-specific stage.",
             "type": "string"
           },
-          "total_candidates": {
+          "replay_evaluations_completed": {
+            "description": "Expensive search executions or cached-score evaluations completed.",
             "minimum": 0,
             "type": "integer"
           },
-          "total_probes": {
+          "replay_evaluations_total": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source_probes_completed": {
+            "description": "Distinct input probes prepared at the pinned source snapshot.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source_probes_total": {
             "minimum": 0,
             "type": "integer"
           }
         },
         "required": [
           "phase",
-          "completed_probes",
-          "total_probes",
-          "completed_candidates",
-          "total_candidates",
+          "source_probes_completed",
+          "source_probes_total",
+          "replay_evaluations_completed",
+          "replay_evaluations_total",
+          "candidates_completed",
+          "candidates_total",
           "percentage",
           "heartbeat_micros"
         ],
@@ -15370,6 +16465,24 @@
           "direction": {
             "$ref": "#/components/schemas/ExpansionDirection"
           },
+          "fields": {
+            "description": "Entity fields projected for every seed/intermediate/terminal node in\n`TraverseResponse.projected_nodes`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "filter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchFilterExpr",
+                "description": "Authorization/metadata predicate applied before a node is admitted or\nexpanded. Both endpoints of every traversed edge must satisfy it."
+              }
+            ]
+          },
           "max_block_bytes": {
             "description": "Decoded adjacency-block working-set byte budget for the ranged path.\nDefaults to the server/store budget. A request may lower the budget,\nbut not raise it. Ignored on the snapshot path.",
             "format": "int64",
@@ -15437,6 +16550,20 @@
             },
             "type": "array"
           },
+          "projected_nodes": {
+            "additionalProperties": {
+              "additionalProperties": {},
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "description": "Same-snapshot field evidence for every node appearing in `paths`, keyed\nby stable entity-id hex. Present as an empty map when no fields were\nrequested.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "ranged": {
             "oneOf": [
               {
@@ -15490,6 +16617,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "preconditions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WritePreconditions",
+                "description": "Optional compare-and-swap guard evaluated atomically against the head\nused to build this commit."
+              }
             ]
           },
           "property_merge": {
@@ -15601,6 +16739,58 @@
           "confidence",
           "valid_time",
           "evidence"
+        ],
+        "type": "object"
+      },
+      "TypedAskFeedbackV1": {
+        "properties": {
+          "ask_id": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "original_absent": {
+            "type": "boolean"
+          },
+          "original_plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskStructuredPlanV2",
+                "description": "Explicitly null when the ask produced no original plan."
+              }
+            ]
+          },
+          "preferred_plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskStructuredPlanV2"
+              }
+            ]
+          },
+          "v": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "verdict": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "v",
+          "ask_id",
+          "verdict",
+          "original_absent"
         ],
         "type": "object"
       },
@@ -15718,6 +16908,72 @@
         "required": [
           "truncated",
           "snapshot"
+        ],
+        "type": "object"
+      },
+      "VocabularyFilter": {
+        "properties": {
+          "include_builtin": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "namespace_allow": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "namespace_deny": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/VocabularyOrigin"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "VocabularyOrigin": {
+        "enum": [
+          "builtin",
+          "tenant",
+          "imported"
+        ],
+        "type": "string"
+      },
+      "VocabularyProvenance": {
+        "properties": {
+          "candidate_id": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "ontology_version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/VocabularyOrigin"
+          },
+          "source_reference": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "origin",
+          "namespace",
+          "ontology_version",
+          "source_reference"
         ],
         "type": "object"
       },
@@ -15921,6 +17177,33 @@
           "op"
         ],
         "type": "object"
+      },
+      "WritePreconditions": {
+        "properties": {
+          "expected_head_commit_seq": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expected_ontology_version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expected_snapshot_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -15970,7 +17253,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -16250,10 +17533,10 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -16530,7 +17813,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -17071,7 +18354,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -17350,7 +18633,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -17899,7 +19182,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -18187,7 +19470,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -18467,7 +19750,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -19287,7 +20570,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -19576,7 +20859,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -19864,7 +21147,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -20134,7 +21417,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -20969,7 +22252,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -21249,7 +22532,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -21285,12 +22568,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedEmbeddingBackfillJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ManagedEmbeddingBackfillResponse"
+                  "$ref": "#/components/schemas/ManagedEmbeddingBackfillJobStatusResponse"
                 }
               }
             },
@@ -21508,7 +22801,832 @@
             "bearer": []
           }
         ],
-        "summary": "Embed the graph corpus with the managed model and rebuild the Stored ANN index",
+        "summary": "Submit a durable managed-embedding backfill job (legacy path alias)",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/embedding/backfill-jobs": {
+      "delete": {
+        "operationId": "delete_v1_graph_embedding_backfill_jobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable backfill job id",
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedEmbeddingBackfillJobStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Request cancellation of a managed-embedding backfill job",
+        "tags": [
+          "graph"
+        ]
+      },
+      "get": {
+        "operationId": "get_v1_graph_embedding_backfill_jobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable backfill job id",
+            "in": "query",
+            "name": "job_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedEmbeddingBackfillJobStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read one managed-embedding backfill job",
+        "tags": [
+          "graph"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_graph_embedding_backfill_jobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedEmbeddingBackfillJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedEmbeddingBackfillJobStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit a durable managed-embedding backfill job",
         "tags": [
           "graph"
         ]
@@ -21546,7 +23664,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -22149,7 +24267,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -23876,7 +25994,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -24769,7 +26887,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -25066,7 +27184,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -25966,7 +28084,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -26246,7 +28364,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -26526,7 +28644,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -26806,7 +28924,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -27633,7 +29751,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -28462,7 +30580,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -28751,7 +30869,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -29021,7 +31139,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -29586,7 +31704,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -29866,7 +31984,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -30155,7 +32273,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -30694,7 +32812,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -30974,7 +33092,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -31254,7 +33372,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -32641,7 +34759,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -32929,7 +35047,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -33217,7 +35335,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -33505,7 +35623,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -34055,7 +36173,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -34343,7 +36461,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -35719,7 +37837,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -35999,7 +38117,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -36538,7 +38656,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -37340,7 +39458,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -37888,7 +40006,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -38168,7 +40286,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": true,
@@ -38447,7 +40565,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -38735,7 +40853,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -39014,7 +41132,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -39303,7 +41421,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -39583,7 +41701,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -39863,7 +41981,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -40143,7 +42261,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -40423,7 +42541,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -40703,7 +42821,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -40983,7 +43101,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -41263,7 +43381,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -41543,7 +43661,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -41823,7 +43941,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -42103,7 +44221,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -42383,7 +44501,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -42933,7 +45051,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -43222,7 +45340,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -43502,7 +45620,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -44079,7 +46197,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -44359,7 +46477,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -44639,7 +46757,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -45441,7 +47559,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -45721,7 +47839,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -46001,7 +48119,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -46281,7 +48399,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -46561,7 +48679,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -46831,7 +48949,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -47111,7 +49229,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -47391,7 +49509,7 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -48236,10 +50354,10 @@
             }
           },
           {
-            "description": "Stable client-generated key for safely retrying mutations. Required for fact commits.",
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             }

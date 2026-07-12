@@ -90,6 +90,17 @@ class RawLbbResponse:
 
 
 @dataclass(frozen=True)
+class IndexLineageObservation:
+    metadata: models.GraphMetadataResponse
+    lineage: models.IndexLineage
+    build_commit: str | None
+    replica: str | None
+    request_id: str | None
+    attempts: int
+    elapsed_ms: float
+
+
+@dataclass(frozen=True)
 class ListPage(Generic[RowT]):
     """Typed view of LBB's unified list envelope.
 
@@ -541,13 +552,59 @@ class _BaseLbbClient:
         batch_size: int | None = None,
         limit: int | None = None,
         full: bool | None = None,
+        idempotency_key: str | None = None,
+        timeout: float = 1800.0,
+        poll_interval: float = 2.0,
     ) -> models.ManagedEmbeddingBackfillResponse:
-        """Embed the corpus and rebuild its Stored ANN index."""
+        """Submit the durable backfill job and wait for its terminal result."""
+        status = self.submit_embedding_backfill(
+            {"batch_size": batch_size, "limit": limit, "full": bool(full)},
+            idempotency_key=idempotency_key or self.idempotency_key("embedding-backfill"),
+        )
+        deadline = time.monotonic() + timeout
+        while status.status in {"pending", "running"}:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"embedding backfill {status.job_id} exceeded {timeout}s")
+            time.sleep(poll_interval)
+            status = self.embedding_backfill_job(status.job_id)
+        if status.status != "succeeded" or status.result is None:
+            raise RuntimeError(
+                status.terminal_error or f"embedding backfill {status.job_id} ended {status.status}"
+            )
+        return status.result
+
+    def submit_embedding_backfill(
+        self,
+        body: Body,
+        *,
+        idempotency_key: str,
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
         return self._model_request(
-            models.ManagedEmbeddingBackfillResponse,
+            models.ManagedEmbeddingBackfillJobStatusResponse,
             "POST",
-            "/v1/graph/embedding/backfill",
-            params={"batch_size": batch_size, "limit": limit, "full": full},
+            "/v1/graph/embedding/backfill-jobs",
+            body=body,
+            idempotency_key=idempotency_key,
+        )
+
+    def embedding_backfill_job(
+        self, job_id: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
+        return self._model_request(
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            "GET",
+            "/v1/graph/embedding/backfill-jobs",
+            params={"job_id": job_id},
+        )
+
+    def cancel_embedding_backfill(
+        self, job_id: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
+        return self._model_request(
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            "DELETE",
+            "/v1/graph/embedding/backfill-jobs",
+            params={"job_id": job_id},
         )
 
     def promote_embedding(
@@ -882,12 +939,79 @@ class _BaseLbbClient:
         :class:`lbb.models.AskResponse`."""
         return self._request("POST", "/v1/ask", body=body)
 
-    def ask_feedback(self, body: Body) -> Any:
+    def ask_feedback(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Verdict on an ask (``POST /v1/ask/feedback``): ``accepted`` |
         ``rejected`` | ``corrected`` (+ ``corrected_plan``), joined to the
         ask's trace by ``ask_id`` — the planner fine-tune's feedback capture.
         ``accepted: false`` means signal capture is off on this deployment."""
-        return self._request("POST", "/v1/ask/feedback", body=body)
+        validated = models.AskFeedbackRequest.model_validate(body)
+        return self._request(
+            "POST",
+            "/v1/ask/feedback",
+            body=validated.model_dump(mode="json", exclude_none=True),
+            idempotency_key=idempotency_key or self.idempotency_key("ask-feedback"),
+        )
+
+    def ingest_signals(self, body: Body, *, idempotency_key: str | None = None) -> Any:
+        """Write a typed supervision batch with a durable replay-safe receipt."""
+        return self._request(
+            "POST",
+            "/v1/signals",
+            body=body,
+            idempotency_key=idempotency_key or self.idempotency_key("signals"),
+        )
+
+    def suggestion_shown(self, payload: Body, *, idempotency_key: str | None = None) -> Any:
+        """Ingest one ``SuggestionShownV1`` payload."""
+        validated = models.SuggestionShownV1.model_validate(payload)
+        return self.ingest_signals(
+            {
+                "signals": [
+                    {
+                        "kind": "suggestion_shown",
+                        "payload": validated.model_dump(mode="json"),
+                    }
+                ]
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def suggestion_adopted(
+        self, payload: Body, *, idempotency_key: str | None = None
+    ) -> Any:
+        """Ingest one trainable ``SuggestionAdoptedV1`` payload."""
+        validated = models.SuggestionAdoptedV1.model_validate(payload)
+        return self.ingest_signals(
+            {
+                "signals": [
+                    {
+                        "kind": "suggestion_adopted",
+                        "payload": validated.model_dump(mode="json"),
+                    }
+                ]
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    def external_planner_trace(
+        self, payload: Body, *, idempotency_key: str | None = None
+    ) -> Any:
+        """Ingest one versioned external planner trace."""
+        validated = models.ExternalPlannerTraceV1.model_validate(payload)
+        encoded = validated.model_dump(mode="json", exclude_none=True)
+        return self.ingest_signals(
+            {
+                "signals": [
+                    {
+                        "kind": "external_planner_trace",
+                        "request_id": validated.ask_id,
+                        "snapshot_token": validated.snapshot_token,
+                        "payload": encoded,
+                    }
+                ]
+            },
+            idempotency_key=idempotency_key,
+        )
 
     def planner_dataset(self, *, limit: int | None = None, split_seq: int | None = None) -> Any:
         """The planner fine-tune's training feed (``GET
@@ -1369,17 +1493,53 @@ class _GraphNamespace:
         batch_size: int | None = None,
         limit: int | None = None,
         full: bool | None = None,
+        idempotency_key: str | None = None,
+        timeout: float = 1800.0,
+        poll_interval: float = 2.0,
     ) -> models.ManagedEmbeddingBackfillResponse:
+        status = self.submit_embedding_backfill(
+            {"batch_size": batch_size, "limit": limit, "full": bool(full)},
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("embedding-backfill"),
+        )
+        deadline = time.monotonic() + timeout
+        while status.status in {"pending", "running"}:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"embedding backfill {status.job_id} exceeded {timeout}s")
+            time.sleep(poll_interval)
+            status = self.embedding_backfill_job(status.job_id)
+        if status.status != "succeeded" or status.result is None:
+            raise RuntimeError(
+                status.terminal_error or f"embedding backfill {status.job_id} ended {status.status}"
+            )
+        return status.result
+
+    def submit_embedding_backfill(
+        self, body: Body, *, idempotency_key: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
         return self._client._model_request(
-            models.ManagedEmbeddingBackfillResponse,
+            models.ManagedEmbeddingBackfillJobStatusResponse,
             "POST",
-            "/v1/graph/embedding/backfill",
+            "/v1/graph/embedding/backfill-jobs",
             params={
                 "graph": self._graph,
                 "branch": self._branch,
-                "batch_size": batch_size,
-                "limit": limit,
-                "full": full,
+            },
+            body=body,
+            idempotency_key=idempotency_key,
+        )
+
+    def embedding_backfill_job(
+        self, job_id: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
+        return self._client._model_request(
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            "GET",
+            "/v1/graph/embedding/backfill-jobs",
+            params={
+                "graph": self._graph,
+                "branch": self._branch,
+                "job_id": job_id,
             },
         )
 

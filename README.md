@@ -106,7 +106,9 @@ attempt count, elapsed time, response headers, build commit, and replica.
 - `ontology` / `schema`: define, evolve, induce, draft review, SHACL lifecycle
 - `query`: SPARQL, structured query, analytics, SHACL, inference, conflicts
 - `context`: grounded ask, suggest, resolve, decode, groundability
-- feedback/training: labels, export/summary, durable trainer jobs and progress
+- feedback/training: labels, export/summary, durable trainer jobs and progress;
+  typed suggestion/planner supervision helpers with validation before transport,
+  automatic idempotency keys, and durable receipt/trainability acknowledgements
 - temporal graph: traversal, state, history, lineage, snapshot pins
 
 Generated models come from the bundled OpenAPI contract and are available in

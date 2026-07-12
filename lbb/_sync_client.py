@@ -13,6 +13,7 @@ from ._client_base import (
     DEFAULT_BASE_URL,
     DEFAULT_TIMEOUT,
     Body,
+    IndexLineageObservation,
     ListPage,
     ModelT,
     RawLbbResponse,
@@ -340,6 +341,51 @@ class LbbClient(_BaseLbbClient):
                 return meta
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"index did not catch up within {timeout}s (last: {meta})")
+            time.sleep(poll_interval)
+
+    def wait_for_index_lineage(
+        self,
+        target_seq: int,
+        *,
+        timeout: float = 30.0,
+        poll_interval: float = 0.25,
+    ) -> IndexLineageObservation:
+        """Wait until BM25, ANN, and adjacency all cover ``target_seq``.
+
+        Returns typed lineage plus the build/replica headers from the exact
+        observation that satisfied the gate, so a timeout or replica skew is
+        diagnosable without a second request.
+        """
+        deadline = time.monotonic() + timeout
+        last: RawLbbResponse | None = None
+        while True:
+            last = self.raw_request("GET", "/v1/graph/metadata")
+            metadata = last.model(models.GraphMetadataResponse)
+            lineage = metadata.index_lineage
+            if (
+                lineage is not None
+                and lineage.bm25_indexed_commit_seq is not None
+                and lineage.bm25_indexed_commit_seq.root >= target_seq
+                and lineage.ann_indexed_commit_seq is not None
+                and lineage.ann_indexed_commit_seq.root >= target_seq
+                and lineage.adjacency_indexed_commit_seq is not None
+                and lineage.adjacency_indexed_commit_seq.root >= target_seq
+            ):
+                return IndexLineageObservation(
+                    metadata=metadata,
+                    lineage=lineage,
+                    build_commit=last.headers.get("lbb-build-commit"),
+                    replica=last.headers.get("lbb-replica"),
+                    request_id=last.request_id,
+                    attempts=last.attempts,
+                    elapsed_ms=last.elapsed_ms,
+                )
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"index lineage did not reach {target_seq} within {timeout}s "
+                    f"(build={last.headers.get('lbb-build-commit')}, "
+                    f"replica={last.headers.get('lbb-replica')}, lineage={lineage})"
+                )
             time.sleep(poll_interval)
 
     def sparql(

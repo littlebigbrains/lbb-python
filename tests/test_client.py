@@ -128,6 +128,40 @@ def sparql_select_payload() -> dict[str, Any]:
     }
 
 
+def backfill_status_payload(status: str) -> dict[str, Any]:
+    result = None
+    if status == "succeeded":
+        result = {
+            "batches": 2,
+            "continuation": None,
+            "embedded": 8,
+            "entities_total": 10,
+            "failed": 0,
+            "final_index_job_id": "index-1",
+            "index_lineage": None,
+            "indexed_commit_seq": 7,
+            "missing": 1,
+            "model_id": "stored",
+            "processed": 10,
+            "skipped": 1,
+            "source_commit_seq": 7,
+            "source_snapshot_token": "snapshot:7",
+            "truncated": False,
+        }
+    return {
+        "attempts": 1,
+        "enqueued_at_micros": 1,
+        "graph": GRAPH,
+        "idempotency_key": "backfill-1",
+        "job_id": "backfill-job-1",
+        "progress": None,
+        "result": result,
+        "status": status,
+        "terminal_error": None,
+        "updated_at_micros": 2,
+    }
+
+
 def capturing_transport(
     captured: list[httpx.Request],
     responses: ResponseSpec | list[ResponseSpec] | None = None,
@@ -1294,6 +1328,132 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(json.loads(request.content), {"patterns": [], "select": ["s"], "limit": 5})
 
 
+    def test_wait_for_index_lineage_retains_build_and_replica_headers(self) -> None:
+        lineage = {
+            "head_commit_seq": 7,
+            "bm25_indexed_commit_seq": 7,
+            "ann_indexed_commit_seq": 7,
+            "adjacency_indexed_commit_seq": 7,
+            "caught_up": True,
+            "manifest_view_token": "index-view:abc",
+            "observed_at_micros": 1,
+        }
+        metadata = {
+            "graph": GRAPH,
+            "snapshot": SNAPSHOT,
+            "ontology_version": 1,
+            "head_generation": 1,
+            "wal_tail_commits": 0,
+            "wal_tail_bytes": 0,
+            "object_count": 0,
+            "object_bytes": 0,
+            "adjacency_indexed_commit_seq": 7,
+            "index_lineage": lineage,
+            "unindexed_tail_commits": 0,
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json=metadata,
+                headers={
+                    "lbb-build-commit": "deadbeef",
+                    "lbb-replica": "eu1-node2",
+                    "x-request-id": "req-1",
+                },
+            )
+
+        with LbbClient("http://h", transport=httpx.MockTransport(handler)) as client:
+            observed = client.wait_for_index_lineage(7)
+        self.assertEqual(observed.lineage.manifest_view_token, "index-view:abc")
+        self.assertEqual(observed.build_commit, "deadbeef")
+        self.assertEqual(observed.replica, "eu1-node2")
+        self.assertEqual(observed.request_id, "req-1")
+
+    def test_sync_backfill_convenience_submits_and_polls_to_success(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(
+                seen,
+                [
+                    {"json": backfill_status_payload("running")},
+                    {"json": backfill_status_payload("succeeded")},
+                ],
+            ),
+        ) as client:
+            result = client.backfill_embeddings(
+                limit=10,
+                idempotency_key="backfill-1",
+                poll_interval=0,
+            )
+
+        self.assertEqual(result.processed, 10)
+        self.assertEqual([request.method for request in seen], ["POST", "GET"])
+        self.assertEqual(json.loads(seen[0].content)["limit"], 10)
+
+    def test_sync_scoped_backfill_uses_durable_job_routes(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen,
+                [
+                    {"json": backfill_status_payload("pending")},
+                    {"json": backfill_status_payload("succeeded")},
+                ],
+            ),
+        ) as client:
+            result = client.graph("main", branch="release").backfill_embeddings(
+                idempotency_key="backfill-1",
+                poll_interval=0,
+            )
+
+        self.assertEqual(result.final_index_job_id, "index-1")
+        self.assertEqual(dict(seen[0].url.params)["branch"], "release")
+        self.assertEqual(dict(seen[1].url.params)["job_id"], "backfill-job-1")
+
+    def test_sync_backfill_surfaces_terminal_failure(self) -> None:
+        with LbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(
+                [], {"json": backfill_status_payload("failed")}
+            ),
+        ) as client:
+            with self.assertRaisesRegex(RuntimeError, "ended failed"):
+                client.backfill_embeddings(
+                    idempotency_key="backfill-1",
+                    poll_interval=0,
+                )
+
+    def test_sync_scoped_backfill_exposes_detached_job_control(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(
+                seen,
+                [
+                    {"json": backfill_status_payload("pending")},
+                    {"json": backfill_status_payload("running")},
+                    {"json": backfill_status_payload("cancelled")},
+                ],
+            ),
+        ) as client:
+            graph = client.graph("main")
+            submitted = graph.submit_embedding_backfill(
+                {"batch_size": 25}, idempotency_key="backfill-1"
+            )
+            observed = graph.embedding_backfill_job(submitted.job_id)
+            cancelled = client.cancel_embedding_backfill(submitted.job_id)
+
+        self.assertEqual(observed.status, "running")
+        self.assertEqual(cancelled.status, "cancelled")
+        self.assertEqual([request.method for request in seen], ["POST", "GET", "DELETE"])
+
+
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_async_create_graph_returns_typed_response(self) -> None:
         payload = {"commit_seq": 0, "graph": GRAPH, "ontology_version": 1}
@@ -1319,6 +1479,94 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         ) as client:
             await client.status()
         self.assertEqual(len(seen), 2)
+
+    async def test_async_backfill_convenience_submits_and_polls_to_success(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(
+                seen,
+                [
+                    {"json": backfill_status_payload("running")},
+                    {"json": backfill_status_payload("succeeded")},
+                ],
+            ),
+        ) as client:
+            result = await client.backfill_embeddings(
+                batch_size=50,
+                idempotency_key="backfill-1",
+                poll_interval=0,
+            )
+
+        self.assertEqual(result.embedded, 8)
+        self.assertEqual([request.method for request in seen], ["POST", "GET"])
+        self.assertEqual(seen[0].headers["idempotency-key"], "backfill-1")
+        self.assertEqual(json.loads(seen[0].content)["batch_size"], 50)
+        self.assertEqual(dict(seen[1].url.params)["job_id"], "backfill-job-1")
+
+    async def test_async_scoped_backfill_uses_one_pin_and_durable_job(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(
+                seen,
+                [
+                    {"json": backfill_status_payload("pending")},
+                    {"json": backfill_status_payload("succeeded")},
+                ],
+            ),
+        ) as client:
+            result = await client.graph("main", branch="release").backfill_embeddings(
+                full=True,
+                idempotency_key="backfill-1",
+                poll_interval=0,
+            )
+
+        self.assertEqual(result.indexed_commit_seq, 7)
+        self.assertEqual([request.method for request in seen], ["POST", "GET"])
+        self.assertEqual(dict(seen[0].url.params)["graph"], "main")
+        self.assertEqual(dict(seen[0].url.params)["branch"], "release")
+
+    async def test_async_backfill_surfaces_terminal_failure(self) -> None:
+        async with AsyncLbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(
+                [], {"json": backfill_status_payload("failed")}
+            ),
+        ) as client:
+            with self.assertRaisesRegex(RuntimeError, "ended failed"):
+                await client.backfill_embeddings(
+                    idempotency_key="backfill-1",
+                    poll_interval=0,
+                )
+
+    async def test_async_scoped_backfill_exposes_detached_job_control(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(
+                seen,
+                [
+                    {"json": backfill_status_payload("pending")},
+                    {"json": backfill_status_payload("running")},
+                    {"json": backfill_status_payload("cancelled")},
+                ],
+            ),
+        ) as client:
+            graph = client.graph("main")
+            submitted = await graph.submit_embedding_backfill(
+                {"batch_size": 25}, idempotency_key="backfill-1"
+            )
+            observed = await graph.embedding_backfill_job(submitted.job_id)
+            cancelled = await client.cancel_embedding_backfill(submitted.job_id)
+
+        self.assertEqual(observed.status, "running")
+        self.assertEqual(cancelled.status, "cancelled")
+        self.assertEqual([request.method for request in seen], ["POST", "GET", "DELETE"])
 
     async def test_async_roundtrip_and_scope(self) -> None:
         seen: list[httpx.Request] = []
@@ -1396,6 +1644,40 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([row.name for row in rows], ["auth-service", "billing-service"])
         self.assertEqual(dict(seen[1].url.params)["cursor"], "cursor-2")
+
+    def test_typed_suggestion_helper_validates_before_transport_and_sets_idempotency(self) -> None:
+        seen: list[httpx.Request] = []
+        ack = {
+            "accepted": 1,
+            "receipt_id": "signal-receipt:r1",
+            "event_id": "signal-event:r1:0",
+            "replayed": False,
+            "accepted_count": 1,
+            "trainable_count": 1,
+            "excluded_count": 0,
+            "exclusions": {},
+        }
+        with LbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(seen, [{"json": ack}]),
+        ) as client:
+            with self.assertRaises(ValidationError):
+                client.suggestion_adopted({"text": "missing typed identity"})
+            self.assertEqual(seen, [], "malformed payload never reaches transport")
+            response = client.suggestion_adopted(
+                {
+                    "v": 1,
+                    "suggestion_id": "s-1",
+                    "candidate_id": "c-1",
+                    "prefix": "sto",
+                    "text": "STORES",
+                    "rank": 0,
+                },
+                idempotency_key="suggestion-retry-1",
+            )
+        self.assertEqual(response["trainable_count"], 1)
+        self.assertEqual(seen[0].headers["idempotency-key"], "suggestion-retry-1")
 
 
 if __name__ == "__main__":
