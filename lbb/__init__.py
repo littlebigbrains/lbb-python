@@ -11,6 +11,7 @@ responses.
 from ._version import __version__ as __version__
 from .client import (
     AsyncLbbClient,
+    IndexLineageObservation,
     LbbClient,
     LbbError,
     ListPage,
@@ -24,6 +25,7 @@ __all__ = [
     "LbbClient",
     "AsyncLbbClient",
     "LbbError",
+    "IndexLineageObservation",
     "ListPage",
     "RawLbbResponse",
     "RequestOptions",

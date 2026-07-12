@@ -14,6 +14,7 @@ from ._client_base import (
     DEFAULT_BASE_URL,
     DEFAULT_TIMEOUT,
     Body,
+    IndexLineageObservation,
     ListPage,
     ModelT,
     RawLbbResponse,
@@ -241,12 +242,47 @@ class _AsyncGraphNamespace(_GraphNamespace):
         batch_size: int | None = None,
         limit: int | None = None,
         full: bool | None = None,
+        idempotency_key: str | None = None,
+        timeout: float = 1800.0,
+        poll_interval: float = 2.0,
     ) -> models.ManagedEmbeddingBackfillResponse:
+        status = await self._client._model_request(
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            "POST",
+            "/v1/graph/embedding/backfill-jobs",
+            params={"graph": self._graph, "branch": self._branch},
+            body={"batch_size": batch_size, "limit": limit, "full": bool(full)},
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("embedding-backfill"),
+        )
+        deadline = asyncio.get_running_loop().time() + timeout
+        while status.status in {"pending", "running"}:
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError(f"embedding backfill {status.job_id} exceeded {timeout}s")
+            await asyncio.sleep(poll_interval)
+            status = await self.embedding_backfill_job(status.job_id)
+        if status.status != "succeeded" or status.result is None:
+            raise RuntimeError(
+                status.terminal_error or f"embedding backfill {status.job_id} ended {status.status}"
+            )
+        return cast(models.ManagedEmbeddingBackfillResponse, status.result)
+
+    async def submit_embedding_backfill(
+        self, body: Body, *, idempotency_key: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
         return cast(
-            models.ManagedEmbeddingBackfillResponse,
-            await super().backfill_embeddings(
-                batch_size=batch_size, limit=limit, full=full
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            await super().submit_embedding_backfill(
+                body, idempotency_key=idempotency_key
             ),
+        )
+
+    async def embedding_backfill_job(
+        self, job_id: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
+        return cast(
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            await super().embedding_backfill_job(job_id),
         )
 
     async def promote_embedding(
@@ -411,12 +447,58 @@ class AsyncLbbClient(_BaseLbbClient):
         batch_size: int | None = None,
         limit: int | None = None,
         full: bool | None = None,
+        idempotency_key: str | None = None,
+        timeout: float = 1800.0,
+        poll_interval: float = 2.0,
     ) -> models.ManagedEmbeddingBackfillResponse:
+        status = await self._model_request(
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            "POST",
+            "/v1/graph/embedding/backfill-jobs",
+            body={"batch_size": batch_size, "limit": limit, "full": bool(full)},
+            idempotency_key=idempotency_key or self.idempotency_key("embedding-backfill"),
+        )
+        deadline = asyncio.get_running_loop().time() + timeout
+        while status.status in {"pending", "running"}:
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError(f"embedding backfill {status.job_id} exceeded {timeout}s")
+            await asyncio.sleep(poll_interval)
+            status = await self._model_request(
+                models.ManagedEmbeddingBackfillJobStatusResponse,
+                "GET",
+                "/v1/graph/embedding/backfill-jobs",
+                params={"job_id": status.job_id},
+            )
+        if status.status != "succeeded" or status.result is None:
+            raise RuntimeError(
+                status.terminal_error or f"embedding backfill {status.job_id} ended {status.status}"
+            )
+        return status.result
+
+    async def submit_embedding_backfill(
+        self, body: Body, *, idempotency_key: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
         return cast(
-            models.ManagedEmbeddingBackfillResponse,
-            await super().backfill_embeddings(
-                batch_size=batch_size, limit=limit, full=full
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            await super().submit_embedding_backfill(
+                body, idempotency_key=idempotency_key
             ),
+        )
+
+    async def embedding_backfill_job(
+        self, job_id: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
+        return cast(
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            await super().embedding_backfill_job(job_id),
+        )
+
+    async def cancel_embedding_backfill(
+        self, job_id: str
+    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
+        return cast(
+            models.ManagedEmbeddingBackfillJobStatusResponse,
+            await super().cancel_embedding_backfill(job_id),
         )
 
     async def promote_embedding(
@@ -504,6 +586,45 @@ class AsyncLbbClient(_BaseLbbClient):
 
     async def metadata_model(self) -> models.GraphMetadataResponse:
         return cast(models.GraphMetadataResponse, await super().metadata_model())
+
+    async def wait_for_index_lineage(
+        self,
+        target_seq: int,
+        *,
+        timeout: float = 30.0,
+        poll_interval: float = 0.25,
+    ) -> IndexLineageObservation:
+        deadline = asyncio.get_running_loop().time() + timeout
+        last: RawLbbResponse | None = None
+        while True:
+            last = await self.raw_request("GET", "/v1/graph/metadata")
+            metadata = last.model(models.GraphMetadataResponse)
+            lineage = metadata.index_lineage
+            if (
+                lineage is not None
+                and lineage.bm25_indexed_commit_seq is not None
+                and lineage.bm25_indexed_commit_seq.root >= target_seq
+                and lineage.ann_indexed_commit_seq is not None
+                and lineage.ann_indexed_commit_seq.root >= target_seq
+                and lineage.adjacency_indexed_commit_seq is not None
+                and lineage.adjacency_indexed_commit_seq.root >= target_seq
+            ):
+                return IndexLineageObservation(
+                    metadata=metadata,
+                    lineage=lineage,
+                    build_commit=last.headers.get("lbb-build-commit"),
+                    replica=last.headers.get("lbb-replica"),
+                    request_id=last.request_id,
+                    attempts=last.attempts,
+                    elapsed_ms=last.elapsed_ms,
+                )
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError(
+                    f"index lineage did not reach {target_seq} within {timeout}s "
+                    f"(build={last.headers.get('lbb-build-commit')}, "
+                    f"replica={last.headers.get('lbb-replica')}, lineage={lineage})"
+                )
+            await asyncio.sleep(poll_interval)
 
     async def summary_model(self) -> models.GraphSummaryResponse:
         return cast(models.GraphSummaryResponse, await super().summary_model())
