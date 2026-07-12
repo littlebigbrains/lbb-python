@@ -2835,7 +2835,25 @@ class ShadowArmResult(BaseModel):
             description='Fraction of labeled queries whose expected entity appeared in top-k.'
         ),
     ]
+    latency_p50_ms: float | None = None
+    latency_p95_ms: float | None = None
+    latency_p99_ms: float | None = None
     mean_latency_ms: float
+    mrr_at_k: Annotated[
+        float | None,
+        Field(
+            description='Mean reciprocal rank of the first expected target in top-k.'
+        ),
+    ] = None
+    ndcg_at_k: Annotated[
+        float | None, Field(description='Mean binary-relevance nDCG over top-k.')
+    ] = None
+    recall_at_k: Annotated[
+        float | None,
+        Field(
+            description="Mean fraction of each query's expected targets recovered in top-k."
+        ),
+    ] = None
 
 
 class ShadowQuery(BaseModel):
@@ -3588,6 +3606,42 @@ class TrainGateReport(BaseModel):
         str,
         Field(description='Human-readable one-liner for the console status surface.'),
     ]
+
+
+class TrainModelJobProgress(BaseModel):
+    """
+    Bounded in-flight work counters for a durable trainer job.
+    """
+
+    completed_candidates: Annotated[int, Field(ge=0)]
+    completed_probes: Annotated[
+        int,
+        Field(
+            description='Completed expensive probe replays, not merely distinct input probes.',
+            ge=0,
+        ),
+    ]
+    estimated_duration_ms: Annotated[
+        int | None,
+        Field(
+            description='Linear estimate from work completed so far. Absent before the first\nmeasured probe or for trainers without fine-grained progress.',
+            ge=0,
+        ),
+    ] = None
+    heartbeat_micros: Annotated[
+        int, Field(description='Worker heartbeat attached to this progress snapshot.')
+    ]
+    percentage: Annotated[
+        float, Field(description='Monotonic completion percentage in `[0, 100]`.')
+    ]
+    phase: Annotated[
+        str,
+        Field(
+            description='`preparing` | `candidate_search` | `held_out_gate` | kind-specific stage.'
+        ),
+    ]
+    total_candidates: Annotated[int, Field(ge=0)]
+    total_probes: Annotated[int, Field(ge=0)]
 
 
 class TrainModelRequest(BaseModel):
@@ -5507,7 +5561,13 @@ class SearchFeedbackSummaryResponse(BaseModel):
             ge=0,
         ),
     ]
-    objects_scanned: Annotated[int, Field(ge=0)]
+    objects_scanned: Annotated[
+        int,
+        Field(
+            description='Label objects fetched for this request. Zero on a materialized-cache hit;\na rebuild reports the bounded source objects it read.',
+            ge=0,
+        ),
+    ]
     promoted_models: list[SearchFeedbackPromotedModel]
     raw_events: Annotated[int, Field(ge=0)]
     splits: SearchFeedbackSplitCounts
@@ -5886,6 +5946,7 @@ class TrainModelJobStatusResponse(BaseModel):
     graph: GraphKey
     job_id: str
     kind: str
+    progress: TrainModelJobProgress | None = None
     result: TrainModelResponse | None = None
     stage: str | None = None
     status: Annotated[

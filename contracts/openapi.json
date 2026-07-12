@@ -10764,6 +10764,7 @@
             "type": "integer"
           },
           "objects_scanned": {
+            "description": "Label objects fetched for this request. Zero on a materialized-cache hit;\na rebuild reports the bounded source objects it read.",
             "minimum": 0,
             "type": "integer"
           },
@@ -13428,8 +13429,35 @@
             "format": "float",
             "type": "number"
           },
+          "latency_p50_ms": {
+            "format": "double",
+            "type": "number"
+          },
+          "latency_p95_ms": {
+            "format": "double",
+            "type": "number"
+          },
+          "latency_p99_ms": {
+            "format": "double",
+            "type": "number"
+          },
           "mean_latency_ms": {
             "format": "double",
+            "type": "number"
+          },
+          "mrr_at_k": {
+            "description": "Mean reciprocal rank of the first expected target in top-k.",
+            "format": "float",
+            "type": "number"
+          },
+          "ndcg_at_k": {
+            "description": "Mean binary-relevance nDCG over top-k.",
+            "format": "float",
+            "type": "number"
+          },
+          "recall_at_k": {
+            "description": "Mean fraction of each query's expected targets recovered in top-k.",
+            "format": "float",
             "type": "number"
           }
         },
@@ -14987,6 +15015,61 @@
         ],
         "type": "object"
       },
+      "TrainModelJobProgress": {
+        "description": "Bounded in-flight work counters for a durable trainer job.",
+        "properties": {
+          "completed_candidates": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "completed_probes": {
+            "description": "Completed expensive probe replays, not merely distinct input probes.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "estimated_duration_ms": {
+            "description": "Linear estimate from work completed so far. Absent before the first\nmeasured probe or for trainers without fine-grained progress.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "heartbeat_micros": {
+            "description": "Worker heartbeat attached to this progress snapshot.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "percentage": {
+            "description": "Monotonic completion percentage in `[0, 100]`.",
+            "format": "float",
+            "type": "number"
+          },
+          "phase": {
+            "description": "`preparing` | `candidate_search` | `held_out_gate` | kind-specific stage.",
+            "type": "string"
+          },
+          "total_candidates": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_probes": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "phase",
+          "completed_probes",
+          "total_probes",
+          "completed_candidates",
+          "total_candidates",
+          "percentage",
+          "heartbeat_micros"
+        ],
+        "type": "object"
+      },
       "TrainModelJobStatusResponse": {
         "description": "Durable background trainer status. The terminal `result` carries the full\nsnapshot lineage, held-out gate evidence, and recorded run number.",
         "properties": {
@@ -15007,6 +15090,16 @@
           },
           "kind": {
             "type": "string"
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TrainModelJobProgress"
+              }
+            ]
           },
           "result": {
             "oneOf": [
