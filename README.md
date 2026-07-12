@@ -58,6 +58,12 @@ The production sequence is:
 6. submit grade-3 feedback for sources cited in the grounded answer;
 7. evolve ontology changes through draft → validate → promote/reject.
 
+For an LLM query planner, use `lbb.context.suggest(...)` to fill grounded
+schema/value prefixes and `lbb.context.resolve(...)` to snap free-text guesses
+onto real vocabulary. `resolve` uses the graph's managed embeddings when
+configured. Record adopted suggestions and accepted/rejected/corrected plans so
+the feedback can train a smaller planner and suggest ranker.
+
 See the complete [enterprise-search integration guide](https://docs.littlebigbrain.com/guides/enterprise-search/)
 for the record model, migration plan, acceptance gates, and capability mapping.
 
