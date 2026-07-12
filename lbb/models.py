@@ -657,11 +657,6 @@ class EntityView(BaseModel):
     type: str
 
 
-class EvidenceInput1(BaseModel):
-    source_id: str | None = None
-    text: str | None = None
-
-
 class ExpandedConceptView(BaseModel):
     from_: Annotated[str, Field(alias='from')]
     kind: ConceptMappingKind
@@ -935,6 +930,13 @@ class GraphImportResponse(BaseModel):
             description='Stable identity for the whole multi-batch mutation. Replays return this\nexact receipt and the original terminal commit sequence.'
         ),
     ]
+    observations: Annotated[
+        int | None,
+        Field(
+            description='Exact observation records imported from a full-fidelity export.',
+            ge=0,
+        ),
+    ] = None
     properties: Annotated[int, Field(ge=0)]
     triplets: Annotated[int, Field(ge=0)]
 
@@ -1961,6 +1963,27 @@ class RangedTraverseStats(BaseModel):
     truncated_by_block_budget: bool
     truncated_by_block_byte_budget: bool
     truncated_by_fetched_byte_budget: bool | None = None
+
+
+class RegionAnchorInput(BaseModel):
+    """
+    A page-region provenance anchor on a fact's evidence (region provenance
+    §4.1/§6.4(b) BYO import): where the evidence appears in the source
+    document. Coordinates are **normalized to the page box** (`[0, 1]`, origin
+    top-left, y down) with `x0 <= x1` and `y0 <= y1`; `confidence` is the
+    extraction confidence in `[0, 1]`. The commit path validates and quantizes
+    (`round(v * 65535)` coords, `round(c * 255)` confidence) into the canonical
+    stored anchor; out-of-range, non-finite, or inverted boxes are rejected.
+    """
+
+    confidence: float
+    page: Annotated[
+        int, Field(description='0-based page index within the source document.', ge=0)
+    ]
+    x0: float
+    x1: float
+    y0: float
+    y1: float
 
 
 class RelationView(BaseModel):
@@ -4394,6 +4417,18 @@ class EntityNeighborhoodRequest(BaseModel):
     as_of_valid_time: str | None = None
     entity: EntitySelector
     relations: list[str] | None = None
+
+
+class EvidenceInput1(BaseModel):
+    observation_id: Annotated[
+        str | None,
+        Field(
+            description='Stable observation id used by full-fidelity export/import. Ordinary\ncallers omit it and receive the existing deterministic request id.'
+        ),
+    ] = None
+    region: RegionAnchorInput | None = None
+    source_id: str | None = None
+    text: str | None = None
 
 
 class ExportObservationView(BaseModel):

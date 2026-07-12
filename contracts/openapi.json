@@ -3314,6 +3314,24 @@
           },
           {
             "properties": {
+              "observation_id": {
+                "description": "Stable observation id used by full-fidelity export/import. Ordinary\ncallers omit it and receive the existing deterministic request id.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "region": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RegionAnchorInput",
+                    "description": "Optional page-region anchor for this evidence. Requires `text`\n(the region anchors to the evidence observation the text creates)."
+                  }
+                ]
+              },
               "source_id": {
                 "type": [
                   "string",
@@ -4956,6 +4974,11 @@
           "mutation_receipt_id": {
             "description": "Stable identity for the whole multi-batch mutation. Replays return this\nexact receipt and the original terminal commit sequence.",
             "type": "string"
+          },
+          "observations": {
+            "description": "Exact observation records imported from a full-fidelity export.",
+            "minimum": 0,
+            "type": "integer"
           },
           "properties": {
             "minimum": 0,
@@ -9580,6 +9603,46 @@
           "returned_triples",
           "total_triples",
           "truncated"
+        ],
+        "type": "object"
+      },
+      "RegionAnchorInput": {
+        "description": "A page-region provenance anchor on a fact's evidence (region provenance\n§4.1/§6.4(b) BYO import): where the evidence appears in the source\ndocument. Coordinates are **normalized to the page box** (`[0, 1]`, origin\ntop-left, y down) with `x0 <= x1` and `y0 <= y1`; `confidence` is the\nextraction confidence in `[0, 1]`. The commit path validates and quantizes\n(`round(v * 65535)` coords, `round(c * 255)` confidence) into the canonical\nstored anchor; out-of-range, non-finite, or inverted boxes are rejected.",
+        "properties": {
+          "confidence": {
+            "format": "double",
+            "type": "number"
+          },
+          "page": {
+            "description": "0-based page index within the source document.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "x0": {
+            "format": "double",
+            "type": "number"
+          },
+          "x1": {
+            "format": "double",
+            "type": "number"
+          },
+          "y0": {
+            "format": "double",
+            "type": "number"
+          },
+          "y1": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "page",
+          "x0",
+          "y0",
+          "x1",
+          "y1",
+          "confidence"
         ],
         "type": "object"
       },
