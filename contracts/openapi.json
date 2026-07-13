@@ -707,8 +707,58 @@
         ],
         "type": "string"
       },
+      "AskPlanFailure": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/AskPlanFailureCode"
+          },
+          "retryable": {
+            "description": "True when retrying after the planner recovers can produce a plan.",
+            "type": "boolean"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/AskPlanFailureStage"
+          }
+        },
+        "required": [
+          "code",
+          "stage",
+          "retryable"
+        ],
+        "type": "object"
+      },
+      "AskPlanFailureCode": {
+        "enum": [
+          "planner_disabled",
+          "planner_unavailable",
+          "no_class_candidates",
+          "generation_failed",
+          "validation_failed"
+        ],
+        "type": "string"
+      },
+      "AskPlanFailureStage": {
+        "enum": [
+          "configuration",
+          "target_type",
+          "relation",
+          "anchor"
+        ],
+        "type": "string"
+      },
       "AskQuery": {
         "properties": {
+          "plan_failure": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AskPlanFailure",
+                "description": "Typed explanation when execution fell back without a validated V2\nplan. For every executed ask exactly one of `structured_v2` and\n`plan_failure` is present."
+              }
+            ]
+          },
           "query": {
             "description": "The retrieval query text that was executed.",
             "type": "string"
@@ -10114,6 +10164,13 @@
       },
       "ResolvedTerm": {
         "properties": {
+          "description": {
+            "description": "Ontology description/definition when the resolved schema term carries\none. Candidate-free class resolution preserves tenant-authored class\ndocumentation instead of returning only a bare label.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "kind": {
             "$ref": "#/components/schemas/SuggestKind"
           },
@@ -10134,6 +10191,17 @@
           },
           "text": {
             "type": "string"
+          },
+          "type_signature": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VocabularyTypeSignature",
+                "description": "Structured schema signature for class, relation, and property\ncandidates. This is derived from the same pinned ontology as the\ncandidate and provenance."
+              }
+            ]
           }
         },
         "required": [
@@ -13618,6 +13686,13 @@
           "explain": {
             "type": "boolean"
           },
+          "fields": {
+            "description": "Entity properties to project for every returned seed and path node.\nProjections are reduced from the same snapshot used for authorization\nand traversal. Requesting fields routes the operation through the exact\nsnapshot path rather than ranged adjacency.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "max_block_bytes": {
             "description": "Decoded adjacency-block working-set byte budget for persisted-vector\nranged expansion. Defaults to the server/store budget. A request may\nlower the budget, but not raise it.",
             "format": "int64",
@@ -13729,6 +13804,20 @@
               "$ref": "#/components/schemas/PathResult"
             },
             "type": "array"
+          },
+          "projected_nodes": {
+            "additionalProperties": {
+              "additionalProperties": {},
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "description": "Requested properties keyed by entity id for every returned seed and\npath node. Empty when `fields` was omitted.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "ranged": {
             "oneOf": [
@@ -14647,6 +14736,10 @@
           "champion": {
             "$ref": "#/components/schemas/ShadowArmResult"
           },
+          "gate": {
+            "$ref": "#/components/schemas/TrainGateReport",
+            "description": "Fail-closed promotion verdict over the same labeled queries and pinned\nsnapshot. Requires quality non-regression plus p50/p95/p99 latency\nratios within the configured ceiling; this endpoint still never\nperforms the promotion itself."
+          },
           "labeled": {
             "description": "Labeled queries (those with `expected`) the hit rates are over.",
             "minimum": 0,
@@ -14675,6 +14768,7 @@
           "labeled",
           "champion",
           "challenger",
+          "gate",
           "mean_overlap_at_k",
           "per_query",
           "snapshot"
@@ -16198,7 +16292,7 @@
         "description": "The deterministic promotion gate's verdict, reported in full so a held\nrun is as auditable as a promoted one (null results are data).",
         "properties": {
           "effect": {
-            "description": "Challenger − champion hit-rate on the held-out eval slice.",
+            "description": "Challenger − champion primary quality metric on the held-out eval\nslice (nDCG for fusion and retrieval-profile comparisons).",
             "format": "float",
             "type": "number"
           },
@@ -16214,8 +16308,30 @@
             "minimum": 0,
             "type": "integer"
           },
+          "latency_p50_ratio": {
+            "description": "Challenger / champion latency ratios at each reported percentile.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "latency_p95_ratio": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "latency_p99_ratio": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "latency_ratio": {
-            "description": "Challenger / champion mean-latency ratio on the eval slice.",
+            "description": "Legacy decision latency ratio. For configuration shadow evaluation this\nis the worst of p50/p95/p99; older trainer kinds may use their primary\nlatency statistic.",
             "format": "double",
             "type": "number"
           },
@@ -16271,7 +16387,7 @@
             "type": "string"
           },
           "recall_delta": {
-            "description": "Fusion-only paired held-out deltas. All must be non-negative.",
+            "description": "Paired held-out retrieval deltas. When present, all must be\nnon-negative.",
             "format": "float",
             "type": [
               "number",
@@ -17140,6 +17256,25 @@
         ],
         "type": "string"
       },
+      "VocabularyPropertySignature": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "value_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value_type",
+          "required"
+        ],
+        "type": "object"
+      },
       "VocabularyProvenance": {
         "properties": {
           "candidate_id": {
@@ -17166,6 +17301,48 @@
           "namespace",
           "ontology_version",
           "source_reference"
+        ],
+        "type": "object"
+      },
+      "VocabularyTypeSignature": {
+        "properties": {
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/VocabularyPropertySignature"
+            },
+            "type": "array"
+          },
+          "source_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "stable_id": {
+            "description": "Frozen normalized schema identity.",
+            "type": "string"
+          },
+          "super_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "target_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "value_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "stable_id"
         ],
         "type": "object"
       },
