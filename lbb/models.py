@@ -2626,6 +2626,29 @@ class SearchSignalWeights(BaseModel):
     vector: float | None = None
 
 
+class SearchTemporalCoverage(BaseModel):
+    """
+    How a temporally-pinned (or head) search resolved run selection: the
+    effective `as_of` ceiling, the base snapshot of the selected persisted
+    run(s), and the highest commit each leg's run+segments actually covered
+    (the forward WAL overlay covers `(covered_through, ceiling]`). Distinct from
+    the ontology-inspect `TemporalCoverage` type. Per-leg fields are `None` when
+    that leg served from an ephemeral rebuild (no persisted run at the ceiling).
+    """
+
+    bm25_covered_through: CommitSeq | None = None
+    bm25_run_snapshot_commit_seq: CommitSeq | None = None
+    ceiling_commit_seq: Annotated[
+        int,
+        Field(
+            description='Resolved transaction-time ceiling: the `as_of_commit_seq` pin, or the\nhead commit_seq when the query was unpinned.',
+            ge=0,
+        ),
+    ]
+    vector_covered_through: CommitSeq | None = None
+    vector_run_snapshot_commit_seq: CommitSeq | None = None
+
+
 class SemanticPathResult(BaseModel):
     edges: list[str]
     evidence: list[str]
@@ -2678,6 +2701,7 @@ class SemanticSearchExplain(BaseModel):
             ge=0,
         ),
     ] = None
+    temporal_coverage: SearchTemporalCoverage | None = None
     total_ms: Annotated[int | None, Field(ge=0)] = None
     trained_fusion_run: Annotated[
         int | None,
@@ -4328,6 +4352,7 @@ class EmbeddingSearchExplain(BaseModel):
     ] = None
     source: EmbeddingIndexSource
     spaces_searched: Annotated[int, Field(ge=0)]
+    temporal_coverage: SearchTemporalCoverage | None = None
     unindexed_tail_commits: Annotated[int, Field(ge=0)]
 
 
@@ -4525,6 +4550,7 @@ class FullTextSearchExplain(BaseModel):
     overlay_candidates: Annotated[int, Field(ge=0)]
     ranged: RangedReadStats | None = None
     source: FullTextIndexSource
+    temporal_coverage: SearchTemporalCoverage | None = None
     term_count: Annotated[int, Field(ge=0)]
     unindexed_tail_commits: Annotated[int, Field(ge=0)]
 
@@ -7522,6 +7548,19 @@ class AskRequest(BaseModel):
 
 
 class EmbeddingSearchRequest(BaseModel):
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(
+            description='Snapshot pin (transaction-time ceiling): results hide every event\ncommitted after this sequence, reproducing that past snapshot. The ANN\nrun is selected as the newest run at or below the pin and the pin bounds\nthe forward overlay; candidate generation is never the correctness layer.\nOmitted means the current head.',
+            ge=0,
+        ),
+    ] = None
+    as_of_valid_time: Annotated[
+        str | None,
+        Field(
+            description='Valid-time cursor (RFC 3339): results reflect facts true at this\ninstant. Omitted means the latest valid time.'
+        ),
+    ] = None
     consistency: SearchConsistency | None = None
     dim: Annotated[int | None, Field(ge=0)] = None
     explain: bool
@@ -7628,6 +7667,19 @@ class EntityFilterRequest(BaseModel):
 
 
 class FullTextSearchRequest(BaseModel):
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(
+            description='Snapshot pin (transaction-time ceiling): results hide every event\ncommitted after this sequence, reproducing that past snapshot. The BM25\nrun is selected as the newest run at or below the pin and the pin bounds\nthe forward overlay; candidate generation is never the correctness layer.\nOmitted means the current head.',
+            ge=0,
+        ),
+    ] = None
+    as_of_valid_time: Annotated[
+        str | None,
+        Field(
+            description='Valid-time cursor (RFC 3339): results reflect facts true at this\ninstant. Omitted means the latest valid time.'
+        ),
+    ] = None
     consistency: SearchConsistency | None = None
     explain: bool
     facets: list[FacetRequest] | None = None
