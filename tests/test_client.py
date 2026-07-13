@@ -1113,6 +1113,20 @@ class SyncClientTests(unittest.TestCase):
             client.status()
         self.assertEqual(len(seen), 2)
 
+    def test_error_exposes_retry_metadata(self) -> None:
+        error = LbbError(
+            503,
+            "busy",
+            {
+                "code": "request_body_busy",
+                "message": "busy",
+                "retryable": True,
+                "retry_after_seconds": 2,
+            },
+        )
+        self.assertTrue(error.retryable)
+        self.assertEqual(error.retry_after_seconds, 2)
+
     def test_retry_after_header_controls_safe_retry_delay(self) -> None:
         seen: list[httpx.Request] = []
         with patch("lbb._sync_client.time.sleep") as sleep:
