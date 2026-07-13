@@ -1128,6 +1128,8 @@ class LbbErrorBody(BaseModel):
     message: str
     param: str | None = None
     request_id: str | None
+    retry_after_seconds: Annotated[int, Field(ge=0)] | None = None
+    retryable: bool | None = None
     type: Annotated[str, Field(examples=['invalid_request_error'])]
 
 

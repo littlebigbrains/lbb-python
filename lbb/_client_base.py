@@ -70,6 +70,8 @@ class LbbError(RuntimeError):
         self.param = self.error.get("param")
         self.request_id = self.error.get("request_id")
         self.doc_url = self.error.get("doc_url")
+        self.retryable = self.error.get("retryable")
+        self.retry_after_seconds = self.error.get("retry_after_seconds")
         super().__init__(self.error.get("message") or f"Little Big Brain {status_code}: {body}")
 
 
