@@ -225,6 +225,21 @@ class AskPlanExecutionModeV2(Enum):
     hybrid = 'hybrid'
 
 
+class AskPlanFailureCode(Enum):
+    planner_disabled = 'planner_disabled'
+    planner_unavailable = 'planner_unavailable'
+    no_class_candidates = 'no_class_candidates'
+    generation_failed = 'generation_failed'
+    validation_failed = 'validation_failed'
+
+
+class AskPlanFailureStage(Enum):
+    configuration = 'configuration'
+    target_type = 'target_type'
+    relation = 'relation'
+    anchor = 'anchor'
+
+
 class AskRelationDirectionV2(Enum):
     outgoing = 'outgoing'
     incoming = 'incoming'
@@ -3708,16 +3723,26 @@ class TrainGateReport(BaseModel):
 
     effect: Annotated[
         float,
-        Field(description='Challenger − champion hit-rate on the held-out eval slice.'),
+        Field(
+            description='Challenger − champion primary quality metric on the held-out eval\nslice (nDCG for fusion and retrieval-profile comparisons).'
+        ),
     ]
     hit_rate_delta: float | None = None
     labeled: Annotated[
         int, Field(description='Labeled eval probes the decision is over.', ge=0)
     ]
+    latency_p50_ratio: Annotated[
+        float | None,
+        Field(
+            description='Challenger / champion latency ratios at each reported percentile.'
+        ),
+    ] = None
+    latency_p95_ratio: float | None = None
+    latency_p99_ratio: float | None = None
     latency_ratio: Annotated[
         float,
         Field(
-            description='Challenger / champion mean-latency ratio on the eval slice.'
+            description='Legacy decision latency ratio. For configuration shadow evaluation this\nis the worst of p50/p95/p99; older trainer kinds may use their primary\nlatency statistic.'
         ),
     ]
     max_latency_ratio: Annotated[
@@ -3749,7 +3774,7 @@ class TrainGateReport(BaseModel):
     recall_delta: Annotated[
         float | None,
         Field(
-            description='Fusion-only paired held-out deltas. All must be non-negative.'
+            description='Paired held-out retrieval deltas. When present, all must be\nnon-negative.'
         ),
     ] = None
 
@@ -3948,12 +3973,27 @@ class VocabularyOrigin(Enum):
     imported = 'imported'
 
 
+class VocabularyPropertySignature(BaseModel):
+    name: str
+    required: bool
+    value_type: str
+
+
 class VocabularyProvenance(BaseModel):
     candidate_id: str
     namespace: str
     ontology_version: Annotated[int, Field(ge=0)]
     origin: VocabularyOrigin
     source_reference: str
+
+
+class VocabularyTypeSignature(BaseModel):
+    properties: list[VocabularyPropertySignature] | None = None
+    source_types: list[str] | None = None
+    stable_id: Annotated[str, Field(description='Frozen normalized schema identity.')]
+    super_types: list[str] | None = None
+    target_types: list[str] | None = None
+    value_type: str | None = None
 
 
 class WalCompactRequest(BaseModel):
@@ -4205,6 +4245,17 @@ class AskExplain(BaseModel):
             description='Wall-clock latency of each stage of the one call, in milliseconds.'
         ),
     ]
+
+
+class AskPlanFailure(BaseModel):
+    code: AskPlanFailureCode
+    retryable: Annotated[
+        bool,
+        Field(
+            description='True when retrying after the planner recovers can produce a plan.'
+        ),
+    ]
+    stage: AskPlanFailureStage
 
 
 class AskStructuredPlanV2(BaseModel):
@@ -5428,12 +5479,19 @@ class ResolvedQuery(BaseModel):
 
 
 class ResolvedTerm(BaseModel):
+    description: Annotated[
+        str | None,
+        Field(
+            description='Ontology description/definition when the resolved schema term carries\none. Candidate-free class resolution preserves tenant-authored class\ndocumentation instead of returning only a bare label.'
+        ),
+    ] = None
     kind: SuggestKind
     provenance: VocabularyProvenance | None = None
     score: Annotated[
         float, Field(description='Similarity to the input in [0, 1]; higher is closer.')
     ]
     text: str
+    type_signature: VocabularyTypeSignature | None = None
 
 
 class RetrievalPremiseRequest(BaseModel):
@@ -5942,6 +6000,12 @@ class SemanticGraphSearchResponse(BaseModel):
 class SemanticTraverseResponse(BaseModel):
     explain: SemanticTraverseExplain | None = None
     paths: list[PathResult]
+    projected_nodes: Annotated[
+        dict[str, dict[str, Any]] | None,
+        Field(
+            description='Requested properties keyed by entity id for every returned seed and\npath node. Empty when `fields` was omitted.'
+        ),
+    ] = None
     ranged: RangedTraverseStats | None = None
     seeds: list[ScoredEntityView]
     snapshot: SnapshotView
@@ -5960,6 +6024,12 @@ class ShaclValidationReport(BaseModel):
 class ShadowEvalResponse(BaseModel):
     challenger: ShadowArmResult
     champion: ShadowArmResult
+    gate: Annotated[
+        TrainGateReport,
+        Field(
+            description='Fail-closed promotion verdict over the same labeled queries and pinned\nsnapshot. Requires quality non-regression plus p50/p95/p99 latency\nratios within the configured ceiling; this endpoint still never\nperforms the promotion itself.'
+        ),
+    ]
     labeled: Annotated[
         int,
         Field(
@@ -6349,6 +6419,7 @@ class AskGrounding(BaseModel):
 
 
 class AskQuery(BaseModel):
+    plan_failure: AskPlanFailure | None = None
     query: Annotated[
         str, Field(description='The retrieval query text that was executed.')
     ]
@@ -8045,6 +8116,12 @@ class SemanticTraverseRequest(BaseModel):
     as_of_valid_time: str | None = None
     direction: ExpansionDirection
     explain: bool
+    fields: Annotated[
+        list[str] | None,
+        Field(
+            description='Entity properties to project for every returned seed and path node.\nProjections are reduced from the same snapshot used for authorization\nand traversal. Requesting fields routes the operation through the exact\nsnapshot path rather than ranged adjacency.'
+        ),
+    ] = None
     max_block_bytes: Annotated[
         int | None,
         Field(
