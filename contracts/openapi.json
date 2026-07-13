@@ -2494,6 +2494,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "temporal_coverage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTemporalCoverage",
+                "description": "Which persisted ANN run served this query relative to the resolved\n`as_of` ceiling. Present only when `explain` is set. See\n[`SearchTemporalCoverage`]."
+              }
+            ]
+          },
           "unindexed_tail_commits": {
             "minimum": 0,
             "type": "integer"
@@ -2517,6 +2528,22 @@
       },
       "EmbeddingSearchRequest": {
         "properties": {
+          "as_of_commit_seq": {
+            "description": "Snapshot pin (transaction-time ceiling): results hide every event\ncommitted after this sequence, reproducing that past snapshot. The ANN\nrun is selected as the newest run at or below the pin and the pin bounds\nthe forward overlay; candidate generation is never the correctness layer.\nOmitted means the current head.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "as_of_valid_time": {
+            "description": "Valid-time cursor (RFC 3339): results reflect facts true at this\ninstant. Omitted means the latest valid time.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "consistency": {
             "oneOf": [
               {
@@ -3981,6 +4008,17 @@
           "source": {
             "$ref": "#/components/schemas/FullTextIndexSource"
           },
+          "temporal_coverage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTemporalCoverage",
+                "description": "Which persisted run served this query relative to the resolved `as_of`\nceiling, and how far the forward overlay had to reach. Present only when\n`explain` is set. See [`SearchTemporalCoverage`]."
+              }
+            ]
+          },
           "term_count": {
             "minimum": 0,
             "type": "integer"
@@ -4005,6 +4043,22 @@
       },
       "FullTextSearchRequest": {
         "properties": {
+          "as_of_commit_seq": {
+            "description": "Snapshot pin (transaction-time ceiling): results hide every event\ncommitted after this sequence, reproducing that past snapshot. The BM25\nrun is selected as the newest run at or below the pin and the pin bounds\nthe forward overlay; candidate generation is never the correctness layer.\nOmitted means the current head.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "as_of_valid_time": {
+            "description": "Valid-time cursor (RFC 3339): results reflect facts true at this\ninstant. Omitted means the latest valid time.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "consistency": {
             "oneOf": [
               {
@@ -12981,6 +13035,63 @@
         ],
         "type": "object"
       },
+      "SearchTemporalCoverage": {
+        "description": "How a temporally-pinned (or head) search resolved run selection: the\neffective `as_of` ceiling, the base snapshot of the selected persisted\nrun(s), and the highest commit each leg's run+segments actually covered\n(the forward WAL overlay covers `(covered_through, ceiling]`). Distinct from\nthe ontology-inspect `TemporalCoverage` type. Per-leg fields are `None` when\nthat leg served from an ephemeral rebuild (no persisted run at the ceiling).",
+        "properties": {
+          "bm25_covered_through": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Highest commit the BM25 run + applicable delta segments cover at the\nceiling; the BM25 overlay covers `(bm25_covered_through, ceiling]`."
+              }
+            ]
+          },
+          "bm25_run_snapshot_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Base snapshot commit_seq of the selected BM25 run (`None` if the BM25 leg\nwas disabled or degraded to an ephemeral rebuild)."
+              }
+            ]
+          },
+          "ceiling_commit_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "Resolved transaction-time ceiling: the `as_of_commit_seq` pin, or the\nhead commit_seq when the query was unpinned."
+          },
+          "vector_covered_through": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Highest commit the ANN run + applicable delta segments cover at the\nceiling (same semantics as `bm25_covered_through`); the ANN overlay\ncovers `(vector_covered_through, ceiling]`."
+              }
+            ]
+          },
+          "vector_run_snapshot_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Base snapshot commit_seq of the selected ANN run (`None` if the vector\nleg was disabled or degraded to an ephemeral rebuild)."
+              }
+            ]
+          }
+        },
+        "required": [
+          "ceiling_commit_seq"
+        ],
+        "type": "object"
+      },
       "SemanticGraphSearchRequest": {
         "properties": {
           "as_of_commit_seq": {
@@ -13326,6 +13437,17 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "temporal_coverage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTemporalCoverage",
+                "description": "Which persisted runs served this search relative to the resolved `as_of`\nceiling (BM25 and vector legs). Present only when `explain` is set. See\n[`SearchTemporalCoverage`]."
+              }
+            ]
           },
           "total_ms": {
             "format": "int64",
