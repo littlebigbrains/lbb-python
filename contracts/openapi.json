@@ -1475,6 +1475,14 @@
               }
             ]
           },
+          "drain_pressure": {
+            "description": "R27d(1) advisory pacing telemetry: the WAL drain pressure at ack time as a\n`0.0`–`1.0` tail-fill ratio. Present only once the tail is over half full.\nClients SHOULD reduce write concurrency as this rises; advisory only.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "edge_event_ids": {
             "items": {
               "$ref": "#/components/schemas/EdgeEventId"
@@ -1518,6 +1526,15 @@
               "$ref": "#/components/schemas/SkippedEdge"
             },
             "type": "array"
+          },
+          "throttle_ms": {
+            "description": "R27d(1) advisory pacing telemetry: the pacing latency this write ack\nabsorbed — head-lane serialization plus admission wait — in whole\nmilliseconds. Present only past a noise floor (a fast commit omits it) and\nmirrored to the `X-LBB-Throttle-Ms` response header. Clients SHOULD reduce\nwrite concurrency as this rises; it is never load-bearing for correctness.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "visibility_token": {
             "type": "string"
@@ -4801,6 +4818,14 @@
           "commit_seq": {
             "$ref": "#/components/schemas/CommitSeq"
           },
+          "drain_pressure": {
+            "description": "R27d(1) advisory WAL drain pressure (0.0–1.0), mirrored from\n`commit.drain_pressure`. Present only once the tail is over half full.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "edges_written": {
             "minimum": 0,
             "type": "integer"
@@ -4821,6 +4846,15 @@
           "replayed": {
             "description": "Top-level replay signal for idempotency-key collisions/retries. Mirrors\n`commit.idempotent_replay` so callers do not have to unwrap the commit\nenvelope before deciding whether anything new was written.",
             "type": "boolean"
+          },
+          "throttle_ms": {
+            "description": "R27d(1) advisory pacing telemetry, mirrored from `commit.throttle_ms` to\nthe envelope top level (like `replayed`) and to the `X-LBB-Throttle-Ms`\nresponse header. Present only past a noise floor; clients SHOULD reduce\nwrite concurrency as it rises.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "visibility_token": {
             "type": "string"
