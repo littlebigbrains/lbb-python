@@ -7491,6 +7491,12 @@ class TripletCommitFile(BaseModel):
 class CommitResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     conformance: ConformanceReport | None = None
+    drain_pressure: Annotated[
+        float | None,
+        Field(
+            description='R27d(1) advisory pacing telemetry: the WAL drain pressure at ack time as a\n`0.0`–`1.0` tail-fill ratio. Present only once the tail is over half full.\nClients SHOULD reduce write concurrency as this rises; advisory only.'
+        ),
+    ] = None
     edge_event_ids: list[str]
     entity_ids: list[str]
     idempotent_replay: bool
@@ -7499,6 +7505,13 @@ class CommitResponse(BaseModel):
     observation_ids: list[str]
     schema_validation: SchemaAuditReport | None = None
     skipped_edges: list[SkippedEdge] | None = None
+    throttle_ms: Annotated[
+        int | None,
+        Field(
+            description='R27d(1) advisory pacing telemetry: the pacing latency this write ack\nabsorbed — head-lane serialization plus admission wait — in whole\nmilliseconds. Present only past a noise floor (a fast commit omits it) and\nmirrored to the `X-LBB-Throttle-Ms` response header. Clients SHOULD reduce\nwrite concurrency as this rises; it is never load-bearing for correctness.',
+            ge=0,
+        ),
+    ] = None
     visibility_token: str
     written_properties: Annotated[
         list[EntityFieldsWritten] | None,
@@ -7527,6 +7540,12 @@ class EmbeddingIndexInspectResponse(BaseModel):
 class GraphCommitResponse(BaseModel):
     commit: CommitResponse
     commit_seq: Annotated[int, Field(ge=0)]
+    drain_pressure: Annotated[
+        float | None,
+        Field(
+            description='R27d(1) advisory WAL drain pressure (0.0–1.0), mirrored from\n`commit.drain_pressure`. Present only once the tail is over half full.'
+        ),
+    ] = None
     edges_written: Annotated[int, Field(ge=0)]
     entities_written: Annotated[int, Field(ge=0)]
     graph_created: bool
@@ -7538,6 +7557,13 @@ class GraphCommitResponse(BaseModel):
             description='Top-level replay signal for idempotency-key collisions/retries. Mirrors\n`commit.idempotent_replay` so callers do not have to unwrap the commit\nenvelope before deciding whether anything new was written.'
         ),
     ]
+    throttle_ms: Annotated[
+        int | None,
+        Field(
+            description='R27d(1) advisory pacing telemetry, mirrored from `commit.throttle_ms` to\nthe envelope top level (like `replayed`) and to the `X-LBB-Throttle-Ms`\nresponse header. Present only past a noise floor; clients SHOULD reduce\nwrite concurrency as it rises.',
+            ge=0,
+        ),
+    ] = None
     visibility_token: str
     written_properties: Annotated[
         list[EntityFieldsWritten] | None,

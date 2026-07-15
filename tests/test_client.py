@@ -1118,8 +1118,8 @@ class SyncClientTests(unittest.TestCase):
             503,
             "busy",
             {
-                "code": "request_body_busy",
-                "message": "busy",
+                "code": "server_busy",
+                "message": "the server is briefly busy; retry after the indicated delay",
                 "retryable": True,
                 "retry_after_seconds": 2,
             },
