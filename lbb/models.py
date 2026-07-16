@@ -781,6 +781,14 @@ class GraphBranchCreateRequest(BaseModel):
     from_branch: str
 
 
+class GraphBranchDeleteResponse(BaseModel):
+    branch_id: str
+    deleted_bytes: Annotated[int, Field(ge=0)]
+    deleted_objects: Annotated[int, Field(ge=0)]
+    graph_id: str
+    ok: bool
+
+
 class GraphBranchMergeRequest(BaseModel):
     """
     `POST /v1/graph/branch/merge` — replay a child branch's commits onto its
@@ -869,6 +877,15 @@ class GraphChangesResponse(BaseModel):
     truncated: Annotated[
         bool, Field(description='More commits remained beyond this page.')
     ]
+
+
+class GraphDeleteResponse(BaseModel):
+    deleted_branches: Annotated[int, Field(ge=0)]
+    deleted_bytes: Annotated[int, Field(ge=0)]
+    deleted_feedback_objects: Annotated[int, Field(ge=0)]
+    deleted_objects: Annotated[int, Field(ge=0)]
+    graph_id: str
+    ok: bool
 
 
 class GraphExportRequest(BaseModel):
@@ -1082,6 +1099,20 @@ class HybridSourceRank(BaseModel):
     weighted_rrf: float
 
 
+class IndexGcJobProgress(BaseModel):
+    deleted_bytes: Annotated[int, Field(ge=0)]
+    deleted_objects: Annotated[int, Field(ge=0)]
+    heartbeat_micros: int | None = None
+    reclaimable_bytes: Annotated[int, Field(ge=0)]
+    reclaimable_objects: Annotated[int, Field(ge=0)]
+    reclaimable_runs: Annotated[int, Field(ge=0)]
+    scanned_bytes: Annotated[int, Field(ge=0)]
+    scanned_objects: Annotated[int, Field(ge=0)]
+    scanned_runs: Annotated[int, Field(ge=0)]
+    stage: str
+    worker: str | None = None
+
+
 class IndexGcRequest(BaseModel):
     dry_run: Annotated[
         bool | None,
@@ -1196,6 +1227,23 @@ class ManagedEmbeddingBackfillResponse(BaseModel):
     truncated: bool
 
 
+class ManagedEmbeddingModel(BaseModel):
+    """
+    One model returned by the live managed-embedding service catalog.
+    """
+
+    context_length: Annotated[int | None, Field(ge=0)] = None
+    id: str
+    input_modalities: list[str] | None = None
+    name: str
+    prompt_price: Annotated[
+        str | None,
+        Field(
+            description='Provider prompt price as a decimal USD/token string when advertised.'
+        ),
+    ] = None
+
+
 class ManagedEmbeddingPromotionEvals(BaseModel):
     """
     Quality comparison used when promoting a fine-tuned embedding run.
@@ -1205,6 +1253,15 @@ class ManagedEmbeddingPromotionEvals(BaseModel):
     baseline_ndcg: float
     tier: str
     trained_ndcg: float
+
+
+class ManagedEmbeddingService(Enum):
+    """
+    Service used to generate managed corpus and query embeddings.
+    """
+
+    modal = 'modal'
+    open_router = 'open_router'
 
 
 class ManagedEmbeddingSource(Enum):
@@ -4689,8 +4746,7 @@ class GraphKey(BaseModel):
 
 class GraphListResponse(BaseModel):
     """
-    The graphs that exist under a tenant (one stack's tenant in SaaS mode),
-    enumerated by a bounded child-prefix listing of the object store.
+    The live, head-backed graphs under a tenant (one stack in SaaS mode).
     """
 
     data: list[GraphSummary]
@@ -4893,6 +4949,8 @@ class IndexGcResponse(BaseModel):
     dry_run: bool
     kept_runs: Annotated[int, Field(ge=0)]
     runs: list[IndexRunView]
+    scanned_bytes: Annotated[int, Field(ge=0)]
+    scanned_objects: Annotated[int, Field(ge=0)]
     skipped_branch_shared: Annotated[
         bool,
         Field(
@@ -4941,6 +4999,7 @@ class ManagedEmbeddingConfig(BaseModel):
     metric: VectorMetric
     model_id: str
     run_id: str | None = None
+    service: ManagedEmbeddingService
     source: ManagedEmbeddingSource
     version: Annotated[int, Field(ge=0)]
 
@@ -4952,10 +5011,17 @@ class ManagedEmbeddingConfigRequest(BaseModel):
 
     auto_embed_query: bool | None = None
     base_model: str | None = None
-    dim: Annotated[int, Field(ge=0)]
+    dim: Annotated[
+        int | None,
+        Field(
+            description="Vector width. Required for `modal`; optional for `open_router`, where a\none-text validation call discovers the model's native width.",
+            ge=0,
+        ),
+    ] = None
     metric: VectorMetric | None = None
     model_id: str
     run_id: str | None = None
+    service: ManagedEmbeddingService | None = None
     source: ManagedEmbeddingSource | None = None
 
 
@@ -4966,6 +5032,17 @@ class ManagedEmbeddingConfigResponse(BaseModel):
 
     config: ManagedEmbeddingConfig | None = None
     configured: bool
+    reconciliation: ManagedEmbeddingBackfillJobStatusResponse | None = None
+
+
+class ManagedEmbeddingModelsResponse(BaseModel):
+    """
+    Live embedding models available on this deployment.
+    """
+
+    configured: bool
+    models: list[ManagedEmbeddingModel] | None = None
+    service: ManagedEmbeddingService
 
 
 class ManagedEmbeddingPromoteResponse(BaseModel):
@@ -6850,6 +6927,19 @@ class HybridMultiSearchResponse(BaseModel):
     snapshot: SnapshotView
 
 
+class IndexGcJobStatusResponse(BaseModel):
+    attempts: Annotated[int, Field(ge=0)]
+    enqueued_at_micros: int
+    graph: GraphKey
+    job_id: str
+    progress: IndexGcJobProgress | None = None
+    request: IndexGcRequest
+    result: IndexGcResponse | None = None
+    status: str
+    terminal_error: str | None = None
+    updated_at_micros: int
+
+
 class InferenceRule(BaseModel):
     """
     A single inference rule (SHACL-AF `sh:TripleRule` shape): a BGP `body` (the
@@ -7281,7 +7371,10 @@ class SearchIndexJobStatusResponse(BaseModel):
     result: SearchIndexRunResponse | None = None
     stage: str | None = None
     status: Annotated[
-        str, Field(description='`pending` | `running` | `succeeded` | `failed`.')
+        str,
+        Field(
+            description='`pending` | `running` | `succeeded` | `failed` | `cancelled`.'
+        ),
     ]
     terminal_error: str | None = None
     updated_at_micros: int

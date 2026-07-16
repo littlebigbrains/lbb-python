@@ -77,6 +77,9 @@ graph.facts.import_ndjson(records, strict=True, index=False,
 # Durable indexing and training.
 job = lbb.index_submit({}, idempotency_key="index:head:147")
 status = lbb.index_job(job.job_id)
+cancelled = lbb.cancel_index_job(job.job_id)
+gc = lbb.index_gc_submit({"dry_run": False}, idempotency_key="gc:2026-07-15")
+gc_status = lbb.index_gc_job(gc.job_id)
 train = lbb.train_submit({"kind": "fusion", "force": True},
                          idempotency_key="fusion:gate:7")
 progress = lbb.train_job(train.job_id).progress
@@ -89,6 +92,10 @@ rows = lbb.query.sparql({"query": "SELECT ?s WHERE { ?s ?p ?o }"})
 # Cursor-safe iteration.
 for entity in lbb.entities.iter(fields=["text", "acl"]):
     print(entity.name, entity.attributes)
+
+# Branch deletion protects the final live branch; graph deletion removes all branches.
+lbb.graph("main", branch="review").delete_branch(confirm="review")
+lbb.graph("main").delete(confirm="main")
 ```
 
 `LbbClient` and `AsyncLbbClient` expose the same capabilities. Preferred
