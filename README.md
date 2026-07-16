@@ -1,25 +1,20 @@
-# little big brain Python SDK
+# littlebigbrain — Python SDK
 
-The Python client for little big brain. Use it to ingest records, build BM25 +
-vector + graph indexes, search with authorization filters, traverse the graph,
-and turn retrieval feedback into training data.
+The Python client for [Little Big Brain](https://littlebigbrain.com) — write graph facts, build indexes, and run hybrid search over one snapshot. Built on `httpx` + `pydantic`; ships sync and async clients.
 
 ```sh
-pip install littlebigbrain
+pip install littlebigbrain   # imports as `lbb`
 ```
 
-## Five-minute start
+## Quickstart
 
 ```python
 from lbb import LbbClient
 
-with LbbClient(
-    "https://db.eu.littlebigbrain.com",
-    api_key="lbb_sk_live_...",
-    graph="main",
-) as lbb:
+with LbbClient("https://db.eu.littlebigbrain.com", api_key="lbb_sk_live_...") as lbb:
     graph = lbb.graph("main")
 
+    # 1. Write a fact.
     graph.facts.create({
         "triplets": [{
             "source": {"type": "CONCEPT", "name": "handbook", "key": "doc:42"},
@@ -29,107 +24,82 @@ with LbbClient(
         }],
     }, idempotency_key="doc:42:v1")
 
+    # 2. Build persisted BM25 + vector + adjacency indexes and wait.
     lbb.indexes.run(wait=True)
-    results = lbb.graph_search({
-        "query": "how much annual leave do employees get?",
-        "targets": ["entities"],
-        "top_k": 10,
-    })
+
+    # 3. Hybrid search over the snapshot.
+    results = lbb.search.hybrid("how much annual leave do employees get?", top_k=5)
+    for hit in results.get("assertions", []):
+        print(hit["relation"]["name"], hit["score"])
 ```
 
-Stack keys belong on a server, worker, or secret-backed notebook—not in a
-browser bundle. Safe reads and idempotency-keyed writes retry transient errors
-and honor `Retry-After`.
+Facts are graph-scoped (`lbb.graph("main").facts`); indexes and search are client-level (`lbb.indexes`, `lbb.search`) and use the stack's default graph.
 
-## Enterprise-search integration
+## Examples
 
-For an enterprise-search retrieval adapter, keep the application database for
-users, connectors, tasks, and migration cursors. Put searchable documents,
-passages, graph facts, embeddings, BM25/ANN/adjacency indexes, ontology review,
-and retrieval feedback in LBB.
-
-The production sequence is:
-
-1. map a connector batch to stable-keyed document, passage, provenance, and edge records;
-2. call `graph.facts.import_ndjson(..., index=False, idempotency_key=...)`;
-3. submit one durable index job with `index_submit`, then reconnect with `index_job`;
-4. translate the product's ACL/scope filter into native set `overlaps` filters;
-5. call `graph_search` with projected fields and hydrate only the final top-k;
-6. submit grade-3 feedback for sources cited in the grounded answer;
-7. evolve ontology changes through draft → validate → promote/reject.
-
-For an LLM query planner, use `lbb.context.suggest(...)` to fill grounded
-schema/value prefixes and `lbb.context.resolve(...)` to snap free-text guesses
-onto real vocabulary. `resolve` uses the graph's managed embeddings when
-configured. Record adopted suggestions and accepted/rejected/corrected plans so
-the feedback can train a smaller planner and suggest ranker.
-
-See the complete [enterprise-search integration guide](https://docs.littlebigbrain.com/guides/enterprise-search/)
-for the record model, migration plan, acceptance gates, and capability mapping.
-
-## Useful surfaces
+**Search with filters.** Use the request body to filter before ranking — here, only facts an ACL principal may see:
 
 ```python
-# Bulk ingestion (flat or generated typed property values, including sets).
-graph.facts.import_ndjson(records, strict=True, index=False,
-                          idempotency_key="connector:batch:17")
-
-# Durable indexing and training.
-job = lbb.index_submit({}, idempotency_key="index:head:147")
-status = lbb.index_job(job.job_id)
-cancelled = lbb.cancel_index_job(job.job_id)
-gc = lbb.index_gc_submit({"dry_run": False}, idempotency_key="gc:2026-07-15")
-gc_status = lbb.index_gc_job(gc.job_id)
-train = lbb.train_submit({"kind": "fusion", "force": True},
-                         idempotency_key="fusion:gate:7")
-progress = lbb.train_job(train.job_id).progress
-
-# Typed namespaces.
-answer = lbb.context.ask({"question": "what changed?"})
-ontology = lbb.ontology.view(counts=True)
-rows = lbb.query.sparql({"query": "SELECT ?s WHERE { ?s ?p ?o }"})
-
-# Cursor-safe iteration.
-for entity in lbb.entities.iter(fields=["text", "acl"]):
-    print(entity.name, entity.attributes)
-
-# Branch deletion protects the final live branch; graph deletion removes all branches.
-lbb.graph("main", branch="review").delete_branch(confirm="review")
-lbb.graph("main").delete(confirm="main")
+results = lbb.graph_search({
+    "query": "incident response runbook",
+    "targets": ["entities"],
+    "search": {
+        "filters": {
+            "op": "overlaps",
+            "field": "acl",
+            "values": ["user:rino@example.com", "group:engineering"],
+        },
+    },
+    "top_k": 20,
+})
 ```
 
-`LbbClient` and `AsyncLbbClient` expose the same capabilities. Preferred
-namespaces return generated Pydantic models; compatibility helpers return
-parsed dictionaries. `LbbError` includes HTTP status, structured code,
-parameter, request ID, and documentation URL. `raw_request(...)` exposes
-attempt count, elapsed time, response headers, build commit, and replica.
+**Bulk import.** Load many records as NDJSON in one call:
 
-## Major capability areas
+```python
+lbb.graph("main").facts.import_ndjson(
+    [
+        {"source": {"type": "DOC", "name": "handbook", "key": "doc:42"},
+         "relation": "HAS_PASSAGE",
+         "target": {"type": "PASSAGE", "name": "leave-policy", "key": "p:42:1"}},
+        # …one record per line
+    ],
+    idempotency_key="handbook-batch-1",
+)
+```
 
-- `graph(...).facts`: commit, dry-run, retract, NDJSON/RDF import
-- `search` / `graph_search`: lexical, BM25, vector, hybrid, filters, facets
-- `indexes`: full build, durable submit/status, delta, garbage collection
-- `entities`: projected reads, native filtering, cursor-safe iteration
-- `ontology` / `schema`: define, evolve, induce, draft review, SHACL lifecycle
-- `query`: SPARQL, structured query, analytics, SHACL, inference, conflicts
-- `context`: grounded ask, suggest, resolve, decode, groundability
-- feedback/training: labels, export/summary, durable trainer jobs and progress;
-  typed suggestion/planner supervision helpers with validation before transport,
-  automatic idempotency keys, and durable receipt/trainability acknowledgements
-- temporal graph: traversal, state, history, lineage, snapshot pins
+**Time-travel read.** Pin a SPARQL query to a past instant — results reflect the graph as it was then:
 
-Generated models come from the bundled OpenAPI contract and are available in
-`lbb.models`.
+```python
+results = lbb.sparql(
+    "SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10",
+    as_of_valid_time="2026-01-01T00:00:00Z",
+)
+print(results.vars)
+for row in results:           # iterates flat {var: value} dicts
+    print(row)
+```
+
+The async client mirrors every method — `async with AsyncLbbClient(...) as lbb:` and `await` each call.
+
+## Errors & retries
+
+Methods return parsed dictionaries and raise `LbbError` (with `status_code`, `code`, `param`, `request_id`, and `doc_url`) on any non-2xx response. Safe reads and idempotency-keyed writes retry `429`/`5xx` and transport failures with full-jitter backoff, bounded by a retry budget (`retry_budget_ms`, default 60s) rather than a fixed count, and honor `Retry-After` — a terminal error the server marks non-retryable surfaces immediately. Use `raw_request(...)` for response headers, request id, and retry/timing metadata.
+
+## More
+
+Beyond the quickstart: `entities.iter(...)` for cursor-safe iteration, `context.ask(...)` for grounded answers, `ontology`/`schema` for the SHACL lifecycle, durable index and training jobs (`index_submit`/`index_job`), managed embeddings, traversal, and temporal history. Typed Pydantic responses are available via the matching `*_model` / `*_page` helpers; generated models live in `lbb.models`.
+
+Full reference and guides: [docs.littlebigbrain.com/sdks/python](https://docs.littlebigbrain.com/sdks/python/).
 
 ## Develop
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]" httpx pydantic
+.venv/bin/pip install -e ".[dev]"
 ruff check lbb tests
 mypy lbb
 pytest tests
 ```
 
-`lbb/models.py` is generated. Change the Rust API types and regenerate clients
-instead of editing it by hand.
+`lbb/models.py` is generated from the API contract — change the Rust API types and regenerate rather than editing it by hand.
