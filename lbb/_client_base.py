@@ -88,9 +88,18 @@ class LbbError(RuntimeError):
         self.doc_url = self.error.get("doc_url")
         self.retryable = self.error.get("retryable")
         self.retry_after_seconds = self.error.get("retry_after_seconds")
+        self.endpoint_hint = _endpoint_migration_hint(self.code)
         super().__init__(
             self.error.get("message") or f"Little Big Brain {status_code}: {body}"
         )
+
+
+def _endpoint_migration_hint(code: str | None) -> str | None:
+    if code == "stack_endpoint_required":
+        return "Copy endpoint_url from the stack's Connect page and use it as base_url."
+    if code == "stack_endpoint_mismatch":
+        return "Use the endpoint_url and API key from the same stack."
+    return None
 
 
 @dataclass(frozen=True)

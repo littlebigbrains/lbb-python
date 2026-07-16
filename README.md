@@ -11,7 +11,11 @@ pip install littlebigbrain   # imports as `lbb`
 ```python
 from lbb import LbbClient
 
-with LbbClient("https://db.eu.littlebigbrain.com", api_key="lbb_sk_live_...") as lbb:
+with LbbClient(
+    "https://0abc1def--production.db.eu.littlebigbrain.com",
+    api_key="lbb_sk_live_...",
+    graph="main",
+) as lbb:
     graph = lbb.graph("main")
 
     # 1. Write a fact.
@@ -32,6 +36,10 @@ with LbbClient("https://db.eu.littlebigbrain.com", api_key="lbb_sk_live_...") as
     for hit in results.get("assertions", []):
         print(hit["relation"]["name"], hit["score"])
 ```
+
+For hosted use, pass the exact `endpoint_url` shown on the stack's Connect
+page. Omitting `base_url` retains the loopback default for local/self-hosted
+development only; graph and branch remain ordinary client scope parameters.
 
 Facts are graph-scoped (`lbb.graph("main").facts`); indexes and search are client-level (`lbb.indexes`, `lbb.search`) and use the stack's default graph.
 
