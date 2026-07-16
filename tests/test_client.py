@@ -1559,6 +1559,67 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(ctx.exception.request_id, "req_body")
         self.assertEqual(str(ctx.exception), "missing bearer")
 
+    def test_endpoint_error_preserves_code_and_migration_guidance(self) -> None:
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                [],
+                {
+                    "status": 421,
+                    "json": {
+                        "error": {
+                            "type": "routing_error",
+                            "code": "stack_endpoint_required",
+                            "message": "use the composite stack endpoint",
+                        }
+                    },
+                },
+            ),
+        ) as client:
+            with self.assertRaises(LbbError) as ctx:
+                client.status()
+        self.assertEqual(ctx.exception.status_code, 421)
+        self.assertEqual(ctx.exception.code, "stack_endpoint_required")
+        self.assertIn("endpoint_url", ctx.exception.endpoint_hint or "")
+
+    def test_composite_endpoint_421_403_are_terminal(self) -> None:
+        # Misdirection (421) and authorization (403) are not retryable by status
+        # (only 429/5xx are). A retry would waste the budget and delay the
+        # actionable endpoint hint, so a generous budget must be spent on exactly
+        # ONE attempt. Pins the contract against retry-classification drift.
+        for status, code in (
+            (421, "stack_endpoint_required"),
+            (403, "stack_endpoint_mismatch"),
+        ):
+            seen: list[httpx.Request] = []
+            with LbbClient(
+                "http://h",
+                max_retries=5,
+                retry_delay=0,
+                transport=capturing_transport(
+                    seen,
+                    [
+                        {
+                            "status": status,
+                            "json": {
+                                "error": {
+                                    "type": "routing_error",
+                                    "code": code,
+                                    "message": "misrouted",
+                                }
+                            },
+                        }
+                    ]
+                    * 6,
+                ),
+            ) as client:
+                with self.assertRaises(LbbError) as ctx:
+                    client.status()
+            self.assertEqual(ctx.exception.status_code, status)
+            self.assertEqual(ctx.exception.code, code)
+            self.assertIsNotNone(ctx.exception.endpoint_hint)
+            self.assertEqual(len(seen), 1)  # terminal ⇒ no retry
+
     def test_sparql_posts_text_and_parses_select_rows(self) -> None:
         seen: list[httpx.Request] = []
         envelope = {
