@@ -17,6 +17,7 @@ from .client import (
     ListPage,
     RawLbbResponse,
     RequestOptions,
+    RetryEvent,
     SparqlResults,
 )
 from .local import LbbCommandError, LbbLocalClient
@@ -29,6 +30,7 @@ __all__ = [
     "ListPage",
     "RawLbbResponse",
     "RequestOptions",
+    "RetryEvent",
     "SparqlResults",
     "LbbLocalClient",
     "LbbCommandError",

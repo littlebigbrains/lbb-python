@@ -19,8 +19,11 @@ from lbb.models import (
     EntityExplorerRow,
     EntityFilterResponse,
     GovernedConflictAggregationResponse,
+    GraphBranchDeleteResponse,
+    GraphDeleteResponse,
     GraphEdgeRow,
     GraphSummaryResponse,
+    IndexGcJobStatusResponse,
     OntologyDraft,
     OntologyEvolveRequest,
     RdfExportPreviewResponse,
@@ -166,7 +169,9 @@ def capturing_transport(
     captured: list[httpx.Request],
     responses: ResponseSpec | list[ResponseSpec] | None = None,
 ) -> httpx.MockTransport:
-    queue = list(responses if isinstance(responses, list) else [responses or {"json": {}}])
+    queue = list(
+        responses if isinstance(responses, list) else [responses or {"json": {}}]
+    )
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured.append(request)
@@ -185,7 +190,11 @@ class SyncClientTests(unittest.TestCase):
         seen: list[httpx.Request] = []
         payload = {
             "commit_seq": 0,
-            "graph": {"tenant_id": "tenant", "graph_id": "research", "branch_id": "analysis"},
+            "graph": {
+                "tenant_id": "tenant",
+                "graph_id": "research",
+                "branch_id": "analysis",
+            },
             "ontology_version": 1,
         }
         with LbbClient(
@@ -204,12 +213,16 @@ class SyncClientTests(unittest.TestCase):
             dict(seen[0].url.params), {"graph": "research", "branch": "analysis"}
         )
 
-    def test_namespace_facts_create_injects_auth_scope_version_and_idempotency(self) -> None:
+    def test_namespace_facts_create_injects_auth_scope_version_and_idempotency(
+        self,
+    ) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h:7400/",
             api_key="lbb_sk_test",
-            transport=capturing_transport(seen, {"json": {"commit": {"commit_seq": 1}}}),
+            transport=capturing_transport(
+                seen, {"json": {"commit": {"commit_seq": 1}}}
+            ),
         ) as client:
             result = client.graph("main", branch="b").facts.create(
                 {"triplets": []}, idempotency_key="ik_py_1"
@@ -218,7 +231,9 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(result["commit"]["commit_seq"], 1)
         request = seen[0]
         self.assertEqual(request.method, "POST")
-        self.assertEqual(str(request.url).split("?")[0], "http://h:7400/v1/graph/commit")
+        self.assertEqual(
+            str(request.url).split("?")[0], "http://h:7400/v1/graph/commit"
+        )
         self.assertEqual(dict(request.url.params), {"graph": "main", "branch": "b"})
         self.assertEqual(request.headers["authorization"], "Bearer lbb_sk_test")
         self.assertEqual(request.headers["lbb-version"], "2026-06-22")
@@ -256,7 +271,9 @@ class SyncClientTests(unittest.TestCase):
 
     def test_entities_namespace_encodes_list_filters(self) -> None:
         seen: list[httpx.Request] = []
-        with LbbClient("http://h", graph="g", transport=capturing_transport(seen)) as client:
+        with LbbClient(
+            "http://h", graph="g", transport=capturing_transport(seen)
+        ) as client:
             client.entities.list(type="SERVICE", limit=10, query="billing")
         params = dict(seen[0].url.params)
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/entities")
@@ -287,7 +304,9 @@ class SyncClientTests(unittest.TestCase):
         self.assertIsInstance(result, EntityFilterResponse)
         self.assertEqual(result.matched_count, 1)
         self.assertEqual(result.snapshot.commit_seq, 7)
-        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/entities/filter")
+        self.assertEqual(
+            str(seen[0].url).split("?")[0], "http://h/v1/graph/entities/filter"
+        )
         self.assertEqual(json.loads(seen[0].content), body)
 
     def test_ontology_evolve_models_have_stable_discriminated_names(self) -> None:
@@ -308,7 +327,9 @@ class SyncClientTests(unittest.TestCase):
 
     def test_sparql_select_posts_structured_body_with_group_keys(self) -> None:
         seen: list[httpx.Request] = []
-        with LbbClient("http://h", graph="g", transport=capturing_transport(seen)) as client:
+        with LbbClient(
+            "http://h", graph="g", transport=capturing_transport(seen)
+        ) as client:
             client.sparql_select(
                 {
                     "patterns": [
@@ -318,7 +339,9 @@ class SyncClientTests(unittest.TestCase):
                             "object": {"var": "comp"},
                         }
                     ],
-                    "group_keys": [{"property": {"var": "c", "field": "area", "as": "area"}}],
+                    "group_keys": [
+                        {"property": {"var": "c", "field": "area", "as": "area"}}
+                    ],
                     "aggregates": [{"func": "count", "as": "n"}],
                 }
             )
@@ -383,7 +406,9 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(json.loads(post.content)["search_id"], "srch_1")
         export = seen[1]
         self.assertEqual(export.method, "GET")
-        self.assertEqual(str(export.url).split("?")[0], "http://h/v1/search/feedback/export")
+        self.assertEqual(
+            str(export.url).split("?")[0], "http://h/v1/search/feedback/export"
+        )
 
     def test_search_feedback_summary_returns_constant_size_model(self) -> None:
         seen: list[httpx.Request] = []
@@ -439,7 +464,10 @@ class SyncClientTests(unittest.TestCase):
             "http://h", graph="g", transport=capturing_transport(seen, {"json": answer})
         ) as client:
             result = client.ask(
-                {"question": "which databases store customer identity data?", "top_k": 8}
+                {
+                    "question": "which databases store customer identity data?",
+                    "top_k": 8,
+                }
             )
         self.assertEqual(result["ask_id"], "ask_1")
         self.assertEqual(result["mode"], "resident_planner")
@@ -529,7 +557,9 @@ class SyncClientTests(unittest.TestCase):
         ) as client:
             rows = list(client.entities.iter(limit=1))
 
-        self.assertEqual([row.name for row in rows], ["auth-service", "billing-service"])
+        self.assertEqual(
+            [row.name for row in rows], ["auth-service", "billing-service"]
+        )
         self.assertTrue(all(isinstance(row, EntityExplorerRow) for row in rows))
         self.assertEqual(dict(seen[1].url.params)["cursor"], "cursor-2")
 
@@ -569,11 +599,141 @@ class SyncClientTests(unittest.TestCase):
         self.assertGreaterEqual(response.elapsed_ms, 0)
         self.assertEqual(seen[0].headers["x-client-trace"], "trace-1")
         self.assertEqual(seen[0].headers["user-agent"], f"littlebigbrain/{__version__}")
-        self.assertEqual(events, ["request:GET", "response:503", "request:GET", "response:200"])
+        self.assertEqual(
+            events, ["request:GET", "response:503", "request:GET", "response:200"]
+        )
+
+    def test_retryable_false_body_short_circuits_retries(self) -> None:
+        # A 429 the server marks terminal in the body (`retryable: false`, e.g. a
+        # durable quota rejection) is surfaced at once, not retried to the budget.
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            max_retries=5,
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "status": 429,
+                        "json": {
+                            "error": {
+                                "code": "training_budget_exceeded",
+                                "retryable": False,
+                            }
+                        },
+                    },
+                    {"json": {"ok": True}},
+                ],
+            ),
+        ) as client:
+            with self.assertRaises(LbbError) as ctx:
+                client.raw_request("GET", "/v1/status")
+        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertIs(ctx.exception.retryable, False)
+        self.assertEqual(len(seen), 1)  # terminal body ⇒ no retry
+
+    def test_deadline_budget_binds_before_max_retries(self) -> None:
+        # A retry_budget_ms shorter than the advertised Retry-After stops the loop
+        # before the count cap: the server suggests 5s, the budget is 0, so the
+        # first 429 surfaces without burning any of the five allowed retries.
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            max_retries=5,
+            retry_delay=0,
+            retry_budget_ms=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "status": 429,
+                        "headers": {"retry-after": "5"},
+                        "json": {"error": {"code": "ingest_busy"}},
+                    },
+                    {"json": {"ok": True}},
+                ],
+            ),
+        ) as client:
+            with self.assertRaises(LbbError) as ctx:
+                client.raw_request("GET", "/v1/status")
+        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertEqual(len(seen), 1)  # deadline bound the retry, not the count
+
+    def test_naked_lb_5xx_is_retried_with_backoff(self) -> None:
+        # A bare LB 502 with an HTML body (no error envelope) is a transient
+        # server_busy-equivalent: retried, then the recovered success is returned.
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            max_retries=3,
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {"status": 502, "text": "<html>502 Bad Gateway</html>"},
+                    {"json": {"ok": True}},
+                ],
+            ),
+        ) as client:
+            result = client.raw_request("GET", "/v1/status")
+        self.assertEqual(result.data, {"ok": True})
+        self.assertEqual(result.attempts, 2)
+        self.assertEqual(len(seen), 2)
+
+    def test_retry_after_body_field_used_when_header_absent(self) -> None:
+        # With no Retry-After *header*, the backoff honors the server's body hint
+        # `error.retry_after_seconds` rather than blind jitter.
+        from lbb._client_base import _retry_delay_seconds
+
+        response = httpx.Response(
+            503,
+            json={"error": {"code": "ingest_busy", "retry_after_seconds": 4}},
+        )
+        self.assertEqual(_retry_delay_seconds(response, 0.1, 0), 4.0)
+
+    def test_jittered_backoff_is_bounded(self) -> None:
+        # Full-jitter exponential: uniform(0, base * 2**attempt), capped at 60s.
+        from lbb._client_base import _jittered_backoff
+
+        for attempt in range(6):
+            ceiling = min(0.5 * (2**attempt), 60.0)
+            for _ in range(50):
+                delay = _jittered_backoff(0.5, attempt)
+                self.assertGreaterEqual(delay, 0.0)
+                self.assertLessEqual(delay, ceiling)
+
+    def test_on_retry_hook_surfaces_absorbed_retries(self) -> None:
+        # The ergonomic surface hides retries (returns only .data); the on_retry
+        # hook makes each absorbed retry observable.
+        events: list = []
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            max_retries=3,
+            retry_delay=0,
+            on_retry=events.append,
+            transport=capturing_transport(
+                seen,
+                [
+                    {"status": 429, "json": {"error": {"code": "ingest_busy"}}},
+                    {"json": {"ok": True}},
+                ],
+            ),
+        ) as client:
+            result = client.raw_request("GET", "/v1/status")
+        self.assertEqual(result.attempts, 2)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].status_code, 429)
+        self.assertEqual(events[0].error_code, "ingest_busy")
+        self.assertEqual(events[0].attempt, 1)
+        self.assertGreaterEqual(events[0].delay_seconds, 0.0)
 
     def test_graph_edges_scopes_and_pages_entity_edges(self) -> None:
         seen: list[httpx.Request] = []
-        with LbbClient("http://h", graph="g", transport=capturing_transport(seen)) as client:
+        with LbbClient(
+            "http://h", graph="g", transport=capturing_transport(seen)
+        ) as client:
             client.graph_edges(
                 type="SERVICE",
                 name="auth",
@@ -594,7 +754,9 @@ class SyncClientTests(unittest.TestCase):
 
     def test_commit_dry_run_sets_dry_run_and_no_idempotency_key(self) -> None:
         seen: list[httpx.Request] = []
-        with LbbClient("http://h", graph="g", transport=capturing_transport(seen)) as client:
+        with LbbClient(
+            "http://h", graph="g", transport=capturing_transport(seen)
+        ) as client:
             client.commit_dry_run({"triplets": []})
         request = seen[0]
         self.assertEqual(request.method, "POST")
@@ -604,7 +766,9 @@ class SyncClientTests(unittest.TestCase):
 
     def test_entities_list_projects_fields_and_bulk_ids(self) -> None:
         seen: list[httpx.Request] = []
-        with LbbClient("http://h", graph="g", transport=capturing_transport(seen)) as client:
+        with LbbClient(
+            "http://h", graph="g", transport=capturing_transport(seen)
+        ) as client:
             client.entities.list(fields=["title", "status"], ids=["abc", "def"])
         params = dict(seen[0].url.params)
         self.assertEqual(params["fields"], "title,status")
@@ -612,7 +776,9 @@ class SyncClientTests(unittest.TestCase):
 
     def test_entities_filter_by_attributes_builds_structured_sparql(self) -> None:
         seen: list[httpx.Request] = []
-        with LbbClient("http://h", graph="g", transport=capturing_transport(seen)) as client:
+        with LbbClient(
+            "http://h", graph="g", transport=capturing_transport(seen)
+        ) as client:
             client.entities.filter_by_attributes(
                 patterns=[
                     {
@@ -787,6 +953,73 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(seen[0].headers["idempotency-key"], "fiqa-index-1")
         self.assertEqual(dict(seen[1].url.params)["job_id"], "index_run:abc")
 
+    def test_index_cancel_gc_jobs_and_graph_deletion_are_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        index_payload = {
+            "job_id": "index_run:abc",
+            "status": "cancelled",
+            "graph": GRAPH,
+            "attempts": 0,
+            "enqueued_at_micros": 10,
+            "updated_at_micros": 11,
+        }
+        gc_payload = {
+            "job_id": "index_gc:abc",
+            "status": "pending",
+            "graph": GRAPH,
+            "request": {"dry_run": False},
+            "attempts": 0,
+            "enqueued_at_micros": 10,
+            "updated_at_micros": 10,
+        }
+        graph_payload = {
+            "ok": True,
+            "graph_id": "main",
+            "deleted_branches": 2,
+            "deleted_objects": 10,
+            "deleted_feedback_objects": 1,
+            "deleted_bytes": 100,
+        }
+        branch_payload = {
+            "ok": True,
+            "graph_id": "main",
+            "branch_id": "review",
+            "deleted_objects": 5,
+            "deleted_bytes": 50,
+        }
+        responses = [
+            index_payload,
+            gc_payload,
+            gc_payload,
+            gc_payload,
+            graph_payload,
+            branch_payload,
+        ]
+        with LbbClient(
+            "http://h",
+            graph="main",
+            branch="review",
+            transport=capturing_transport(
+                seen, [{"json": payload} for payload in responses]
+            ),
+        ) as client:
+            cancelled = client.cancel_index_job("index_run:abc")
+            gc = client.index_gc_submit({"dry_run": False}, idempotency_key="gc-1")
+            polled = client.index_gc_job(gc.job_id)
+            stopped = client.cancel_index_gc_job(gc.job_id)
+            deleted = client.delete_graph(confirm="main")
+            branch = client.delete_branch(confirm="review")
+        self.assertIsInstance(cancelled, SearchIndexJobStatusResponse)
+        self.assertIsInstance(gc, IndexGcJobStatusResponse)
+        self.assertIsInstance(polled, IndexGcJobStatusResponse)
+        self.assertIsInstance(stopped, IndexGcJobStatusResponse)
+        self.assertIsInstance(deleted, GraphDeleteResponse)
+        self.assertIsInstance(branch, GraphBranchDeleteResponse)
+        self.assertEqual(seen[0].method, "DELETE")
+        self.assertEqual(seen[1].headers["idempotency-key"], "gc-1")
+        self.assertEqual(seen[4].url.params["confirm"], "main")
+        self.assertEqual(seen[5].url.params["confirm"], "review")
+
     def test_governed_conflicts_returns_generated_model(self) -> None:
         seen: list[httpx.Request] = []
         payload = {
@@ -817,11 +1050,15 @@ class SyncClientTests(unittest.TestCase):
 
     def test_schema_namespace_uses_v1_schema_routes(self) -> None:
         seen: list[httpx.Request] = []
-        with LbbClient("http://h", graph="main", transport=capturing_transport(seen)) as client:
+        with LbbClient(
+            "http://h", graph="main", transport=capturing_transport(seen)
+        ) as client:
             client.schema.view()
             client.schema.view(audit=True)
             client.schema.preview({"desired_mode": "warn"})
-            client.schema.publish({"preview_digest": "sha256:test", "desired_mode": "warn"})
+            client.schema.publish(
+                {"preview_digest": "sha256:test", "desired_mode": "warn"}
+            )
             client.schema.audit()
 
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/schema")
@@ -837,14 +1074,20 @@ class SyncClientTests(unittest.TestCase):
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h",
-            transport=capturing_transport(seen, {"json": {"triplets": 1, "properties": 1}}),
+            transport=capturing_transport(
+                seen, {"json": {"triplets": 1, "properties": 1}}
+            ),
         ) as client:
             result = client.graph("research").facts.import_ndjson(
                 [
                     {
                         "source": {"type": "Author", "name": "Ada", "key": "orcid:1"},
                         "relation": "AFFILIATED_WITH",
-                        "target": {"type": "University", "name": "Cambridge", "key": "ror:1"},
+                        "target": {
+                            "type": "University",
+                            "name": "Cambridge",
+                            "key": "ror:1",
+                        },
                     },
                     {
                         "type": "Author",
@@ -1028,7 +1271,9 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(response.request_id, "req_py")
         self.assertEqual(response.version, "2026-06-22")
 
-    def test_raw_response_and_route_model_helpers_validate_generated_models(self) -> None:
+    def test_raw_response_and_route_model_helpers_validate_generated_models(
+        self,
+    ) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h",
@@ -1084,7 +1329,9 @@ class SyncClientTests(unittest.TestCase):
             ),
         ) as client:
             entities = client.entities.list_page(fields="*")
-            edges = client.graph_edges_page(type="SERVICE", name="auth-service", direction="out")
+            edges = client.graph_edges_page(
+                type="SERVICE", name="auth-service", direction="out"
+            )
 
         self.assertIsInstance(entities, ListPage)
         self.assertIsInstance(entities.data[0], EntityExplorerRow)
@@ -1105,7 +1352,10 @@ class SyncClientTests(unittest.TestCase):
             transport=capturing_transport(
                 seen,
                 [
-                    {"status": 503, "json": {"error": {"message": "retry", "code": "api"}}},
+                    {
+                        "status": 503,
+                        "json": {"error": {"message": "retry", "code": "api"}},
+                    },
                     {"json": {"ok": True}},
                 ],
             ),
@@ -1162,7 +1412,11 @@ class SyncClientTests(unittest.TestCase):
                     transport=capturing_transport(
                         seen,
                         [
-                            {"status": 429, "headers": {"retry-after": "0"}, "json": {}},
+                            {
+                                "status": 429,
+                                "headers": {"retry-after": "0"},
+                                "json": {},
+                            },
                             {"json": {"ok": True}},
                         ],
                     ),
@@ -1195,7 +1449,11 @@ class SyncClientTests(unittest.TestCase):
             "http://h",
             transport=capturing_transport(
                 [],
-                {"status": 200, "text": "not-json", "headers": {"x-request-id": "req_json"}},
+                {
+                    "status": 200,
+                    "text": "not-json",
+                    "headers": {"x-request-id": "req_json"},
+                },
             ),
         ) as client:
             with self.assertRaisesRegex(ValueError, r"HTTP 200 \(request req_json\)"):
@@ -1210,14 +1468,46 @@ class SyncClientTests(unittest.TestCase):
             transport=capturing_transport(
                 seen,
                 [
-                    {"status": 503, "json": {"error": {"message": "retry", "code": "api"}}},
+                    {
+                        "status": 503,
+                        "json": {"error": {"message": "retry", "code": "api"}},
+                    },
                     {"json": {"ok": True}},
                 ],
             ),
         ) as client:
             with self.assertRaises(LbbError):
-                client.delete_graph(confirm="main")
+                client.delete_branch(confirm="main")
         self.assertEqual(len(seen), 1)
+
+    def test_retries_idempotent_whole_graph_delete(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "ok": True,
+            "graph_id": "main",
+            "deleted_branches": 0,
+            "deleted_objects": 0,
+            "deleted_feedback_objects": 0,
+            "deleted_bytes": 0,
+        }
+        with LbbClient(
+            "http://h",
+            max_retries=1,
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "status": 503,
+                        "json": {"error": {"message": "retry", "code": "api"}},
+                    },
+                    {"json": payload},
+                ],
+            ),
+        ) as client:
+            result = client.delete_graph(confirm="main")
+        self.assertTrue(result.ok)
+        self.assertEqual(len(seen), 2)
 
     def test_retries_idempotency_keyed_writes(self) -> None:
         seen: list[httpx.Request] = []
@@ -1228,12 +1518,17 @@ class SyncClientTests(unittest.TestCase):
             transport=capturing_transport(
                 seen,
                 [
-                    {"status": 503, "json": {"error": {"message": "retry", "code": "api"}}},
+                    {
+                        "status": 503,
+                        "json": {"error": {"message": "retry", "code": "api"}},
+                    },
                     {"json": {"ok": True}},
                 ],
             ),
         ) as client:
-            client.graph("main").facts.create({"triplets": []}, idempotency_key="retry-safe")
+            client.graph("main").facts.create(
+                {"triplets": []}, idempotency_key="retry-safe"
+            )
         self.assertEqual(len(seen), 2)
         self.assertEqual(seen[0].headers["idempotency-key"], "retry-safe")
         self.assertEqual(seen[1].headers["idempotency-key"], "retry-safe")
@@ -1273,28 +1568,46 @@ class SyncClientTests(unittest.TestCase):
                     "results": {
                         "bindings": [
                             {
-                                "s": {"type": "uri", "value": "https://littlebigbrain.com/e/a"},
+                                "s": {
+                                    "type": "uri",
+                                    "value": "https://littlebigbrain.com/e/a",
+                                },
                                 "o": {"type": "literal", "value": "Acme"},
                             },
                             # Sparse row: `o` is unbound and omitted per the spec.
-                            {"s": {"type": "uri", "value": "https://littlebigbrain.com/e/b"}},
+                            {
+                                "s": {
+                                    "type": "uri",
+                                    "value": "https://littlebigbrain.com/e/b",
+                                }
+                            },
                         ]
                     },
                 }
             ),
-            "row_page": {"returned": 2, "total": 2, "offset": 0, "limit": 50, "has_more": False},
+            "row_page": {
+                "returned": 2,
+                "total": 2,
+                "offset": 0,
+                "limit": 50,
+                "has_more": False,
+            },
         }
         with LbbClient(
             "http://h",
             graph="main",
             transport=capturing_transport(seen, {"json": envelope}),
         ) as client:
-            results = client.sparql("SELECT ?s ?o WHERE { ?s ?p ?o }", reason=True, limit=50)
+            results = client.sparql(
+                "SELECT ?s ?o WHERE { ?s ?p ?o }", reason=True, limit=50
+            )
 
         # The request is a POST of the query text plus the engine options.
         request = seen[0]
         self.assertEqual(request.method, "POST")
-        self.assertEqual(str(request.url).split("?")[0], "http://h/v1/query/sparql-text")
+        self.assertEqual(
+            str(request.url).split("?")[0], "http://h/v1/query/sparql-text"
+        )
         self.assertEqual(dict(request.url.params), {"graph": "main"})
         self.assertEqual(
             json.loads(request.content),
@@ -1319,7 +1632,13 @@ class SyncClientTests(unittest.TestCase):
         seen: list[httpx.Request] = []
         envelope = {
             "results": json.dumps({"head": {}, "boolean": True}),
-            "row_page": {"returned": 0, "total": 0, "offset": 0, "limit": 0, "has_more": False},
+            "row_page": {
+                "returned": 0,
+                "total": 0,
+                "offset": 0,
+                "limit": 0,
+                "has_more": False,
+            },
         }
         with LbbClient(
             "http://h", transport=capturing_transport(seen, {"json": envelope})
@@ -1333,14 +1652,17 @@ class SyncClientTests(unittest.TestCase):
         with LbbClient(
             "http://h",
             graph="main",
-            transport=capturing_transport(seen, {"json": {"vars": ["s"], "solutions": []}}),
+            transport=capturing_transport(
+                seen, {"json": {"vars": ["s"], "solutions": []}}
+            ),
         ) as client:
             client.sparql_select({"patterns": [], "select": ["s"], "limit": 5})
         request = seen[0]
         self.assertEqual(request.method, "POST")
         self.assertEqual(str(request.url).split("?")[0], "http://h/v1/query/sparql")
-        self.assertEqual(json.loads(request.content), {"patterns": [], "select": ["s"], "limit": 5})
-
+        self.assertEqual(
+            json.loads(request.content), {"patterns": [], "select": ["s"], "limit": 5}
+        )
 
     def test_wait_for_index_lineage_retains_build_and_replica_headers(self) -> None:
         lineage = {
@@ -1407,6 +1729,62 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual([request.method for request in seen], ["POST", "GET"])
         self.assertEqual(json.loads(seen[0].content)["limit"], 10)
 
+    def test_scoped_embedding_model_choice_hides_provider_details(self) -> None:
+        seen: list[httpx.Request] = []
+        catalog_payload = {
+            "service": "open_router",
+            "configured": True,
+            "models": [
+                {
+                    "id": "openai/text-embedding-3-small",
+                    "name": "OpenAI: Text Embedding 3 Small",
+                    "context_length": 8192,
+                    "input_modalities": ["text"],
+                    "prompt_price": "0.00000002",
+                }
+            ],
+        }
+        config_payload = {
+            "configured": True,
+            "config": {
+                "version": 1,
+                "base_model": "openai/text-embedding-3-small",
+                "model_id": "openai/text-embedding-3-small",
+                "dim": 1536,
+                "metric": "cosine",
+                "service": "open_router",
+                "source": "stock",
+                "run_id": None,
+                "auto_embed_query": True,
+                "created_at_micros": 1,
+            },
+        }
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen, [{"json": catalog_payload}, {"json": config_payload}]
+            ),
+        ) as client:
+            graph = client.graph("main", branch="release")
+            result = graph.embedding_models()
+            configured = graph.set_embedding_model("openai/text-embedding-3-small")
+
+        self.assertTrue(result.configured)
+        self.assertEqual(result.models[0].id, "openai/text-embedding-3-small")
+        self.assertTrue(configured.configured)
+        self.assertEqual(
+            dict(seen[0].url.params),
+            {"graph": "main", "branch": "release"},
+        )
+        self.assertEqual(
+            json.loads(seen[1].content),
+            {
+                "model_id": "openai/text-embedding-3-small",
+                "service": "open_router",
+                "auto_embed_query": True,
+            },
+        )
+
     def test_sync_scoped_backfill_uses_durable_job_routes(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -1465,7 +1843,9 @@ class SyncClientTests(unittest.TestCase):
 
         self.assertEqual(observed.status, "running")
         self.assertEqual(cancelled.status, "cancelled")
-        self.assertEqual([request.method for request in seen], ["POST", "GET", "DELETE"])
+        self.assertEqual(
+            [request.method for request in seen], ["POST", "GET", "DELETE"]
+        )
 
 
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
@@ -1494,7 +1874,74 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             await client.status()
         self.assertEqual(len(seen), 2)
 
-    async def test_async_backfill_convenience_submits_and_polls_to_success(self) -> None:
+    async def test_async_retryable_false_body_short_circuits(self) -> None:
+        # Async parity: a `retryable: false` body is terminal, not retried.
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            max_retries=5,
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "status": 429,
+                        "json": {"error": {"code": "quota", "retryable": False}},
+                    },
+                    {"json": {"ok": True}},
+                ],
+            ),
+        ) as client:
+            with self.assertRaises(LbbError):
+                await client.raw_request("GET", "/v1/status")
+        self.assertEqual(len(seen), 1)
+
+    async def test_async_naked_lb_5xx_is_retried(self) -> None:
+        # Async parity: a bare LB 504 (HTML body, no envelope) is retried.
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            max_retries=3,
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {"status": 504, "text": "<html>504 Gateway Timeout</html>"},
+                    {"json": {"ok": True}},
+                ],
+            ),
+        ) as client:
+            result = await client.raw_request("GET", "/v1/status")
+        self.assertEqual(result.attempts, 2)
+        self.assertEqual(len(seen), 2)
+
+    async def test_async_deadline_budget_binds(self) -> None:
+        # Async parity: a 0 budget stops before the count cap under a 5s hint.
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            max_retries=5,
+            retry_delay=0,
+            retry_budget_ms=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "status": 429,
+                        "headers": {"retry-after": "5"},
+                        "json": {"error": {"code": "ingest_busy"}},
+                    },
+                    {"json": {"ok": True}},
+                ],
+            ),
+        ) as client:
+            with self.assertRaises(LbbError):
+                await client.raw_request("GET", "/v1/status")
+        self.assertEqual(len(seen), 1)
+
+    async def test_async_backfill_convenience_submits_and_polls_to_success(
+        self,
+    ) -> None:
         seen: list[httpx.Request] = []
         async with AsyncLbbClient(
             "http://h",
@@ -1580,7 +2027,9 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(observed.status, "running")
         self.assertEqual(cancelled.status, "cancelled")
-        self.assertEqual([request.method for request in seen], ["POST", "GET", "DELETE"])
+        self.assertEqual(
+            [request.method for request in seen], ["POST", "GET", "DELETE"]
+        )
 
     async def test_async_roundtrip_and_scope(self) -> None:
         seen: list[httpx.Request] = []
@@ -1590,7 +2039,9 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             graph="g",
             transport=capturing_transport(seen, {"json": {"state": []}}),
         ) as client:
-            result = await client.current_state({"entity": {"entity_type": "SERVICE", "name": "x"}})
+            result = await client.current_state(
+                {"entity": {"entity_type": "SERVICE", "name": "x"}}
+            )
         self.assertEqual(result, {"state": []})
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/query/state")
         self.assertEqual(seen[0].headers["authorization"], "Bearer k")
@@ -1604,13 +2055,23 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
                     "results": {"bindings": [{"s": {"type": "uri", "value": "x"}}]},
                 }
             ),
-            "row_page": {"returned": 1, "total": 1, "offset": 0, "limit": 50, "has_more": False},
+            "row_page": {
+                "returned": 1,
+                "total": 1,
+                "offset": 0,
+                "limit": 50,
+                "has_more": False,
+            },
         }
         async with AsyncLbbClient(
-            "http://h", graph="g", transport=capturing_transport(seen, {"json": envelope})
+            "http://h",
+            graph="g",
+            transport=capturing_transport(seen, {"json": envelope}),
         ) as client:
             results = await client.sparql("SELECT ?s WHERE { ?s ?p ?o }")
-        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/query/sparql-text")
+        self.assertEqual(
+            str(seen[0].url).split("?")[0], "http://h/v1/query/sparql-text"
+        )
         self.assertEqual(results.rows(), [{"s": "x"}])
 
     async def test_async_model_and_page_helpers(self) -> None:
@@ -1656,10 +2117,14 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         ) as client:
             rows = [row async for row in client.entities.iter(limit=1)]
 
-        self.assertEqual([row.name for row in rows], ["auth-service", "billing-service"])
+        self.assertEqual(
+            [row.name for row in rows], ["auth-service", "billing-service"]
+        )
         self.assertEqual(dict(seen[1].url.params)["cursor"], "cursor-2")
 
-    def test_typed_suggestion_helper_validates_before_transport_and_sets_idempotency(self) -> None:
+    def test_typed_suggestion_helper_validates_before_transport_and_sets_idempotency(
+        self,
+    ) -> None:
         seen: list[httpx.Request] = []
         ack = {
             "accepted": 1,

@@ -11,6 +11,8 @@ import httpx
 from . import models
 from ._client_base import (
     DEFAULT_BASE_URL,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_RETRY_BUDGET_MS,
     DEFAULT_TIMEOUT,
     Body,
     IndexLineageObservation,
@@ -18,11 +20,15 @@ from ._client_base import (
     ModelT,
     RawLbbResponse,
     RequestOptions,
+    RetryEvent,
     RowT,
     SparqlResults,
     _BaseLbbClient,
+    _body_marks_terminal,
     _ContextNamespace,
     _EntityNamespace,
+    _error_body_field,
+    _jittered_backoff,
     _OntologyNamespace,
     _parse_model,
     _QueryNamespace,
@@ -168,8 +174,10 @@ class LbbClient(_BaseLbbClient):
         graph: str | None = None,
         branch: str | None = None,
         api_version: str = "2026-06-22",
-        max_retries: int = 2,
+        max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
+        retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
+        on_retry: Callable[[RetryEvent], None] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         transport: httpx.BaseTransport | None = None,
         event_hooks: Mapping[str, list[Callable[[Any], Any]]] | None = None,
@@ -182,6 +190,8 @@ class LbbClient(_BaseLbbClient):
             api_version=api_version,
             max_retries=max_retries,
             retry_delay=retry_delay,
+            retry_budget_ms=retry_budget_ms,
+            on_retry=on_retry,
         )
         self.context = _SyncContextNamespace(self)
         self.entities = _SyncEntityNamespace(self)
@@ -217,23 +227,54 @@ class LbbClient(_BaseLbbClient):
         max_retries = request_options.get("max_retries", self._max_retries)
         if max_retries < 0:
             raise ValueError("max_retries must be non-negative")
+        retry_budget_ms = request_options.get("retry_budget_ms", self._retry_budget_ms)
         started_at = time.monotonic()
+        # Deadline is the binding limit; `max_retries` is a secondary safety cap.
+        deadline = started_at + max(0.0, retry_budget_ms) / 1000.0
         attempts = 0
         for attempt in range(max_retries + 1):
             attempts = attempt + 1
             try:
                 response = self._http.request(method, f"{self._base_url}{path}", **kwargs)
             except httpx.RequestError:
-                if can_retry and attempt < max_retries:
-                    time.sleep(self._retry_delay * (attempt + 1))
-                    continue
-                raise
+                if not (can_retry and attempt < max_retries):
+                    raise
+                delay = _jittered_backoff(self._retry_delay, attempt)
+                if time.monotonic() + delay > deadline:
+                    raise
+                self._emit_retry(
+                    method,
+                    path,
+                    attempt=attempts,
+                    status_code=None,
+                    error_code=None,
+                    delay_seconds=delay,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000,
+                )
+                time.sleep(delay)
+                continue
             if response.status_code // 100 == 2 or not _retryable(response.status_code):
                 break
-            if not can_retry:
+            if not can_retry or attempt >= max_retries:
                 break
-            if attempt < max_retries:
-                time.sleep(_retry_delay_seconds(response, self._retry_delay, attempt))
+            # Honor the server's typed body verdict: a terminal error
+            # (`retryable: false`, e.g. an exhausted quota) is surfaced at once
+            # rather than retried to the budget.
+            if _body_marks_terminal(response):
+                break
+            delay = _retry_delay_seconds(response, self._retry_delay, attempt)
+            if time.monotonic() + delay > deadline:
+                break
+            self._emit_retry(
+                method,
+                path,
+                attempt=attempts,
+                status_code=response.status_code,
+                error_code=_error_body_field(response, "code"),
+                delay_seconds=delay,
+                elapsed_ms=(time.monotonic() - started_at) * 1000,
+            )
+            time.sleep(delay)
         assert response is not None
         return _raw_response(
             response,

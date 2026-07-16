@@ -18,9 +18,10 @@ For the local ``lbb-testctl`` shell-out wrapper (tests, notebooks), see
 from __future__ import annotations
 
 import json
+import random
 import time
 import uuid
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -37,6 +38,18 @@ DEFAULT_BASE_URL = "http://127.0.0.1:7400"
 # well past a few seconds. Background index builds (index_run(background=True))
 # return immediately regardless.
 DEFAULT_TIMEOUT = 120.0
+# Retry count is now a secondary safety ceiling; the binding limit is the
+# deadline budget below. Raised 2 → 6 so a multi-second `Retry-After` sequence
+# (WAL depth-scaled backpressure, breaker cooldown) fits inside the budget
+# instead of exhausting a tiny count first.
+DEFAULT_MAX_RETRIES = 6
+# Deadline-based retry budget (ms): keep retrying an idempotent op until this
+# much wall-clock has elapsed, so a server's advertised backpressure window is
+# actually honored rather than truncated by the count cap. 60s matches the
+# `Retry-After` safety cap.
+DEFAULT_RETRY_BUDGET_MS = 60_000.0
+# Upper bound on any single computed backoff, matching the server's Retry-After cap.
+_RETRY_DELAY_CAP_SECONDS = 60.0
 
 # A request body: a plain mapping, or anything with a Pydantic ``model_dump``.
 Body = Mapping[str, Any] | Any
@@ -49,6 +62,7 @@ class RequestOptions(TypedDict, total=False):
 
     max_retries: int
     retry: bool
+    retry_budget_ms: float
     timeout: float
     headers: Mapping[str, str]
 
@@ -61,7 +75,9 @@ def _read_options(options: RequestOptions | None = None) -> RequestOptions:
 class LbbError(RuntimeError):
     """Raised when the server responds with a non-2xx status."""
 
-    def __init__(self, status_code: int, body: str, error: Mapping[str, Any] | None = None) -> None:
+    def __init__(
+        self, status_code: int, body: str, error: Mapping[str, Any] | None = None
+    ) -> None:
         self.status_code = status_code
         self.body = body
         self.error = dict(error or {})
@@ -72,7 +88,9 @@ class LbbError(RuntimeError):
         self.doc_url = self.error.get("doc_url")
         self.retryable = self.error.get("retryable")
         self.retry_after_seconds = self.error.get("retry_after_seconds")
-        super().__init__(self.error.get("message") or f"Little Big Brain {status_code}: {body}")
+        super().__init__(
+            self.error.get("message") or f"Little Big Brain {status_code}: {body}"
+        )
 
 
 @dataclass(frozen=True)
@@ -89,6 +107,31 @@ class RawLbbResponse:
     def model(self, model_cls: type[ModelT]) -> ModelT:
         """Validate this response's JSON payload as a generated Pydantic model."""
         return _parse_model(model_cls, self.data)
+
+
+@dataclass(frozen=True)
+class RetryEvent:
+    """Passed to a client's ``on_retry`` callback immediately before each backoff
+    sleep, so callers can observe the backpressure the retry loop is absorbing —
+    the visibility the ergonomic methods (``commit``, ``search``, …) otherwise
+    hide by returning only ``.data``. Fires once per retry; sum ``delay_seconds``
+    for the total wait, and read the final :attr:`RawLbbResponse.attempts` for the
+    count.
+    """
+
+    method: str
+    path: str
+    #: 1-based number of the attempt that just failed and triggered this retry.
+    attempt: int
+    #: HTTP status of the failed attempt, or ``None`` for a transport error.
+    status_code: int | None
+    #: Parsed ``error.code`` of the failed attempt, when the body carried one.
+    error_code: str | None
+    #: The backoff (seconds) about to be slept — Retry-After header, the server's
+    #: body ``retry_after_seconds`` hint, or full-jitter exponential backoff.
+    delay_seconds: float
+    #: Inclusive wall-clock elapsed (ms) across attempts and waits so far.
+    elapsed_ms: float
 
 
 @dataclass(frozen=True)
@@ -120,7 +163,9 @@ class ListPage(Generic[RowT]):
     total_count: int
 
     @classmethod
-    def from_payload(cls, payload: Mapping[str, Any], row_model: type[RowT]) -> ListPage[RowT]:
+    def from_payload(
+        cls, payload: Mapping[str, Any], row_model: type[RowT]
+    ) -> ListPage[RowT]:
         return cls(
             object=str(payload.get("object", "list")),
             data=[_parse_model(row_model, row) for row in payload.get("data", [])],
@@ -168,7 +213,9 @@ class SparqlResults:
         variables = list(head.get("vars") or [])
         page = dict(row_page) if row_page is not None else None
         if "boolean" in doc:
-            return cls(vars=variables, bindings=[], boolean=bool(doc["boolean"]), row_page=page)
+            return cls(
+                vars=variables, bindings=[], boolean=bool(doc["boolean"]), row_page=page
+            )
         results = doc.get("results") or {}
         bindings = [dict(binding) for binding in results.get("bindings") or []]
         return cls(vars=variables, bindings=bindings, boolean=None, row_page=page)
@@ -187,7 +234,8 @@ class SparqlResults:
     def rows(self) -> list[dict[str, Any]]:
         """The bindings as plain ``{variable: lexical_value}`` dicts."""
         return [
-            {name: term.get("value") for name, term in binding.items()} for binding in self.bindings
+            {name: term.get("value") for name, term in binding.items()}
+            for binding in self.bindings
         ]
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
@@ -297,11 +345,60 @@ def _decode_response_data(response: httpx.Response) -> Any:
 
 
 def _retryable(status_code: int) -> bool:
+    # A 429 or any 5xx is retryable by status alone. A naked LB `502/503/504`
+    # with an HTML body (no parseable error envelope) is a transient
+    # server_busy-equivalent and is retried here just like a typed overload.
     return status_code == 429 or status_code >= 500
 
 
 def _retry_allowed(method: str, idempotency_key: str | None) -> bool:
     return method.upper() in {"GET", "HEAD", "OPTIONS"} or idempotency_key is not None
+
+
+def _error_body_field(response: httpx.Response, name: str) -> Any:
+    """Read ``error.<name>`` from a JSON error body, or ``None`` when the body is
+    absent, naked (a bare LB 5xx), or not the standard error envelope."""
+    try:
+        parsed = json.loads(response.text)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    error = parsed.get("error") if isinstance(parsed, dict) else None
+    if isinstance(error, dict):
+        return error.get(name)
+    return None
+
+
+def _body_marks_terminal(response: httpx.Response) -> bool:
+    """True iff the server explicitly marked this error non-retryable in the body
+    (``error.retryable == false``) — a durable rejection (e.g. an exhausted quota)
+    the client must surface immediately instead of spending its retry budget."""
+    return _error_body_field(response, "retryable") is False
+
+
+def _jittered_backoff(base_delay: float, attempt: int) -> float:
+    """Full-jitter exponential backoff: ``uniform(0, base * 2**attempt)``, capped.
+
+    Replaces the old linear ``base * (attempt + 1)`` so many clients recovering
+    from one outage do not retry in lockstep (a thundering herd that re-triggers
+    the overload).
+    """
+    ceiling = min(max(0.0, base_delay) * (2**attempt), _RETRY_DELAY_CAP_SECONDS)
+    return random.uniform(0.0, ceiling)
+
+
+def _parse_retry_after_header(value: str, now: datetime | None) -> float | None:
+    """Parse a Retry-After delta-seconds or HTTP-date value into seconds (may be
+    negative for a past date; ``None`` when unparseable)."""
+    try:
+        return float(value)
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            return (retry_at - (now or datetime.now(timezone.utc))).total_seconds()
+        except (TypeError, ValueError, OverflowError):
+            return None
 
 
 def _retry_delay_seconds(
@@ -311,22 +408,27 @@ def _retry_delay_seconds(
     *,
     now: datetime | None = None,
 ) -> float:
-    """Honor Retry-After delta seconds or HTTP dates, capped at one minute."""
+    """The backoff before the next attempt, in seconds:
+
+    1. the ``Retry-After`` header (delta-seconds or HTTP-date), capped at 60s;
+    2. else the server's own body hint ``error.retry_after_seconds`` (the server
+       advertises this even on the rare path where the header is absent), capped
+       at 60s;
+    3. else full-jitter exponential backoff (see :func:`_jittered_backoff`).
+    """
     value = response.headers.get("retry-after")
     if value:
-        try:
-            seconds = float(value)
-        except ValueError:
-            try:
-                retry_at = parsedate_to_datetime(value)
-                if retry_at.tzinfo is None:
-                    retry_at = retry_at.replace(tzinfo=timezone.utc)
-                seconds = (retry_at - (now or datetime.now(timezone.utc))).total_seconds()
-            except (TypeError, ValueError, OverflowError):
-                seconds = -1
-        if seconds >= 0:
-            return min(seconds, 60.0)
-    return max(0.0, base_delay) * (attempt + 1)
+        seconds = _parse_retry_after_header(value, now)
+        if seconds is not None and seconds >= 0:
+            return min(seconds, _RETRY_DELAY_CAP_SECONDS)
+    body_hint = _error_body_field(response, "retry_after_seconds")
+    if (
+        isinstance(body_hint, (int, float))
+        and not isinstance(body_hint, bool)
+        and body_hint >= 0
+    ):
+        return min(float(body_hint), _RETRY_DELAY_CAP_SECONDS)
+    return _jittered_backoff(base_delay, attempt)
 
 
 def _raw_response(
@@ -369,8 +471,10 @@ class _BaseLbbClient:
         graph: str | None = None,
         branch: str | None = None,
         api_version: str = "2026-06-22",
-        max_retries: int = 2,
+        max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
+        retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
+        on_retry: Callable[[RetryEvent], None] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -379,6 +483,8 @@ class _BaseLbbClient:
         self._api_version = api_version
         self._max_retries = max_retries
         self._retry_delay = retry_delay
+        self._retry_budget_ms = retry_budget_ms
+        self._on_retry = on_retry
         self.search = _SearchNamespace(self)
         self.context = _ContextNamespace(self)
         self.indexes = _IndexNamespace(self)
@@ -423,13 +529,43 @@ class _BaseLbbClient:
         """Build identical request options for the sync and async transports."""
         request_headers = self._headers(idempotency_key)
         request_headers.update(headers or {})
-        kwargs: dict[str, Any] = {"params": self._params(params), "headers": request_headers}
+        kwargs: dict[str, Any] = {
+            "params": self._params(params),
+            "headers": request_headers,
+        }
         if content is not None:
             kwargs["content"] = content
             request_headers["content-type"] = content_type or "application/octet-stream"
         elif body is not None:
             kwargs["json"] = _coerce_body(body)
         return kwargs
+
+    def _emit_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        attempt: int,
+        status_code: int | None,
+        error_code: str | None,
+        delay_seconds: float,
+        elapsed_ms: float,
+    ) -> None:
+        """Fire the ``on_retry`` callback for one absorbed retry (no-op if unset)."""
+        on_retry = self._on_retry
+        if on_retry is None:
+            return
+        on_retry(
+            RetryEvent(
+                method=method.upper(),
+                path=path,
+                attempt=attempt,
+                status_code=status_code,
+                error_code=error_code,
+                delay_seconds=delay_seconds,
+                elapsed_ms=elapsed_ms,
+            )
+        )
 
     def idempotency_key(self, prefix: str = "request") -> str:
         return f"{prefix}:{int(time.time() * 1_000_000)}:{uuid.uuid4().hex}"
@@ -473,7 +609,9 @@ class _BaseLbbClient:
         To use a custom ontology, call :meth:`ontology.define` instead before
         the first commit; defining an ontology also creates the graph head.
         """
-        return self._model_request(models.CreateGraphResponse, "POST", "/v1/graph/create")
+        return self._model_request(
+            models.CreateGraphResponse, "POST", "/v1/graph/create"
+        )
 
     def commit(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Commit triplets and optional entity embeddings."""
@@ -520,13 +658,24 @@ class _BaseLbbClient:
             params={"dry_run": "true"},
         )
 
-    def delete_graph(self, *, confirm: str) -> Any:
-        """Delete every object under the scoped graph/branch — a destructive reset.
+    def delete_graph(self, *, confirm: str) -> models.GraphDeleteResponse:
+        """Delete the scoped graph, including all branches and graph-scoped jobs."""
+        return self._model_request(
+            models.GraphDeleteResponse,
+            "POST",
+            "/v1/graph/delete",
+            params={"confirm": confirm},
+            options={"retry": True},
+        )
 
-        ``confirm`` must equal the scoped graph id; the next commit re-initializes
-        the graph from scratch. Branch-scoped: sibling branches are untouched.
-        """
-        return self._request("POST", "/v1/graph/delete", params={"confirm": confirm})
+    def delete_branch(self, *, confirm: str) -> models.GraphBranchDeleteResponse:
+        """Delete only the scoped branch; the final live branch is protected."""
+        return self._model_request(
+            models.GraphBranchDeleteResponse,
+            "DELETE",
+            "/v1/graph/branch",
+            params={"confirm": confirm},
+        )
 
     def embedding_config(
         self, *, options: RequestOptions | None = None
@@ -539,8 +688,33 @@ class _BaseLbbClient:
             options=options,
         )
 
+    def embedding_models(
+        self,
+        *,
+        options: RequestOptions | None = None,
+    ) -> models.ManagedEmbeddingModelsResponse:
+        """List the embedding models available on this deployment."""
+        return self._model_request(
+            models.ManagedEmbeddingModelsResponse,
+            "GET",
+            "/v1/graph/embedding/models",
+            options=options,
+        )
+
+    def set_embedding_model(
+        self, model_id: str, *, auto_embed_query: bool = True
+    ) -> models.ManagedEmbeddingConfigResponse:
+        """Choose the model used automatically for writes and vector queries."""
+        return self.set_embedding_config(
+            {
+                "model_id": model_id,
+                "service": "open_router",
+                "auto_embed_query": auto_embed_query,
+            }
+        )
+
     def set_embedding_config(self, body: Body) -> models.ManagedEmbeddingConfigResponse:
-        """Set the scoped graph's default managed embedding model."""
+        """Set advanced managed embedding configuration."""
         return self._model_request(
             models.ManagedEmbeddingConfigResponse,
             "POST",
@@ -561,17 +735,21 @@ class _BaseLbbClient:
         """Submit the durable backfill job and wait for its terminal result."""
         status = self.submit_embedding_backfill(
             {"batch_size": batch_size, "limit": limit, "full": bool(full)},
-            idempotency_key=idempotency_key or self.idempotency_key("embedding-backfill"),
+            idempotency_key=idempotency_key
+            or self.idempotency_key("embedding-backfill"),
         )
         deadline = time.monotonic() + timeout
         while status.status in {"pending", "running"}:
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"embedding backfill {status.job_id} exceeded {timeout}s")
+                raise TimeoutError(
+                    f"embedding backfill {status.job_id} exceeded {timeout}s"
+                )
             time.sleep(poll_interval)
             status = self.embedding_backfill_job(status.job_id)
         if status.status != "succeeded" or status.result is None:
             raise RuntimeError(
-                status.terminal_error or f"embedding backfill {status.job_id} ended {status.status}"
+                status.terminal_error
+                or f"embedding backfill {status.job_id} ended {status.status}"
             )
         return status.result
 
@@ -693,7 +871,9 @@ class _BaseLbbClient:
         if rdf is None:
             raise TypeError("import_rdf() requires RDF text via rdf= or ntriples=")
         if ntriples is not None and format != "ntriples":
-            raise ValueError("the deprecated ntriples= keyword requires format='ntriples'")
+            raise ValueError(
+                "the deprecated ntriples= keyword requires format='ntriples'"
+            )
         content_types = {
             "ntriples": "application/n-triples",
             "turtle": "text/turtle",
@@ -817,7 +997,9 @@ class _BaseLbbClient:
 
     # --- models as runs (training-run registry + eval machinery) ---
 
-    def vocab_export(self, *, sections: list[str] | None = None, limit: int | None = None) -> Any:
+    def vocab_export(
+        self, *, sections: list[str] | None = None, limit: int | None = None
+    ) -> Any:
         """The graph's grounding vocabulary as byte-sorted, deduped string
         sections — decoder-side automaton input / export-bundle half
         (``GET /v1/search/vocab``)."""
@@ -856,7 +1038,9 @@ class _BaseLbbClient:
     def promote_model_run(self, *, kind: str, run: int) -> Any:
         """CAS-promote a recorded run to CURRENT for its kind (``POST
         /v1/models/promote``); replay is a no-op."""
-        return self._request("POST", "/v1/models/promote", params={"kind": kind, "run": run})
+        return self._request(
+            "POST", "/v1/models/promote", params={"kind": kind, "run": run}
+        )
 
     def model_registry(self, *, kind: str) -> Any:
         """A kind's model runs, newest first, with effective promotion state
@@ -866,12 +1050,16 @@ class _BaseLbbClient:
     def model_registry_gc(self, *, kind: str, keep: int | None = None) -> Any:
         """GC run prefixes beyond the promoted run + the last ``keep``;
         reports deletions (``POST /v1/models/registry/gc``)."""
-        return self._request("POST", "/v1/models/registry/gc", params={"kind": kind, "keep": keep})
+        return self._request(
+            "POST", "/v1/models/registry/gc", params={"kind": kind, "keep": keep}
+        )
 
     def model_split_audit(self, *, kind: str, run: int) -> Any:
         """Verify a run's temporal-split obligation from its recorded lineage
         (``GET /v1/models/split-audit``)."""
-        return self._request("GET", "/v1/models/split-audit", params={"kind": kind, "run": run})
+        return self._request(
+            "GET", "/v1/models/split-audit", params={"kind": kind, "run": run}
+        )
 
     def shadow_eval(self, body: Body) -> Any:
         """Champion vs challenger retrieval over one pinned snapshot (``POST
@@ -883,7 +1071,9 @@ class _BaseLbbClient:
         """Execution-verified QA probes generated from the graph's current
         edges — labels are the executed projections (``GET
         /v1/models/synthetic-eval``). Feeds ``shadow_eval`` directly."""
-        return self._request("GET", "/v1/models/synthetic-eval", params={"limit": limit})
+        return self._request(
+            "GET", "/v1/models/synthetic-eval", params={"limit": limit}
+        )
 
     def model_cadence(self, *, kind: str) -> Any:
         """The doubling retrain policy: is a retrain due for this kind?
@@ -963,7 +1153,9 @@ class _BaseLbbClient:
             idempotency_key=idempotency_key or self.idempotency_key("signals"),
         )
 
-    def suggestion_shown(self, payload: Body, *, idempotency_key: str | None = None) -> Any:
+    def suggestion_shown(
+        self, payload: Body, *, idempotency_key: str | None = None
+    ) -> Any:
         """Ingest one ``SuggestionShownV1`` payload."""
         validated = models.SuggestionShownV1.model_validate(payload)
         return self.ingest_signals(
@@ -1015,12 +1207,16 @@ class _BaseLbbClient:
             idempotency_key=idempotency_key,
         )
 
-    def planner_dataset(self, *, limit: int | None = None, split_seq: int | None = None) -> Any:
+    def planner_dataset(
+        self, *, limit: int | None = None, split_seq: int | None = None
+    ) -> Any:
         """The planner fine-tune's training feed (``GET
         /v1/models/planner-dataset``): feedback rows joined from signals ≤ the
         split pin + execution-verified synthetic plans."""
         return self._request(
-            "GET", "/v1/models/planner-dataset", params={"limit": limit, "split_seq": split_seq}
+            "GET",
+            "/v1/models/planner-dataset",
+            params={"limit": limit, "split_seq": split_seq},
         )
 
     def planner_preference_dataset(
@@ -1036,23 +1232,33 @@ class _BaseLbbClient:
             params={"limit": limit, "split_seq": split_seq},
         )
 
-    def suggest_dataset(self, *, limit: int | None = None, split_seq: int | None = None) -> Any:
+    def suggest_dataset(
+        self, *, limit: int | None = None, split_seq: int | None = None
+    ) -> Any:
         """The suggest-ranker trainer's probe feed (``GET
         /v1/models/suggest-dataset``): ``suggestion_adopted`` signals ≤ the
         split pin + execution-verified synthetic vocabulary pairs."""
         return self._request(
-            "GET", "/v1/models/suggest-dataset", params={"limit": limit, "split_seq": split_seq}
+            "GET",
+            "/v1/models/suggest-dataset",
+            params={"limit": limit, "split_seq": split_seq},
         )
 
-    def extractor_dataset(self, *, limit: int | None = None, split_seq: int | None = None) -> Any:
+    def extractor_dataset(
+        self, *, limit: int | None = None, split_seq: int | None = None
+    ) -> Any:
         """The extractor fine-tune's training feed (``GET
         /v1/models/extractor-dataset``): EPISODE transcripts joined to the
         facts the observe pipeline committed from them."""
         return self._request(
-            "GET", "/v1/models/extractor-dataset", params={"limit": limit, "split_seq": split_seq}
+            "GET",
+            "/v1/models/extractor-dataset",
+            params={"limit": limit, "split_seq": split_seq},
         )
 
-    def promote_extractor(self, *, run_id: str, allow_regression: bool | None = None) -> Any:
+    def promote_extractor(
+        self, *, run_id: str, allow_regression: bool | None = None
+    ) -> Any:
         """Promote a finished ``extractor_lora`` run (``POST
         /v1/models/promote-extractor``): gated on held-out fact F1, recorded
         as a ``kind=extractor`` training run whose adapter resident extraction
@@ -1063,7 +1269,9 @@ class _BaseLbbClient:
             params={"run_id": run_id, "allow_regression": allow_regression},
         )
 
-    def promote_planner(self, *, run_id: str, allow_regression: bool | None = None) -> Any:
+    def promote_planner(
+        self, *, run_id: str, allow_regression: bool | None = None
+    ) -> Any:
         """Promote a finished ``planner_lora`` run (``POST
         /v1/models/promote-planner``): gated on held-out slot exactness,
         recorded as a ``kind=planner`` training run whose adapter ``/v1/ask``
@@ -1088,13 +1296,17 @@ class _BaseLbbClient:
             "POST", "/v1/search/multi", body=body, options=_read_options(options)
         )
 
-    def full_text_search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def full_text_search(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> Any:
         """BM25 search."""
         return self._request(
             "POST", "/v1/search/full-text", body=body, options=_read_options(options)
         )
 
-    def embedding_search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+    def embedding_search(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> Any:
         """ANN/vector search."""
         return self._request(
             "POST", "/v1/search/embedding", body=body, options=_read_options(options)
@@ -1259,7 +1471,9 @@ class _BaseLbbClient:
 
     def ontology_conformance_model(self) -> models.SchemaAuditReport:
         """Ontology conformance report validated as ``SchemaAuditReport``."""
-        return self._model_request(models.SchemaAuditReport, "GET", "/v1/ontology/conformance")
+        return self._model_request(
+            models.SchemaAuditReport, "GET", "/v1/ontology/conformance"
+        )
 
     def ontology_view(self, *, counts: bool = False) -> Any:
         """The active ontology for the scoped graph: entity types and relations.
@@ -1276,7 +1490,9 @@ class _BaseLbbClient:
     def ontology_view_model(self, *, counts: bool = False) -> models.OntologyView:
         """Active ontology validated as ``OntologyView``."""
         params = {"counts": "true"} if counts else None
-        return self._model_request(models.OntologyView, "GET", "/v1/ontology", params=params)
+        return self._model_request(
+            models.OntologyView, "GET", "/v1/ontology", params=params
+        )
 
     # --- index lifecycle ---
 
@@ -1289,7 +1505,9 @@ class _BaseLbbClient:
         :meth:`metadata` (or :meth:`LbbClient.wait_for_index`) for completion.
         """
         return self._request(
-            "POST", "/v1/index/build", params={"background": "true" if background else None}
+            "POST",
+            "/v1/index/build",
+            params={"background": "true" if background else None},
         )
 
     def index_run(self, *, background: bool = False) -> Any:
@@ -1301,7 +1519,9 @@ class _BaseLbbClient:
         :meth:`metadata` (or :meth:`LbbClient.wait_for_index`) for completion.
         """
         return self._request(
-            "POST", "/v1/index/run", params={"background": "true" if background else None}
+            "POST",
+            "/v1/index/run",
+            params={"background": "true" if background else None},
         )
 
     def index_submit(
@@ -1325,14 +1545,55 @@ class _BaseLbbClient:
             params={"job_id": job_id},
         )
 
+    def cancel_index_job(self, job_id: str) -> models.SearchIndexJobStatusResponse:
+        """Cancel a durable full-index job."""
+        return self._model_request(
+            models.SearchIndexJobStatusResponse,
+            "DELETE",
+            "/v1/index/jobs",
+            params={"job_id": job_id},
+        )
+
     def index_delta(self) -> Any:
         """Append a BM25 delta segment for the unindexed WAL tail."""
         return self._request("POST", "/v1/index/delta")
 
-    def index_gc(self, *, keep_runs: int | None = None, dry_run: bool | None = None) -> Any:
+    def index_gc(
+        self, *, keep_runs: int | None = None, dry_run: bool | None = None
+    ) -> Any:
         """Preview or delete superseded persisted index runs."""
         return self._request(
             "POST", "/v1/index/gc", params={"keep_runs": keep_runs, "dry_run": dry_run}
+        )
+
+    def index_gc_submit(
+        self, body: Body | None = None, *, idempotency_key: str
+    ) -> models.IndexGcJobStatusResponse:
+        """Submit durable index GC with reconnect-safe progress."""
+        return self._model_request(
+            models.IndexGcJobStatusResponse,
+            "POST",
+            "/v1/index/gc-jobs",
+            body=body or {},
+            idempotency_key=idempotency_key,
+        )
+
+    def index_gc_job(self, job_id: str) -> models.IndexGcJobStatusResponse:
+        """Poll durable index-GC planning and deletion progress."""
+        return self._model_request(
+            models.IndexGcJobStatusResponse,
+            "GET",
+            "/v1/index/gc-jobs",
+            params={"job_id": job_id},
+        )
+
+    def cancel_index_gc_job(self, job_id: str) -> models.IndexGcJobStatusResponse:
+        """Cancel durable index garbage collection."""
+        return self._model_request(
+            models.IndexGcJobStatusResponse,
+            "DELETE",
+            "/v1/index/gc-jobs",
+            params={"job_id": job_id},
         )
 
     def compact(
@@ -1357,7 +1618,9 @@ class _BaseLbbClient:
 
     def metadata_model(self) -> models.GraphMetadataResponse:
         """Graph metadata validated as ``GraphMetadataResponse``."""
-        return self._model_request(models.GraphMetadataResponse, "GET", "/v1/graph/metadata")
+        return self._model_request(
+            models.GraphMetadataResponse, "GET", "/v1/graph/metadata"
+        )
 
     def summary(self) -> Any:
         """Graph counts and type/relation buckets."""
@@ -1365,7 +1628,9 @@ class _BaseLbbClient:
 
     def summary_model(self) -> models.GraphSummaryResponse:
         """Graph counts validated as ``GraphSummaryResponse``."""
-        return self._model_request(models.GraphSummaryResponse, "GET", "/v1/graph/summary")
+        return self._model_request(
+            models.GraphSummaryResponse, "GET", "/v1/graph/summary"
+        )
 
     def graph_edges(
         self,
@@ -1469,6 +1734,25 @@ class _GraphNamespace:
         self._branch = branch
         self.facts = _FactsNamespace(client, graph, branch)
 
+    def delete(self, *, confirm: str) -> models.GraphDeleteResponse:
+        """Delete and deregister this whole graph, including every branch."""
+        return self._client._model_request(
+            models.GraphDeleteResponse,
+            "POST",
+            "/v1/graph/delete",
+            params={"graph": self._graph, "branch": self._branch, "confirm": confirm},
+            options={"retry": True},
+        )
+
+    def delete_branch(self, *, confirm: str) -> models.GraphBranchDeleteResponse:
+        """Delete this branch; the graph's final live branch is protected."""
+        return self._client._model_request(
+            models.GraphBranchDeleteResponse,
+            "DELETE",
+            "/v1/graph/branch",
+            params={"graph": self._graph, "branch": self._branch, "confirm": confirm},
+        )
+
     def embedding_config(
         self, *, options: RequestOptions | None = None
     ) -> models.ManagedEmbeddingConfigResponse:
@@ -1478,6 +1762,33 @@ class _GraphNamespace:
             "/v1/graph/embedding",
             params={"graph": self._graph, "branch": self._branch},
             options=options,
+        )
+
+    def embedding_models(
+        self,
+        *,
+        options: RequestOptions | None = None,
+    ) -> models.ManagedEmbeddingModelsResponse:
+        return self._client._model_request(
+            models.ManagedEmbeddingModelsResponse,
+            "GET",
+            "/v1/graph/embedding/models",
+            params={
+                "graph": self._graph,
+                "branch": self._branch,
+            },
+            options=options,
+        )
+
+    def set_embedding_model(
+        self, model_id: str, *, auto_embed_query: bool = True
+    ) -> models.ManagedEmbeddingConfigResponse:
+        return self.set_embedding_config(
+            {
+                "model_id": model_id,
+                "service": "open_router",
+                "auto_embed_query": auto_embed_query,
+            }
         )
 
     def set_embedding_config(self, body: Body) -> models.ManagedEmbeddingConfigResponse:
@@ -1507,12 +1818,15 @@ class _GraphNamespace:
         deadline = time.monotonic() + timeout
         while status.status in {"pending", "running"}:
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"embedding backfill {status.job_id} exceeded {timeout}s")
+                raise TimeoutError(
+                    f"embedding backfill {status.job_id} exceeded {timeout}s"
+                )
             time.sleep(poll_interval)
             status = self.embedding_backfill_job(status.job_id)
         if status.status != "succeeded" or status.result is None:
             raise RuntimeError(
-                status.terminal_error or f"embedding backfill {status.job_id} ended {status.status}"
+                status.terminal_error
+                or f"embedding backfill {status.job_id} ended {status.status}"
             )
         return status.result
 
@@ -1655,7 +1969,8 @@ class _FactsNamespace:
             "/v1/graph/commit",
             params=params,
             body=body,
-            idempotency_key=idempotency_key or self._client.idempotency_key("facts.create"),
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("facts.create"),
         )
 
     def create_model(
@@ -1669,7 +1984,8 @@ class _FactsNamespace:
             "/v1/graph/commit",
             params=params,
             body=body,
-            idempotency_key=idempotency_key or self._client.idempotency_key("facts.create"),
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("facts.create"),
         )
 
     def import_ndjson(
@@ -1728,7 +2044,9 @@ class _FactsNamespace:
         if rdf is None:
             raise TypeError("import_rdf() requires RDF text via rdf= or ntriples=")
         if ntriples is not None and format != "ntriples":
-            raise ValueError("the deprecated ntriples= keyword requires format='ntriples'")
+            raise ValueError(
+                "the deprecated ntriples= keyword requires format='ntriples'"
+            )
         content_types = {
             "ntriples": "application/n-triples",
             "turtle": "text/turtle",
@@ -1755,7 +2073,8 @@ class _FactsNamespace:
             },
             content=rdf,
             content_type=content_types[format],
-            idempotency_key=idempotency_key or self._client.idempotency_key("import-rdf"),
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("import-rdf"),
         )
 
 
@@ -1787,10 +2106,14 @@ class _SearchNamespace:
                 "top_k": kwargs.get("top_k"),
                 "source": kwargs.get("source"),
                 "consistency": kwargs.get("consistency"),
-                "targets": ",".join(kwargs["targets"]) if kwargs.get("targets") else None,
+                "targets": (
+                    ",".join(kwargs["targets"]) if kwargs.get("targets") else None
+                ),
                 "profile": kwargs.get("profile"),
             }
-            return self._client._request("GET", "/v1/search", params=params, options=options)
+            return self._client._request(
+                "GET", "/v1/search", params=params, options=options
+            )
         return self._client._request(
             "POST",
             "/v1/graph/search",
@@ -1805,7 +2128,9 @@ class _ContextNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
 
-    def ask(self, body: Body, *, options: RequestOptions | None = None) -> models.AskResponse:
+    def ask(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.AskResponse:
         return self._client._model_request(
             models.AskResponse,
             "POST",
@@ -2122,7 +2447,9 @@ class _SchemaNamespace:
 
     def audit_model(self) -> models.SchemaAuditReport:
         """Schema audit validated as ``SchemaAuditReport``."""
-        return self._client._model_request(models.SchemaAuditReport, "POST", "/v1/schema/audit")
+        return self._client._model_request(
+            models.SchemaAuditReport, "POST", "/v1/schema/audit"
+        )
 
 
 class _IndexNamespace:
@@ -2130,9 +2457,15 @@ class _IndexNamespace:
         self._client = client
 
     def run(
-        self, *, wait: bool = True, background: bool | None = None, body: Body | None = None
+        self,
+        *,
+        wait: bool = True,
+        background: bool | None = None,
+        body: Body | None = None,
     ) -> Any:
-        run_background = background if background is not None else (False if wait else True)
+        run_background = (
+            background if background is not None else (False if wait else True)
+        )
         return self._client._request(
             "POST",
             "/v1/index/run",

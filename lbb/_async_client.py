@@ -12,6 +12,8 @@ import httpx
 from . import models
 from ._client_base import (
     DEFAULT_BASE_URL,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_RETRY_BUDGET_MS,
     DEFAULT_TIMEOUT,
     Body,
     IndexLineageObservation,
@@ -19,13 +21,17 @@ from ._client_base import (
     ModelT,
     RawLbbResponse,
     RequestOptions,
+    RetryEvent,
     RowT,
     SparqlResults,
     _BaseLbbClient,
+    _body_marks_terminal,
     _ContextNamespace,
     _EntityNamespace,
+    _error_body_field,
     _FactsNamespace,
     _GraphNamespace,
+    _jittered_backoff,
     _OntologyNamespace,
     _parse_model,
     _QueryNamespace,
@@ -38,18 +44,24 @@ from ._client_base import (
 
 
 class _AsyncContextNamespace(_ContextNamespace):
-    async def ask(self, body: Body, *, options: RequestOptions | None = None) -> models.AskResponse:
+    async def ask(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.AskResponse:
         return cast(models.AskResponse, await super().ask(body, options=options))
 
     async def suggest(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.SearchSuggestResponse:
-        return cast(models.SearchSuggestResponse, await super().suggest(body, options=options))
+        return cast(
+            models.SearchSuggestResponse, await super().suggest(body, options=options)
+        )
 
     async def resolve(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.ResolveTermResponse:
-        return cast(models.ResolveTermResponse, await super().resolve(body, options=options))
+        return cast(
+            models.ResolveTermResponse, await super().resolve(body, options=options)
+        )
 
     async def decode(
         self, body: Body, *, options: RequestOptions | None = None
@@ -69,12 +81,16 @@ class _AsyncOntologyNamespace(_OntologyNamespace):
     async def view(
         self, *, counts: bool = False, options: RequestOptions | None = None
     ) -> models.OntologyView:
-        return cast(models.OntologyView, await super().view(counts=counts, options=options))
+        return cast(
+            models.OntologyView, await super().view(counts=counts, options=options)
+        )
 
     async def conformance(
         self, *, options: RequestOptions | None = None
     ) -> models.SchemaAuditReport:
-        return cast(models.SchemaAuditReport, await super().conformance(options=options))
+        return cast(
+            models.SchemaAuditReport, await super().conformance(options=options)
+        )
 
     async def search(
         self, body: Body, *, options: RequestOptions | None = None
@@ -179,12 +195,16 @@ class _AsyncQueryNamespace(_QueryNamespace):
     async def shacl(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.ShaclQueryResponse:
-        return cast(models.ShaclQueryResponse, await super().shacl(body, options=options))
+        return cast(
+            models.ShaclQueryResponse, await super().shacl(body, options=options)
+        )
 
     async def infer(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.InferenceRunResponse:
-        return cast(models.InferenceRunResponse, await super().infer(body, options=options))
+        return cast(
+            models.InferenceRunResponse, await super().infer(body, options=options)
+        )
 
     async def premises(
         self, body: Body, *, options: RequestOptions | None = None
@@ -220,6 +240,25 @@ class _AsyncGraphNamespace(_GraphNamespace):
         super().__init__(client, graph, branch)
         self.facts = _AsyncFactsNamespace(client, graph, branch)
 
+    async def delete(self, *, confirm: str) -> models.GraphDeleteResponse:
+        return cast(models.GraphDeleteResponse, await super().delete(confirm=confirm))
+
+    async def delete_branch(self, *, confirm: str) -> models.GraphBranchDeleteResponse:
+        return cast(
+            models.GraphBranchDeleteResponse,
+            await super().delete_branch(confirm=confirm),
+        )
+
+    async def embedding_models(
+        self,
+        *,
+        options: RequestOptions | None = None,
+    ) -> models.ManagedEmbeddingModelsResponse:
+        return cast(
+            models.ManagedEmbeddingModelsResponse,
+            await super().embedding_models(options=options),
+        )
+
     async def embedding_config(
         self, *, options: RequestOptions | None = None
     ) -> models.ManagedEmbeddingConfigResponse:
@@ -234,6 +273,16 @@ class _AsyncGraphNamespace(_GraphNamespace):
         return cast(
             models.ManagedEmbeddingConfigResponse,
             await super().set_embedding_config(body),
+        )
+
+    async def set_embedding_model(
+        self, model_id: str, *, auto_embed_query: bool = True
+    ) -> models.ManagedEmbeddingConfigResponse:
+        return cast(
+            models.ManagedEmbeddingConfigResponse,
+            await super().set_embedding_model(
+                model_id, auto_embed_query=auto_embed_query
+            ),
         )
 
     async def backfill_embeddings(
@@ -258,12 +307,15 @@ class _AsyncGraphNamespace(_GraphNamespace):
         deadline = asyncio.get_running_loop().time() + timeout
         while status.status in {"pending", "running"}:
             if asyncio.get_running_loop().time() >= deadline:
-                raise TimeoutError(f"embedding backfill {status.job_id} exceeded {timeout}s")
+                raise TimeoutError(
+                    f"embedding backfill {status.job_id} exceeded {timeout}s"
+                )
             await asyncio.sleep(poll_interval)
             status = await self.embedding_backfill_job(status.job_id)
         if status.status != "succeeded" or status.result is None:
             raise RuntimeError(
-                status.terminal_error or f"embedding backfill {status.job_id} ended {status.status}"
+                status.terminal_error
+                or f"embedding backfill {status.job_id} ended {status.status}"
             )
         return cast(models.ManagedEmbeddingBackfillResponse, status.result)
 
@@ -342,7 +394,9 @@ class _AsyncSchemaNamespace(_SchemaNamespace):
 
 class _AsyncEntityNamespace(_EntityNamespace):
     async def list_page(self, **kwargs: Any) -> ListPage[models.EntityExplorerRow]:
-        return cast(ListPage[models.EntityExplorerRow], await super().list_page(**kwargs))
+        return cast(
+            ListPage[models.EntityExplorerRow], await super().list_page(**kwargs)
+        )
 
     async def filter(
         self, body: Body, *, options: RequestOptions | None = None
@@ -361,7 +415,9 @@ class _AsyncEntityNamespace(_EntityNamespace):
         )
 
     def pages(self, **kwargs: Any) -> AsyncIterator[ListPage[models.EntityExplorerRow]]:
-        return cast(AsyncIterator[ListPage[models.EntityExplorerRow]], super().pages(**kwargs))
+        return cast(
+            AsyncIterator[ListPage[models.EntityExplorerRow]], super().pages(**kwargs)
+        )
 
     def iter(self, **kwargs: Any) -> AsyncIterator[models.EntityExplorerRow]:
         return cast(AsyncIterator[models.EntityExplorerRow], super().iter(**kwargs))
@@ -384,8 +440,10 @@ class AsyncLbbClient(_BaseLbbClient):
         graph: str | None = None,
         branch: str | None = None,
         api_version: str = "2026-06-22",
-        max_retries: int = 2,
+        max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
+        retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
+        on_retry: Callable[[RetryEvent], None] | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         transport: httpx.AsyncBaseTransport | None = None,
         event_hooks: Mapping[str, list[Callable[[Any], Any]]] | None = None,
@@ -398,6 +456,8 @@ class AsyncLbbClient(_BaseLbbClient):
             api_version=api_version,
             max_retries=max_retries,
             retry_delay=retry_delay,
+            retry_budget_ms=retry_budget_ms,
+            on_retry=on_retry,
         )
         self.context = _AsyncContextNamespace(self)
         self.entities = _AsyncEntityNamespace(self)
@@ -414,6 +474,17 @@ class AsyncLbbClient(_BaseLbbClient):
     async def create_graph(self) -> models.CreateGraphResponse:
         return cast(models.CreateGraphResponse, await super().create_graph())
 
+    async def delete_graph(self, *, confirm: str) -> models.GraphDeleteResponse:
+        return cast(
+            models.GraphDeleteResponse, await super().delete_graph(confirm=confirm)
+        )
+
+    async def delete_branch(self, *, confirm: str) -> models.GraphBranchDeleteResponse:
+        return cast(
+            models.GraphBranchDeleteResponse,
+            await super().delete_branch(confirm=confirm),
+        )
+
     async def commit_model(
         self, body: Body, *, idempotency_key: str | None = None
     ) -> models.GraphCommitResponse:
@@ -422,8 +493,22 @@ class AsyncLbbClient(_BaseLbbClient):
             await super().commit_model(body, idempotency_key=idempotency_key),
         )
 
-    async def commit_dry_run_model(self, body: Body) -> models.GraphCommitDryRunResponse:
-        return cast(models.GraphCommitDryRunResponse, await super().commit_dry_run_model(body))
+    async def commit_dry_run_model(
+        self, body: Body
+    ) -> models.GraphCommitDryRunResponse:
+        return cast(
+            models.GraphCommitDryRunResponse, await super().commit_dry_run_model(body)
+        )
+
+    async def embedding_models(
+        self,
+        *,
+        options: RequestOptions | None = None,
+    ) -> models.ManagedEmbeddingModelsResponse:
+        return cast(
+            models.ManagedEmbeddingModelsResponse,
+            await super().embedding_models(options=options),
+        )
 
     async def embedding_config(
         self, *, options: RequestOptions | None = None
@@ -441,6 +526,16 @@ class AsyncLbbClient(_BaseLbbClient):
             await super().set_embedding_config(body),
         )
 
+    async def set_embedding_model(
+        self, model_id: str, *, auto_embed_query: bool = True
+    ) -> models.ManagedEmbeddingConfigResponse:
+        return cast(
+            models.ManagedEmbeddingConfigResponse,
+            await super().set_embedding_model(
+                model_id, auto_embed_query=auto_embed_query
+            ),
+        )
+
     async def backfill_embeddings(
         self,
         *,
@@ -456,12 +551,15 @@ class AsyncLbbClient(_BaseLbbClient):
             "POST",
             "/v1/graph/embedding/backfill-jobs",
             body={"batch_size": batch_size, "limit": limit, "full": bool(full)},
-            idempotency_key=idempotency_key or self.idempotency_key("embedding-backfill"),
+            idempotency_key=idempotency_key
+            or self.idempotency_key("embedding-backfill"),
         )
         deadline = asyncio.get_running_loop().time() + timeout
         while status.status in {"pending", "running"}:
             if asyncio.get_running_loop().time() >= deadline:
-                raise TimeoutError(f"embedding backfill {status.job_id} exceeded {timeout}s")
+                raise TimeoutError(
+                    f"embedding backfill {status.job_id} exceeded {timeout}s"
+                )
             await asyncio.sleep(poll_interval)
             status = await self._model_request(
                 models.ManagedEmbeddingBackfillJobStatusResponse,
@@ -471,7 +569,8 @@ class AsyncLbbClient(_BaseLbbClient):
             )
         if status.status != "succeeded" or status.result is None:
             raise RuntimeError(
-                status.terminal_error or f"embedding backfill {status.job_id} ended {status.status}"
+                status.terminal_error
+                or f"embedding backfill {status.job_id} ended {status.status}"
             )
         return status.result
 
@@ -557,7 +656,9 @@ class AsyncLbbClient(_BaseLbbClient):
         )
 
     async def sparql_select_model(self, body: Body) -> models.SparqlSelectResponse:
-        return cast(models.SparqlSelectResponse, await super().sparql_select_model(body))
+        return cast(
+            models.SparqlSelectResponse, await super().sparql_select_model(body)
+        )
 
     async def governed_conflicts(
         self, body: Body
@@ -568,10 +669,14 @@ class AsyncLbbClient(_BaseLbbClient):
         )
 
     async def ontology_conformance_model(self) -> models.SchemaAuditReport:
-        return cast(models.SchemaAuditReport, await super().ontology_conformance_model())
+        return cast(
+            models.SchemaAuditReport, await super().ontology_conformance_model()
+        )
 
     async def ontology_view_model(self, *, counts: bool = False) -> models.OntologyView:
-        return cast(models.OntologyView, await super().ontology_view_model(counts=counts))
+        return cast(
+            models.OntologyView, await super().ontology_view_model(counts=counts)
+        )
 
     async def index_submit(
         self, body: Body | None = None, *, idempotency_key: str
@@ -582,7 +687,34 @@ class AsyncLbbClient(_BaseLbbClient):
         )
 
     async def index_job(self, job_id: str) -> models.SearchIndexJobStatusResponse:
-        return cast(models.SearchIndexJobStatusResponse, await super().index_job(job_id))
+        return cast(
+            models.SearchIndexJobStatusResponse, await super().index_job(job_id)
+        )
+
+    async def cancel_index_job(
+        self, job_id: str
+    ) -> models.SearchIndexJobStatusResponse:
+        return cast(
+            models.SearchIndexJobStatusResponse,
+            await super().cancel_index_job(job_id),
+        )
+
+    async def index_gc_submit(
+        self, body: Body | None = None, *, idempotency_key: str
+    ) -> models.IndexGcJobStatusResponse:
+        return cast(
+            models.IndexGcJobStatusResponse,
+            await super().index_gc_submit(body, idempotency_key=idempotency_key),
+        )
+
+    async def index_gc_job(self, job_id: str) -> models.IndexGcJobStatusResponse:
+        return cast(models.IndexGcJobStatusResponse, await super().index_gc_job(job_id))
+
+    async def cancel_index_gc_job(self, job_id: str) -> models.IndexGcJobStatusResponse:
+        return cast(
+            models.IndexGcJobStatusResponse,
+            await super().cancel_index_gc_job(job_id),
+        )
 
     async def metadata_model(self) -> models.GraphMetadataResponse:
         return cast(models.GraphMetadataResponse, await super().metadata_model())
@@ -630,7 +762,9 @@ class AsyncLbbClient(_BaseLbbClient):
         return cast(models.GraphSummaryResponse, await super().summary_model())
 
     async def graph_edges_page(self, **kwargs: Any) -> ListPage[models.GraphEdgeRow]:
-        return cast(ListPage[models.GraphEdgeRow], await super().graph_edges_page(**kwargs))
+        return cast(
+            ListPage[models.GraphEdgeRow], await super().graph_edges_page(**kwargs)
+        )
 
     async def list_graphs_model(self) -> models.GraphListResponse:
         return cast(models.GraphListResponse, await super().list_graphs_model())
@@ -659,32 +793,68 @@ class AsyncLbbClient(_BaseLbbClient):
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]
         response: httpx.Response | None = None
-        can_retry = request_options.get("retry", _retry_allowed(method, idempotency_key))
+        can_retry = request_options.get(
+            "retry", _retry_allowed(method, idempotency_key)
+        )
         max_retries = request_options.get("max_retries", self._max_retries)
         if max_retries < 0:
             raise ValueError("max_retries must be non-negative")
-        started_at = asyncio.get_running_loop().time()
+        retry_budget_ms = request_options.get("retry_budget_ms", self._retry_budget_ms)
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        # Deadline is the binding limit; `max_retries` is a secondary safety cap.
+        deadline = started_at + max(0.0, retry_budget_ms) / 1000.0
         attempts = 0
         for attempt in range(max_retries + 1):
             attempts = attempt + 1
             try:
-                response = await self._http.request(method, f"{self._base_url}{path}", **kwargs)
+                response = await self._http.request(
+                    method, f"{self._base_url}{path}", **kwargs
+                )
             except httpx.RequestError:
-                if can_retry and attempt < max_retries:
-                    await asyncio.sleep(self._retry_delay * (attempt + 1))
-                    continue
-                raise
+                if not (can_retry and attempt < max_retries):
+                    raise
+                delay = _jittered_backoff(self._retry_delay, attempt)
+                if loop.time() + delay > deadline:
+                    raise
+                self._emit_retry(
+                    method,
+                    path,
+                    attempt=attempts,
+                    status_code=None,
+                    error_code=None,
+                    delay_seconds=delay,
+                    elapsed_ms=(loop.time() - started_at) * 1000,
+                )
+                await asyncio.sleep(delay)
+                continue
             if response.status_code // 100 == 2 or not _retryable(response.status_code):
                 break
-            if not can_retry:
+            if not can_retry or attempt >= max_retries:
                 break
-            if attempt < max_retries:
-                await asyncio.sleep(_retry_delay_seconds(response, self._retry_delay, attempt))
+            # Honor the server's typed body verdict: a terminal error
+            # (`retryable: false`, e.g. an exhausted quota) is surfaced at once
+            # rather than retried to the budget.
+            if _body_marks_terminal(response):
+                break
+            delay = _retry_delay_seconds(response, self._retry_delay, attempt)
+            if loop.time() + delay > deadline:
+                break
+            self._emit_retry(
+                method,
+                path,
+                attempt=attempts,
+                status_code=response.status_code,
+                error_code=_error_body_field(response, "code"),
+                delay_seconds=delay,
+                elapsed_ms=(loop.time() - started_at) * 1000,
+            )
+            await asyncio.sleep(delay)
         assert response is not None
         return _raw_response(
             response,
             attempts=attempts,
-            elapsed_ms=(asyncio.get_running_loop().time() - started_at) * 1000,
+            elapsed_ms=(loop.time() - started_at) * 1000,
         )
 
     async def _request(
@@ -738,7 +908,9 @@ class AsyncLbbClient(_BaseLbbClient):
             ),
         )
 
-    async def _page_request(self, row_model: type[RowT], payload: Any) -> ListPage[RowT]:
+    async def _page_request(
+        self, row_model: type[RowT], payload: Any
+    ) -> ListPage[RowT]:
         if inspect.isawaitable(payload):
             payload = await payload
         return ListPage.from_payload(payload, row_model)
@@ -759,11 +931,15 @@ class AsyncLbbClient(_BaseLbbClient):
             if not page.has_more or page.next_cursor is None:
                 return
             if page.next_cursor in seen:
-                raise RuntimeError(f"entity pagination cursor repeated: {page.next_cursor}")
+                raise RuntimeError(
+                    f"entity pagination cursor repeated: {page.next_cursor}"
+                )
             seen.add(page.next_cursor)
             cursor = page.next_cursor
 
-    async def _iter_entity_rows(self, **kwargs: Any) -> AsyncIterator[models.EntityExplorerRow]:
+    async def _iter_entity_rows(
+        self, **kwargs: Any
+    ) -> AsyncIterator[models.EntityExplorerRow]:
         async for page in self._iter_entity_pages(**kwargs):
             for row in page:
                 yield row

@@ -11,6 +11,7 @@ from ._client_base import (
     ListPage,
     RawLbbResponse,
     RequestOptions,
+    RetryEvent,
     SparqlResults,
 )
 from ._sync_client import LbbClient
@@ -23,5 +24,6 @@ __all__ = [
     "ListPage",
     "RawLbbResponse",
     "RequestOptions",
+    "RetryEvent",
     "SparqlResults",
 ]
