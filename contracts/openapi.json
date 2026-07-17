@@ -13874,6 +13874,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "vector_channel_skipped": {
+            "description": "True when latest-head hybrid search requested the persisted vector/ANN\nchannel but no matching run existed, so the optional vector channel was\nskipped instead of silently rebuilding an O(corpus) ephemeral ANN on the\nrequest path. Explicit ephemeral and historical pinned searches retain\ntheir existing behavior.",
+            "type": "boolean"
+          },
           "vector_degraded_to_ephemeral": {
             "description": "As `bm25_degraded_to_ephemeral`, for the persisted vector/ANN index.",
             "type": "boolean"
