@@ -2784,6 +2784,12 @@ class SemanticSearchExplain(BaseModel):
     ] = None
     unindexed_tail_commits: Annotated[int, Field(ge=0)]
     vector_candidates: Annotated[int, Field(ge=0)]
+    vector_channel_skipped: Annotated[
+        bool | None,
+        Field(
+            description='True when latest-head hybrid search requested the persisted vector/ANN\nchannel but no matching run existed, so the optional vector channel was\nskipped instead of silently rebuilding an O(corpus) ephemeral ANN on the\nrequest path. Explicit ephemeral and historical pinned searches retain\ntheir existing behavior.'
+        ),
+    ] = None
     vector_degraded_to_ephemeral: Annotated[
         bool | None,
         Field(
