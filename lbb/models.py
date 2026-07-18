@@ -1260,8 +1260,8 @@ class ManagedEmbeddingService(Enum):
     Service used to generate managed corpus and query embeddings.
     """
 
-    modal = 'modal'
     open_router = 'open_router'
+    modal = 'modal'
 
 
 class ManagedEmbeddingSource(Enum):

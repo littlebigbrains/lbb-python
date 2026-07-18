@@ -7275,8 +7275,8 @@
       "ManagedEmbeddingService": {
         "description": "Service used to generate managed corpus and query embeddings.",
         "enum": [
-          "modal",
-          "open_router"
+          "open_router",
+          "modal"
         ],
         "type": "string"
       },
