@@ -5797,6 +5797,12 @@
             "minimum": 0,
             "type": "integer"
           },
+          "relation_adjacency": {
+            "items": {
+              "$ref": "#/components/schemas/RelationAdjacencyCount"
+            },
+            "type": "array"
+          },
           "relations": {
             "items": {
               "$ref": "#/components/schemas/NamedCount"
@@ -10089,6 +10095,31 @@
           "x1",
           "y1",
           "confidence"
+        ],
+        "type": "object"
+      },
+      "RelationAdjacencyCount": {
+        "description": "Exact current-edge count for one observed source-type / relation /\ntarget-type combination. The graph summary already scans the reduced edge\nset, so exposing this rollup lets schema visualizations avoid one additional\nwhole-snapshot query per populated relation.",
+        "properties": {
+          "count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "target_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation",
+          "source_type",
+          "target_type",
+          "count"
         ],
         "type": "object"
       },
