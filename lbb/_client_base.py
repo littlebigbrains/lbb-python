@@ -1621,14 +1621,45 @@ class _BaseLbbClient:
         """Server, graph, and persisted-index status."""
         return self._request("GET", "/v1/status")
 
-    def metadata(self) -> Any:
-        """Graph footprint, WAL tail, and index coverage."""
-        return self._request("GET", "/v1/graph/metadata")
+    def metadata(
+        self,
+        *,
+        include_objects: bool | None = None,
+        include_indexes: bool | None = None,
+        include_temporal_coverage: bool | None = None,
+    ) -> Any:
+        """Graph footprint, WAL tail, and index coverage.
 
-    def metadata_model(self) -> models.GraphMetadataResponse:
+        Exact recursive object inventory is opt-in because its cost grows with
+        object count.
+        """
+        return self._request(
+            "GET",
+            "/v1/graph/metadata",
+            params={
+                "include_objects": include_objects,
+                "include_indexes": include_indexes,
+                "include_temporal_coverage": include_temporal_coverage,
+            },
+        )
+
+    def metadata_model(
+        self,
+        *,
+        include_objects: bool | None = None,
+        include_indexes: bool | None = None,
+        include_temporal_coverage: bool | None = None,
+    ) -> models.GraphMetadataResponse:
         """Graph metadata validated as ``GraphMetadataResponse``."""
         return self._model_request(
-            models.GraphMetadataResponse, "GET", "/v1/graph/metadata"
+            models.GraphMetadataResponse,
+            "GET",
+            "/v1/graph/metadata",
+            params={
+                "include_objects": include_objects,
+                "include_indexes": include_indexes,
+                "include_temporal_coverage": include_temporal_coverage,
+            },
         )
 
     def summary(self) -> Any:
