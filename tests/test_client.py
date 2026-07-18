@@ -186,6 +186,29 @@ def capturing_transport(
 
 
 class SyncClientTests(unittest.TestCase):
+    def test_metadata_keeps_recursive_object_inventory_opt_in(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", graph="g", transport=capturing_transport(seen)
+        ) as client:
+            client.metadata()
+            client.metadata(
+                include_objects=True,
+                include_indexes=False,
+                include_temporal_coverage=True,
+            )
+
+        self.assertEqual(dict(seen[0].url.params), {"graph": "g"})
+        self.assertEqual(
+            dict(seen[1].url.params),
+            {
+                "graph": "g",
+                "include_objects": "true",
+                "include_indexes": "false",
+                "include_temporal_coverage": "true",
+            },
+        )
+
     def test_create_graph_uses_http_scope_and_returns_typed_response(self) -> None:
         seen: list[httpx.Request] = []
         payload = {

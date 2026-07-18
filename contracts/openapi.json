@@ -5398,6 +5398,10 @@
             "$ref": "#/components/schemas/TemporalCoverage",
             "description": "Temporal coverage of this snapshot — what kinds of as-of query the data\ncan actually answer. Lets a caller tell *before* querying whether\npoint-in-time / daily views are possible, instead of discovering that\nevery as-of returns the same picture."
           },
+          "temporal_coverage_computed": {
+            "description": "Whether `temporal_coverage` was computed from the full snapshot. The\nbounded HTTP metadata path is head-only by default; callers that need\nexact event-time coverage opt in explicitly.",
+            "type": "boolean"
+          },
           "unindexed_tail_commits": {
             "minimum": 0,
             "type": "integer"
@@ -10865,6 +10869,10 @@
               "$ref": "#/components/schemas/SchemaAuditResult"
             },
             "type": "array"
+          },
+          "truncated": {
+            "description": "True when `result_count` is exact but `results` contains only the\ncaller-requested leading window. Whole-graph audits can produce one row\nper offending focus node, so HTTP responses are bounded by default.",
+            "type": "boolean"
           }
         },
         "required": [

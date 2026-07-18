@@ -5709,6 +5709,12 @@ class SchemaAuditReport(BaseModel):
     messages: list[str] | None = None
     result_count: Annotated[int, Field(ge=0)]
     results: list[SchemaAuditResult] | None = None
+    truncated: Annotated[
+        bool | None,
+        Field(
+            description='True when `result_count` is exact but `results` contains only the\ncaller-requested leading window. Whole-graph audits can produce one row\nper offending focus node, so HTTP responses are bounded by default.'
+        ),
+    ] = None
 
 
 class SchemaBundleView(BaseModel):
@@ -6934,6 +6940,12 @@ class GraphMetadataResponse(BaseModel):
         TemporalCoverage | None,
         Field(
             description='Temporal coverage of this snapshot — what kinds of as-of query the data\ncan actually answer. Lets a caller tell *before* querying whether\npoint-in-time / daily views are possible, instead of discovering that\nevery as-of returns the same picture.'
+        ),
+    ] = None
+    temporal_coverage_computed: Annotated[
+        bool | None,
+        Field(
+            description='Whether `temporal_coverage` was computed from the full snapshot. The\nbounded HTTP metadata path is head-only by default; callers that need\nexact event-time coverage opt in explicitly.'
         ),
     ] = None
     unindexed_tail_commits: Annotated[int, Field(ge=0)]
