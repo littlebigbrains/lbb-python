@@ -2060,6 +2060,20 @@ class RegionAnchorInput(BaseModel):
     y1: float
 
 
+class RelationAdjacencyCount(BaseModel):
+    """
+    Exact current-edge count for one observed source-type / relation /
+    target-type combination. The graph summary already scans the reduced edge
+    set, so exposing this rollup lets schema visualizations avoid one additional
+    whole-snapshot query per populated relation.
+    """
+
+    count: Annotated[int, Field(ge=0)]
+    relation: str
+    source_type: str
+    target_type: str
+
+
 class RelationView(BaseModel):
     id: Annotated[int, Field(ge=0)]
     name: str
@@ -4820,6 +4834,7 @@ class GraphSummaryResponse(BaseModel):
     entity_types: list[NamedCount]
     observation_count: Annotated[int, Field(ge=0)]
     ontology_version: Annotated[int, Field(ge=0)]
+    relation_adjacency: list[RelationAdjacencyCount] | None = None
     relations: list[NamedCount]
     snapshot: SnapshotView
 
