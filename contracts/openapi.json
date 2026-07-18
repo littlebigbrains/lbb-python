@@ -3123,7 +3123,7 @@
               },
               {
                 "$ref": "#/components/schemas/CommitSeq",
-                "description": "Highest commit covered by the **BM25 full-text index**, or `None` when no\nfull-text index has been built. Together with `ann_indexed_commit_seq`\nthis answers \"is this graph indexed for search?\" directly from the entity\nread — unlike `snapshot.compacted_seq`, which is the graph snapshot base.\nLag behind `snapshot.commit_seq` is the unindexed tail."
+                "description": "Highest commit covered by the **BM25 full-text index**, or `None` when no\nfull-text index has been built. Together with `ann_indexed_commit_seq`\nthis answers \"is this graph indexed for search?\" on the dedicated entity\nmetadata diagnostics read — unlike `snapshot.compacted_seq`, which is the\ngraph snapshot base. Ordinary entity detail leaves derived-index lineage\nabsent so a point read never blocks on index discovery. Lag behind\n`snapshot.commit_seq` is the unindexed tail."
               }
             ]
           },
