@@ -393,6 +393,18 @@ class _AsyncSchemaNamespace(_SchemaNamespace):
 
 
 class _AsyncEntityNamespace(_EntityNamespace):
+    async def sample(
+        self,
+        *,
+        type: str,
+        limit: int | None = None,
+        options: RequestOptions | None = None,
+    ) -> models.EntityTypeSampleResponse:
+        return cast(
+            models.EntityTypeSampleResponse,
+            await super().sample(type=type, limit=limit, options=options),
+        )
+
     async def list_page(self, **kwargs: Any) -> ListPage[models.EntityExplorerRow]:
         return cast(
             ListPage[models.EntityExplorerRow], await super().list_page(**kwargs)

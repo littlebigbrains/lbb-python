@@ -2518,6 +2518,26 @@ class _EntityNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
 
+    def sample(
+        self,
+        *,
+        type: str,  # noqa: A002 - mirrors the HTTP query param.
+        limit: int | None = None,
+        options: RequestOptions | None = None,
+    ) -> models.EntityTypeSampleResponse:
+        """Return exact type cardinality and a bounded ranged-index sample.
+
+        The server returns ``index_busy`` instead of falling back to an
+        exhaustive snapshot scan while the adjacency index is unavailable.
+        """
+        return self._client._model_request(
+            models.EntityTypeSampleResponse,
+            "GET",
+            "/v1/graph/entities/sample",
+            params={"type": type, "limit": limit},
+            options=_read_options(options),
+        )
+
     def list(
         self,
         *,
