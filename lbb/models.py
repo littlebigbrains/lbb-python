@@ -4574,6 +4574,19 @@ class EntityNeighborhoodRequest(BaseModel):
     relations: list[str] | None = None
 
 
+class EntityTypeSampleRow(BaseModel):
+    """
+    One bounded, index-backed class member for interactive graph exploration.
+    Unlike [`EntityExplorerRow`], this deliberately carries only fields the
+    adjacency build already knows; exhaustive attributes and observation counts
+    remain on the full entity/browse reads.
+    """
+
+    entity: EntityView
+    in_degree: Annotated[int, Field(ge=0)]
+    out_degree: Annotated[int, Field(ge=0)]
+
+
 class EvidenceInput1(BaseModel):
     observation_id: Annotated[
         str | None,
@@ -6763,6 +6776,20 @@ class EntityTransitionsResponse(BaseModel):
     relation: RelationView
     snapshot: SnapshotView
     transitions: list[TransitionEntry]
+
+
+class EntityTypeSampleResponse(BaseModel):
+    """
+    Exact class cardinality plus a bounded deterministic sample served from the
+    ranged adjacency meta. `indexed_commit_seq` makes index lag explicit while
+    `snapshot.commit_seq` reports the current graph head.
+    """
+
+    entities: list[EntityTypeSampleRow]
+    entity_type: str
+    indexed_commit_seq: Annotated[int, Field(ge=0)]
+    snapshot: SnapshotView
+    total_count: Annotated[int, Field(ge=0)]
 
 
 class ExtractorDatasetResponse(BaseModel):

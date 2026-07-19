@@ -18,6 +18,7 @@ from lbb.models import (
     CreateGraphResponse,
     EntityExplorerRow,
     EntityFilterResponse,
+    EntityTypeSampleResponse,
     GovernedConflictAggregationResponse,
     GraphBranchDeleteResponse,
     GraphDeleteResponse,
@@ -304,6 +305,30 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(params["type"], "SERVICE")
         self.assertEqual(params["limit"], "10")
         self.assertEqual(params["q"], "billing")
+
+    def test_entities_sample_is_typed_and_uses_bounded_route(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "entity_type": "SERVICE",
+            "total_count": 59150,
+            "entities": [],
+            "snapshot": SNAPSHOT,
+            "indexed_commit_seq": 7,
+        }
+        with LbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = client.entities.sample(type="SERVICE", limit=48)
+
+        self.assertIsInstance(result, EntityTypeSampleResponse)
+        self.assertEqual(result.total_count, 59150)
+        self.assertEqual(
+            str(seen[0].url).split("?")[0],
+            "http://h/v1/graph/entities/sample",
+        )
+        self.assertEqual(dict(seen[0].url.params)["limit"], "48")
 
     def test_entities_filter_is_typed_and_retry_safe(self) -> None:
         seen: list[httpx.Request] = []
