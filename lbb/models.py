@@ -900,6 +900,26 @@ class GraphExportRequest(BaseModel):
     targets: list[AnnTargetKind]
 
 
+class GraphForkResponse(BaseModel):
+    """
+    Response to `POST /v1/graph/fork`: the fork runs as a durable background job
+    (a create-only copy of the source graph into a new graph id in the same
+    tenant), so this acknowledges the enqueue and points at the poll surface.
+    """
+
+    dst_graph_id: str
+    job_id: str
+    ok: bool
+    poll: Annotated[
+        str,
+        Field(
+            description="Poll the destination graph's metadata to observe the fork completing\n(the destination becomes readable once its head is published)."
+        ),
+    ]
+    queued: bool
+    src_graph_id: str
+
+
 class GraphImportIndexOutcome(BaseModel):
     """
     Outcome of the optional one-shot index build a bulk import runs at the end
@@ -1027,6 +1047,136 @@ class GraphRdfImportResponse(BaseModel):
     predicates: list[GraphRdfImportPredicate] | None = None
     resource_triples: Annotated[int, Field(ge=0)]
     triples_read: Annotated[int, Field(ge=0)]
+
+
+class GraphReloadResponse(BaseModel):
+    """
+    Outcome of `POST /v1/graph/reload` — the declarative "make the graph match
+    this full dataset" verb. One atomic cutover replaces the whole current state:
+    records present in the payload are upserted, and entities present at the
+    pre-reload head but absent from the payload are removed from current state
+    (retraction semantics — history stays queryable via `?as_of_commit_seq=`).
+    The delta report is the "prove I don't have wrong data" aid.
+
+    The whole reconciliation lands as a single graph-head advance, so a reader
+    never observes a mixed old/new state: a snapshot pinned at `prior_commit_seq`
+    sees only the old state, and `new_commit_seq` sees only the new state, with
+    nothing in between.
+    """
+
+    dry_run: Annotated[
+        bool,
+        Field(
+            description='True when this was a `?dry_run=true` preview: nothing durable changed and\nthe counts + `new_commit_seq`/`new_snapshot_token` are the *proposed*\neffect of a real reload against the same pre-reload head.'
+        ),
+    ]
+    edges_added: Annotated[
+        int,
+        Field(
+            description='Payload edges not currently present, within the reconciled scopes.',
+            ge=0,
+        ),
+    ]
+    edges_changed: Annotated[
+        int,
+        Field(
+            description='Payload edges already present (re-asserted), within the reconciled scopes.',
+            ge=0,
+        ),
+    ]
+    edges_removed: Annotated[
+        int,
+        Field(
+            description='Current edges retracted because an endpoint left current state.',
+            ge=0,
+        ),
+    ]
+    entities_added: Annotated[
+        int,
+        Field(
+            description='Entities present in the payload but not at the pre-reload head.',
+            ge=0,
+        ),
+    ]
+    entities_changed: Annotated[
+        int,
+        Field(
+            description='Entities present in both the payload and the pre-reload head (re-asserted;\nthis is a presence intersection, not a deep property diff).',
+            ge=0,
+        ),
+    ]
+    entities_removed: Annotated[
+        int,
+        Field(
+            description='Entities present at the pre-reload head but absent from the payload — the\nones leaving current state.',
+            ge=0,
+        ),
+    ]
+    error_count: Annotated[
+        int,
+        Field(
+            description='Parse errors for malformed payload lines (bounded; `error_count` is the\ntrue total). Mirrors bulk import.',
+            ge=0,
+        ),
+    ]
+    errors: list[GraphImportLineError] | None = None
+    graph_created: Annotated[
+        bool | None,
+        Field(
+            description='True when the target graph did not exist and this reload bootstrapped it\n(the pre-reload baseline was empty).'
+        ),
+    ] = None
+    idempotency_key: Annotated[
+        str,
+        Field(
+            description="The idempotency key that scopes this reload's single commit (the caller\nkey, or a server-minted one)."
+        ),
+    ]
+    idempotent_replay: Annotated[
+        bool | None,
+        Field(
+            description='True when this request id was already applied (idempotent replay): the\ndiff counts are reported as zero because nothing new was written.'
+        ),
+    ] = None
+    lines_read: Annotated[int, Field(ge=0)]
+    new_commit_seq: Annotated[
+        int,
+        Field(
+            description='Commit sequence after cutover (real), or the proposed next sequence (dry\nrun).',
+            ge=0,
+        ),
+    ]
+    new_snapshot_token: Annotated[
+        str,
+        Field(
+            description='Snapshot token after cutover (real), or the proposed token (dry run).'
+        ),
+    ]
+    no_op: Annotated[
+        bool | None,
+        Field(
+            description='True when the desired state already matched the current state and no\ncommit was written (real mode only).'
+        ),
+    ] = None
+    prior_commit_seq: Annotated[
+        int,
+        Field(
+            description='Commit sequence of the pre-reload head — the diff baseline and the\nrollback anchor.',
+            ge=0,
+        ),
+    ]
+    prior_snapshot_token: Annotated[
+        str,
+        Field(
+            description='Snapshot token of the pre-reload head. Read it back with\n`?as_of_commit_seq=<prior_commit_seq>` to see the old state — the rollback\nhint.'
+        ),
+    ]
+    removed_sample: Annotated[
+        list[str] | None,
+        Field(
+            description='A bounded sample of the entities leaving current state, as `type/name`\ndisplay identities (external keys are one-way-hashed and unrecoverable) —\na sanity aid for confirming the reload drops what you expect.'
+        ),
+    ] = None
 
 
 class GraphRetractResponse(BaseModel):
