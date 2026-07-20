@@ -5125,6 +5125,39 @@
         ],
         "type": "object"
       },
+      "GraphForkResponse": {
+        "description": "Response to `POST /v1/graph/fork`: the fork runs as a durable background job\n(a create-only copy of the source graph into a new graph id in the same\ntenant), so this acknowledges the enqueue and points at the poll surface.",
+        "properties": {
+          "dst_graph_id": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "poll": {
+            "description": "Poll the destination graph's metadata to observe the fork completing\n(the destination becomes readable once its head is published).",
+            "type": "string"
+          },
+          "queued": {
+            "type": "boolean"
+          },
+          "src_graph_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "queued",
+          "job_id",
+          "src_graph_id",
+          "dst_graph_id",
+          "poll"
+        ],
+        "type": "object"
+      },
       "GraphId": {
         "type": "string"
       },
@@ -5733,6 +5766,116 @@
           "exact",
           "approximate",
           "missing"
+        ],
+        "type": "object"
+      },
+      "GraphReloadResponse": {
+        "description": "Outcome of `POST /v1/graph/reload` — the declarative \"make the graph match\nthis full dataset\" verb. One atomic cutover replaces the whole current state:\nrecords present in the payload are upserted, and entities present at the\npre-reload head but absent from the payload are removed from current state\n(retraction semantics — history stays queryable via `?as_of_commit_seq=`).\nThe delta report is the \"prove I don't have wrong data\" aid.\n\nThe whole reconciliation lands as a single graph-head advance, so a reader\nnever observes a mixed old/new state: a snapshot pinned at `prior_commit_seq`\nsees only the old state, and `new_commit_seq` sees only the new state, with\nnothing in between.",
+        "properties": {
+          "dry_run": {
+            "description": "True when this was a `?dry_run=true` preview: nothing durable changed and\nthe counts + `new_commit_seq`/`new_snapshot_token` are the *proposed*\neffect of a real reload against the same pre-reload head.",
+            "type": "boolean"
+          },
+          "edges_added": {
+            "description": "Payload edges not currently present, within the reconciled scopes.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "edges_changed": {
+            "description": "Payload edges already present (re-asserted), within the reconciled scopes.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "edges_removed": {
+            "description": "Current edges retracted because an endpoint left current state.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entities_added": {
+            "description": "Entities present in the payload but not at the pre-reload head.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entities_changed": {
+            "description": "Entities present in both the payload and the pre-reload head (re-asserted;\nthis is a presence intersection, not a deep property diff).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entities_removed": {
+            "description": "Entities present at the pre-reload head but absent from the payload — the\nones leaving current state.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error_count": {
+            "description": "Parse errors for malformed payload lines (bounded; `error_count` is the\ntrue total). Mirrors bulk import.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/GraphImportLineError"
+            },
+            "type": "array"
+          },
+          "graph_created": {
+            "description": "True when the target graph did not exist and this reload bootstrapped it\n(the pre-reload baseline was empty).",
+            "type": "boolean"
+          },
+          "idempotency_key": {
+            "description": "The idempotency key that scopes this reload's single commit (the caller\nkey, or a server-minted one).",
+            "type": "string"
+          },
+          "idempotent_replay": {
+            "description": "True when this request id was already applied (idempotent replay): the\ndiff counts are reported as zero because nothing new was written.",
+            "type": "boolean"
+          },
+          "lines_read": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "new_commit_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "Commit sequence after cutover (real), or the proposed next sequence (dry\nrun)."
+          },
+          "new_snapshot_token": {
+            "description": "Snapshot token after cutover (real), or the proposed token (dry run).",
+            "type": "string"
+          },
+          "no_op": {
+            "description": "True when the desired state already matched the current state and no\ncommit was written (real mode only).",
+            "type": "boolean"
+          },
+          "prior_commit_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "Commit sequence of the pre-reload head — the diff baseline and the\nrollback anchor."
+          },
+          "prior_snapshot_token": {
+            "description": "Snapshot token of the pre-reload head. Read it back with\n`?as_of_commit_seq=<prior_commit_seq>` to see the old state — the rollback\nhint.",
+            "type": "string"
+          },
+          "removed_sample": {
+            "description": "A bounded sample of the entities leaving current state, as `type/name`\ndisplay identities (external keys are one-way-hashed and unrecoverable) —\na sanity aid for confirming the reload drops what you expect.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "idempotency_key",
+          "lines_read",
+          "entities_added",
+          "entities_removed",
+          "entities_changed",
+          "edges_added",
+          "edges_removed",
+          "edges_changed",
+          "error_count",
+          "prior_commit_seq",
+          "prior_snapshot_token",
+          "new_commit_seq",
+          "new_snapshot_token"
         ],
         "type": "object"
       },
@@ -28212,6 +28355,303 @@
         ]
       }
     },
+    "/v1/graph/fork": {
+      "post": {
+        "operationId": "post_v1_graph_fork",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Source graph id to fork from",
+            "in": "query",
+            "name": "src",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Destination graph id to create (must not exist)",
+            "in": "query",
+            "name": "dst",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Must equal the destination graph id to authorize the fork",
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphForkResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Fork a graph: copy-based clone of the source graph's current head into a new graph in the same tenant — no data replay, no re-embedding; runs as a durable job (poll the destination's metadata)",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
     "/v1/graph/groundability": {
       "get": {
         "operationId": "get_v1_graph_groundability",
@@ -29954,6 +30394,312 @@
           }
         ],
         "summary": "Run a SPARQL query (text) against the graph — discoverable alias for /v1/query/sparql-text",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/reload": {
+      "post": {
+        "operationId": "post_v1_graph_reload",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-06-22` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Must equal the target graph id (reload is semi-destructive)",
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "true = preview the delta; nothing durable changes",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "true = malformed payload lines fail the reload instead of being skipped and reported",
+            "in": "query",
+            "name": "strict",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional RFC3339 observation timestamp applied to the reload's writes",
+            "in": "query",
+            "name": "observed_at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphReloadResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Declarative full-state replace: body is bulk-import NDJSON of the desired state; entities absent from the payload leave current state (history kept for as_of), payload entities are upserted, and the cutover is one atomic visibility boundary. dry_run=true previews the full delta without changing anything",
         "tags": [
           "graph"
         ]
