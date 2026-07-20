@@ -25,7 +25,7 @@ def test_public_exports_are_explicit_and_stable() -> None:
 
 
 def test_package_version_and_primary_clients_are_available() -> None:
-    assert lbb.__version__ == "0.6.1"
+    assert lbb.__version__ == "0.7.0"
     try:
         distribution_version = version("littlebigbrain")
     except PackageNotFoundError:

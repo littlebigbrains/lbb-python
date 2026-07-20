@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from typing import Any, cast
 
 import httpx
@@ -495,6 +495,33 @@ class AsyncLbbClient(_BaseLbbClient):
         return cast(
             models.GraphBranchDeleteResponse,
             await super().delete_branch(confirm=confirm),
+        )
+
+    async def fork_graph(self, src: str, dst: str) -> models.GraphForkResponse:
+        return cast(
+            models.GraphForkResponse, await super().fork_graph(src, dst)
+        )
+
+    async def reload(
+        self,
+        lines: Sequence[Mapping[str, Any]] | str,
+        *,
+        confirm: str,
+        dry_run: bool | None = None,
+        strict: bool | None = None,
+        observed_at: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.GraphReloadResponse:
+        return cast(
+            models.GraphReloadResponse,
+            await super().reload(
+                lines,
+                confirm=confirm,
+                dry_run=dry_run,
+                strict=strict,
+                observed_at=observed_at,
+                idempotency_key=idempotency_key,
+            ),
         )
 
     async def commit_model(

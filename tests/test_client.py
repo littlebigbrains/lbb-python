@@ -23,6 +23,8 @@ from lbb.models import (
     GraphBranchDeleteResponse,
     GraphDeleteResponse,
     GraphEdgeRow,
+    GraphForkResponse,
+    GraphReloadResponse,
     GraphSummaryResponse,
     IndexGcJobStatusResponse,
     OntologyDraft,
@@ -1301,6 +1303,133 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(dict(request.url.params)["graph"], "research")
         self.assertIn("idempotency-key", request.headers)
 
+    def test_fork_graph_pins_confirm_to_destination_and_is_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "ok": True,
+            "queued": True,
+            "src_graph_id": "research",
+            "dst_graph_id": "research-copy",
+            "job_id": "graph_fork:abc",
+            "poll": "GET /v1/graph/metadata?graph=research-copy",
+        }
+        with LbbClient(
+            "http://h",
+            graph="research",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = client.fork_graph("research", "research-copy")
+        self.assertIsInstance(result, GraphForkResponse)
+        self.assertEqual(result.dst_graph_id, "research-copy")
+        request = seen[0]
+        self.assertEqual(request.method, "POST")
+        self.assertEqual(str(request.url).split("?")[0], "http://h/v1/graph/fork")
+        params = dict(request.url.params)
+        self.assertEqual(params["src"], "research")
+        self.assertEqual(params["dst"], "research-copy")
+        # confirm must equal the destination graph id to authorize the fork.
+        self.assertEqual(params["confirm"], "research-copy")
+
+    def test_reload_posts_ndjson_with_confirm_and_rollback_anchor(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "dry_run": True,
+            "lines_read": 2,
+            "entities_added": 1,
+            "entities_changed": 0,
+            "entities_removed": 1,
+            "edges_added": 1,
+            "edges_changed": 0,
+            "edges_removed": 0,
+            "error_count": 0,
+            "idempotency_key": "reload:xyz",
+            "new_commit_seq": 8,
+            "new_snapshot_token": "snap-new",
+            "prior_commit_seq": 7,
+            "prior_snapshot_token": "snap-old",
+        }
+        with LbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = client.reload(
+                [
+                    {
+                        "source": {"type": "Author", "name": "Ada", "key": "orcid:1"},
+                        "relation": "AFFILIATED_WITH",
+                        "target": {
+                            "type": "University",
+                            "name": "Cambridge",
+                            "key": "ror:1",
+                        },
+                    },
+                    {
+                        "type": "Author",
+                        "name": "Ada",
+                        "key": "orcid:1",
+                        "properties": {"h_index": 52},
+                    },
+                ],
+                confirm="main",
+                dry_run=True,
+                strict=True,
+                observed_at="2026-07-20T00:00:00Z",
+            )
+        self.assertIsInstance(result, GraphReloadResponse)
+        self.assertTrue(result.dry_run)
+        # prior_* is the rollback anchor.
+        self.assertEqual(result.prior_commit_seq, 7)
+        self.assertEqual(result.prior_snapshot_token, "snap-old")
+        request = seen[0]
+        self.assertEqual(request.method, "POST")
+        self.assertEqual(str(request.url).split("?")[0], "http://h/v1/graph/reload")
+        params = dict(request.url.params)
+        self.assertEqual(params["confirm"], "main")
+        self.assertEqual(params["dry_run"], "true")
+        self.assertEqual(params["strict"], "true")
+        self.assertEqual(params["observed_at"], "2026-07-20T00:00:00Z")
+        self.assertEqual(request.headers["content-type"], "application/x-ndjson")
+        self.assertRegex(request.headers["idempotency-key"], r"^reload:")
+        lines = request.content.decode().split("\n")
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(json.loads(lines[0])["relation"], "AFFILIATED_WITH")
+        self.assertEqual(json.loads(lines[1])["properties"]["h_index"], 52)
+
+    def test_reload_accepts_prebuilt_ndjson_and_omits_unset_flags(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "dry_run": False,
+            "lines_read": 1,
+            "entities_added": 0,
+            "entities_changed": 0,
+            "entities_removed": 0,
+            "edges_added": 0,
+            "edges_changed": 1,
+            "edges_removed": 0,
+            "error_count": 0,
+            "idempotency_key": "reload:custom",
+            "new_commit_seq": 2,
+            "new_snapshot_token": "snap",
+            "prior_commit_seq": 1,
+            "prior_snapshot_token": "snap0",
+        }
+        ndjson = '{"type":"Author","name":"Ada","key":"orcid:1","properties":{}}'
+        with LbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            client.reload(ndjson, confirm="main", idempotency_key="reload:custom")
+        request = seen[0]
+        self.assertEqual(request.content.decode(), ndjson)
+        self.assertEqual(request.headers["idempotency-key"], "reload:custom")
+        params = dict(request.url.params)
+        # Unset flags are dropped from the query string.
+        self.assertNotIn("dry_run", params)
+        self.assertNotIn("strict", params)
+        self.assertNotIn("observed_at", params)
+
     def test_raw_request_returns_metadata(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -1965,6 +2094,60 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         ) as client:
             result = await client.create_graph()
         self.assertIsInstance(result, CreateGraphResponse)
+
+    async def test_async_fork_graph_returns_typed_response(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "ok": True,
+            "queued": True,
+            "src_graph_id": "research",
+            "dst_graph_id": "research-copy",
+            "job_id": "graph_fork:abc",
+            "poll": "GET /v1/graph/metadata?graph=research-copy",
+        }
+        async with AsyncLbbClient(
+            "http://h",
+            graph="research",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = await client.fork_graph("research", "research-copy")
+        self.assertIsInstance(result, GraphForkResponse)
+        self.assertEqual(result.dst_graph_id, "research-copy")
+        self.assertEqual(dict(seen[0].url.params)["confirm"], "research-copy")
+
+    async def test_async_reload_posts_ndjson_and_is_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = {
+            "dry_run": False,
+            "lines_read": 1,
+            "entities_added": 0,
+            "entities_changed": 1,
+            "entities_removed": 0,
+            "edges_added": 0,
+            "edges_changed": 0,
+            "edges_removed": 0,
+            "error_count": 0,
+            "idempotency_key": "reload:async",
+            "new_commit_seq": 3,
+            "new_snapshot_token": "snap-new",
+            "prior_commit_seq": 2,
+            "prior_snapshot_token": "snap-old",
+        }
+        async with AsyncLbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(seen, {"json": payload}),
+        ) as client:
+            result = await client.reload(
+                '{"type":"Author","name":"Ada","properties":{}}',
+                confirm="main",
+            )
+        self.assertIsInstance(result, GraphReloadResponse)
+        self.assertEqual(result.prior_commit_seq, 2)
+        request = seen[0]
+        self.assertEqual(str(request.url).split("?")[0], "http://h/v1/graph/reload")
+        self.assertEqual(dict(request.url.params)["confirm"], "main")
+        self.assertEqual(request.headers["content-type"], "application/x-ndjson")
 
     async def test_async_retries_retryable_failures(self) -> None:
         seen: list[httpx.Request] = []

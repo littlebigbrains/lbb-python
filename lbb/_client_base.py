@@ -686,6 +686,24 @@ class _BaseLbbClient:
             params={"confirm": confirm},
         )
 
+    def fork_graph(self, src: str, dst: str) -> models.GraphForkResponse:
+        """Fork a whole graph into a brand-new destination graph in the same tenant.
+
+        The copy runs as a durable background job (``confirm`` is fixed to ``dst``,
+        which the route requires to authorize the fork); the destination must not
+        already exist, so the create-only CAS on the server side makes the call
+        safe to retry. The response only acknowledges the enqueue — poll the
+        destination graph's metadata (see ``response.poll``) to observe the fork
+        completing: the destination becomes readable once its head is published.
+        """
+        return self._model_request(
+            models.GraphForkResponse,
+            "POST",
+            "/v1/graph/fork",
+            params={"src": src, "dst": dst, "confirm": dst},
+            options={"retry": True},
+        )
+
     def embedding_config(
         self, *, options: RequestOptions | None = None
     ) -> models.ManagedEmbeddingConfigResponse:
@@ -849,6 +867,54 @@ class _BaseLbbClient:
             content=ndjson,
             content_type="application/x-ndjson",
             idempotency_key=idempotency_key or self.idempotency_key("import"),
+        )
+
+    def reload(
+        self,
+        lines: Sequence[Mapping[str, Any]] | str,
+        *,
+        confirm: str,
+        dry_run: bool | None = None,
+        strict: bool | None = None,
+        observed_at: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.GraphReloadResponse:
+        """Declarative full-state replace: reconcile the scoped graph so its current
+        state matches exactly the NDJSON payload.
+
+        ``lines`` uses the same grammar as :meth:`import_ndjson` — triplet /
+        entity-properties records passed as a sequence (serialized to one NDJSON
+        line each here) or a pre-built NDJSON string. The whole reconciliation
+        lands as one atomic cutover: payload records are upserted, and entities
+        present at the pre-reload head but absent from the payload leave current
+        state (retraction semantics — history is preserved, so an ``as_of`` read
+        pinned before the cutover still sees the old state).
+
+        ``confirm`` must equal the target graph id (reload is semi-destructive).
+        ``dry_run=True`` previews the full delta with zero durable changes. The
+        response carries ``prior_commit_seq`` / ``prior_snapshot_token`` as the
+        rollback anchor — read them back with ``?as_of_commit_seq=<prior_commit_seq>``
+        to see the pre-reload state. An idempotency key scopes the single cutover
+        commit, so a retry replays rather than re-applying.
+        """
+        ndjson = (
+            lines
+            if isinstance(lines, str)
+            else "\n".join(json.dumps(_coerce_body(line)) for line in lines)
+        )
+        return self._model_request(
+            models.GraphReloadResponse,
+            "POST",
+            "/v1/graph/reload",
+            params={
+                "confirm": confirm,
+                "dry_run": dry_run,
+                "strict": strict,
+                "observed_at": observed_at,
+            },
+            content=ndjson,
+            content_type="application/x-ndjson",
+            idempotency_key=idempotency_key or self.idempotency_key("reload"),
         )
 
     def import_rdf(
