@@ -401,6 +401,54 @@ class SyncClientTests(unittest.TestCase):
         body = json.loads(request.content)
         self.assertEqual(body["group_keys"][0]["property"]["field"], "area")
 
+    def test_a5_read_your_writes_floor_and_default_consistency(self) -> None:
+        """A5: the write→floor→read loop, plus min_indexed_seq/consistency threading
+        and the client-level default consistency."""
+        seen: list[httpx.Request] = []
+        responses = [
+            {"json": {"commit_seq": 128, "snapshot_token": "t", "op_count": 1}},
+            {"json": {"snapshot": SNAPSHOT, "vars": [], "solutions": []}},
+            {"json": summary_payload()},
+        ]
+        with LbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(seen, responses),
+            default_consistency="strong",
+        ) as client:
+            commit_seq = client.commit({"triplets": []})["commit_seq"]
+            # The floor threads onto the structured-SPARQL body.
+            client.sparql_select({"patterns": []}, min_indexed_seq=commit_seq)
+            # On the summary (URL) route the floor + default consistency ride the
+            # query string.
+            client.summary(min_indexed_seq=commit_seq)
+
+        self.assertEqual(commit_seq, 128)
+        sparql_body = json.loads(seen[1].content)
+        self.assertEqual(sparql_body["min_indexed_seq"], 128)
+        # sparql_select did not set consistency explicitly, so the client default
+        # is folded into the body.
+        self.assertEqual(sparql_body["consistency"], "strong")
+        summary_params = dict(seen[2].url.params)
+        self.assertEqual(summary_params["min_indexed_seq"], "128")
+        self.assertEqual(summary_params["consistency"], "strong")
+
+    def test_a5_per_call_consistency_wins_over_default(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(
+                seen, [{"json": {"snapshot": SNAPSHOT, "results": []}}]
+            ),
+            default_consistency="strong",
+        ) as client:
+            client.full_text_search(
+                {"query": "x", "targets": [], "top_k": 5, "explain": False},
+                consistency="eventual",
+            )
+        self.assertEqual(json.loads(seen[0].content)["consistency"], "eventual")
+
     def test_search_feedback_posts_labels_and_exports(self) -> None:
         seen: list[httpx.Request] = []
         export_payload = {

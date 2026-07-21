@@ -2497,6 +2497,19 @@ class SearchChannelContribution(BaseModel):
 
 
 class SearchConsistency(Enum):
+    """
+    Read consistency for a query surface (search, graph summary, SPARQL).
+
+    A5 (2026-07-21 product decision): `Eventual` is the **default**. It serves the
+    last published index/dataset state at its watermark with no in-memory fold of
+    the un-indexed tail — the lowest-latency mode and the availability floor
+    during any indexing backlog. The served watermark rides back on
+    `SnapshotView::served_at_seq`. `Strong` (fold the un-indexed tail up to the
+    query head) is now explicit opt-in; the precise read-your-writes contract
+    (`min_indexed_seq`) replaces most former uses of strong. See
+    `docs/architecture/segment-native-indexing.md` §6.
+    """
+
     strong = 'strong'
     eventual = 'eventual'
 
@@ -7993,6 +8006,7 @@ class EmbeddingSearchRequest(BaseModel):
         | None
     ) = None
     max_clusters: Annotated[int | None, Field(ge=0)] = None
+    min_indexed_seq: CommitSeq | None = None
     probe_count: Annotated[int | None, Field(ge=0)] = None
     provider: (
         EmbeddingProviderConfig1
@@ -8110,6 +8124,7 @@ class FullTextSearchRequest(BaseModel):
         | SearchFilterExpr22
         | None
     ) = None
+    min_indexed_seq: CommitSeq | None = None
     offset: Annotated[
         int | None,
         Field(
@@ -8262,6 +8277,7 @@ class SearchEngineOptions(BaseModel):
     graph_anchor: GraphAnchor | None = None
     lexical: bool | None = None
     max_clusters: Annotated[int | None, Field(ge=0)] = None
+    min_indexed_seq: CommitSeq | None = None
     probe_count: Annotated[int | None, Field(ge=0)] = None
     profile: RetrievalProfileId | None = None
     provider: (
@@ -8954,6 +8970,7 @@ class SparqlSelectRequest(BaseModel):
             ge=0,
         ),
     ] = None
+    min_indexed_seq: CommitSeq | None = None
     offset: Annotated[
         int | None, Field(description='Skip this many rows before `limit`.', ge=0)
     ] = None

@@ -2658,6 +2658,17 @@
               "null"
             ]
           },
+          "min_indexed_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "A5 read-your-writes floor: require the read to be served from state whose\nwatermark ≥ this `commit_seq` (the `new_commit_seq` a commit/import\nreturned). Under the default `Eventual`, a floor not yet covered returns a\nretryable `read_your_writes_pending` 429. `None` == no floor. See\n`SearchEngineOptions::min_indexed_seq`."
+              }
+            ]
+          },
           "probe_count": {
             "minimum": 0,
             "type": [
@@ -4209,6 +4220,17 @@
               },
               {
                 "$ref": "#/components/schemas/SearchFilterExpr"
+              }
+            ]
+          },
+          "min_indexed_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "A5 read-your-writes floor: require the read to be served from state whose\nwatermark ≥ this `commit_seq` (the `new_commit_seq` a commit/import\nreturned). Under the default `Eventual`, a floor not yet covered returns a\nretryable `read_your_writes_pending` 429. `None` == no floor. See\n`SearchEngineOptions::min_indexed_seq`."
               }
             ]
           },
@@ -11684,6 +11706,7 @@
         "type": "object"
       },
       "SearchConsistency": {
+        "description": "Read consistency for a query surface (search, graph summary, SPARQL).\n\nA5 (2026-07-21 product decision): `Eventual` is the **default**. It serves the\nlast published index/dataset state at its watermark with no in-memory fold of\nthe un-indexed tail — the lowest-latency mode and the availability floor\nduring any indexing backlog. The served watermark rides back on\n`SnapshotView::served_at_seq`. `Strong` (fold the un-indexed tail up to the\nquery head) is now explicit opt-in; the precise read-your-writes contract\n(`min_indexed_seq`) replaces most former uses of strong. See\n`docs/architecture/segment-native-indexing.md` §6.",
         "enum": [
           "strong",
           "eventual"
@@ -11761,6 +11784,17 @@
             "type": [
               "integer",
               "null"
+            ]
+          },
+          "min_indexed_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "A5 read-your-writes floor: require the read to be served from state whose\nwatermark ≥ this `commit_seq`. Take the `new_commit_seq` a commit/import\nreturned, then read with `min_indexed_seq` set to it. Under the default\n`Eventual` consistency, a floor not yet covered by published state returns a\nretryable `read_your_writes_pending` 429 (poll until it lands) rather than a\nsilently stale answer. Under `Strong` the floor is satisfied by construction\n(strong covers head); a floor above head is a client error. `None` == no\nfloor. See `docs/architecture/segment-native-indexing.md` §6."
+              }
             ]
           },
           "probe_count": {
@@ -16104,7 +16138,7 @@
               },
               {
                 "$ref": "#/components/schemas/SearchConsistency",
-                "description": "A3 (bounded-staleness serving). `strong` (default) evaluates against the\nhead snapshot, folding any un-indexed WAL tail into the conformant dataset\nin memory. `eventual` serves ENTIRELY from the last published conformant\nprepared dataset (the maintenance-owned, asserted-only default family,\ndiscovered via the W9c pointer) at its watermark — no in-memory gap fold,\nso a query stays available even while background indexing lags the\nsnapshot. The served watermark is surfaced as `snapshot.served_at_seq`.\nEventual serving requires a published dataset; a graph with none yet\nreturns a retryable 429."
+                "description": "Read consistency (A3 serving; A5 default). `eventual` (the **default**\nsince A5) serves ENTIRELY from the last published conformant prepared\ndataset (the maintenance-owned, asserted-only default family, discovered\nvia the W9c pointer) at its watermark — no in-memory gap fold, so a query\nstays available even while background indexing lags the snapshot. The\nserved watermark is surfaced as `snapshot.served_at_seq`. Eventual serving\nrequires a published dataset; a graph with none yet returns a retryable\n429. `strong` (explicit opt-in) evaluates against the head snapshot,\nfolding any un-indexed WAL tail into the conformant dataset in memory."
               }
             ]
           },
@@ -16170,6 +16204,17 @@
             "type": [
               "integer",
               "null"
+            ]
+          },
+          "min_indexed_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "A5 read-your-writes floor: require the read to be served from state whose\nwatermark ≥ this `commit_seq` (the `new_commit_seq` a commit/import\nreturned). Under the default `eventual`, a floor not yet covered by the\npublished dataset returns a retryable `read_your_writes_pending` 429 (poll\nuntil it lands); under `strong` the floor is satisfied by construction and a\nfloor above head is a client error. `None` == no floor. See\n`docs/architecture/segment-native-indexing.md` §6."
+              }
             ]
           },
           "offset": {

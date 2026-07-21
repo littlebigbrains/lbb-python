@@ -484,6 +484,7 @@ class _BaseLbbClient:
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
         on_retry: Callable[[RetryEvent], None] | None = None,
+        default_consistency: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -494,6 +495,10 @@ class _BaseLbbClient:
         self._retry_delay = retry_delay
         self._retry_budget_ms = retry_budget_ms
         self._on_retry = on_retry
+        # A5: read consistency applied when a read omits its own value. Since A5
+        # the server default is ``eventual``; set ``"strong"`` to keep reads
+        # head-exact by default. A per-call ``consistency`` always wins.
+        self._default_consistency = default_consistency
         self.search = _SearchNamespace(self)
         self.context = _ContextNamespace(self)
         self.indexes = _IndexNamespace(self)
@@ -524,6 +529,40 @@ class _BaseLbbClient:
                 if value is not None:
                     params[key] = value
         return params
+
+    def _resolve_consistency(self, consistency: str | None) -> str | None:
+        """A5: a per-call consistency wins over the client ``default_consistency``."""
+        return consistency if consistency is not None else self._default_consistency
+
+    def _consistency_params(
+        self, consistency: str | None, min_indexed_seq: int | None
+    ) -> dict[str, Any]:
+        """A5: read-consistency options as URL query params (SPARQL-text, summary)."""
+        params: dict[str, Any] = {}
+        resolved = self._resolve_consistency(consistency)
+        if resolved is not None:
+            params["consistency"] = resolved
+        if min_indexed_seq is not None:
+            params["min_indexed_seq"] = min_indexed_seq
+        return params
+
+    def _with_consistency(
+        self, body: Body, consistency: str | None, min_indexed_seq: int | None
+    ) -> Body:
+        """A5: fold read-consistency options into a request body's own
+        ``consistency`` / ``min_indexed_seq`` fields (full-text, embedding,
+        structured-SPARQL bodies). An explicit body field wins over both the
+        per-call value and the client default."""
+        resolved = self._resolve_consistency(consistency)
+        if resolved is None and min_indexed_seq is None:
+            return body
+        merged = dict(body) if isinstance(body, Mapping) else body
+        if isinstance(merged, dict):
+            if resolved is not None and merged.get("consistency") is None:
+                merged["consistency"] = resolved
+            if min_indexed_seq is not None and merged.get("min_indexed_seq") is None:
+                merged["min_indexed_seq"] = min_indexed_seq
+        return merged
 
     def _request_kwargs(
         self,
@@ -1372,19 +1411,35 @@ class _BaseLbbClient:
         )
 
     def full_text_search(
-        self, body: Body, *, options: RequestOptions | None = None
+        self,
+        body: Body,
+        *,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
+        options: RequestOptions | None = None,
     ) -> Any:
-        """BM25 search."""
+        """BM25 search. ``min_indexed_seq`` sets the A5 read-your-writes floor."""
         return self._request(
-            "POST", "/v1/search/full-text", body=body, options=_read_options(options)
+            "POST",
+            "/v1/search/full-text",
+            body=self._with_consistency(body, consistency, min_indexed_seq),
+            options=_read_options(options),
         )
 
     def embedding_search(
-        self, body: Body, *, options: RequestOptions | None = None
+        self,
+        body: Body,
+        *,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
+        options: RequestOptions | None = None,
     ) -> Any:
-        """ANN/vector search."""
+        """ANN/vector search. ``min_indexed_seq`` sets the A5 read-your-writes floor."""
         return self._request(
-            "POST", "/v1/search/embedding", body=body, options=_read_options(options)
+            "POST",
+            "/v1/search/embedding",
+            body=self._with_consistency(body, consistency, min_indexed_seq),
+            options=_read_options(options),
         )
 
     # --- search relevance feedback (training data) ---
@@ -1448,7 +1503,13 @@ class _BaseLbbClient:
 
     # --- SPARQL ---
 
-    def sparql_select(self, body: Body) -> Any:
+    def sparql_select(
+        self,
+        body: Body,
+        *,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
+    ) -> Any:
         """Structured SPARQL-subset SELECT/ASK/aggregate (``POST /v1/query/sparql``).
 
         Takes a ``SparqlSelectRequest`` (model or dict): conjunctive ``patterns``
@@ -1461,8 +1522,15 @@ class _BaseLbbClient:
         per-category breakdown or a time series is one server-side query; scalar
         keys come back in each ``groups[].value_keys[<as>]``. Returns the typed
         ``SparqlSelectResponse`` shape. For raw SPARQL *text*, use :meth:`sparql`.
+
+        ``consistency`` / ``min_indexed_seq`` select the A5 read mode and the
+        read-your-writes floor (body fields on this structured route).
         """
-        return self._request("POST", "/v1/query/sparql", body=body)
+        return self._request(
+            "POST",
+            "/v1/query/sparql",
+            body=self._with_consistency(body, consistency, min_indexed_seq),
+        )
 
     def sparql_select_model(self, body: Body) -> models.SparqlSelectResponse:
         """Structured SPARQL response validated as ``SparqlSelectResponse``."""
@@ -1502,6 +1570,8 @@ class _BaseLbbClient:
         as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
     ) -> Any:
         """POST raw SPARQL text to ``/v1/query/sparql-text``; returns the envelope.
 
@@ -1521,7 +1591,11 @@ class _BaseLbbClient:
             body["limit"] = limit
         if offset is not None:
             body["offset"] = offset
-        return self._request("POST", "/v1/query/sparql-text", body=body)
+        # A5: the text dialect carries consistency/floor on the URL, not the body.
+        params = self._consistency_params(consistency, min_indexed_seq)
+        return self._request(
+            "POST", "/v1/query/sparql-text", body=body, params=params or None
+        )
 
     # --- ontology ---
 
@@ -1728,9 +1802,19 @@ class _BaseLbbClient:
             },
         )
 
-    def summary(self) -> Any:
-        """Graph counts and type/relation buckets."""
-        return self._request("GET", "/v1/graph/summary")
+    def summary(
+        self,
+        *,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
+    ) -> Any:
+        """Graph counts and type/relation buckets. ``consistency`` /
+        ``min_indexed_seq`` (A5) ride the URL query string."""
+        return self._request(
+            "GET",
+            "/v1/graph/summary",
+            params=self._consistency_params(consistency, min_indexed_seq) or None,
+        )
 
     def summary_model(self) -> models.GraphSummaryResponse:
         """Graph counts validated as ``GraphSummaryResponse``."""
@@ -1828,6 +1912,8 @@ class _BaseLbbClient:
         as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
     ) -> Any:
         """Run SPARQL text; concrete transports return or await parsed results."""
         raise NotImplementedError
@@ -2195,6 +2281,7 @@ class _SearchNamespace:
         top_k: int | None = None,
         source: str | None = None,
         consistency: str | None = None,
+        min_indexed_seq: int | None = None,
     ) -> Any:
         """Quick semantic hybrid search while preserving ``client.search(...)``."""
         return self.hybrid(
@@ -2202,16 +2289,21 @@ class _SearchNamespace:
             top_k=top_k,
             source=source,
             consistency=consistency,
+            min_indexed_seq=min_indexed_seq,
         )
 
     def hybrid(self, query_or_body: str | Body, **kwargs: Any) -> Any:
         options = kwargs.get("options")
+        # A5: resolve the client default consistency and thread the floor.
+        consistency = self._client._resolve_consistency(kwargs.get("consistency"))
+        min_indexed_seq = kwargs.get("min_indexed_seq")
         if isinstance(query_or_body, str):
             params = {
                 "query": query_or_body,
                 "top_k": kwargs.get("top_k"),
                 "source": kwargs.get("source"),
-                "consistency": kwargs.get("consistency"),
+                "consistency": consistency,
+                "min_indexed_seq": min_indexed_seq,
                 "targets": (
                     ",".join(kwargs["targets"]) if kwargs.get("targets") else None
                 ),
@@ -2220,10 +2312,23 @@ class _SearchNamespace:
             return self._client._request(
                 "GET", "/v1/search", params=params, options=options
             )
+        # Hybrid graph search carries consistency on the nested `search` options.
+        body = query_or_body
+        if (consistency is not None or min_indexed_seq is not None) and isinstance(
+            body, Mapping
+        ):
+            merged = dict(body)
+            search = dict(merged.get("search") or {})
+            if consistency is not None and search.get("consistency") is None:
+                search["consistency"] = consistency
+            if min_indexed_seq is not None and search.get("min_indexed_seq") is None:
+                search["min_indexed_seq"] = min_indexed_seq
+            merged["search"] = search
+            body = merged
         return self._client._request(
             "POST",
             "/v1/graph/search",
-            body=query_or_body,
+            body=body,
             options=_read_options(options),
         )
 
@@ -2419,13 +2524,18 @@ class _QueryNamespace:
         self._client = client
 
     def structured(
-        self, body: Body, *, options: RequestOptions | None = None
+        self,
+        body: Body,
+        *,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
+        options: RequestOptions | None = None,
     ) -> models.SparqlSelectResponse:
         return self._client._model_request(
             models.SparqlSelectResponse,
             "POST",
             "/v1/query/sparql",
-            body=body,
+            body=self._client._with_consistency(body, consistency, min_indexed_seq),
             options=_read_options(options),
         )
 
@@ -2439,6 +2549,8 @@ class _QueryNamespace:
         as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
     ) -> Any:
         return self._client.sparql(
             query,
@@ -2448,6 +2560,8 @@ class _QueryNamespace:
             as_of_commit_seq=as_of_commit_seq,
             limit=limit,
             offset=offset,
+            consistency=consistency,
+            min_indexed_seq=min_indexed_seq,
         )
 
     def analytics(
