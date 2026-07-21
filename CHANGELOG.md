@@ -2,6 +2,38 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.8.0
+
+Eventual-by-default read consistency and the read-your-writes floor.
+
+### ⚠️ Behavior change — default read consistency is now `eventual`
+
+The server's default read consistency flipped from `strong` to `eventual`
+(server-side change; this SDK forwards `consistency` unchanged). A read that
+does not specify `consistency` now serves the last **published** index/dataset
+state at its watermark (surfaced on `snapshot.served_at_seq` with
+`stale_reason="eventual_consistency"`) rather than folding the un-indexed WAL
+tail up to head. **Code that relied on the implicit `strong` default for
+read-after-write must either pass `consistency="strong"` or — preferably — use
+the new `min_indexed_seq` floor below.**
+
+### Read-your-writes floor (`min_indexed_seq`)
+
+- Read methods on the search / SPARQL / summary surfaces accept `consistency=`
+  and `min_indexed_seq=` keyword arguments. Take the committed sequence a write
+  returned and read with `min_indexed_seq` set to it:
+
+  ```python
+  commit_seq = client.commit(triplets)["commit_seq"]
+  rows = client.sparql(query, min_indexed_seq=commit_seq)
+  ```
+
+  Under the eventual default, a floor not yet covered by published state raises a
+  retryable `read_your_writes_pending` `429` (with `Retry-After`) so a sync
+  pipeline can poll for its own write instead of reading a stale answer.
+- **Client-level default.** `LbbClient(…, default_consistency="strong")` sets the
+  consistency used when a call omits it; a per-call `consistency=` still wins.
+
 ## 0.6.1
 
 Composite stack endpoints: hosted stacks are addressed by their own

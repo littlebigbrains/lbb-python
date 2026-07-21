@@ -98,9 +98,22 @@ class _SyncOntologyNamespace(_OntologyNamespace):
 
 class _SyncQueryNamespace(_QueryNamespace):
     def structured(
-        self, body: Body, *, options: RequestOptions | None = None
+        self,
+        body: Body,
+        *,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
+        options: RequestOptions | None = None,
     ) -> models.SparqlSelectResponse:
-        return cast(models.SparqlSelectResponse, super().structured(body, options=options))
+        return cast(
+            models.SparqlSelectResponse,
+            super().structured(
+                body,
+                consistency=consistency,
+                min_indexed_seq=min_indexed_seq,
+                options=options,
+            ),
+        )
 
     def sparql(
         self,
@@ -112,6 +125,8 @@ class _SyncQueryNamespace(_QueryNamespace):
         as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
     ) -> SparqlResults:
         return cast(
             SparqlResults,
@@ -123,6 +138,8 @@ class _SyncQueryNamespace(_QueryNamespace):
                 as_of_commit_seq=as_of_commit_seq,
                 limit=limit,
                 offset=offset,
+                consistency=consistency,
+                min_indexed_seq=min_indexed_seq,
             ),
         )
 
@@ -181,6 +198,7 @@ class LbbClient(_BaseLbbClient):
         timeout: float = DEFAULT_TIMEOUT,
         transport: httpx.BaseTransport | None = None,
         event_hooks: Mapping[str, list[Callable[[Any], Any]]] | None = None,
+        default_consistency: str | None = None,
     ) -> None:
         super().__init__(
             base_url,
@@ -192,6 +210,7 @@ class LbbClient(_BaseLbbClient):
             retry_delay=retry_delay,
             retry_budget_ms=retry_budget_ms,
             on_retry=on_retry,
+            default_consistency=default_consistency,
         )
         self.context = _SyncContextNamespace(self)
         self.entities = _SyncEntityNamespace(self)
@@ -439,6 +458,8 @@ class LbbClient(_BaseLbbClient):
         as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
+        consistency: str | None = None,
+        min_indexed_seq: int | None = None,
     ) -> SparqlResults:
         """Run a SPARQL 1.1 text query (SELECT or ASK) and return parsed results.
 
@@ -462,6 +483,8 @@ class LbbClient(_BaseLbbClient):
             as_of_commit_seq=as_of_commit_seq,
             limit=limit,
             offset=offset,
+            consistency=consistency,
+            min_indexed_seq=min_indexed_seq,
         )
         return SparqlResults.from_envelope(envelope)
 
