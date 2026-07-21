@@ -3319,6 +3319,7 @@ class SnapshotView(BaseModel):
             ge=0,
         ),
     ]
+    served_at_seq: CommitSeq | None = None
     stale: Annotated[
         bool | None,
         Field(
@@ -3328,7 +3329,7 @@ class SnapshotView(BaseModel):
     stale_reason: Annotated[
         str | None,
         Field(
-            description='The reason a read is `stale` (F2). `"storage_degraded"` today; omitted\nwhen not stale.'
+            description='The reason a read is `stale`. `"storage_degraded"` (F2) or\n`"eventual_consistency"` (A3: served from the last published index/dataset\nstate at [`Self::served_at_seq`], not head); omitted when not stale.'
         ),
     ] = None
 
@@ -3649,6 +3650,7 @@ class SparqlTextResponse(BaseModel):
         str, Field(description='SPARQL 1.1 Query Results JSON, serialized.')
     ]
     row_page: RowPage
+    snapshot: SnapshotView | None = None
 
 
 class SparqlValue1(BaseModel):
@@ -8896,6 +8898,7 @@ class SparqlSelectRequest(BaseModel):
             description='`ASK` form: return only `boolean` (whether the pattern has any solution).\nProjection, DISTINCT, and limit/offset are ignored.'
         ),
     ] = None
+    consistency: SearchConsistency | None = None
     distinct: Annotated[
         bool | None,
         Field(description='`SELECT DISTINCT`: drop duplicate projected rows.'),
