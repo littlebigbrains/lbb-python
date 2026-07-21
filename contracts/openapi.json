@@ -15661,12 +15661,23 @@
             "$ref": "#/components/schemas/CommitSeq",
             "description": "Highest commit folded into the **compacted graph snapshot base** (the\nmaterialized segment base). Commits in `(compacted_seq, commit_seq]` live in\nthe WAL tail and are replayed on read — so `compacted_seq: 0` is the normal\nstate of a small or freshly-created graph (no base built yet) and does\n**not** mean the data is unreadable: every read replays the full tail.\n\nThis is *not* search-index coverage. Whether BM25/vector search indexes\nare built — what `/v1/index/run` advances — is reported separately as\n`bm25_indexed_commit_seq` / `ann_indexed_commit_seq` on\n`GET /v1/graph/metadata` and on the entity read's metadata."
           },
+          "served_at_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "A3 (bounded-staleness serving): the coherent PUBLISHED watermark this\nresponse was actually served from when the request selected\nsnapshot/eventual consistency. The query ran ENTIRELY against index/dataset\nstate published through this `commit_seq` — no in-memory fold of the\nun-indexed `(served_at_seq, commit_seq]` gap, so serving never depends on\nbackground-maintenance health. For a multi-family search this is the MIN of\nthe enabled families' published watermarks, so every surface (BM25, vector,\n…) agrees on one snapshot. Absent on strong-consistency reads (which fold\nthe gap up to `commit_seq`) and omitted from the wire form when absent, so\nstrong responses stay byte-identical."
+              }
+            ]
+          },
           "stale": {
             "description": "F2 (roadmap 18.3): true when this snapshot was served from the in-memory\ncache while storage was degraded and the latest head could not be\nverified — so `commit_seq` may not be the current head. Absent (false) on\nevery normal read; writes never serve stale. Omitted from the wire form\nwhen false so healthy responses are byte-identical to before.",
             "type": "boolean"
           },
           "stale_reason": {
-            "description": "The reason a read is `stale` (F2). `\"storage_degraded\"` today; omitted\nwhen not stale.",
+            "description": "The reason a read is `stale`. `\"storage_degraded\"` (F2) or\n`\"eventual_consistency\"` (A3: served from the last published index/dataset\nstate at [`Self::served_at_seq`], not head); omitted when not stale.",
             "type": [
               "string",
               "null"
@@ -16086,6 +16097,17 @@
             "description": "`ASK` form: return only `boolean` (whether the pattern has any solution).\nProjection, DISTINCT, and limit/offset are ignored.",
             "type": "boolean"
           },
+          "consistency": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchConsistency",
+                "description": "A3 (bounded-staleness serving). `strong` (default) evaluates against the\nhead snapshot, folding any un-indexed WAL tail into the conformant dataset\nin memory. `eventual` serves ENTIRELY from the last published conformant\nprepared dataset (the maintenance-owned, asserted-only default family,\ndiscovered via the W9c pointer) at its watermark — no in-memory gap fold,\nso a query stays available even while background indexing lags the\nsnapshot. The served watermark is surfaced as `snapshot.served_at_seq`.\nEventual serving requires a published dataset; a graph with none yet\nreturns a retryable 429."
+              }
+            ]
+          },
           "distinct": {
             "description": "`SELECT DISTINCT`: drop duplicate projected rows.",
             "type": "boolean"
@@ -16364,6 +16386,17 @@
           },
           "row_page": {
             "$ref": "#/components/schemas/RowPage"
+          },
+          "snapshot": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SnapshotView",
+                "description": "A3 (bounded-staleness serving): present when the request selected a\nconsistency mode, so a text-dialect client can read the served watermark\nand staleness the same way structured callers read `snapshot`. Omitted\n(absent) for a bare strong-consistency request, so existing responses stay\nbyte-identical."
+              }
+            ]
           }
         },
         "required": [
