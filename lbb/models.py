@@ -1318,6 +1318,27 @@ class IndexRunView(BaseModel):
     snapshot_commit_seq: Annotated[int, Field(ge=0)]
 
 
+class IndexVisibilityFamily(Enum):
+    """
+    One of the index families published through the unified visibility manifest.
+    """
+
+    base = 'base'
+    rdf = 'rdf'
+    bm25 = 'bm25'
+    ann = 'ann'
+    adjacency = 'adjacency'
+
+
+class IndexVisibilityFamilyClass(Enum):
+    """
+    How a family participates in the unified visibility watermark.
+    """
+
+    lockstep = 'lockstep'
+    merged_only = 'merged_only'
+
+
 class LbbErrorBody(BaseModel):
     code: Annotated[str, Field(examples=['missing_idempotency_key'])]
     doc_url: str | None
@@ -5147,6 +5168,31 @@ class IndexDeltaResponse(BaseModel):
     to_commit_seq: Annotated[int, Field(ge=0)]
 
 
+class IndexFamilyVisibility(BaseModel):
+    """
+    Bounded, user-facing summary of one family in the unified visibility manifest.
+    """
+
+    class_: Annotated[IndexVisibilityFamilyClass, Field(alias='class')]
+    covered_seq: CommitSeq | None = None
+    family: IndexVisibilityFamily
+    l0_from_seq: CommitSeq | None = None
+    l0_segment_count: Annotated[int, Field(ge=0)]
+    l0_to_seq: CommitSeq | None = None
+    model_hash: Annotated[
+        str | None,
+        Field(
+            description='Distinguishes ANN model spaces without exposing object keys.'
+        ),
+    ] = None
+    target_hash: Annotated[
+        str | None,
+        Field(
+            description='Distinguishes target-specific BM25/ANN families without exposing object keys.'
+        ),
+    ] = None
+
+
 class IndexGcResponse(BaseModel):
     deleted_bytes: Annotated[int, Field(ge=0)]
     deleted_objects: Annotated[int, Field(ge=0)]
@@ -5163,6 +5209,22 @@ class IndexGcResponse(BaseModel):
         ),
     ]
     snapshot: SnapshotView
+
+
+class IndexVisibilityManifest(BaseModel):
+    """
+    The unified, per-graph visibility view consumed by the console and status tools.
+    """
+
+    epoch: Annotated[int, Field(ge=0)]
+    families: list[IndexFamilyVisibility]
+    visible_seq: Annotated[
+        int,
+        Field(
+            description='Shared published watermark. Lockstep families define this value.',
+            ge=0,
+        ),
+    ]
 
 
 class InferenceRunResponse(BaseModel):
@@ -7155,6 +7217,7 @@ class GraphMetadataResponse(BaseModel):
         ),
     ] = None
     unindexed_tail_commits: Annotated[int, Field(ge=0)]
+    visibility_manifest: IndexVisibilityManifest | None = None
     wal_tail_bytes: Annotated[int, Field(ge=0)]
     wal_tail_commits: Annotated[int, Field(ge=0)]
 
