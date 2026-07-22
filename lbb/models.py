@@ -6640,6 +6640,7 @@ class AnalyticQueryRequest(BaseModel):
             description='Group-graph-pattern combinators (UNION / OPTIONAL / MINUS / EXISTS /\nNOT EXISTS) folded over the base `patterns`, left-to-right. Empty (the\ndefault) leaves the query a plain conjunctive BGP.'
         ),
     ] = None
+    consistency: SearchConsistency | None = None
     limit: Annotated[
         int | None, Field(description='Cap the number of returned bindings.', ge=0)
     ] = None
@@ -6664,6 +6665,7 @@ class AnalyticQueryRequest(BaseModel):
             ge=0,
         ),
     ] = None
+    min_indexed_seq: CommitSeq | None = None
     offset: Annotated[
         int | None, Field(description='Skip this many bindings before `limit`.', ge=0)
     ] = None

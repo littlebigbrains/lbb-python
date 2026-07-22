@@ -316,6 +316,17 @@
             },
             "type": "array"
           },
+          "consistency": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchConsistency",
+                "description": "Read consistency (A3 serving; A5 default). `eventual` (the **default**)\nserves ENTIRELY from the last published segment RDF family (the\nmaintenance-owned, asserted-only default) at its watermark — no in-memory\ngap fold, so the query stays available while background indexing lags — and\nsurfaces the served watermark on `snapshot.served_at_seq`. Eventual serving\nrequires a published dataset; a graph with none yet returns a retryable 429.\n`strong` (explicit opt-in) evaluates against the head snapshot on the exact\nconformant engine, folding any un-indexed WAL tail in memory — the path that\ncarries `rdfs:subClassOf` closure over the aggregation."
+              }
+            ]
+          },
           "limit": {
             "description": "Cap the number of returned bindings.",
             "minimum": 0,
@@ -346,6 +357,17 @@
             "type": [
               "integer",
               "null"
+            ]
+          },
+          "min_indexed_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "A5 read-your-writes floor: require the read to be served from state whose\nwatermark ≥ this `commit_seq` (the `new_commit_seq` a commit/import\nreturned). Under the default `eventual`, a floor not yet covered by the\npublished dataset returns a retryable `read_your_writes_pending` 429 (poll\nuntil it lands); under `strong` the floor is satisfied by construction and a\nfloor above head is a client error. `None` == no floor."
+              }
             ]
           },
           "offset": {
