@@ -7116,6 +7116,10 @@
           "job_id": {
             "type": "string"
           },
+          "parked": {
+            "description": "True when the job failed terminally because the provider rejected it for\nan account data-policy / configuration reason (a ZDR-ineligible model,\nauth, model-not-found) rather than a transient error — a *parked* job that\nwill not retry. The console renders this as a \"choose a different model\"\nblock instead of a retry. It clears when the embedding config version\nchanges, which mints a fresh reconciliation job.",
+            "type": "boolean"
+          },
           "progress": {
             "oneOf": [
               {
@@ -7429,6 +7433,10 @@
           },
           "name": {
             "type": "string"
+          },
+          "policy_eligible": {
+            "description": "True when the model is eligible under the account's data policy — for the\nhosted OpenRouter path, that it has a Zero-Data-Retention route. The\ncatalog only returns eligible models, so this is `true` for every entry\ntoday; the console can trust it to gate selection if ineligible models are\never surfaced alongside them.",
+            "type": "boolean"
           },
           "prompt_price": {
             "description": "Provider prompt price as a decimal USD/token string when advertised.",
