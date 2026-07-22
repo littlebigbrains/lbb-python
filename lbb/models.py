@@ -1386,6 +1386,12 @@ class ManagedEmbeddingModel(BaseModel):
     id: str
     input_modalities: list[str] | None = None
     name: str
+    policy_eligible: Annotated[
+        bool | None,
+        Field(
+            description="True when the model is eligible under the account's data policy — for the\nhosted OpenRouter path, that it has a Zero-Data-Retention route. The\ncatalog only returns eligible models, so this is `true` for every entry\ntoday; the console can trust it to gate selection if ineligible models are\never surfaced alongside them."
+        ),
+    ] = None
     prompt_price: Annotated[
         str | None,
         Field(
@@ -5179,6 +5185,12 @@ class ManagedEmbeddingBackfillJobStatusResponse(BaseModel):
     graph: GraphKey
     idempotency_key: str
     job_id: str
+    parked: Annotated[
+        bool | None,
+        Field(
+            description='True when the job failed terminally because the provider rejected it for\nan account data-policy / configuration reason (a ZDR-ineligible model,\nauth, model-not-found) rather than a transient error — a *parked* job that\nwill not retry. The console renders this as a "choose a different model"\nblock instead of a retry. It clears when the embedding config version\nchanges, which mints a fresh reconciliation job.'
+        ),
+    ] = None
     progress: ManagedEmbeddingBackfillJobProgress | None = None
     result: ManagedEmbeddingBackfillResponse | None = None
     status: str
