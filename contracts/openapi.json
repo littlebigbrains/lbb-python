@@ -5537,6 +5537,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "visibility_manifest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IndexVisibilityManifest",
+                "description": "Unified visibility-manifest summary. `None` before the first family is\npublished or when index inspection was disabled."
+              }
+            ]
+          },
           "wal_tail_bytes": {
             "format": "int64",
             "minimum": 0,
@@ -6510,6 +6521,72 @@
         ],
         "type": "object"
       },
+      "IndexFamilyVisibility": {
+        "description": "Bounded, user-facing summary of one family in the unified visibility manifest.",
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/IndexVisibilityFamilyClass"
+          },
+          "covered_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Highest commit folded into the family's merged run. For `merged_only`\nfamilies this is compaction position only; query freshness comes from the\nfamily's delta/L0 path plus bounded tail union and snapshot verification."
+              }
+            ]
+          },
+          "family": {
+            "$ref": "#/components/schemas/IndexVisibilityFamily"
+          },
+          "l0_from_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "l0_segment_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "l0_to_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "model_hash": {
+            "description": "Distinguishes ANN model spaces without exposing object keys.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_hash": {
+            "description": "Distinguishes target-specific BM25/ANN families without exposing object keys.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "family",
+          "class",
+          "l0_segment_count"
+        ],
+        "type": "object"
+      },
       "IndexGcJobProgress": {
         "properties": {
           "deleted_bytes": {
@@ -6809,6 +6886,51 @@
           "objects",
           "bytes",
           "kept"
+        ],
+        "type": "object"
+      },
+      "IndexVisibilityFamily": {
+        "description": "One of the index families published through the unified visibility manifest.",
+        "enum": [
+          "base",
+          "rdf",
+          "bm25",
+          "ann",
+          "adjacency"
+        ],
+        "type": "string"
+      },
+      "IndexVisibilityFamilyClass": {
+        "description": "How a family participates in the unified visibility watermark.",
+        "enum": [
+          "lockstep",
+          "merged_only"
+        ],
+        "type": "string"
+      },
+      "IndexVisibilityManifest": {
+        "description": "The unified, per-graph visibility view consumed by the console and status tools.",
+        "properties": {
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/IndexFamilyVisibility"
+            },
+            "type": "array"
+          },
+          "visible_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "Shared published watermark. Lockstep families define this value."
+          }
+        },
+        "required": [
+          "epoch",
+          "visible_seq",
+          "families"
         ],
         "type": "object"
       },
