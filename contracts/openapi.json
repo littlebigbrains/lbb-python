@@ -15870,7 +15870,7 @@
             "type": "boolean"
           },
           "stale_reason": {
-            "description": "The reason a read is `stale`. `\"storage_degraded\"` (F2),\n`\"eventual_consistency\"` (A3: served from the last published index/dataset\nstate), or `\"adjacency_coverage\"` (served from the newest published\nranged-adjacency snapshot); omitted when not stale.",
+            "description": "The reason a read is `stale`. `\"storage_degraded\"` (F2),\n`\"eventual_consistency\"` (A3: served from the last published index/dataset\nstate), `\"adjacency_coverage\"` (served from the newest published\nranged-adjacency snapshot), `\"tail_budget_exceeded\"` (the eventual RDF\nWAL tail exceeded a per-read bound), `\"merge_lag\"` (the RDF L0 chain was\ncapped at a coherent prefix), or `\"assembly_pool_exhausted\"` (the shared\neventual-read byte pool was saturated); omitted when not stale.",
             "type": [
               "string",
               "null"
