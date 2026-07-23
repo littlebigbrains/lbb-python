@@ -2,6 +2,13 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.8.1
+
+Adjacency-backed Explorer reads now report the coherent adjacency coverage
+watermark instead of failing while a published run trails graph head. The
+generated `SnapshotView` model documents `stale_reason="adjacency_coverage"`
+and the append-safe WAL-prefix semantics.
+
 ## 0.8.0
 
 Eventual-by-default read consistency and the read-your-writes floor.
