@@ -15861,7 +15861,7 @@
               },
               {
                 "$ref": "#/components/schemas/CommitSeq",
-                "description": "The coherent watermark this response was actually served through when it\ntrails graph head. Usually this is the published index/dataset watermark.\nAn adjacency-backed read may advance it by folding a whole append-safe WAL\nprefix and stop immediately before the first unsafe commit. For a\nmulti-family search this is the MIN of the enabled families' published\nwatermarks, so every surface (BM25, vector, …) agrees on one snapshot.\nOmitted when the response is served at `commit_seq`."
+                "description": "The coherent watermark this response was actually served through when it\ntrails graph head. Usually this is the published index/dataset watermark.\nExplorer's adjacency-backed reads report the newest published adjacency\nbase+delta coverage without inspecting the WAL tail. For a multi-family\nsearch this is the MIN of the enabled families' published watermarks, so\nevery surface (BM25, vector, …) agrees on one snapshot. Omitted when the\nresponse is served at `commit_seq`."
               }
             ]
           },
@@ -26284,7 +26284,7 @@
             }
           },
           {
-            "description": "Accepted as strong or eventual; adjacency serves its published run plus the whole append-safe WAL prefix before the first unsafe commit in either mode",
+            "description": "Accepted as strong or eventual; adjacency serves its newest published base+delta coverage without inspecting the live WAL tail in either mode",
             "in": "query",
             "name": "consistency",
             "required": false,
