@@ -1407,6 +1407,12 @@ class ManagedEmbeddingModel(BaseModel):
     id: str
     input_modalities: list[str] | None = None
     name: str
+    output_modalities: Annotated[
+        list[str] | None,
+        Field(
+            description='The model\'s output modalities (e.g. `["embeddings"]`). The catalog is\nfiltered to embedding models on this field, so every entry carries the\nembeddings modality; it is surfaced so clients (and the deploy smoke) can\nre-verify the catalog is embeddings-only.'
+        ),
+    ] = None
     policy_eligible: Annotated[
         bool | None,
         Field(
@@ -3369,7 +3375,7 @@ class SnapshotView(BaseModel):
     stale_reason: Annotated[
         str | None,
         Field(
-            description='The reason a read is `stale`. `"storage_degraded"` (F2) or\n`"eventual_consistency"` (A3: served from the last published index/dataset\nstate at [`Self::served_at_seq`], not head); omitted when not stale.'
+            description='The reason a read is `stale`. `"storage_degraded"` (F2),\n`"eventual_consistency"` (A3: served from the last published index/dataset\nstate), or `"adjacency_coverage"` (served from the newest published\nranged-adjacency snapshot); omitted when not stale.'
         ),
     ] = None
 

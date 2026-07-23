@@ -262,7 +262,7 @@ class SyncClientTests(unittest.TestCase):
         )
         self.assertEqual(dict(request.url.params), {"graph": "main", "branch": "b"})
         self.assertEqual(request.headers["authorization"], "Bearer lbb_sk_test")
-        self.assertEqual(request.headers["lbb-version"], "2026-06-22")
+        self.assertEqual(request.headers["lbb-version"], "2026-07-22")
         self.assertEqual(request.headers["idempotency-key"], "ik_py_1")
         self.assertEqual(json.loads(request.content), {"triplets": []})
 
@@ -1486,7 +1486,7 @@ class SyncClientTests(unittest.TestCase):
                 seen,
                 {
                     "json": {"ok": True},
-                    "headers": {"x-request-id": "req_py", "lbb-version": "2026-06-22"},
+                    "headers": {"x-request-id": "req_py", "lbb-version": "2026-07-22"},
                 },
             ),
         ) as client:
@@ -1494,7 +1494,7 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(response.data, {"ok": True})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.request_id, "req_py")
-        self.assertEqual(response.version, "2026-06-22")
+        self.assertEqual(response.version, "2026-07-22")
 
     def test_raw_response_and_route_model_helpers_validate_generated_models(
         self,
