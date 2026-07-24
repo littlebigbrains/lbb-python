@@ -1,6 +1,6 @@
 # littlebigbrain — Python SDK
 
-The Python client for [Little Big Brain](https://littlebigbrain.com) — write graph facts, build indexes, and run hybrid search over one snapshot. Built on `httpx` + `pydantic`; ships sync and async clients.
+The Python client for [Little Big Brain](https://littlebigbrain.com) — write graph facts and query one immutable published snapshot. Built on `httpx` + `pydantic`; ships sync and async clients.
 
 ```sh
 pip install littlebigbrain   # imports as `lbb`
@@ -28,11 +28,16 @@ with LbbClient(
         }],
     }, idempotency_key="doc:42:v1")
 
-    # 2. Build persisted BM25 + vector + adjacency indexes and wait.
-    lbb.indexes.run(wait=True)
+    # 2. Publication is automatic. Inspect one coherent watermark when needed.
+    published = lbb.read_snapshot_model()
+    print(published.snapshot.served_at_seq, published.query_lag_commits)
 
     # 3. Hybrid search over the snapshot.
-    results = lbb.search.hybrid("how much annual leave do employees get?", top_k=5)
+    results = lbb.search.hybrid(
+        "how much annual leave do employees get?",
+        top_k=5,
+        consistency="eventual",
+    )
     for hit in results.get("assertions", []):
         print(hit["relation"]["name"], hit["score"])
 ```
@@ -41,7 +46,8 @@ For hosted use, pass the exact `endpoint_url` shown on the stack's Connect
 page. Omitting `base_url` retains the loopback default for local/self-hosted
 development only; graph and branch remain ordinary client scope parameters.
 
-Facts are graph-scoped (`lbb.graph("main").facts`); indexes and search are client-level (`lbb.indexes`, `lbb.search`) and use the stack's default graph.
+Facts are graph-scoped (`lbb.graph("main").facts`); search and published-snapshot
+inspection use the client's active graph/branch scope.
 
 ## Examples
 
@@ -96,7 +102,14 @@ Methods return parsed dictionaries and raise `LbbError` (with `status_code`, `co
 
 ## More
 
-Beyond the quickstart: `entities.iter(...)` for cursor-safe iteration, `context.ask(...)` for grounded answers, `ontology`/`schema` for the SHACL lifecycle, durable index and training jobs (`index_submit`/`index_job`), managed embeddings, traversal, and temporal history. Typed Pydantic responses are available via the matching `*_model` / `*_page` helpers; generated models live in `lbb.models`.
+Beyond the quickstart: `entities.sample(type=..., limit=...)` for a bounded
+published-generation sample and `entities.filter_by_attributes(...)` for
+relation-bound structured SPARQL; `context.suggest(...)`, `context.resolve(...)`,
+`context.decode(...)`, and `context.groundability(...)` for vocabulary-grounded
+applications; and `ontology`/`schema` for ontology inspection and atomic schema
+publication. Model shadow evaluation and planner, preference, suggestion, and
+extractor datasets remain available. Typed Pydantic responses are exposed by
+matching `*_model` helpers; generated models live in `lbb.models`.
 
 Full reference and guides: [docs.littlebigbrain.com/sdks/python](https://docs.littlebigbrain.com/sdks/python/).
 

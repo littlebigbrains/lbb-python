@@ -6,7 +6,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
 class Op(Enum):
@@ -141,39 +141,6 @@ class AnnTargetKind(Enum):
     path = 'path'
 
 
-class AskCitationKind(Enum):
-    entity = 'entity'
-    assertion = 'assertion'
-
-
-class AskFeedbackResponse(BaseModel):
-    accepted: Annotated[
-        bool,
-        Field(
-            description='True when the verdict was captured. False when signal capture is off\non this deployment — the request contract is identical either way, so\nclients never break when the flag flips.'
-        ),
-    ]
-    accepted_count: Annotated[int, Field(ge=0)]
-    event_id: str
-    excluded_count: Annotated[int, Field(ge=0)]
-    exclusions: dict[str, int] | None = None
-    receipt_id: str
-    replayed: bool
-    trainable_count: Annotated[int, Field(ge=0)]
-
-
-class AskFeedbackVerdict(Enum):
-    """
-    A user verdict on one ask (`POST /v1/ask/feedback`) — the planner's
-    explicit feedback capture. Joined to the ask's `ask_trace` signal by
-    `ask_id`.
-    """
-
-    accepted = 'accepted'
-    rejected = 'rejected'
-    corrected = 'corrected'
-
-
 class AskFilterOperatorV2(Enum):
     eq = 'eq'
     ne = 'ne'
@@ -195,49 +162,10 @@ class AskGraphAnchorV2(BaseModel):
     entity: str
 
 
-class AskMode(Enum):
-    grounding_only = 'grounding_only'
-    resident_planner = 'resident_planner'
-
-
-class AskNarrowing(BaseModel):
-    """
-    How much the database narrowed the world before the model — the core
-    context-substrate quantity, exposed per request.
-    """
-
-    assertions: Annotated[
-        int, Field(description='Assertions (edges) retrieved as evidence.', ge=0)
-    ]
-    entities: Annotated[int, Field(description='Entities retrieved as evidence.', ge=0)]
-    vocab_candidates: Annotated[
-        int,
-        Field(
-            description='Vocabulary terms the question snapped to (classes/relations/properties) —\nthe narrowed candidate set, a subset of real vocabulary by construction.',
-            ge=0,
-        ),
-    ]
-
-
 class AskPlanExecutionModeV2(Enum):
     entity_search = 'entity_search'
     path_search = 'path_search'
     hybrid = 'hybrid'
-
-
-class AskPlanFailureCode(Enum):
-    planner_disabled = 'planner_disabled'
-    planner_unavailable = 'planner_unavailable'
-    no_class_candidates = 'no_class_candidates'
-    generation_failed = 'generation_failed'
-    validation_failed = 'validation_failed'
-
-
-class AskPlanFailureStage(Enum):
-    configuration = 'configuration'
-    target_type = 'target_type'
-    relation = 'relation'
-    anchor = 'anchor'
 
 
 class AskRelationDirectionV2(Enum):
@@ -277,38 +205,6 @@ class AskStructuredQuery(BaseModel):
         Field(
             description='Decoded target entity type (a declared class, subtype-inclusive at\nexecution).'
         ),
-    ]
-
-
-class AskTimings(BaseModel):
-    """
-    Per-stage wall-clock latency for one `/v1/ask` call, in milliseconds.
-    """
-
-    decode_ms: Annotated[
-        float | None,
-        Field(
-            description='Shortlist-constrained structured-query decode on the resident model;\nabsent when the constrained leg did not run.'
-        ),
-    ] = None
-    ground_ms: Annotated[
-        float,
-        Field(description='Grounding the question to real vocabulary (WS11 resolve).'),
-    ]
-    retrieve_ms: Annotated[
-        float,
-        Field(
-            description='Hybrid retrieval against the pinned snapshot. Zero when `execute` is false.'
-        ),
-    ]
-    synth_ms: Annotated[
-        float | None,
-        Field(
-            description='Resident-model synthesis; absent when no planner ran (`grounding_only`).'
-        ),
-    ] = None
-    total_ms: Annotated[
-        float, Field(description='End-to-end latency of the whole call.')
     ]
 
 
@@ -592,12 +488,6 @@ class EmbeddingIndexClusterView(BaseModel):
     sample_labels: list[str]
 
 
-class EmbeddingIndexSource(Enum):
-    ephemeral = 'ephemeral'
-    persisted = 'persisted'
-    persisted_only = 'persisted_only'
-
-
 class Kind(Enum):
     hash = 'hash'
 
@@ -732,10 +622,9 @@ class FacetResult(BaseModel):
     missing: Annotated[int, Field(ge=0)]
 
 
-class FullTextIndexSource(Enum):
-    ephemeral = 'ephemeral'
-    persisted = 'persisted'
-    persisted_only = 'persisted_only'
+class FullTextIndexInspectRequest(BaseModel):
+    include_terms: bool
+    targets: list[AnnTargetKind]
 
 
 class FullTextSearchResult(BaseModel):
@@ -920,23 +809,6 @@ class GraphForkResponse(BaseModel):
     src_graph_id: str
 
 
-class GraphImportIndexOutcome(BaseModel):
-    """
-    Outcome of the optional one-shot index build a bulk import runs at the end
-    when `?index=true` is passed — the "bulk load, queryable on return"
-    primitive. `built` is whether the full build completed, so the imported data
-    is served from the persisted runs (not just the ephemeral snapshot fallback)
-    by the time the request returns. `skipped_reason` is present only when
-    `built` is false: `"index_busy"` (the node's build-admission gate was busy —
-    the data is committed and queryable, retry the build later) or
-    `"index_error"` (the build failed; detail is logged server-side, not
-    surfaced, to avoid leaking internal paths).
-    """
-
-    built: bool
-    skipped_reason: str | None = None
-
-
 class GraphImportLineError(BaseModel):
     """
     A per-line parse/commit failure surfaced by the bulk importer. `line` is the
@@ -946,51 +818,6 @@ class GraphImportLineError(BaseModel):
 
     line: Annotated[int, Field(ge=0)]
     message: str
-
-
-class GraphImportResponse(BaseModel):
-    """
-    Aggregate outcome of a bulk NDJSON import. `committed_commit_seq` is the
-    sequence of the last internal batch commit (absent if nothing committed).
-    `errors` is bounded; `error_count` is the true total even when the list is
-    truncated. `index` is present only when the caller passed `?index=true`.
-    """
-
-    batches: Annotated[int, Field(ge=0)]
-    committed_commit_seq: CommitSeq | None = None
-    error_count: Annotated[int, Field(ge=0)]
-    errors: list[GraphImportLineError] | None = None
-    graph_created: bool
-    idempotency_key: Annotated[
-        str,
-        Field(
-            description='The caller key, or the server-minted key when the caller omitted one.'
-        ),
-    ]
-    idempotent_replay: Annotated[
-        bool,
-        Field(
-            description='True when every internal mutation batch was the already-committed\nreceipt for this idempotency key.'
-        ),
-    ]
-    index: GraphImportIndexOutcome | None = None
-    indexed: bool
-    lines_read: Annotated[int, Field(ge=0)]
-    mutation_receipt_id: Annotated[
-        str,
-        Field(
-            description='Stable identity for the whole multi-batch mutation. Replays return this\nexact receipt and the original terminal commit sequence.'
-        ),
-    ]
-    observations: Annotated[
-        int | None,
-        Field(
-            description='Exact observation records imported from a full-fidelity export.',
-            ge=0,
-        ),
-    ] = None
-    properties: Annotated[int, Field(ge=0)]
-    triplets: Annotated[int, Field(ge=0)]
 
 
 class GraphRdfImportError(BaseModel):
@@ -1009,44 +836,15 @@ class GraphRdfImportPredicate(BaseModel):
     `uri` is the original RDF predicate IRI. `relation` is the fixed
     `RDF_TRIPLE` relation used for committed edges, while `lbb_predicate_iri`
     remains the source predicate IRI that the RDF/SPARQL projection emits.
-    `property` and `lbb_property_iri` are retained as nullable compatibility
-    fields for older clients and are not populated by the fixed-schema importer.
     """
 
     lbb_predicate_iri: str
-    lbb_property_iri: str | None = None
     lbb_relation_iri: str
     literal_triples: Annotated[int, Field(ge=0)]
-    property: str | None = None
     relation: str
     resource_triples: Annotated[int, Field(ge=0)]
     triples: Annotated[int, Field(ge=0)]
     uri: str
-
-
-class GraphRdfImportResponse(BaseModel):
-    """
-    Aggregate outcome of an RDF import. Every RDF statement is committed
-    through a fixed `RDF_TRIPLE` edge; source predicate and literal term metadata
-    are stored on the edge so the RDF/SPARQL projection can emit source RDF terms
-    while avoiding one ontology relation/property per source predicate.
-    """
-
-    batches: Annotated[int, Field(ge=0)]
-    committed_commit_seq: CommitSeq | None = None
-    duplicate_literal_triples: Annotated[int, Field(ge=0)]
-    duplicate_resource_triples: Annotated[int, Field(ge=0)]
-    error_count: Annotated[int, Field(ge=0)]
-    errors: list[GraphRdfImportError] | None = None
-    graph_created: bool
-    imported_triplets: Annotated[int, Field(ge=0)]
-    indexed: bool
-    lines_read: Annotated[int, Field(ge=0)]
-    literal_triples: Annotated[int, Field(ge=0)]
-    predicate_count: Annotated[int, Field(ge=0)]
-    predicates: list[GraphRdfImportPredicate] | None = None
-    resource_triples: Annotated[int, Field(ge=0)]
-    triples_read: Annotated[int, Field(ge=0)]
 
 
 class GraphReloadResponse(BaseModel):
@@ -1249,47 +1047,6 @@ class HybridSourceRank(BaseModel):
     weighted_rrf: float
 
 
-class IndexGcJobProgress(BaseModel):
-    deleted_bytes: Annotated[int, Field(ge=0)]
-    deleted_objects: Annotated[int, Field(ge=0)]
-    heartbeat_micros: int | None = None
-    reclaimable_bytes: Annotated[int, Field(ge=0)]
-    reclaimable_objects: Annotated[int, Field(ge=0)]
-    reclaimable_runs: Annotated[int, Field(ge=0)]
-    scanned_bytes: Annotated[int, Field(ge=0)]
-    scanned_objects: Annotated[int, Field(ge=0)]
-    scanned_runs: Annotated[int, Field(ge=0)]
-    stage: str
-    worker: str | None = None
-
-
-class IndexGcRequest(BaseModel):
-    dry_run: Annotated[
-        bool | None,
-        Field(description='Report what would be deleted without deleting anything.'),
-    ] = None
-    include_branch_shared: Annotated[
-        bool | None,
-        Field(
-            description='Delete runs even when other branches exist in the graph. Child\nbranches fall back to parent-branch index runs until they build their\nown, so deleting shared parent runs can force child rebuilds.'
-        ),
-    ] = None
-    keep_runs: Annotated[
-        int | None,
-        Field(
-            description='Keep this many newest index runs per family (bm25/ann grouping key).\nThe newest run is always kept regardless of this value.',
-            ge=0,
-        ),
-    ] = None
-    reader_grace_commits: Annotated[
-        int | None,
-        Field(
-            description='Reader grace: retain any run whose snapshot is within this many commits\nof the current head, even when it exceeds `keep_runs`. A search that\nalready resolved a now-superseded run keeps reading its objects, so\ncollecting a recently-passed run out from under an in-flight reader\nsurfaces as a NotFound/500. The grace window protects those runs until\nthe head has advanced far enough that no in-flight search can still be\nholding them. Set to 0 to disable the grace and collect purely by\n`keep_runs` ordering.',
-            ge=0,
-        ),
-    ] = None
-
-
 class IndexLineage(BaseModel):
     """
     Typed convergence view over the persisted serving families.
@@ -1309,18 +1066,9 @@ class IndexLineage(BaseModel):
     observed_at_micros: int
 
 
-class IndexRunView(BaseModel):
-    bytes: Annotated[int, Field(ge=0)]
-    family: str
-    kept: bool
-    objects: Annotated[int, Field(ge=0)]
-    prefix: str
-    snapshot_commit_seq: Annotated[int, Field(ge=0)]
-
-
 class IndexVisibilityFamily(Enum):
     """
-    One of the index families published through the unified visibility manifest.
+    One of the index families referenced by an atomic published read root.
     """
 
     base = 'base'
@@ -1328,15 +1076,6 @@ class IndexVisibilityFamily(Enum):
     bm25 = 'bm25'
     ann = 'ann'
     adjacency = 'adjacency'
-
-
-class IndexVisibilityFamilyClass(Enum):
-    """
-    How a family participates in the unified visibility watermark.
-    """
-
-    lockstep = 'lockstep'
-    merged_only = 'merged_only'
 
 
 class LbbErrorBody(BaseModel):
@@ -1378,7 +1117,10 @@ class ManagedEmbeddingBackfillJobRequest(BaseModel):
 
 class ManagedEmbeddingBackfillResponse(BaseModel):
     """
-    Outcome of embedding the corpus and rebuilding its Stored ANN index.
+    Outcome of embedding the corpus and scheduling a complete published
+    generation. `indexed_commit_seq` remains zero until publication;
+    `final_index_job_id` identifies the durable generation build when one was
+    enqueued. ANN is never cut over independently.
     """
 
     batches: Annotated[int, Field(ge=0)]
@@ -1981,8 +1723,8 @@ class PathResult(BaseModel):
 class PlannerServingDefaults(BaseModel):
     """
     Planner serving default derived from a promoted `planner` run: the LoRA
-    adapter (a path on the model-serving volume) `/v1/ask` passes to the
-    resident planner endpoint per generate call.
+    adapter (a path on the model-serving volume) planner-backed workflows pass
+    to the resident model per generate call.
     """
 
     adapter: Annotated[
@@ -2103,38 +1845,40 @@ class PropertyValueInput8(BaseModel):
     ]
 
 
-class Kind6(Enum):
-    asserted = 'asserted'
-
-
-class ProvenanceLeafView1(BaseModel):
+class PublishedGenerationEnqueueDisposition(Enum):
     """
-    An asserted edge event this fact transitively rests on (hex id).
+    Whether an import's deterministic published-generation job was newly
+    queued or coalesced with equivalent pending work.
     """
 
-    edge_event_id: str
-    kind: Kind6
+    queued = 'queued'
+    coalesced = 'coalesced'
 
 
-class Kind7(Enum):
-    retrieval = 'retrieval'
-
-
-class ProvenanceLeafView2(BaseModel):
+class PublishedReadConformanceView(BaseModel):
     """
-    A calibrated retrieval match that *seeded* this fact — never an asserted
-    leaf. Carries the embedding space it came from, the matched entity, and
-    the calibrated `P(relevant)` used as the premise confidence.
+    Published conformance provenance. `validated_at_seq` may trail the common
+    query watermark while the next durable validation is running.
     """
 
-    calibrated_score: Annotated[
-        float,
-        Field(description='Calibrated `P(relevant)` used as the premise confidence.'),
+    artifact_format_version: Annotated[int, Field(ge=0)]
+    ontology_version: Annotated[int, Field(ge=0)]
+    shapes_version: Annotated[int | None, Field(ge=0)] = None
+    validated_at_seq: Annotated[int, Field(ge=0)]
+
+
+class PublishedReadFamilyView(BaseModel):
+    """
+    One family present in an atomic published root. Object keys and ETags stay
+    internal; this is the bounded operational/API projection.
+    """
+
+    family: IndexVisibilityFamily
+    model_hash: str | None = None
+    root_format_version: Annotated[
+        int, Field(description="That family's persisted root-codec version.", ge=0)
     ]
-    kind: Kind7
-    matched: Annotated[str, Field(description='Matched entity id (hex).')]
-    model_id: str
-    target_kind: AnnTargetKind
+    target_hash: str | None = None
 
 
 class RangedReadStats(BaseModel):
@@ -2209,13 +1953,6 @@ class RangedTraverseStats(BaseModel):
     meta_bytes_fetched: Annotated[int, Field(ge=0)]
     payload_slices_fetched: Annotated[int | None, Field(ge=0)] = None
     shard_cache_hits: Annotated[int, Field(ge=0)]
-    tail_commits_merged: Annotated[
-        int | None,
-        Field(
-            description='Commits past the indexed run that were merged from the WAL tail\n(append-safe edges only; anything else falls back to the snapshot\nscan).',
-            ge=0,
-        ),
-    ] = None
     topology_slices_fetched: Annotated[int | None, Field(ge=0)] = None
     truncated_by_block_budget: bool
     truncated_by_block_byte_budget: bool
@@ -2422,11 +2159,6 @@ class RowPage(BaseModel):
     total: Annotated[int, Field(ge=0)]
 
 
-class RuleSetDefineResponse(BaseModel):
-    rule_count: Annotated[int, Field(ge=0)]
-    rules_version: Annotated[int, Field(ge=0)]
-
-
 class SchemaAuditResult(BaseModel):
     component: str
     focus_node: str
@@ -2534,12 +2266,12 @@ class SearchConsistency(Enum):
     Read consistency for a query surface (search, graph summary, SPARQL).
 
     A5 (2026-07-21 product decision): `Eventual` is the **default**. It serves the
-    last published index/dataset state at its watermark with no in-memory fold of
-    the un-indexed tail — the lowest-latency mode and the availability floor
-    during any indexing backlog. The served watermark rides back on
-    `SnapshotView::served_at_seq`. `Strong` (fold the un-indexed tail up to the
-    query head) is now explicit opt-in; the precise read-your-writes contract
-    (`min_indexed_seq`) replaces most former uses of strong. See
+    pinned published generation at its watermark with no request-time graph
+    assembly — the lowest-latency mode and the availability floor during any
+    publication backlog. The served watermark rides back on
+    `SnapshotView::served_at_seq`. `Strong` requires the immutable published
+    generation itself to cover the query head and is explicit opt-in; the precise
+    read-your-writes contract (`min_indexed_seq`) replaces most former uses of strong. See
     `docs/architecture/segment-native-indexing.md` §6.
     """
 
@@ -2607,40 +2339,40 @@ class SearchFeedbackSplitCounts(BaseModel):
     train: Annotated[int, Field(ge=0)]
 
 
-class Kind8(Enum):
+class Kind6(Enum):
     entity = 'entity'
 
 
 class SearchFeedbackTarget1(BaseModel):
     entity: EntitySelector
-    kind: Kind8
+    kind: Kind6
 
 
-class Kind9(Enum):
+class Kind7(Enum):
     assertion = 'assertion'
 
 
 class SearchFeedbackTarget2(BaseModel):
     edge_event_id: str
-    kind: Kind9
+    kind: Kind7
 
 
-class Kind10(Enum):
+class Kind8(Enum):
     observation = 'observation'
 
 
 class SearchFeedbackTarget3(BaseModel):
-    kind: Kind10
+    kind: Kind8
     observation_id: str
 
 
-class Kind11(Enum):
+class Kind9(Enum):
     concept = 'concept'
 
 
 class SearchFeedbackTarget4(BaseModel):
     concept_id: str | None = None
-    kind: Kind11
+    kind: Kind9
     name: str | None = None
 
 
@@ -2799,15 +2531,6 @@ class SearchHitContributions(BaseModel):
     vector_manifest_key: str | None = None
 
 
-class SearchIndexFamilyRun(BaseModel):
-    family: str
-    indexed_commit_seq_after: Annotated[int, Field(ge=0)]
-    indexed_commit_seq_before: CommitSeq | None = None
-    manifest_key: str | None = None
-    objects_written: Annotated[int, Field(ge=0)]
-    skipped: bool
-
-
 class SearchOrder(Enum):
     """
     Sort direction for a query's `order_by` key. `Desc` is the default for the
@@ -2910,12 +2633,10 @@ class SearchSignalWeights(BaseModel):
 
 class SearchTemporalCoverage(BaseModel):
     """
-    How a temporally-pinned (or head) search resolved run selection: the
-    effective `as_of` ceiling, the base snapshot of the selected persisted
-    run(s), and the highest commit each leg's run+segments actually covered
-    (the forward WAL overlay covers `(covered_through, ceiling]`). Distinct from
-    the ontology-inspect `TemporalCoverage` type. Per-leg fields are `None` when
-    that leg served from an ephemeral rebuild (no persisted run at the ceiling).
+    Provenance for the immutable family roots selected from one pinned published
+    generation. `ceiling_commit_seq` is that generation's common query
+    watermark; per-leg fields are `None` only when the corresponding leg was
+    disabled.
     """
 
     bm25_covered_through: CommitSeq | None = None
@@ -2923,7 +2644,7 @@ class SearchTemporalCoverage(BaseModel):
     ceiling_commit_seq: Annotated[
         int,
         Field(
-            description='Resolved transaction-time ceiling: the `as_of_commit_seq` pin, or the\nhead commit_seq when the query was unpinned.',
+            description='Common query watermark of the pinned published generation.',
             ge=0,
         ),
     ]
@@ -2940,17 +2661,10 @@ class SemanticPathResult(BaseModel):
 
 class SemanticSearchExplain(BaseModel):
     bm25_candidates: Annotated[int, Field(ge=0)]
-    bm25_degraded_to_ephemeral: Annotated[
-        bool | None,
-        Field(
-            description='True when a **persisted** BM25 index was requested but none matched the\nquery\'s resolved target set, so the search silently fell back to a full\nephemeral rebuild (much slower). A common cause is building the index for\na narrower target set than the query resolves to (e.g. `[Entity]` vs the\n`{Entity, Neighborhood}` that `Entities` resolves to). Also bumps the\n`lbb_search_degraded_total{family="bm25"}` metric.'
-        ),
-    ] = None
     bm25_documents: Annotated[int, Field(ge=0)]
     bm25_indexed_commit_seq: CommitSeq | None = None
     bm25_manifest_key: str | None = None
     bm25_ms: Annotated[int | None, Field(ge=0)] = None
-    bm25_overlay_candidates: Annotated[int, Field(ge=0)]
     bm25_ranged: RangedReadStats | None = None
     engine_remainder_ms: Annotated[
         int | None,
@@ -2972,6 +2686,13 @@ class SemanticSearchExplain(BaseModel):
     ontology_expansions: Annotated[int, Field(ge=0)]
     ontology_ms: Annotated[int | None, Field(ge=0)] = None
     paths_considered: Annotated[int, Field(ge=0)]
+    published_lag_commits: Annotated[
+        int,
+        Field(
+            description='Commit distance from the graph head to the pinned published generation.',
+            ge=0,
+        ),
+    ]
     retrieval_profile: RetrievalProfileId | None = None
     search_mode: str
     snapshot_load_ms: Annotated[int | None, Field(ge=0)] = None
@@ -2992,20 +2713,7 @@ class SemanticSearchExplain(BaseModel):
             ge=0,
         ),
     ] = None
-    unindexed_tail_commits: Annotated[int, Field(ge=0)]
     vector_candidates: Annotated[int, Field(ge=0)]
-    vector_channel_skipped: Annotated[
-        bool | None,
-        Field(
-            description='True when latest-head hybrid search requested the persisted vector/ANN\nchannel but no matching run existed, so the optional vector channel was\nskipped instead of silently rebuilding an O(corpus) ephemeral ANN on the\nrequest path. Explicit ephemeral and historical pinned searches retain\ntheir existing behavior.'
-        ),
-    ] = None
-    vector_degraded_to_ephemeral: Annotated[
-        bool | None,
-        Field(
-            description='As `bm25_degraded_to_ephemeral`, for the persisted vector/ANN index.'
-        ),
-    ] = None
     vector_indexed_commit_seq: CommitSeq | None = None
     vector_manifest_key: str | None = None
     vector_model_id: Annotated[
@@ -3015,7 +2723,6 @@ class SemanticSearchExplain(BaseModel):
         ),
     ] = None
     vector_ms: Annotated[int | None, Field(ge=0)] = None
-    vector_overlay_candidates: Annotated[int, Field(ge=0)]
     vector_ranged: RangedReadStats | None = None
     vector_spaces_searched: Annotated[int, Field(ge=0)]
 
@@ -3299,11 +3006,9 @@ class SignalKind(Enum):
     The closed set of signal kinds (v1). Extending this is a deliberate format
     change, not an open string.
 
-    v1.1 (2026-07-07, planner-feedback capture): adds `ask_trace`
-    (server-emitted per `/v1/ask`: the question, the decoded plan + its
-    shortlists, verification flags, retrieval outcome) and `ask_feedback`
-    (client verdict on an ask, joined to its trace by `request_id`) — the raw
-    material the planner fine-tune trains on.
+    v1.1 (2026-07-07, planner-feedback capture): adds the legacy
+    `ask_trace`/`ask_feedback` supervision records. They remain decodable for
+    durable training data, but no public Ask endpoint emits them.
     """
 
     suggestion_shown = 'suggestion_shown'
@@ -3361,7 +3066,7 @@ class SnapshotView(BaseModel):
     compacted_seq: Annotated[
         int,
         Field(
-            description="Highest commit folded into the **compacted graph snapshot base** (the\nmaterialized segment base). Commits in `(compacted_seq, commit_seq]` live in\nthe WAL tail and are replayed on read — so `compacted_seq: 0` is the normal\nstate of a small or freshly-created graph (no base built yet) and does\n**not** mean the data is unreadable: every read replays the full tail.\n\nThis is *not* search-index coverage. Whether BM25/vector search indexes\nare built — what `/v1/index/run` advances — is reported separately as\n`bm25_indexed_commit_seq` / `ann_indexed_commit_seq` on\n`GET /v1/graph/metadata` and on the entity read's metadata.",
+            description='Highest durable graph-truth commit folded by background compaction.\nThis is maintenance provenance, not the query-serving watermark.\nPublished reads expose their one common `served_at_seq` through the\nresponse and `/v1/graph/read-snapshot`; handlers never fold the WAL tail\nor assemble derived indexes to satisfy a request.',
             ge=0,
         ),
     ]
@@ -3375,7 +3080,7 @@ class SnapshotView(BaseModel):
     stale_reason: Annotated[
         str | None,
         Field(
-            description='The reason a read is `stale`. `"storage_degraded"` (F2),\n`"eventual_consistency"` (A3: served from the last published index/dataset\nstate), `"adjacency_coverage"` (served from the newest published\nranged-adjacency snapshot), `"tail_budget_exceeded"` (the eventual RDF\nWAL tail exceeded a per-read bound), `"merge_lag"` (the RDF L0 chain was\ncapped at a coherent prefix), or `"assembly_pool_exhausted"` (the shared\neventual-read byte pool was saturated); omitted when not stale.'
+            description='The reason a read is `stale`. `"storage_degraded"` (F2),\n`"eventual_consistency"` (served from the immutable published\ngeneration) or `"adjacency_coverage"` (served from that generation\'s\nbounded ranged-adjacency snapshot); omitted when not stale.'
         ),
     ] = None
 
@@ -3645,23 +3350,13 @@ class SparqlTextRequest(BaseModel):
     RDF graph, not a results table).
     """
 
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin: project the graph as of this `commit_seq` before running the\nconformant engine, hiding later commits. Errors if it exceeds the head.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: Annotated[
-        str | None,
-        Field(
-            description='RFC3339 valid-time; query the graph as of that instant. `None` = now.'
-        ),
-    ] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     entailment: Annotated[
         SparqlEntailment | None,
         Field(
-            description='RDFS entailment regime. `Subclass` (default) makes a query for a class\nmatch instances of its subtypes; `None` matches only the declared type.'
+            description='RDFS entailment regime. `None` (default) reads the asserted published\nprojection. `Subclass` requires a compatible reasoned projection and\nfails closed while one is unavailable.'
         ),
     ] = None
     limit: Annotated[
@@ -3679,7 +3374,7 @@ class SparqlTextRequest(BaseModel):
     reason: Annotated[
         bool | None,
         Field(
-            description="Reason over the branch's stored inference rules: project the rule-derived\nfacts into the dataset the conformant engine runs over, so a query reasons\nover asserted **and** derived edges. Off by default; a no-op when the branch\nhas no stored rules. Combine with `entailment: subclass` (the default) for\nfull reasoning — rule-derived facts plus `rdfs:subClassOf` type closure."
+            description="Reason over the branch's stored inference rules: project the rule-derived\nfacts into the dataset the conformant engine runs over, so a query reasons\nover asserted **and** derived edges. Off by default; a no-op when the branch\nhas no stored rules. Combine with `entailment: subclass` for full\nreasoning—rule-derived facts plus `rdfs:subClassOf` type closure—once\nmaintenance publishes a compatible reasoned projection."
         ),
     ] = None
 
@@ -3908,78 +3603,6 @@ class SyntheticEvalResponse(BaseModel):
     pairs: list[ShadowQuery]
     snapshot: SnapshotView
     truncated: bool
-
-
-class TemporalCoverage(BaseModel):
-    """
-    A self-describing summary of a snapshot's two temporal axes, so an agent can
-    decide up front which temporal queries are meaningful on this graph.
-
-    The product motivation: a graph backfilled in one batch with no per-fact
-    `valid_time` looks fully populated but cannot be bisected by date — every
-    `as_of` returns the same snapshot. The two `*_degenerate` flags say so
-    explicitly rather than letting a caller render N identical daily panels.
-    """
-
-    as_of_valid_time_degenerate: Annotated[
-        bool,
-        Field(
-            description='True when no event carries a `valid_time` bound: an `as_of_valid_time`\nquery returns all-or-nothing, never a daily progression.'
-        ),
-    ]
-    distinct_commit_count: Annotated[
-        int,
-        Field(
-            description='Distinct `commit_seq` values among the events: how many commits the data\narrived in. `1` means a single bulk backfill, so `as_of_commit_seq` can\nonly distinguish "before" vs "after" that one batch.',
-            ge=0,
-        ),
-    ]
-    earliest_commit_time_micros: Annotated[
-        int | None,
-        Field(
-            description='Transaction-time span (when facts were recorded), in epoch micros.'
-        ),
-    ] = None
-    earliest_valid_time_micros: Annotated[
-        int | None,
-        Field(
-            description='World-time span over events that carry a `valid_time` bound, in micros.'
-        ),
-    ] = None
-    edge_event_count: Annotated[
-        int,
-        Field(
-            description='Total append-only edge events in the snapshot overlay.', ge=0
-        ),
-    ]
-    edges_with_valid_time: Annotated[
-        int,
-        Field(
-            description='Events whose `valid_time` carries a bounded start and/or end.',
-            ge=0,
-        ),
-    ]
-    head_commit_seq: Annotated[
-        int,
-        Field(
-            description='Head `commit_seq` — the largest snapshot pin (`as_of_commit_seq`) a read\ncan request right now.',
-            ge=0,
-        ),
-    ]
-    latest_commit_time_micros: int | None = None
-    latest_valid_time_micros: int | None = None
-    single_commit: Annotated[
-        bool,
-        Field(
-            description='True when every event arrived in a single commit (a one-shot backfill):\nthere is only one snapshot to pin to, and `as_of` by wall-clock date\ncannot bisect the history. For multi-commit graphs, inspect the\n`*_commit_time_micros` span to judge whether daily bisection is possible.'
-        ),
-    ]
-    valid_time_coverage: Annotated[
-        float,
-        Field(
-            description='`edges_with_valid_time / edge_event_count`, in `[0,1]`. Near zero means\nan `as_of_valid_time` query cannot bisect this graph by world-time.'
-        ),
-    ]
 
 
 class TimeGranularity(Enum):
@@ -4483,56 +4106,6 @@ class AnalyticTriplePattern(BaseModel):
     ]
 
 
-class AskCitation(BaseModel):
-    id: Annotated[str, Field(description='Entity id or edge-event id, as a string.')]
-    kind: AskCitationKind
-    label: Annotated[
-        str,
-        Field(
-            description='Human-readable label (entity name, or "src —relation→ dst").'
-        ),
-    ]
-    score: float
-
-
-class AskExplain(BaseModel):
-    """
-    Per-request instrumentation of the `/v1/ask` pipeline: what each stage cost,
-    how much the DB narrowed the world before the model saw it, and the embedding
-    model that did the grounding.
-    """
-
-    embedding: Annotated[
-        str,
-        Field(
-            description='The embedding model that grounded + retrieved — its id, or `lexical` for\nthe hash/lexical fallback when the graph has no managed embedding model.'
-        ),
-    ]
-    narrowing: Annotated[
-        AskNarrowing,
-        Field(
-            description='How much the DB narrowed: the vocabulary the question snapped to and the\nsize of the retrieved evidence set the answer rests on.'
-        ),
-    ]
-    timings: Annotated[
-        AskTimings,
-        Field(
-            description='Wall-clock latency of each stage of the one call, in milliseconds.'
-        ),
-    ]
-
-
-class AskPlanFailure(BaseModel):
-    code: AskPlanFailureCode
-    retryable: Annotated[
-        bool,
-        Field(
-            description='True when retrying after the planner recovers can produce a plan.'
-        ),
-    ]
-    stage: AskPlanFailureStage
-
-
 class AskStructuredPlanV2(BaseModel):
     execution_mode: AskPlanExecutionModeV2
     filters: list[AskTypedFilterV2] | None = None
@@ -4586,29 +4159,6 @@ class CurrentStateRequest(BaseModel):
     as_of_valid_time: str | None = None
     entity: EntitySelector
     relations: list[str] | None = None
-
-
-class DerivedEdgeView(BaseModel):
-    """
-    One derived edge (a fact that follows from the rules but is not asserted).
-    """
-
-    confidence: Annotated[
-        float,
-        Field(
-            description="Confidence inherited from the supporting facts: the **max** over\nderivations of the **min** over each derivation's premises (so a fact is\nas strong as its weakest premise, and the best derivation wins)."
-        ),
-    ]
-    depends_on: Annotated[
-        list[ProvenanceLeafView1 | ProvenanceLeafView2] | None,
-        Field(
-            description='The provenance trail this fact transitively rests on — typed leaves so an\nasserted edge (`Asserted`) and a calibrated retrieval match (`Retrieval`)\nstay distinguishable and a retrieval match can never masquerade as an\nasserted fact (FAL-PROV-NOT-LAUNDERED). Pure rule derivation resolves to\n`Asserted` leaves only.'
-        ),
-    ] = None
-    object: EntityView
-    predicate: str
-    rule: Annotated[str, Field(description='The rule that first derived this edge.')]
-    subject: EntityView
 
 
 class EdgeEventRow(BaseModel):
@@ -4666,8 +4216,14 @@ class EmbeddingSearchExplain(BaseModel):
     manifest_key: str | None = None
     metric: str
     model_id: str
-    overlay_candidates: Annotated[int, Field(ge=0)]
     probe_count: Annotated[int, Field(ge=0)]
+    published_lag_commits: Annotated[
+        int,
+        Field(
+            description='Commit distance from the graph head to the pinned published generation.',
+            ge=0,
+        ),
+    ]
     ranged: RangedReadStats | None = None
     reranked_candidates: Annotated[
         int | None,
@@ -4676,10 +4232,8 @@ class EmbeddingSearchExplain(BaseModel):
             ge=0,
         ),
     ] = None
-    source: EmbeddingIndexSource
     spaces_searched: Annotated[int, Field(ge=0)]
     temporal_coverage: SearchTemporalCoverage | None = None
-    unindexed_tail_commits: Annotated[int, Field(ge=0)]
 
 
 class EmbeddingSearchResponse(BaseModel):
@@ -4763,7 +4317,7 @@ class EntityNeighborhoodRequest(BaseModel):
     as_of_commit_seq: Annotated[
         int | None,
         Field(
-            description='Snapshot pin: reproduce the neighborhood as of this `commit_seq`, hiding\nany event committed later. Errors if it exceeds the current head, and\nforces the snapshot scan (the ranged adjacency fast path declines a\npinned read). Omit for the latest snapshot.',
+            description="Snapshot pin: reproduce the neighborhood as of this `commit_seq`, hiding\nany event committed later. Public serving reduces the entity's bounded\nincident domains from the Base family in the one pinned published\ngeneration; it never discovers or assembles another snapshot. Omit for\nthe latest snapshot.",
             ge=0,
         ),
     ] = None
@@ -4844,35 +4398,11 @@ class ExtractorExample(BaseModel):
     transcript: str
 
 
-class FullTextIndexBuildRequest(BaseModel):
-    include_terms: bool
-    targets: list[AnnTargetKind]
-    tokenizer: FullTextTokenizerConfig | None = None
-
-
-class FullTextIndexBuildResponse(BaseModel):
-    average_document_len: float
-    document_count: Annotated[int, Field(ge=0)]
-    manifest_etag: str
-    manifest_key: str
-    object_etag: str
-    object_key: str
-    snapshot: SnapshotView
-    term_count: Annotated[int, Field(ge=0)]
-
-
-class FullTextIndexInspectRequest(BaseModel):
-    include_terms: bool
-    source: FullTextIndexSource | None = None
-    targets: list[AnnTargetKind]
-
-
 class FullTextIndexInspectResponse(BaseModel):
     average_document_len: float
     document_count: Annotated[int, Field(ge=0)]
     manifest_key: str | None = None
     snapshot: SnapshotView
-    source: FullTextIndexSource
     term_count: Annotated[int, Field(ge=0)]
     terms: list[FullTextTermView]
     tokenizer: FullTextTokenizerConfig
@@ -4886,12 +4416,16 @@ class FullTextSearchExplain(BaseModel):
     filtered_candidates: Annotated[int, Field(ge=0)]
     indexed_commit_seq: CommitSeq | None = None
     manifest_key: str | None = None
-    overlay_candidates: Annotated[int, Field(ge=0)]
+    published_lag_commits: Annotated[
+        int,
+        Field(
+            description='Commit distance from the graph head to the pinned published generation.',
+            ge=0,
+        ),
+    ]
     ranged: RangedReadStats | None = None
-    source: FullTextIndexSource
     temporal_coverage: SearchTemporalCoverage | None = None
     term_count: Annotated[int, Field(ge=0)]
-    unindexed_tail_commits: Annotated[int, Field(ge=0)]
 
 
 class FullTextSearchResponse(BaseModel):
@@ -4969,6 +4503,65 @@ class GraphEdgeRow(BaseModel):
     valid_time: ValidTime
 
 
+class GraphImportPublishedGenerationOutcome(BaseModel):
+    """
+    Durable publication accepted after `POST /v1/graph/import?publish=true`.
+    The import request never constructs index families or waits for publication;
+    clients can poll the returned job while continuing to observe the previously
+    published generation.
+    """
+
+    disposition: PublishedGenerationEnqueueDisposition
+    due_seq: Annotated[int, Field(ge=0)]
+    job_id: str
+    status: str
+
+
+class GraphImportResponse(BaseModel):
+    """
+    Aggregate outcome of a bulk NDJSON import. `committed_commit_seq` is the
+    sequence of the last internal batch commit (absent if nothing committed).
+    `errors` is bounded; `error_count` is the true total even when the list is
+    truncated. `published_generation` is present only when the caller passed
+    `?publish=true` and at least one batch committed.
+    """
+
+    batches: Annotated[int, Field(ge=0)]
+    committed_commit_seq: CommitSeq | None = None
+    error_count: Annotated[int, Field(ge=0)]
+    errors: list[GraphImportLineError] | None = None
+    graph_created: bool
+    idempotency_key: Annotated[
+        str,
+        Field(
+            description='The caller key, or the server-minted key when the caller omitted one.'
+        ),
+    ]
+    idempotent_replay: Annotated[
+        bool,
+        Field(
+            description='True when every internal mutation batch was the already-committed\nreceipt for this idempotency key.'
+        ),
+    ]
+    lines_read: Annotated[int, Field(ge=0)]
+    mutation_receipt_id: Annotated[
+        str,
+        Field(
+            description='Stable identity for the whole multi-batch mutation. Replays return this\nexact receipt and the original terminal commit sequence.'
+        ),
+    ]
+    observations: Annotated[
+        int | None,
+        Field(
+            description='Exact observation records imported from a full-fidelity export.',
+            ge=0,
+        ),
+    ] = None
+    properties: Annotated[int, Field(ge=0)]
+    published_generation: GraphImportPublishedGenerationOutcome | None = None
+    triplets: Annotated[int, Field(ge=0)]
+
+
 class GraphKey(BaseModel):
     branch_id: str
     graph_id: str
@@ -4989,7 +4582,6 @@ class GraphListResponse(BaseModel):
 class GraphMetadataRequest(BaseModel):
     dim: Annotated[int | None, Field(ge=0)] = None
     include_indexes: bool | None = None
-    include_objects: bool | None = None
     max_clusters: Annotated[int | None, Field(ge=0)] = None
     provider: (
         EmbeddingProviderConfig1
@@ -4998,6 +4590,31 @@ class GraphMetadataRequest(BaseModel):
         | None
     ) = None
     targets: list[AnnTargetKind]
+
+
+class GraphRdfImportResponse(BaseModel):
+    """
+    Aggregate outcome of an RDF import. Every RDF statement is committed
+    through a fixed `RDF_TRIPLE` edge; source predicate and literal term metadata
+    are stored on the edge so the RDF/SPARQL projection can emit source RDF terms
+    while avoiding one ontology relation/property per source predicate.
+    """
+
+    batches: Annotated[int, Field(ge=0)]
+    committed_commit_seq: CommitSeq | None = None
+    duplicate_literal_triples: Annotated[int, Field(ge=0)]
+    duplicate_resource_triples: Annotated[int, Field(ge=0)]
+    error_count: Annotated[int, Field(ge=0)]
+    errors: list[GraphRdfImportError] | None = None
+    graph_created: bool
+    imported_triplets: Annotated[int, Field(ge=0)]
+    lines_read: Annotated[int, Field(ge=0)]
+    literal_triples: Annotated[int, Field(ge=0)]
+    predicate_count: Annotated[int, Field(ge=0)]
+    predicates: list[GraphRdfImportPredicate] | None = None
+    published_generation: GraphImportPublishedGenerationOutcome | None = None
+    resource_triples: Annotated[int, Field(ge=0)]
+    triples_read: Annotated[int, Field(ge=0)]
 
 
 class GraphRecallResponse(BaseModel):
@@ -5106,145 +4723,6 @@ class HybridMultiSearchResult(BaseModel):
     score: float
     source_ranks: list[HybridSourceRank]
     type: str
-
-
-class IndexBuildOptions(BaseModel):
-    """
-    Optional JSON body for the data-plane index-build routes (`/v1/index/run`
-    and `/v1/index/build`). Every field is optional: an empty body resolves the
-    ANN space the way the search path does — a managed embedding config selects
-    its `stored` space (its dim winning), otherwise the server's hash default —
-    so a bare reindex always rebuilds the space queries actually look up.
-    Supplying `provider` overrides that resolution, e.g. to persist a build over
-    committed BYO vectors with an explicit `stored`/`external_vectors` space.
-    """
-
-    build_permutation: Annotated[
-        bool | None,
-        Field(
-            description='Build the object-storage-native permutation view (PSO). Off by default.'
-        ),
-    ] = False
-    dim: Annotated[
-        int | None,
-        Field(
-            description="Embedding dimension when no `provider.dim` is given. Defaults to the\nserver's configured dim. Must match the committed vectors' dimension.",
-            ge=0,
-        ),
-    ] = None
-    include_raw_rerank: Annotated[
-        bool | None,
-        Field(
-            description='Append a raw-f32 rerank region to the embedding run. Off by default.'
-        ),
-    ] = False
-    max_clusters: Annotated[
-        int | None,
-        Field(
-            description="ANN clusters per space. Defaults to the server's configured value.",
-            ge=0,
-        ),
-    ] = None
-    provider: (
-        EmbeddingProviderConfig1
-        | EmbeddingProviderConfig2
-        | EmbeddingProviderConfig3
-        | None
-    ) = None
-
-
-class IndexDeltaResponse(BaseModel):
-    """
-    Outcome of an incremental index-run delta build (`index delta`, or the
-    commit-path auto-delta trigger). `built` is true when a delta segment was
-    appended; `folded` is true when the chain was instead rebuilt into a fresh
-    base (chain too long, or freshness fold). `skipped_reason` explains a no-op
-    (no base run, nothing un-indexed).
-    """
-
-    built: bool
-    delta_document_count: Annotated[int, Field(ge=0)]
-    family: str
-    folded: bool
-    from_commit_seq: Annotated[int, Field(ge=0)]
-    indexed_seq: Annotated[int, Field(ge=0)]
-    segments: Annotated[int, Field(ge=0)]
-    skipped_reason: str | None = None
-    snapshot: SnapshotView
-    to_commit_seq: Annotated[int, Field(ge=0)]
-
-
-class IndexFamilyVisibility(BaseModel):
-    """
-    Bounded, user-facing summary of one family in the unified visibility manifest.
-    """
-
-    class_: Annotated[IndexVisibilityFamilyClass, Field(alias='class')]
-    covered_seq: CommitSeq | None = None
-    family: IndexVisibilityFamily
-    l0_from_seq: CommitSeq | None = None
-    l0_segment_count: Annotated[int, Field(ge=0)]
-    l0_to_seq: CommitSeq | None = None
-    model_hash: Annotated[
-        str | None,
-        Field(
-            description='Distinguishes ANN model spaces without exposing object keys.'
-        ),
-    ] = None
-    target_hash: Annotated[
-        str | None,
-        Field(
-            description='Distinguishes target-specific BM25/ANN families without exposing object keys.'
-        ),
-    ] = None
-
-
-class IndexGcResponse(BaseModel):
-    deleted_bytes: Annotated[int, Field(ge=0)]
-    deleted_objects: Annotated[int, Field(ge=0)]
-    deleted_runs: Annotated[int, Field(ge=0)]
-    dry_run: bool
-    kept_runs: Annotated[int, Field(ge=0)]
-    runs: list[IndexRunView]
-    scanned_bytes: Annotated[int, Field(ge=0)]
-    scanned_objects: Annotated[int, Field(ge=0)]
-    skipped_branch_shared: Annotated[
-        bool,
-        Field(
-            description="Set when deletion was skipped because other branches may share this\nbranch's index runs and `include_branch_shared` was false."
-        ),
-    ]
-    snapshot: SnapshotView
-
-
-class IndexVisibilityManifest(BaseModel):
-    """
-    The unified, per-graph visibility view consumed by the console and status tools.
-    """
-
-    epoch: Annotated[int, Field(ge=0)]
-    families: list[IndexFamilyVisibility]
-    visible_seq: Annotated[
-        int,
-        Field(
-            description='Shared published watermark. Lockstep families define this value.',
-            ge=0,
-        ),
-    ]
-
-
-class InferenceRunResponse(BaseModel):
-    derived: list[DerivedEdgeView]
-    rounds: Annotated[
-        int, Field(description='Number of fixpoint rounds executed.', ge=0)
-    ]
-    snapshot: SnapshotView
-    truncated: Annotated[
-        bool,
-        Field(
-            description='True if a bound (rounds / derived edges / per-rule solutions) was hit, so\nthe derived set may be incomplete.'
-        ),
-    ]
 
 
 class ManagedEmbeddingBackfillJobStatusResponse(BaseModel):
@@ -5783,22 +5261,50 @@ class PropertyInput(BaseModel):
     ]
 
 
-class RdfExportPreviewResponse(BaseModel):
+class PublishedReadSnapshotView(BaseModel):
     """
-    JSON envelope returned by `GET /v1/graph/export/rdf?truncate=true`.
+    Bounded introspection view of an immutable published generation. It exposes
+    snapshot lineage and freshness without leaking object-store keys.
     """
 
-    data: Annotated[
-        str,
+    conformance: PublishedReadConformanceView | None = None
+    epoch: Annotated[int, Field(ge=0)]
+    families: list[PublishedReadFamilyView]
+    format_version: Annotated[int, Field(ge=0)]
+    generation: Annotated[int | None, Field(ge=0)] = None
+    graph: GraphKey
+    predecessor_generation: Annotated[int | None, Field(ge=0)] = None
+    projection_version: Annotated[int | None, Field(ge=0)] = None
+    served_at_seq: Annotated[int, Field(ge=0)]
+    source_head_generation: Annotated[
+        int,
         Field(
-            description='RDF serialization (Turtle, N-Triples, TriG, or N-Quads) encoded as a JSON\nstring so the preview metadata stays in one typed response.'
+            description='Graph-head generation whose metadata/configuration this root reflects.\nThis can trail the current head even when `served_at_seq` is unchanged.',
+            ge=0,
         ),
     ]
-    format: str
-    returned_triples: Annotated[int, Field(ge=0)]
-    snapshot: SnapshotView
-    total_triples: Annotated[int, Field(ge=0)]
-    truncated: bool
+    summary_available: bool
+
+
+class PublishedReadStatusResponse(BaseModel):
+    """
+    One coherent operational view of the graph head and the immutable read root
+    pinned while resolving it. Lag values are derived from this `head_seq`, not
+    from a separately-polled status response.
+    """
+
+    conformance_lag_commits: Annotated[int | None, Field(ge=0)] = None
+    generation_lag: Annotated[
+        int,
+        Field(
+            description='Head-generation distance, including same-sequence ontology, shapes, or\nindex-configuration changes that commit-sequence lag cannot expose.',
+            ge=0,
+        ),
+    ]
+    head_generation: Annotated[int, Field(ge=0)]
+    head_seq: Annotated[int, Field(ge=0)]
+    query_lag_commits: Annotated[int, Field(ge=0)]
+    snapshot: PublishedReadSnapshotView
 
 
 class RelationSearchResult(BaseModel):
@@ -5850,129 +5356,26 @@ class ResolvedTerm(BaseModel):
     type_signature: VocabularyTypeSignature | None = None
 
 
-class RetrievalPremiseRequest(BaseModel):
-    """
-    Stage G — turn calibrated retrieval candidates into derived edges. Every
-    candidate scored `P >= threshold` becomes a derived edge `(anchor, relation,
-    matched)` with `confidence = P` and a single `Retrieval` provenance leaf
-    (never `Asserted` — FAL-PROV-NOT-LAUNDERED). Candidates come from any
-    retrieval channel; the server re-verifies each against the served snapshot.
-    """
-
-    anchor: Annotated[
-        EntitySelector, Field(description='Subject of every derived edge.')
-    ]
-    calibration: PlattCalibration | None = None
-    candidates: Annotated[
-        list[ScoredCandidateInput] | None,
-        Field(
-            description='Explicit candidates (client ran retrieval). Exactly one of `candidates` or\n`query` must be supplied.'
-        ),
-    ] = None
-    materialize: Annotated[
-        bool | None,
-        Field(
-            description='Persist the derived premises as an immutable `derived/v1` object (separate\nfrom the asserted graph) and return its key in `materialized_key`. Default\nfalse — a plain preview that writes nothing.'
-        ),
-    ] = None
-    max_premises: Annotated[
-        int, Field(description='Fail-closed ceiling on emitted premises.', ge=0)
-    ]
-    model_id: Annotated[
-        str,
-        Field(
-            description='The embedding model the scores came from (names the `Retrieval` leaf).'
-        ),
-    ]
-    query: Annotated[
-        str | None,
-        Field(
-            description='Query-driven mode: when set, the server runs BM25 entity retrieval for this\ntext against the served snapshot and uses the matches (with their raw BM25\nscores) as candidates — so a caller can hand a query instead of pre-scoring.'
-        ),
-    ] = None
-    query_top_k: Annotated[
-        int | None,
-        Field(
-            description='Candidate-pool size for `query` mode (defaults to 50).', ge=0
-        ),
-    ] = None
-    relation: Annotated[
-        str,
-        Field(
-            description='Predicate of every derived edge; must resolve in the ontology.'
-        ),
-    ]
-    target_kind: Annotated[
-        AnnTargetKind, Field(description='The retrieval target the scores ranked.')
-    ]
-    threshold: Annotated[
-        float,
-        Field(
-            description='Minimum calibrated `P` for a candidate to become a premise (in `[0,1]`).'
-        ),
-    ]
-
-
-class RetrievalPremiseResponse(BaseModel):
-    """
-    The derived edges plus the bound / candidate-not-final instrumentation.
-    """
-
-    calibration_run: Annotated[
-        int | None,
-        Field(
-            description='The promoted `calibration` run whose scaler priced these premises;\nabsent when the request carried an inline `calibration`.',
-            ge=0,
-        ),
-    ] = None
-    considered: Annotated[
-        int,
-        Field(
-            description='Candidates examined (`max_premises` may stop the scan early).',
-            ge=0,
-        ),
-    ]
-    derived: list[DerivedEdgeView]
-    dropped_below_threshold: Annotated[
-        int,
-        Field(
-            description='Candidates whose calibrated `P` was below `threshold`.', ge=0
-        ),
-    ]
-    dropped_not_visible: Annotated[
-        int,
-        Field(
-            description='Candidates dropped because they were not visible in the served snapshot.',
-            ge=0,
-        ),
-    ]
-    emitted: Annotated[
-        int, Field(description='Premises emitted (`<= max_premises`).', ge=0)
-    ]
-    materialized_key: Annotated[
-        str | None,
-        Field(
-            description='Object key of the persisted `derived/v1` run when `materialize` was set;\n`None` for a plain preview.'
-        ),
-    ] = None
-    snapshot: SnapshotView
-    truncated: Annotated[
-        bool,
-        Field(description='True if the `max_premises` bound stopped emission early.'),
-    ]
-
-
 class SchemaAuditReport(BaseModel):
     conforms: bool
     messages: list[str] | None = None
+    ontology_version: Annotated[
+        int | None,
+        Field(description='Ontology identity the durable report validated.', ge=0),
+    ] = None
     result_count: Annotated[int, Field(ge=0)]
     results: list[SchemaAuditResult] | None = None
+    shapes_version: Annotated[
+        int | None,
+        Field(description='Shapes identity the durable report validated.', ge=0),
+    ] = None
     truncated: Annotated[
         bool | None,
         Field(
             description='True when `result_count` is exact but `results` contains only the\ncaller-requested leading window. Whole-graph audits can produce one row\nper offending focus node, so HTTP responses are bounded by default.'
         ),
     ] = None
+    validated_at_seq: CommitSeq | None = None
 
 
 class SchemaBundleView(BaseModel):
@@ -6001,41 +5404,16 @@ class SchemaBundleView(BaseModel):
     shapes_version: Annotated[int | None, Field(ge=0)] = None
 
 
-class SchemaPreviewRequest(BaseModel):
-    base_ontology_version: Annotated[int | None, Field(ge=0)] = None
-    base_shapes_version: Annotated[int | None, Field(ge=0)] = None
-    desired_mode: SchemaEnforceMode | None = None
-    ontology: SchemaSource | None = None
-    shapes: SchemaSource | None = None
-
-
-class SchemaPreviewResponse(BaseModel):
-    audit: SchemaAuditReport
-    base_ontology_version: Annotated[int, Field(ge=0)]
-    base_shapes_version: Annotated[int | None, Field(ge=0)] = None
-    can_publish: bool
-    desired_mode: SchemaEnforceMode
-    diff: list[SchemaDiffEntry]
-    graph: GraphKey
-    messages: list[str]
-    preview_digest: str
-    proposed_ontology_version: Annotated[int, Field(ge=0)]
-    proposed_shapes_version: Annotated[int | None, Field(ge=0)] = None
-    publish_mode_allowed: list[SchemaEnforceMode]
-    verdict: SchemaCompatibilityVerdict
-
-
 class SchemaPublishRequest(BaseModel):
     confirm_restrictive: bool | None = None
     desired_mode: SchemaEnforceMode | None = None
     ontology: SchemaSource | None = None
-    preview_digest: str
     shapes: SchemaSource | None = None
 
 
 class SchemaPublishResponse(BaseModel):
     activated: bool
-    audit: SchemaAuditReport
+    audit: SchemaAuditReport | None = None
     enforce_mode: SchemaEnforceMode
     graph: GraphKey
     messages: list[str]
@@ -6266,55 +5644,6 @@ class SearchFilterExpr15(BaseModel):
     field: str
     op: Op22
     values: list[bool | int | float | str | None]
-
-
-class SearchIndexRunRequest(BaseModel):
-    build_adjacency: Annotated[
-        bool | None,
-        Field(
-            description='Build the ranged adjacency run for traversal. Off by default.'
-        ),
-    ] = None
-    build_embeddings: bool | None = None
-    build_full_text: bool | None = None
-    build_permutation: Annotated[
-        bool | None,
-        Field(
-            description='Build the object-storage-native permutation view (PSO) for native SHACL\ntarget/path evaluation and analytic graph queries. Off by default.'
-        ),
-    ] = None
-    dim: Annotated[int | None, Field(ge=0)] = None
-    include_clusters: bool
-    include_raw_rerank: Annotated[
-        bool | None,
-        Field(
-            description='Append a raw-f32 region to the embedding run so vector search can opt\ninto exact rerank. Off by default (compact 4-bit-only runs).'
-        ),
-    ] = None
-    include_terms: bool
-    max_clusters: Annotated[int | None, Field(ge=0)] = None
-    provider: (
-        EmbeddingProviderConfig1
-        | EmbeddingProviderConfig2
-        | EmbeddingProviderConfig3
-        | None
-    ) = None
-    targets: list[AnnTargetKind]
-    tokenizer: FullTextTokenizerConfig | None = None
-
-
-class SearchIndexRunResponse(BaseModel):
-    adjacency: SearchIndexFamilyRun | None = None
-    embeddings: SearchIndexFamilyRun | None = None
-    full_text: SearchIndexFamilyRun | None = None
-    index_lineage: Annotated[
-        IndexLineage,
-        Field(
-            description='One coherent observation of every serving index family after this run.\nUnlike the per-family build outcomes, this also includes families the\nrequest did not rebuild and is therefore the convergence contract.'
-        ),
-    ]
-    permutation: SearchIndexFamilyRun | None = None
-    snapshot: SnapshotView
 
 
 class SearchSuggestion(BaseModel):
@@ -6699,14 +6028,9 @@ class AnalyticQueryRequest(BaseModel):
     object-storage permutation view.
     """
 
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin: evaluate the query as of this `commit_seq`, hiding any event\ncommitted later. Errors if it exceeds the head. Forces the snapshot reduce\npath — the head-fresh permutation view and the count fast paths are\ndeclined, since they cannot reconstruct an earlier snapshot.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: str | None = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     combinators: Annotated[
         list[
             AnalyticCombinator1
@@ -6752,81 +6076,6 @@ class AnalyticQueryRequest(BaseModel):
     patterns: list[AnalyticTriplePattern]
 
 
-class AskFeedbackRequest(BaseModel):
-    ask_id: Annotated[str, Field(description='The `ask_id` the ask response carried.')]
-    corrected_plan: AskStructuredPlanV2 | None = None
-    note: Annotated[
-        str | None, Field(description='Optional free-text note (bounded server-side).')
-    ] = None
-    verdict: AskFeedbackVerdict
-
-
-class AskGrounding(BaseModel):
-    candidates: Annotated[
-        list[ResolvedTerm],
-        Field(
-            description="Real vocabulary the question snapped to (classes/relations/properties/\nterms) — a subset of the graph's vocabulary by construction."
-        ),
-    ]
-    constrained: Annotated[
-        bool,
-        Field(
-            description='True when identifier slots were hard-constrained during decode. Always\nfalse in `grounding_only` (no decode); true under the resident planner.'
-        ),
-    ]
-    signature_forced: Annotated[
-        bool | None,
-        Field(
-            description='True when the grounding forced a single relation via a type signature\n(WS10). Always false in `grounding_only` v1; set by the resident planner.'
-        ),
-    ] = None
-
-
-class AskQuery(BaseModel):
-    plan_failure: AskPlanFailure | None = None
-    query: Annotated[
-        str, Field(description='The retrieval query text that was executed.')
-    ]
-    structured: AskStructuredQuery | None = None
-    structured_v2: AskStructuredPlanV2 | None = None
-    top_k: Annotated[int, Field(ge=0)]
-
-
-class AskResponse(BaseModel):
-    answer: Annotated[
-        str | None,
-        Field(
-            description='A synthesized answer when a model produced one; in `grounding_only` this\nis a templated evidence summary (the retrieved matches), not model prose.'
-        ),
-    ] = None
-    ask_id: Annotated[
-        str | None,
-        Field(
-            description="Server-stamped id for this ask. Reference it in\n`POST /v1/ask/feedback` to attach a verdict; when signal capture is on\nit is also the `request_id` joining the emitted `ask_trace` signal to\nits `ask_feedback` — the planner fine-tune's training join key."
-        ),
-    ] = None
-    citations: Annotated[
-        list[AskCitation],
-        Field(description='Evidence: the graph items the answer rests on.'),
-    ]
-    confidence: Annotated[
-        float, Field(description='Confidence in [0, 1], from the top retrieved score.')
-    ]
-    explain: Annotated[
-        AskExplain,
-        Field(
-            description='Instrumentation for the one call: per-stage latency, how much the DB\nnarrowed, and which embedding model grounded the question. Makes the\n"DB narrows, cheap model decodes" pipeline observable per request.'
-        ),
-    ]
-    grounding: Annotated[
-        AskGrounding,
-        Field(description='How the question was mapped onto real vocabulary.'),
-    ]
-    mode: Annotated[AskMode, Field(description='Which pipeline produced this answer.')]
-    query: AskQuery | None = None
-    snapshot: SnapshotView
-
-
 class BranchParentView(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     graph: GraphKey
@@ -6865,47 +6114,6 @@ class CurrentStateResponse(BaseModel):
     state: list[StateEntry]
 
 
-class EmbeddingIndexBuildRequest(BaseModel):
-    dim: Annotated[int | None, Field(ge=0)] = None
-    include_clusters: bool
-    include_raw_rerank: Annotated[
-        bool | None,
-        Field(
-            description='Append a raw-f32 region per cluster so persisted vector search can opt\ninto exact rerank (`rerank` on the search request). Larger objects at\nrest; default off keeps runs compact and 4-bit-only.'
-        ),
-    ] = None
-    max_clusters: Annotated[int | None, Field(ge=0)] = None
-    provider: (
-        EmbeddingProviderConfig1
-        | EmbeddingProviderConfig2
-        | EmbeddingProviderConfig3
-        | None
-    ) = None
-    quantizer: Annotated[
-        str | None,
-        Field(
-            description='Quantizer codec for the persisted cluster blocks. Absent / `None` uses\nthe default `tq-hadamard` (4-bit). Set `exrabitq` (with `quantizer_bits`,\n2..=8) for the higher-bit Extended RaBitQ codec that can reach\nrerank-grade recall without the raw-f32 region (P30/R9). The scheme is\nself-describing in the persisted index meta, so reads dispatch\nautomatically; this only changes how new runs are built.'
-        ),
-    ] = None
-    quantizer_bits: Annotated[
-        int | None,
-        Field(
-            description='Bits per dimension for the `exrabitq` scheme (2..=8). Ignored by\n`tq-hadamard` (fixed 4-bit); defaults to 4 when `quantizer` is set\nwithout bits.',
-            ge=0,
-        ),
-    ] = None
-    targets: list[AnnTargetKind]
-
-
-class EmbeddingIndexBuildSpaceView(BaseModel):
-    cluster_count: Annotated[int, Field(ge=0)]
-    clusters: list[EmbeddingIndexClusterView]
-    entry_count: Annotated[int, Field(ge=0)]
-    object_etag: str
-    object_key: str
-    space: EmbeddingSpaceKey
-
-
 class EmbeddingIndexInspectRequest(BaseModel):
     dim: Annotated[int | None, Field(ge=0)] = None
     include_clusters: bool
@@ -6916,7 +6124,6 @@ class EmbeddingIndexInspectRequest(BaseModel):
         | EmbeddingProviderConfig3
         | None
     ) = None
-    source: EmbeddingIndexSource | None = None
     targets: list[AnnTargetKind]
 
 
@@ -6947,10 +6154,10 @@ class EntityDetailResponse(BaseModel):
 
 class EntityNeighborhoodResponse(BaseModel):
     """
-    Result of an entity point lookup: the entity plus its current out/in
-    neighborhood. Served from the ranged adjacency run's per-entity slices when
-    one exists (cost is the entity's degree, not the whole graph), otherwise
-    from the snapshot overlay.
+    Result of an entity point lookup: the entity plus its out/in neighborhood.
+    Public reads use adjacency for the published watermark and the same
+    generation's Base family for historical pins; both paths cost the entity's
+    degree rather than the whole graph.
     """
 
     entity: EntityView
@@ -6959,7 +6166,7 @@ class EntityNeighborhoodResponse(BaseModel):
     served_from_ranged: Annotated[
         bool,
         Field(
-            description='True when served from the persisted ranged adjacency run (the\npoint-lookup fast path); false when computed from the snapshot overlay.'
+            description="True when served directly from the persisted adjacency family. False\nwhen an exact historical pin was reduced from the same published\ngeneration's Base family."
         ),
     ]
     snapshot: SnapshotView
@@ -7193,14 +6400,19 @@ class GraphMetadataResponse(BaseModel):
     index_caught_up: Annotated[
         bool | None,
         Field(
-            description='One-shot "has the persisted index caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the three-field predicate.\n`Some(true)` iff both the BM25 and ANN persisted runs are current to the\nhead commit (no un-indexed tail); `Some(false)` when a build is still\npending or absent; `None` when indexes were not inspected\n(`include_indexes=false`). Note (Strong consistency): committed data is\nqueryable via the per-query overlay *before* this turns true — this marks\nthe persisted fast path being current, not queryability.'
+            description='One-shot "has the published generation caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the three-field predicate.\n`Some(true)` iff both the BM25 and ANN persisted runs are current to the\nhead commit; `Some(false)` when publication is still\npending or absent; `None` when indexes were not inspected\n(`include_indexes=false`).'
         ),
     ] = None
     index_lineage: IndexLineage | None = None
-    object_bytes: Annotated[int, Field(ge=0)]
-    object_count: Annotated[int, Field(ge=0)]
     ontology_version: Annotated[int, Field(ge=0)]
     parent: BranchParentView | None = None
+    published_lag_commits: Annotated[
+        int,
+        Field(
+            description='Commit distance from the graph head to the pinned published generation.',
+            ge=0,
+        ),
+    ]
     segment_bytes: Annotated[int | None, Field(ge=0)] = None
     segment_count: Annotated[
         int | None,
@@ -7210,20 +6422,6 @@ class GraphMetadataResponse(BaseModel):
         ),
     ] = None
     snapshot: SnapshotView
-    temporal_coverage: Annotated[
-        TemporalCoverage | None,
-        Field(
-            description='Temporal coverage of this snapshot — what kinds of as-of query the data\ncan actually answer. Lets a caller tell *before* querying whether\npoint-in-time / daily views are possible, instead of discovering that\nevery as-of returns the same picture.'
-        ),
-    ] = None
-    temporal_coverage_computed: Annotated[
-        bool | None,
-        Field(
-            description='Whether `temporal_coverage` was computed from the full snapshot. The\nbounded HTTP metadata path is head-only by default; callers that need\nexact event-time coverage opt in explicitly.'
-        ),
-    ] = None
-    unindexed_tail_commits: Annotated[int, Field(ge=0)]
-    visibility_manifest: IndexVisibilityManifest | None = None
     wal_tail_bytes: Annotated[int, Field(ge=0)]
     wal_tail_commits: Annotated[int, Field(ge=0)]
 
@@ -7233,19 +6431,6 @@ class HybridMultiSearchResponse(BaseModel):
     results: list[HybridMultiSearchResult]
     search_id: str | None = None
     snapshot: SnapshotView
-
-
-class IndexGcJobStatusResponse(BaseModel):
-    attempts: Annotated[int, Field(ge=0)]
-    enqueued_at_micros: int
-    graph: GraphKey
-    job_id: str
-    progress: IndexGcJobProgress | None = None
-    request: IndexGcRequest
-    result: IndexGcResponse | None = None
-    status: str
-    terminal_error: str | None = None
-    updated_at_micros: int
 
 
 class InferenceRule(BaseModel):
@@ -7287,46 +6472,6 @@ class InferenceRule(BaseModel):
             description='SHACL `sh:order`. Rules run low-to-high; a determinism hint for the\npositive (monotone) rules supported today, where the least fixpoint is\norder-independent.'
         ),
     ] = None
-
-
-class InferenceRunRequest(BaseModel):
-    """
-    Run a set of inference rules to a bounded fixpoint and return the derived
-    edges as a **preview**. Derived facts are never written: the write gate
-    refuses `origin=Derived`, so this surfaces "what follows" without mutating
-    the graph. Stratified persistence (`derived/v1`) is a separate path.
-    """
-
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin: run inference over the graph as of this `commit_seq`, hiding\nlater commits. Errors if it exceeds the head.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: str | None = None
-    max_derived: Annotated[
-        int | None,
-        Field(
-            description='Fail-closed ceiling on total derived edges (clamped server-side).',
-            ge=0,
-        ),
-    ] = None
-    max_rounds: Annotated[
-        int | None,
-        Field(
-            description='Fail-closed ceiling on fixpoint rounds (clamped server-side).',
-            ge=0,
-        ),
-    ] = None
-    max_solutions: Annotated[
-        int | None,
-        Field(
-            description="Per-rule ceiling on the `body` join's solution set (clamped server-side).",
-            ge=0,
-        ),
-    ] = None
-    rules: list[InferenceRule]
 
 
 class ModelRegistryResponse(BaseModel):
@@ -7596,7 +6741,9 @@ class ResolveTermRequest(BaseModel):
     by construction — the resolver never fabricates a term.
     """
 
-    as_of_commit_seq: Annotated[int | None, Field(ge=0)] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     candidates: Annotated[
         list[str] | None,
         Field(
@@ -7609,7 +6756,6 @@ class ResolveTermRequest(BaseModel):
             description='Which vocabulary sources to consider; empty means all. Ignored when\n`candidates` is supplied (the candidate list is the search space).'
         ),
     ] = None
-    snapshot_token: str | None = None
     text: Annotated[
         str,
         Field(description='The free text to snap to real vocabulary (1..=256 chars).'),
@@ -7633,27 +6779,6 @@ class ResolveTermResponse(BaseModel):
     snapshot_token: str
 
 
-class RuleSet(BaseModel):
-    """
-    A versioned, immutable set of inference rules stored with a graph branch
-    (Track B). Pinned from `GraphHead.rules_ref`; used by `infer` and SHACL
-    `include_derived` when the request carries no inline rules.
-    """
-
-    rules: list[InferenceRule]
-    version: Annotated[
-        int, Field(description='Monotonically increasing; bumped on each define.', ge=0)
-    ]
-
-
-class RuleSetDefineRequest(BaseModel):
-    """
-    Define (replace) the stored rule set for a graph branch.
-    """
-
-    rules: list[InferenceRule]
-
-
 class SearchFeedbackExportResponse(BaseModel):
     counts: SearchFeedbackExportCounts
     feedback_graph: GraphKey
@@ -7665,27 +6790,6 @@ class SearchFeedbackExportResponse(BaseModel):
         ),
     ] = None
     rows: list[SearchFeedbackExportRow]
-
-
-class SearchIndexJobStatusResponse(BaseModel):
-    """
-    Durable background full-index job status with per-family terminal result.
-    """
-
-    attempts: Annotated[int, Field(ge=0)]
-    enqueued_at_micros: int
-    graph: GraphKey
-    job_id: str
-    result: SearchIndexRunResponse | None = None
-    stage: str | None = None
-    status: Annotated[
-        str,
-        Field(
-            description='`pending` | `running` | `succeeded` | `failed` | `cancelled`.'
-        ),
-    ]
-    terminal_error: str | None = None
-    updated_at_micros: int
 
 
 class SearchSessionCommitResponse(BaseModel):
@@ -7736,13 +6840,9 @@ class SearchSuggestRequest(BaseModel):
     completions are strings that provably exist in the graph at this snapshot.
     """
 
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Transaction-time vocabulary pin. Mutually exclusive with\n`snapshot_token`.',
-            ge=0,
-        ),
-    ] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     context: SuggestContext | None = None
     field: Annotated[
         str | None,
@@ -7762,12 +6862,6 @@ class SearchSuggestRequest(BaseModel):
     ] = None
     prefix: str
     ranker: SuggestRankerWeights | None = None
-    snapshot_token: Annotated[
-        str | None,
-        Field(
-            description='Opaque graph snapshot identity previously returned by LBB. Mutually\nexclusive with `as_of_commit_seq`.'
-        ),
-    ] = None
     vocabulary_filter: VocabularyFilter | None = None
 
 
@@ -7901,7 +6995,6 @@ class CommitResponse(BaseModel):
     edge_event_ids: list[str]
     entity_ids: list[str]
     idempotent_replay: bool
-    indexed: bool
     no_op: bool | None = None
     observation_ids: list[str]
     schema_validation: SchemaAuditReport | None = None
@@ -7922,19 +7015,10 @@ class CommitResponse(BaseModel):
     ] = None
 
 
-class EmbeddingIndexBuildResponse(BaseModel):
-    manifest_etag: str
-    manifest_key: str
-    provider: EmbeddingProviderSpec
-    snapshot: SnapshotView
-    spaces: list[EmbeddingIndexBuildSpaceView]
-
-
 class EmbeddingIndexInspectResponse(BaseModel):
     manifest_key: str | None = None
     provider: EmbeddingProviderSpec
     snapshot: SnapshotView
-    source: EmbeddingIndexSource
     spaces: list[EmbeddingIndexSpaceView]
 
 
@@ -7981,84 +7065,10 @@ class ShaclQueryResponse(BaseModel):
     snapshot: SnapshotView
 
 
-class AskRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin (transaction-time ceiling): retrieval and citations\nreproduce the graph as of this commit sequence; the response\n`snapshot.as_of_commit_seq` echoes the pin. Omitted means head.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: Annotated[
-        str | None,
-        Field(
-            description='Valid-time cursor (RFC 3339): retrieval reflects facts true at this\ninstant. Omitted means the latest valid time.'
-        ),
-    ] = None
-    execute: Annotated[
-        bool | None,
-        Field(
-            description='Run retrieval and return citations (default true). When false, only the\ngrounding is computed — the caller drives its own retrieval/model.'
-        ),
-    ] = None
-    fields: Annotated[
-        list[str] | None,
-        Field(
-            description='Entity attributes retained as evidence on the internal execution trace.'
-        ),
-    ] = None
-    filters: (
-        SearchFilterExpr1
-        | SearchFilterExpr2
-        | SearchFilterExpr3
-        | SearchFilterExpr4
-        | SearchFilterExpr5
-        | SearchFilterExpr6
-        | SearchFilterExpr7
-        | SearchFilterExpr8
-        | SearchFilterExpr9
-        | SearchFilterExpr10
-        | SearchFilterExpr11
-        | SearchFilterExpr12
-        | SearchFilterExpr13
-        | SearchFilterExpr14
-        | SearchFilterExpr15
-        | SearchFilterExpr16
-        | SearchFilterExpr17
-        | SearchFilterExpr18
-        | SearchFilterExpr19
-        | SearchFilterExpr20
-        | SearchFilterExpr21
-        | SearchFilterExpr22
-        | None
-    ) = None
-    question: Annotated[str, Field(description='The natural-language question.')]
-    snapshot_token: Annotated[
-        str | None,
-        Field(
-            description='Opaque alternative to `as_of_commit_seq`. Exactly one pin spelling may\nbe supplied; grounding, validation, execution, trace, and citations all\nuse the resolved commit.'
-        ),
-    ] = None
-    top_k: Annotated[
-        int | None,
-        Field(description='Max citations to return (default 8, clamped to 25).', ge=0),
-    ] = None
-
-
 class EmbeddingSearchRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin (transaction-time ceiling): results hide every event\ncommitted after this sequence, reproducing that past snapshot. The ANN\nrun is selected as the newest run at or below the pin and the pin bounds\nthe forward overlay; candidate generation is never the correctness layer.\nOmitted means the current head.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: Annotated[
-        str | None,
-        Field(
-            description='Valid-time cursor (RFC 3339): results reflect facts true at this\ninstant. Omitted means the latest valid time.'
-        ),
-    ] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     consistency: SearchConsistency | None = None
     dim: Annotated[int | None, Field(ge=0)] = None
     explain: bool
@@ -8117,7 +7127,6 @@ class EmbeddingSearchRequest(BaseModel):
             ge=0,
         ),
     ] = None
-    source: EmbeddingIndexSource | None = None
     targets: list[AnnTargetKind]
     top_k: Annotated[int, Field(ge=0)]
 
@@ -8166,19 +7175,9 @@ class EntityFilterRequest(BaseModel):
 
 
 class FullTextSearchRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin (transaction-time ceiling): results hide every event\ncommitted after this sequence, reproducing that past snapshot. The BM25\nrun is selected as the newest run at or below the pin and the pin bounds\nthe forward overlay; candidate generation is never the correctness layer.\nOmitted means the current head.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: Annotated[
-        str | None,
-        Field(
-            description='Valid-time cursor (RFC 3339): results reflect facts true at this\ninstant. Omitted means the latest valid time.'
-        ),
-    ] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     consistency: SearchConsistency | None = None
     explain: bool
     facets: list[FacetRequest] | None = None
@@ -8228,7 +7227,6 @@ class FullTextSearchRequest(BaseModel):
         ),
     ] = None
     query: str
-    source: FullTextIndexSource | None = None
     targets: list[AnnTargetKind]
     tokenizer: FullTextTokenizerConfig | None = None
     top_k: Annotated[int, Field(ge=0)]
@@ -8240,7 +7238,9 @@ class GovernedConflictAggregationRequest(BaseModel):
     required filter and is evaluated before any grouping or value collection.
     """
 
-    as_of_commit_seq: Annotated[int | None, Field(ge=0)] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     entity_type: str
     key_fields: list[str]
     limit: Annotated[int | None, Field(ge=0)] = None
@@ -8328,7 +7328,6 @@ class HybridSubquery(BaseModel):
 
 class SearchEngineOptions(BaseModel):
     bm25: bool | None = None
-    bm25_source: FullTextIndexSource | None = None
     consistency: SearchConsistency | None = None
     dim: Annotated[int | None, Field(ge=0)] = None
     facets: list[FacetRequest] | None = None
@@ -8390,7 +7389,6 @@ class SearchEngineOptions(BaseModel):
     ] = None
     tokenizer: FullTextTokenizerConfig | None = None
     vector: bool | None = None
-    vector_source: EmbeddingIndexSource | None = None
     weights: SearchSignalWeights | None = None
 
 
@@ -8480,35 +7478,23 @@ class SearchFilterExpr22(BaseModel):
 
 class SearchSessionCommitRequest(BaseModel):
     """
-    `POST /v1/search/session/commit` — execute the search against the session's
-    pinned snapshot. The warmed cache makes it read warm; the results are exactly
-    what the same request would return without any prior `prefix` frames.
+    `POST /v1/search/session/commit` — execute the search against the current
+    published snapshot. The warmed cache makes it read warm; the results are
+    exactly what the same request would return without any prior `prefix`
+    frames.
     """
 
-    pin: Annotated[
-        bool | None,
-        Field(
-            description="Enforce the session's snapshot pin: the search runs with\n`as_of_commit_seq` set to the commit the session opened at, so a write\nthat landed mid-session cannot change what this commit returns\n(reproducible runs / retry determinism). An explicit conflicting\n`request.as_of_commit_seq` is an `invalid_input`. Default false — the\ncommit reads the current head, exactly like `POST /v1/graph/search`."
-        ),
-    ] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     request: SemanticGraphSearchRequest
     session_id: str
 
 
 class SemanticGraphSearchRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin (transaction-time ceiling): results hide every event\ncommitted after this sequence, reproducing that past snapshot. BM25/ANN\nindexes still generate candidates from the head; the pin is enforced\nwhere results are verified against the snapshot, never by candidate\ngeneration. Omitted means the current head.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: Annotated[
-        str | None,
-        Field(
-            description='Valid-time cursor (RFC 3339): results reflect facts true at this\ninstant. Omitted means the latest valid time.'
-        ),
-    ] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     explain: bool | None = None
     fields: Annotated[
         list[str] | None,
@@ -8536,14 +7522,9 @@ class SemanticGraphSearchRequest(BaseModel):
 
 
 class SemanticTraverseRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin (transaction-time ceiling): seeds and expansion reproduce\nthe graph as of this commit sequence. Any as-of (valid time or pin)\nroutes traversal through the snapshot scan — the persisted-vector\nranged fast path serves head reads only. Omitted means head.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: str | None = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     direction: ExpansionDirection
     explain: bool
     fields: Annotated[
@@ -8916,10 +7897,9 @@ class ShadowEvalRequest(BaseModel):
     on this evidence — the endpoint never promotes.
     """
 
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(description='Pin both arms to one snapshot for reproducibility.', ge=0),
-    ] = None
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     challenger: SearchEngineOptions
     champion: SearchEngineOptions | None = None
     queries: list[ShadowQuery]
@@ -8977,20 +7957,15 @@ class SparqlSelectRequest(BaseModel):
     aggregation arrive in later milestones.
     """
 
+    model_config = ConfigDict(
+        extra='forbid',
+    )
     aggregates: Annotated[
         list[SparqlAggregate] | None,
         Field(
             description='Aggregate projections (COUNT/SUM/AVG/MIN/MAX … AS …). Presence switches\nthe query into grouped/aggregated mode.'
         ),
     ] = None
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin: evaluate as of this `commit_seq`, hiding later commits.\nErrors if it exceeds the head; forces the snapshot reduce path.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: str | None = None
     ask: Annotated[
         bool | None,
         Field(
@@ -9072,7 +8047,7 @@ class SparqlSelectRequest(BaseModel):
     reason: Annotated[
         bool | None,
         Field(
-            description="Reason over the graph's stored inference rules: fold the rule-derived\nfacts into the snapshot the query sees, so a pattern matches asserted **and**\nderived edges in one shot. Off by default (asserted-only). Forces the\noverlay reduce path (the prebuilt index holds no derived facts), and is a\nno-op when the branch has no stored rules."
+            description="Reason over the graph's stored inference rules so a pattern matches\nasserted **and** derived edges in one shot. Off by default\n(asserted-only). Public serving requires a compatible reasoned\nprojection in the pinned published generation and fails closed when it\nis absent; it never forces an overlay reduce."
         ),
     ] = None
     select: Annotated[
@@ -9087,7 +8062,7 @@ class TraverseRequest(BaseModel):
     as_of_commit_seq: Annotated[
         int | None,
         Field(
-            description='Snapshot pin: reproduce the graph state as of this `commit_seq`, hiding\nany event committed later. Errors if it exceeds the current head, and\nforces the snapshot scan (the ranged adjacency fast path declines a\npinned read). Omit for the latest snapshot.',
+            description='Snapshot pin: reproduce the graph state as of this `commit_seq`, hiding\nany event committed later. Public serving reduces the bounded edge\ndomains from the Base family in the one pinned published generation;\nit never discovers or assembles another snapshot. Historical entity\nfilters/field projection fail explicitly because Base does not carry a\npoint-indexed entity-mutation history. Omit for the latest snapshot.',
             ge=0,
         ),
     ] = None
@@ -9127,14 +8102,14 @@ class TraverseRequest(BaseModel):
     max_block_bytes: Annotated[
         int | None,
         Field(
-            description='Decoded adjacency-block working-set byte budget for the ranged path.\nDefaults to the server/store budget. A request may lower the budget,\nbut not raise it. Ignored on the snapshot path.',
+            description='Decoded adjacency-block working-set byte budget for the ranged path.\nDefaults to the server/store budget. A request may lower the budget,\nbut not raise it. Ignored on the bounded Base-family reducer path.',
             ge=0,
         ),
     ] = None
     max_block_reads: Annotated[
         int | None,
         Field(
-            description='Object-read budget for the ranged adjacency path; defaults to a value\nderived from `max_frontier_entities`. Ignored on the snapshot path.',
+            description='Object-read budget for the ranged adjacency path; defaults to a value\nderived from `max_frontier_entities`. Ignored on the bounded Base-family\nreducer path.',
             ge=0,
         ),
     ] = None
@@ -9146,7 +8121,6 @@ class TraverseRequest(BaseModel):
     start: EntitySelector
 
 
-AskRequest.model_rebuild()
 EmbeddingSearchRequest.model_rebuild()
 EntityFilterRequest.model_rebuild()
 FullTextSearchRequest.model_rebuild()

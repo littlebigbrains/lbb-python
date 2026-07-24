@@ -34,9 +34,8 @@ from . import models
 from ._version import __version__
 
 DEFAULT_BASE_URL = "http://127.0.0.1:7400"
-# Generous default: commits over a large corpus and synchronous index builds run
-# well past a few seconds. Background index builds (index_run(background=True))
-# return immediately regardless.
+# Generous default: commits over a large corpus and long administration calls
+# can run well past a few seconds.
 DEFAULT_TIMEOUT = 120.0
 # Retry count is now a secondary safety ceiling; the binding limit is the
 # deadline budget below. Raised 2 → 6 so a multi-second `Retry-After` sequence
@@ -479,7 +478,7 @@ class _BaseLbbClient:
         api_key: str | None = None,
         graph: str | None = None,
         branch: str | None = None,
-        api_version: str = "2026-07-22",
+        api_version: str = "2026-07-23",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
@@ -501,7 +500,6 @@ class _BaseLbbClient:
         self._default_consistency = default_consistency
         self.search = _SearchNamespace(self)
         self.context = _ContextNamespace(self)
-        self.indexes = _IndexNamespace(self)
         self.entities = _EntityNamespace(self)
         self.ontology = _OntologyNamespace(self)
         self.query = _QueryNamespace(self)
@@ -871,7 +869,7 @@ class _BaseLbbClient:
         batch: int | None = None,
         strict: bool | None = None,
         observed_at: str | None = None,
-        index: bool | None = None,
+        publish: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-ingest a dataset as NDJSON.
@@ -881,13 +879,10 @@ class _BaseLbbClient:
         batched into bounded internal commits server-side, so a whole dataset loads
         in one streamed request without a single oversized commit.
 
-        Set ``index=True`` to run one full index build after the last batch, so the
-        data is served from the persisted runs (not just the ephemeral snapshot
-        fallback) by the time the call returns — the "bulk load, queryable on
-        return" path for connector backfills. This replaces the anti-pattern of
-        indexing per batch (which serializes builds and races the throttle): import
-        the whole dataset, index once. The response's ``index`` object reports
-        whether the build ran (``built``) or was skipped (``skipped_reason``).
+        Set ``publish=True`` to durably enqueue one complete
+        published-generation build after the final batch. The import does not
+        wait for visibility; ``published_generation`` carries the durable job
+        identity and due sequence to observe.
         """
         ndjson = (
             lines
@@ -901,7 +896,7 @@ class _BaseLbbClient:
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
-                "index": index,
+                "publish": publish,
             },
             content=ndjson,
             content_type="application/x-ndjson",
@@ -958,9 +953,8 @@ class _BaseLbbClient:
 
     def import_rdf(
         self,
-        rdf: str | None = None,
+        rdf: str,
         *,
-        ntriples: str | None = None,
         format: str = "ntriples",
         base_iri: str | None = None,
         graph_uri: str | None = None,
@@ -970,6 +964,7 @@ class _BaseLbbClient:
         observed_at: str | None = None,
         resource_type: str | None = None,
         edge_idempotency: str | None = None,
+        publish: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-ingest N-Triples, Turtle, N-Quads, or TriG through the native RDF import endpoint.
@@ -978,16 +973,6 @@ class _BaseLbbClient:
         source RDF predicates and literal term details are preserved as edge
         metadata.
         """
-        if rdf is not None and ntriples is not None:
-            raise TypeError("pass exactly one of rdf= or the deprecated ntriples=")
-        if rdf is None:
-            rdf = ntriples
-        if rdf is None:
-            raise TypeError("import_rdf() requires RDF text via rdf= or ntriples=")
-        if ntriples is not None and format != "ntriples":
-            raise ValueError(
-                "the deprecated ntriples= keyword requires format='ntriples'"
-            )
         content_types = {
             "ntriples": "application/n-triples",
             "turtle": "text/turtle",
@@ -1009,64 +994,11 @@ class _BaseLbbClient:
                 "blank_node_scope": blank_node_scope,
                 "resource_type": resource_type,
                 "edge_idempotency": edge_idempotency,
+                "publish": publish,
             },
             content=rdf,
             content_type=content_types[format],
             idempotency_key=idempotency_key or self.idempotency_key("import-rdf"),
-        )
-
-    def export_rdf(
-        self,
-        *,
-        format: str = "turtle",
-        max_triples: int | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
-        entailment: str | None = None,
-        reason: bool | None = None,
-    ) -> Any:
-        """Export the snapshot-visible RDF projection as Turtle, N-Triples, TriG, or N-Quads."""
-        if format not in {"turtle", "ntriples", "trig", "nquads"}:
-            raise ValueError("format must be 'turtle', 'ntriples', 'trig', or 'nquads'")
-        return self._request(
-            "GET",
-            "/v1/graph/export/rdf",
-            params={
-                "format": "nt" if format == "ntriples" else format,
-                "max_triples": max_triples,
-                "as_of_valid_time": as_of_valid_time,
-                "as_of_commit_seq": as_of_commit_seq,
-                "entailment": entailment,
-                "reason": reason,
-            },
-        )
-
-    def export_rdf_preview(
-        self,
-        *,
-        format: str = "turtle",
-        max_triples: int = 100,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
-        entailment: str | None = None,
-        reason: bool | None = None,
-    ) -> models.RdfExportPreviewResponse:
-        """Return a deterministic bounded RDF slice plus truncation metadata."""
-        if format not in {"turtle", "ntriples", "trig", "nquads"}:
-            raise ValueError("format must be 'turtle', 'ntriples', 'trig', or 'nquads'")
-        return self._model_request(
-            models.RdfExportPreviewResponse,
-            "GET",
-            "/v1/graph/export/rdf",
-            params={
-                "format": "nt" if format == "ntriples" else format,
-                "max_triples": max_triples,
-                "truncate": "true",
-                "as_of_valid_time": as_of_valid_time,
-                "as_of_commit_seq": as_of_commit_seq,
-                "entailment": entailment,
-                "reason": reason,
-            },
         )
 
     def retract(self, body: Body, *, idempotency_key: str | None = None) -> Any:
@@ -1176,15 +1108,13 @@ class _BaseLbbClient:
         )
 
     def shadow_eval(self, body: Body) -> Any:
-        """Champion vs challenger retrieval over one pinned snapshot (``POST
-        /v1/models/shadow-eval``). Returns promotion evidence (hit-rate@k,
-        latency, per-query overlap); never promotes."""
+        """Compare champion and challenger retrieval over one pinned snapshot."""
         return self._request("POST", "/v1/models/shadow-eval", body=body)
 
     def synthetic_eval(self, *, limit: int | None = None) -> Any:
         """Execution-verified QA probes generated from the graph's current
         edges — labels are the executed projections (``GET
-        /v1/models/synthetic-eval``). Feeds ``shadow_eval`` directly."""
+        /v1/models/synthetic-eval``)."""
         return self._request(
             "GET", "/v1/models/synthetic-eval", params={"limit": limit}
         )
@@ -1232,31 +1162,6 @@ class _BaseLbbClient:
         """Set the automatic-training configuration — the ``auto_train``
         toggle + trainable kinds (``POST /v1/models/training-config``)."""
         return self._request("POST", "/v1/models/training-config", body=body)
-
-    def ask(self, body: Body) -> Any:
-        """Ground a natural-language question to the graph's real vocabulary,
-        retrieve against the pinned snapshot, and answer with citations
-        (``POST /v1/ask``). Body:
-        ``{"question", "execute"?, "top_k"?, "as_of_commit_seq"?,
-        "as_of_valid_time"?}``. The response carries ``mode``
-        (``grounding_only`` | ``resident_planner``), ``answer``, ``citations``,
-        ``grounding``, a per-call ``explain``, and an ``ask_id`` to join to
-        :meth:`ask_feedback`. The typed response model is
-        :class:`lbb.models.AskResponse`."""
-        return self._request("POST", "/v1/ask", body=body)
-
-    def ask_feedback(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        """Verdict on an ask (``POST /v1/ask/feedback``): ``accepted`` |
-        ``rejected`` | ``corrected`` (+ ``corrected_plan``), joined to the
-        ask's trace by ``ask_id`` — the planner fine-tune's feedback capture.
-        ``accepted: false`` means signal capture is off on this deployment."""
-        validated = models.AskFeedbackRequest.model_validate(body)
-        return self._request(
-            "POST",
-            "/v1/ask/feedback",
-            body=validated.model_dump(mode="json", exclude_none=True),
-            idempotency_key=idempotency_key or self.idempotency_key("ask-feedback"),
-        )
 
     def ingest_signals(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Write a typed supervision batch with a durable replay-safe receipt."""
@@ -1324,9 +1229,6 @@ class _BaseLbbClient:
     def planner_dataset(
         self, *, limit: int | None = None, split_seq: int | None = None
     ) -> Any:
-        """The planner fine-tune's training feed (``GET
-        /v1/models/planner-dataset``): feedback rows joined from signals ≤ the
-        split pin + execution-verified synthetic plans."""
         return self._request(
             "GET",
             "/v1/models/planner-dataset",
@@ -1336,10 +1238,6 @@ class _BaseLbbClient:
     def planner_preference_dataset(
         self, *, limit: int | None = None, split_seq: int | None = None
     ) -> Any:
-        """The DPO pass's training feed (``GET
-        /v1/models/planner-preference-dataset``): preference pairs from
-        corrected verdicts, paired rejections, synthetic corrupted-slot
-        pairs; unpaired rejections are counted."""
         return self._request(
             "GET",
             "/v1/models/planner-preference-dataset",
@@ -1349,9 +1247,6 @@ class _BaseLbbClient:
     def suggest_dataset(
         self, *, limit: int | None = None, split_seq: int | None = None
     ) -> Any:
-        """The suggest-ranker trainer's probe feed (``GET
-        /v1/models/suggest-dataset``): ``suggestion_adopted`` signals ≤ the
-        split pin + execution-verified synthetic vocabulary pairs."""
         return self._request(
             "GET",
             "/v1/models/suggest-dataset",
@@ -1361,9 +1256,6 @@ class _BaseLbbClient:
     def extractor_dataset(
         self, *, limit: int | None = None, split_seq: int | None = None
     ) -> Any:
-        """The extractor fine-tune's training feed (``GET
-        /v1/models/extractor-dataset``): EPISODE transcripts joined to the
-        facts the observe pipeline committed from them."""
         return self._request(
             "GET",
             "/v1/models/extractor-dataset",
@@ -1388,8 +1280,7 @@ class _BaseLbbClient:
     ) -> Any:
         """Promote a finished ``planner_lora`` run (``POST
         /v1/models/promote-planner``): gated on held-out slot exactness,
-        recorded as a ``kind=planner`` training run whose adapter ``/v1/ask``
-        serves."""
+        recorded as a ``kind=planner`` training run."""
         return self._request(
             "POST",
             "/v1/models/promote-planner",
@@ -1497,10 +1388,6 @@ class _BaseLbbClient:
         """Lineage and evidence for a single edge."""
         return self._request("POST", "/v1/query/why", body=body)
 
-    def shacl(self, body: Body) -> Any:
-        """SHACL-style shape/pattern query."""
-        return self._request("POST", "/v1/query/shacl", body=body)
-
     # --- SPARQL ---
 
     def sparql_select(
@@ -1515,7 +1402,7 @@ class _BaseLbbClient:
         Takes a ``SparqlSelectRequest`` (model or dict): conjunctive ``patterns``
         plus optional ``filters``, ``group_by``/``aggregates`` (COUNT/SUM/AVG/
         MIN/MAX), ``having``, ``order_by``, ``select``/``distinct``, ``ask``,
-        ``limit``/``offset``, and the ``as_of_*`` snapshot pins. GROUP BY is not
+        and ``limit``/``offset``. GROUP BY is not
         limited to entity identity: ``group_keys`` adds typed scalar keys — a
         property value or a calendar bucket of a datetime property
         (``{"date_bucket": {"var", "field", "granularity", "as"}}``) — so a
@@ -1566,8 +1453,6 @@ class _BaseLbbClient:
         *,
         reason: bool | None = None,
         entailment: str | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
         consistency: str | None = None,
@@ -1583,10 +1468,6 @@ class _BaseLbbClient:
             body["reason"] = reason
         if entailment is not None:
             body["entailment"] = entailment
-        if as_of_valid_time is not None:
-            body["as_of_valid_time"] = as_of_valid_time
-        if as_of_commit_seq is not None:
-            body["as_of_commit_seq"] = as_of_commit_seq
         if limit is not None:
             body["limit"] = limit
         if offset is not None:
@@ -1607,21 +1488,28 @@ class _BaseLbbClient:
         """Resolve mentions to concepts/entities."""
         return self._request("POST", "/v1/ontology/resolve", body=body)
 
-    def ontology_conformance(self) -> Any:
-        """Audit the snapshot against the ontology's implied constraints.
+    def ontology_conformance(self, *, consistency: str | None = None) -> Any:
+        """Read the durable ontology-conformance report.
 
-        Derives SHACL shapes from the ontology's capped ``cardinality``
-        (``-> sh:maxCount``) and validates the current snapshot against them,
-        returning a ``SchemaAuditReport``. Whole-snapshot and never blocks a
-        write; unlike the published-shapes schema audit it needs no activated
-        shape bundle — the shapes come from the ontology itself.
+        ``eventual`` serves the report referenced by the published read root.
+        ``strong`` requires its validation watermark and ontology/shapes
+        provenance to match current head; it never runs validation inline.
         """
-        return self._request("GET", "/v1/ontology/conformance")
+        params = self._consistency_params(consistency, None)
+        return self._request(
+            "GET", "/v1/ontology/conformance", params=params or None
+        )
 
-    def ontology_conformance_model(self) -> models.SchemaAuditReport:
+    def ontology_conformance_model(
+        self, *, consistency: str | None = None
+    ) -> models.SchemaAuditReport:
         """Ontology conformance report validated as ``SchemaAuditReport``."""
+        params = self._consistency_params(consistency, None)
         return self._model_request(
-            models.SchemaAuditReport, "GET", "/v1/ontology/conformance"
+            models.SchemaAuditReport,
+            "GET",
+            "/v1/ontology/conformance",
+            params=params or None,
         )
 
     def ontology_view(self, *, counts: bool = False) -> Any:
@@ -1643,108 +1531,6 @@ class _BaseLbbClient:
             models.OntologyView, "GET", "/v1/ontology", params=params
         )
 
-    # --- index lifecycle ---
-
-    def index_build(self, *, background: bool = False) -> Any:
-        """Build default ANN + BM25 indexes.
-
-        With ``background=True`` the build runs detached on the server and the
-        call returns immediately — use this for large corpora whose synchronous
-        build would exceed a fronting gateway's timeout (a 504), then poll
-        :meth:`metadata` (or :meth:`LbbClient.wait_for_index`) for completion.
-        """
-        return self._request(
-            "POST",
-            "/v1/index/build",
-            params={"background": "true" if background else None},
-        )
-
-    def index_run(self, *, background: bool = False) -> Any:
-        """Build BM25, ANN/vector, and adjacency index families.
-
-        With ``background=True`` the build runs detached on the server and the
-        call returns immediately — use this for large corpora whose synchronous
-        build would exceed a fronting gateway's timeout, then poll
-        :meth:`metadata` (or :meth:`LbbClient.wait_for_index`) for completion.
-        """
-        return self._request(
-            "POST",
-            "/v1/index/run",
-            params={"background": "true" if background else None},
-        )
-
-    def index_submit(
-        self, body: Body | None = None, *, idempotency_key: str
-    ) -> models.SearchIndexJobStatusResponse:
-        """Submit a durable full-index job with a reconnect-safe id."""
-        return self._model_request(
-            models.SearchIndexJobStatusResponse,
-            "POST",
-            "/v1/index/jobs",
-            body=body or {},
-            idempotency_key=idempotency_key,
-        )
-
-    def index_job(self, job_id: str) -> models.SearchIndexJobStatusResponse:
-        """Poll per-family index progress or terminal failure."""
-        return self._model_request(
-            models.SearchIndexJobStatusResponse,
-            "GET",
-            "/v1/index/jobs",
-            params={"job_id": job_id},
-        )
-
-    def cancel_index_job(self, job_id: str) -> models.SearchIndexJobStatusResponse:
-        """Cancel a durable full-index job."""
-        return self._model_request(
-            models.SearchIndexJobStatusResponse,
-            "DELETE",
-            "/v1/index/jobs",
-            params={"job_id": job_id},
-        )
-
-    def index_delta(self) -> Any:
-        """Append a BM25 delta segment for the unindexed WAL tail."""
-        return self._request("POST", "/v1/index/delta")
-
-    def index_gc(
-        self, *, keep_runs: int | None = None, dry_run: bool | None = None
-    ) -> Any:
-        """Preview or delete superseded persisted index runs."""
-        return self._request(
-            "POST", "/v1/index/gc", params={"keep_runs": keep_runs, "dry_run": dry_run}
-        )
-
-    def index_gc_submit(
-        self, body: Body | None = None, *, idempotency_key: str
-    ) -> models.IndexGcJobStatusResponse:
-        """Submit durable index GC with reconnect-safe progress."""
-        return self._model_request(
-            models.IndexGcJobStatusResponse,
-            "POST",
-            "/v1/index/gc-jobs",
-            body=body or {},
-            idempotency_key=idempotency_key,
-        )
-
-    def index_gc_job(self, job_id: str) -> models.IndexGcJobStatusResponse:
-        """Poll durable index-GC planning and deletion progress."""
-        return self._model_request(
-            models.IndexGcJobStatusResponse,
-            "GET",
-            "/v1/index/gc-jobs",
-            params={"job_id": job_id},
-        )
-
-    def cancel_index_gc_job(self, job_id: str) -> models.IndexGcJobStatusResponse:
-        """Cancel durable index garbage collection."""
-        return self._model_request(
-            models.IndexGcJobStatusResponse,
-            "DELETE",
-            "/v1/index/gc-jobs",
-            params={"job_id": job_id},
-        )
-
     def compact(
         self, *, min_tail_commits: int | None = None, max_segments: int | None = None
     ) -> Any:
@@ -1764,31 +1550,21 @@ class _BaseLbbClient:
     def metadata(
         self,
         *,
-        include_objects: bool | None = None,
         include_indexes: bool | None = None,
-        include_temporal_coverage: bool | None = None,
     ) -> Any:
-        """Graph footprint, WAL tail, and index coverage.
-
-        Exact recursive object inventory is opt-in because its cost grows with
-        object count.
-        """
+        """Graph footprint, WAL tail, and published-index coverage."""
         return self._request(
             "GET",
             "/v1/graph/metadata",
             params={
-                "include_objects": include_objects,
                 "include_indexes": include_indexes,
-                "include_temporal_coverage": include_temporal_coverage,
             },
         )
 
     def metadata_model(
         self,
         *,
-        include_objects: bool | None = None,
         include_indexes: bool | None = None,
-        include_temporal_coverage: bool | None = None,
     ) -> models.GraphMetadataResponse:
         """Graph metadata validated as ``GraphMetadataResponse``."""
         return self._model_request(
@@ -1796,9 +1572,7 @@ class _BaseLbbClient:
             "GET",
             "/v1/graph/metadata",
             params={
-                "include_objects": include_objects,
                 "include_indexes": include_indexes,
-                "include_temporal_coverage": include_temporal_coverage,
             },
         )
 
@@ -1822,53 +1596,17 @@ class _BaseLbbClient:
             models.GraphSummaryResponse, "GET", "/v1/graph/summary"
         )
 
-    def graph_edges(
-        self,
-        *,
-        id: str | None = None,
-        type: str | None = None,
-        name: str | None = None,
-        direction: str | None = None,
-        relation: str | None = None,
-        q: str | None = None,
-        limit: int | None = None,
-        cursor: str | int | None = None,
-        offset: int | None = None,
-        as_of: str | None = None,
-        as_of_commit_seq: int | None = None,
-    ) -> Any:
-        """Paged edge listing in the unified list envelope.
+    def read_snapshot(self) -> Any:
+        """Pinned published read root and same-epoch query/conformance lag."""
+        return self._request("GET", "/v1/graph/read-snapshot")
 
-        Scope to one node with ``id`` (or ``type`` + ``name``) and a
-        ``direction`` (``out`` / ``in`` / ``both``) to walk **every** edge of a
-        high-degree node. Returns ``{object, data, has_more, next_cursor,
-        snapshot, total_count}`` — the same envelope as ``entities.list`` — so
-        page by feeding ``next_cursor`` back as ``cursor`` (the legacy ``offset``
-        is still accepted). Optional ``relation`` / ``q`` filters and an
-        ``as_of`` / ``as_of_commit_seq`` snapshot pin. Each edge row carries
-        ``valid_time``, so a page is enough to reconstruct a per-edge timeline.
-        """
-        return self._request(
+    def read_snapshot_model(self) -> models.PublishedReadStatusResponse:
+        """Published read status validated as ``PublishedReadStatusResponse``."""
+        return self._model_request(
+            models.PublishedReadStatusResponse,
             "GET",
-            "/v1/graph/edges",
-            params={
-                "id": id,
-                "type": type,
-                "name": name,
-                "direction": direction,
-                "relation": relation,
-                "q": q,
-                "limit": limit,
-                "cursor": cursor,
-                "offset": offset,
-                "as_of": as_of,
-                "as_of_commit_seq": as_of_commit_seq,
-            },
+            "/v1/graph/read-snapshot",
         )
-
-    def graph_edges_page(self, **kwargs: Any) -> ListPage[models.GraphEdgeRow]:
-        """Paged edges with rows validated as ``GraphEdgeRow``."""
-        return self._page_request(models.GraphEdgeRow, self.graph_edges(**kwargs))
 
     def list_graphs(self) -> Any:
         """List the graphs (and branches) under the scoped tenant."""
@@ -1896,20 +1634,12 @@ class _BaseLbbClient:
     def _page_request(self, row_model: type[RowT], payload: Any) -> Any:
         raise NotImplementedError
 
-    def _iter_entity_pages(self, **kwargs: Any) -> Any:
-        raise NotImplementedError
-
-    def _iter_entity_rows(self, **kwargs: Any) -> Any:
-        raise NotImplementedError
-
     def sparql(
         self,
         query: str,
         *,
         reason: bool | None = None,
         entailment: str | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
         consistency: str | None = None,
@@ -2089,65 +1819,6 @@ class _GraphNamespace:
             idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
         )
 
-    def export_rdf(
-        self,
-        *,
-        format: str = "turtle",
-        max_triples: int | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
-        entailment: str | None = None,
-        reason: bool | None = None,
-    ) -> Any:
-        """Export this graph's snapshot as Turtle, N-Triples, TriG, or N-Quads."""
-        if format not in {"turtle", "ntriples", "trig", "nquads"}:
-            raise ValueError("format must be 'turtle', 'ntriples', 'trig', or 'nquads'")
-        return self._client._request(
-            "GET",
-            "/v1/graph/export/rdf",
-            params={
-                "graph": self._graph,
-                "branch": self._branch,
-                "format": "nt" if format == "ntriples" else format,
-                "max_triples": max_triples,
-                "as_of_valid_time": as_of_valid_time,
-                "as_of_commit_seq": as_of_commit_seq,
-                "entailment": entailment,
-                "reason": reason,
-            },
-        )
-
-    def export_rdf_preview(
-        self,
-        *,
-        format: str = "turtle",
-        max_triples: int = 100,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
-        entailment: str | None = None,
-        reason: bool | None = None,
-    ) -> models.RdfExportPreviewResponse:
-        """Return a bounded typed RDF preview for this explicit graph scope."""
-        if format not in {"turtle", "ntriples", "trig", "nquads"}:
-            raise ValueError("format must be 'turtle', 'ntriples', 'trig', or 'nquads'")
-        return self._client._model_request(
-            models.RdfExportPreviewResponse,
-            "GET",
-            "/v1/graph/export/rdf",
-            params={
-                "graph": self._graph,
-                "branch": self._branch,
-                "format": "nt" if format == "ntriples" else format,
-                "max_triples": max_triples,
-                "truncate": "true",
-                "as_of_valid_time": as_of_valid_time,
-                "as_of_commit_seq": as_of_commit_seq,
-                "entailment": entailment,
-                "reason": reason,
-            },
-        )
-
-
 class _FactsNamespace:
     def __init__(self, client: _BaseLbbClient, graph: str, branch: str | None) -> None:
         self._client = client
@@ -2187,7 +1858,7 @@ class _FactsNamespace:
         batch: int | None = None,
         strict: bool | None = None,
         observed_at: str | None = None,
-        index: bool | None = None,
+        publish: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-load a dataset as NDJSON. See :meth:`LbbClient.import_ndjson`."""
@@ -2205,7 +1876,7 @@ class _FactsNamespace:
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
-                "index": index,
+                "publish": publish,
             },
             content=ndjson,
             content_type="application/x-ndjson",
@@ -2214,9 +1885,8 @@ class _FactsNamespace:
 
     def import_rdf(
         self,
-        rdf: str | None = None,
+        rdf: str,
         *,
-        ntriples: str | None = None,
         format: str = "ntriples",
         base_iri: str | None = None,
         graph_uri: str | None = None,
@@ -2226,19 +1896,10 @@ class _FactsNamespace:
         observed_at: str | None = None,
         resource_type: str | None = None,
         edge_idempotency: str | None = None,
+        publish: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-load N-Triples, Turtle, N-Quads, or TriG. See :meth:`LbbClient.import_rdf`."""
-        if rdf is not None and ntriples is not None:
-            raise TypeError("pass exactly one of rdf= or the deprecated ntriples=")
-        if rdf is None:
-            rdf = ntriples
-        if rdf is None:
-            raise TypeError("import_rdf() requires RDF text via rdf= or ntriples=")
-        if ntriples is not None and format != "ntriples":
-            raise ValueError(
-                "the deprecated ntriples= keyword requires format='ntriples'"
-            )
         content_types = {
             "ntriples": "application/n-triples",
             "turtle": "text/turtle",
@@ -2262,6 +1923,7 @@ class _FactsNamespace:
                 "blank_node_scope": blank_node_scope,
                 "resource_type": resource_type,
                 "edge_idempotency": edge_idempotency,
+                "publish": publish,
             },
             content=rdf,
             content_type=content_types[format],
@@ -2279,7 +1941,6 @@ class _SearchNamespace:
         query: str,
         *,
         top_k: int | None = None,
-        source: str | None = None,
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
     ) -> Any:
@@ -2287,7 +1948,6 @@ class _SearchNamespace:
         return self.hybrid(
             query,
             top_k=top_k,
-            source=source,
             consistency=consistency,
             min_indexed_seq=min_indexed_seq,
         )
@@ -2301,7 +1961,6 @@ class _SearchNamespace:
             params = {
                 "query": query_or_body,
                 "top_k": kwargs.get("top_k"),
-                "source": kwargs.get("source"),
                 "consistency": consistency,
                 "min_indexed_seq": min_indexed_seq,
                 "targets": (
@@ -2334,21 +1993,10 @@ class _SearchNamespace:
 
 
 class _ContextNamespace:
-    """Typed grounding, completion, decoding, and answer operations."""
+    """Typed grounding, completion, and decoding operations."""
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
-
-    def ask(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.AskResponse:
-        return self._client._model_request(
-            models.AskResponse,
-            "POST",
-            "/v1/ask",
-            body=body,
-            options=_read_options(options),
-        )
 
     def suggest(
         self, body: Body, *, options: RequestOptions | None = None
@@ -2394,7 +2042,6 @@ class _ContextNamespace:
             options=_read_options(options),
         )
 
-
 class _OntologyNamespace:
     """Typed ontology discovery and lifecycle operations."""
 
@@ -2413,12 +2060,18 @@ class _OntologyNamespace:
         )
 
     def conformance(
-        self, *, options: RequestOptions | None = None
+        self,
+        *,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
     ) -> models.SchemaAuditReport:
         return self._client._model_request(
             models.SchemaAuditReport,
             "GET",
             "/v1/ontology/conformance",
+            params={
+                "consistency": self._client._resolve_consistency(consistency),
+            },
             options=options,
         )
 
@@ -2518,7 +2171,7 @@ class _OntologyNamespace:
 
 
 class _QueryNamespace:
-    """Typed structured, SPARQL-text, analytical, and reasoning queries."""
+    """Typed structured, SPARQL-text, and analytical queries."""
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
@@ -2545,8 +2198,6 @@ class _QueryNamespace:
         *,
         reason: bool | None = None,
         entailment: str | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
         consistency: str | None = None,
@@ -2556,8 +2207,6 @@ class _QueryNamespace:
             query,
             reason=reason,
             entailment=entailment,
-            as_of_valid_time=as_of_valid_time,
-            as_of_commit_seq=as_of_commit_seq,
             limit=limit,
             offset=offset,
             consistency=consistency,
@@ -2586,111 +2235,43 @@ class _QueryNamespace:
             options=_read_options(options),
         )
 
-    def shacl(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.ShaclQueryResponse:
-        return self._client._model_request(
-            models.ShaclQueryResponse,
-            "POST",
-            "/v1/query/shacl",
-            body=body,
-            options=_read_options(options),
-        )
-
-    def infer(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.InferenceRunResponse:
-        return self._client._model_request(
-            models.InferenceRunResponse,
-            "POST",
-            "/v1/inference/run",
-            body=body,
-            options=_read_options(options),
-        )
-
-    def premises(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.RetrievalPremiseResponse:
-        return self._client._model_request(
-            models.RetrievalPremiseResponse,
-            "POST",
-            "/v1/inference/retrieval-premises",
-            body=body,
-            options=_read_options(options),
-        )
-
-
 class _SchemaNamespace:
+    """Active ontology/SHACL bundle metadata and atomic publication."""
+
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
 
-    def view(self, *, audit: bool = False) -> Any:
-        """Active graph schema bundle: ontology plus activated SHACL shapes."""
-        return self._client._request(
-            "GET",
-            "/v1/schema",
-            params={"audit": "true" if audit else None},
-        )
+    def view(self) -> Any:
+        """Read active metadata without running request-time validation."""
+        return self._client._request("GET", "/v1/schema")
 
-    def view_model(self, *, audit: bool = False) -> models.SchemaBundleView:
-        """Active schema bundle validated as ``SchemaBundleView``."""
+    def view_model(self) -> models.SchemaBundleView:
         return self._client._model_request(
-            models.SchemaBundleView,
-            "GET",
-            "/v1/schema",
-            params={"audit": "true" if audit else None},
+            models.SchemaBundleView, "GET", "/v1/schema"
         )
 
-    def preview(self, body: Body) -> Any:
-        """Preview a proposed RDF/SHACL schema bundle and audit current data."""
-        return self._client._request("POST", "/v1/schema/preview", body=body)
-
-    def preview_model(self, body: Body) -> models.SchemaPreviewResponse:
-        """Schema preview validated as ``SchemaPreviewResponse``."""
-        return self._client._model_request(
-            models.SchemaPreviewResponse, "POST", "/v1/schema/preview", body=body
-        )
-
-    def publish(self, body: Body) -> Any:
-        """Activate a previewed SHACL schema bundle for this graph branch."""
-        return self._client._request("POST", "/v1/schema/publish", body=body)
-
-    def publish_model(self, body: Body) -> models.SchemaPublishResponse:
-        """Schema publish response validated as ``SchemaPublishResponse``."""
-        return self._client._model_request(
-            models.SchemaPublishResponse, "POST", "/v1/schema/publish", body=body
-        )
-
-    def audit(self) -> Any:
-        """Audit current data against the active SHACL schema bundle."""
-        return self._client._request("POST", "/v1/schema/audit")
-
-    def audit_model(self) -> models.SchemaAuditReport:
-        """Schema audit validated as ``SchemaAuditReport``."""
-        return self._client._model_request(
-            models.SchemaAuditReport, "POST", "/v1/schema/audit"
-        )
-
-
-class _IndexNamespace:
-    def __init__(self, client: _BaseLbbClient) -> None:
-        self._client = client
-
-    def run(
-        self,
-        *,
-        wait: bool = True,
-        background: bool | None = None,
-        body: Body | None = None,
+    def publish(
+        self, body: Body, *, idempotency_key: str | None = None
     ) -> Any:
-        run_background = (
-            background if background is not None else (False if wait else True)
-        )
+        """Atomically publish a bundle; conformance is produced asynchronously."""
         return self._client._request(
             "POST",
-            "/v1/index/run",
-            params={"background": "true" if run_background else None},
+            "/v1/schema/publish",
             body=body,
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("schema-publish"),
+        )
+
+    def publish_model(
+        self, body: Body, *, idempotency_key: str | None = None
+    ) -> models.SchemaPublishResponse:
+        return self._client._model_request(
+            models.SchemaPublishResponse,
+            "POST",
+            "/v1/schema/publish",
+            body=body,
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("schema-publish"),
         )
 
 
@@ -2705,10 +2286,9 @@ class _EntityNamespace:
         limit: int | None = None,
         options: RequestOptions | None = None,
     ) -> models.EntityTypeSampleResponse:
-        """Return exact type cardinality and a bounded ranged-index sample.
-
-        The server returns ``index_busy`` instead of falling back to an
-        exhaustive snapshot scan while the adjacency index is unavailable.
+        """Return exact type cardinality and a bounded sample from the ranged
+        adjacency family pinned by the published generation. Missing published
+        state fails closed instead of falling back to an exhaustive scan.
         """
         return self._client._model_request(
             models.EntityTypeSampleResponse,
@@ -2717,69 +2297,6 @@ class _EntityNamespace:
             params={"type": type, "limit": limit},
             options=_read_options(options),
         )
-
-    def list(
-        self,
-        *,
-        type: str | None = None,  # noqa: A002 - mirrors the HTTP query param.
-        limit: int | None = None,
-        cursor: str | int | None = None,
-        offset: int | None = None,
-        query: str | None = None,
-        fields: str | Sequence[str] | None = None,
-        ids: str | Sequence[str] | None = None,
-    ) -> Any:
-        """Browse entities as the unified list envelope.
-
-        Pass ``fields`` (names, or ``"*"`` for all) to inline each row's typed
-        attributes as native JSON (under ``attributes``) — "list entities and
-        their titles" in one call instead of a list plus N point lookups — or
-        ``ids`` to bulk-fetch a specific set. Page with ``cursor`` from the
-        previous ``next_cursor``.
-        """
-
-        def _csv(value: str | Sequence[str] | None) -> str | None:
-            if value is None or isinstance(value, str):
-                return value
-            return ",".join(value)
-
-        return self._client._request(
-            "GET",
-            "/v1/graph/entities",
-            params={
-                "type": type,
-                "limit": limit,
-                "cursor": cursor,
-                "offset": offset,
-                "q": query,
-                "fields": _csv(fields),
-                "ids": _csv(ids),
-            },
-        )
-
-    def list_page(self, **kwargs: Any) -> Any:
-        """Paged entities with rows validated as ``EntityExplorerRow``."""
-        return self._client._page_request(models.EntityExplorerRow, self.list(**kwargs))
-
-    def filter(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.EntityFilterResponse:
-        """Snapshot-pinned entity filtering with typed projected attributes."""
-        return self._client._model_request(
-            models.EntityFilterResponse,
-            "POST",
-            "/v1/graph/entities/filter",
-            body=body,
-            options=_read_options(options),
-        )
-
-    def pages(self, **kwargs: Any) -> Any:
-        """Follow list cursors and yield typed :class:`ListPage` envelopes."""
-        return self._client._iter_entity_pages(**kwargs)
-
-    def iter(self, **kwargs: Any) -> Any:
-        """Follow list cursors and yield typed ``EntityExplorerRow`` objects."""
-        return self._client._iter_entity_rows(**kwargs)
 
     def filter_by_attributes(
         self,
@@ -2790,8 +2307,6 @@ class _EntityNamespace:
         select: Sequence[str] | None = None,
         limit: int | None = None,
         offset: int | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         order_by: Sequence[Mapping[str, Any]] | None = None,
         reason: bool | None = None,
         max_solutions: int | None = None,
@@ -2814,8 +2329,6 @@ class _EntityNamespace:
                 select=select,
                 limit=limit,
                 offset=offset,
-                as_of_valid_time=as_of_valid_time,
-                as_of_commit_seq=as_of_commit_seq,
                 order_by=order_by,
                 reason=reason,
                 max_solutions=max_solutions,
@@ -2842,8 +2355,6 @@ class _EntityNamespace:
         select: Sequence[str] | None = None,
         limit: int | None = None,
         offset: int | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         order_by: Sequence[Mapping[str, Any]] | None = None,
         reason: bool | None = None,
         max_solutions: int | None = None,
@@ -2861,8 +2372,6 @@ class _EntityNamespace:
             "select": list(select) if select is not None else None,
             "limit": limit,
             "offset": offset,
-            "as_of_valid_time": as_of_valid_time,
-            "as_of_commit_seq": as_of_commit_seq,
             "order_by": list(order_by) if order_by is not None else None,
             "reason": reason,
             "max_solutions": max_solutions,

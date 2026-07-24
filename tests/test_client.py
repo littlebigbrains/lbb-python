@@ -10,30 +10,23 @@ from unittest.mock import patch
 import httpx
 from pydantic import ValidationError
 
-from lbb import AsyncLbbClient, LbbClient, LbbError, ListPage, __version__
+from lbb import AsyncLbbClient, LbbClient, LbbError, __version__
 from lbb.models import (
     AddEntityTypeOp,
     AdditiveOntologyEvolveRequest,
-    AskResponse,
     CreateGraphResponse,
-    EntityExplorerRow,
-    EntityFilterResponse,
     EntityTypeSampleResponse,
     GovernedConflictAggregationResponse,
     GraphBranchDeleteResponse,
     GraphDeleteResponse,
-    GraphEdgeRow,
     GraphForkResponse,
     GraphReloadResponse,
     GraphSummaryResponse,
-    IndexGcJobStatusResponse,
     OntologyDraft,
     OntologyEvolveRequest,
-    RdfExportPreviewResponse,
     SchemaBundleView,
     SearchFeedbackExportResponse,
     SearchFeedbackSummaryResponse,
-    SearchIndexJobStatusResponse,
     SparqlSelectResponse,
     TrainModelJobStatusResponse,
 )
@@ -105,7 +98,6 @@ def edge_list_payload() -> dict[str, Any]:
         "total_count": 1,
     }
 
-
 def schema_view_payload() -> dict[str, Any]:
     return {
         "graph": GRAPH,
@@ -115,7 +107,6 @@ def schema_view_payload() -> dict[str, Any]:
         "relations": [],
         "shape_count": 1,
         "constraint_shape_count": 1,
-        "audit_summary": {"conforms": False, "violation_count": 1},
     }
 
 
@@ -189,16 +180,14 @@ def capturing_transport(
 
 
 class SyncClientTests(unittest.TestCase):
-    def test_metadata_keeps_recursive_object_inventory_opt_in(self) -> None:
+    def test_metadata_exposes_only_bounded_index_detail_option(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h", graph="g", transport=capturing_transport(seen)
         ) as client:
             client.metadata()
             client.metadata(
-                include_objects=True,
                 include_indexes=False,
-                include_temporal_coverage=True,
             )
 
         self.assertEqual(dict(seen[0].url.params), {"graph": "g"})
@@ -206,9 +195,7 @@ class SyncClientTests(unittest.TestCase):
             dict(seen[1].url.params),
             {
                 "graph": "g",
-                "include_objects": "true",
                 "include_indexes": "false",
-                "include_temporal_coverage": "true",
             },
         )
 
@@ -262,7 +249,7 @@ class SyncClientTests(unittest.TestCase):
         )
         self.assertEqual(dict(request.url.params), {"graph": "main", "branch": "b"})
         self.assertEqual(request.headers["authorization"], "Bearer lbb_sk_test")
-        self.assertEqual(request.headers["lbb-version"], "2026-07-22")
+        self.assertEqual(request.headers["lbb-version"], "2026-07-23")
         self.assertEqual(request.headers["idempotency-key"], "ik_py_1")
         self.assertEqual(json.loads(request.content), {"triplets": []})
 
@@ -272,7 +259,6 @@ class SyncClientTests(unittest.TestCase):
             client.search.hybrid(
                 "customer identity",
                 top_k=5,
-                source="persisted",
                 consistency="strong",
                 targets=["concepts", "entities"],
             )
@@ -280,33 +266,20 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/search")
         self.assertEqual(params["query"], "customer identity")
         self.assertEqual(params["top_k"], "5")
-        self.assertEqual(params["source"], "persisted")
+        self.assertNotIn("source", params)
         self.assertEqual(params["consistency"], "strong")
         self.assertEqual(params["targets"], "concepts,entities")
 
     def test_search_namespace_is_callable_for_quick_hybrid_search(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient("http://h", transport=capturing_transport(seen)) as client:
-            client.search("customer identity", top_k=5, source="persisted")
+            client.search("customer identity", top_k=5)
 
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/search")
         self.assertEqual(
             dict(seen[0].url.params),
-            {"query": "customer identity", "top_k": "5", "source": "persisted"},
+            {"query": "customer identity", "top_k": "5"},
         )
-
-    def test_entities_namespace_encodes_list_filters(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h", graph="g", transport=capturing_transport(seen)
-        ) as client:
-            client.entities.list(type="SERVICE", limit=10, query="billing")
-        params = dict(seen[0].url.params)
-        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/entities")
-        self.assertEqual(params["graph"], "g")
-        self.assertEqual(params["type"], "SERVICE")
-        self.assertEqual(params["limit"], "10")
-        self.assertEqual(params["q"], "billing")
 
     def test_entities_sample_is_typed_and_uses_bounded_route(self) -> None:
         seen: list[httpx.Request] = []
@@ -331,33 +304,6 @@ class SyncClientTests(unittest.TestCase):
             "http://h/v1/graph/entities/sample",
         )
         self.assertEqual(dict(seen[0].url.params)["limit"], "48")
-
-    def test_entities_filter_is_typed_and_retry_safe(self) -> None:
-        seen: list[httpx.Request] = []
-        payload = {
-            "snapshot": SNAPSHOT,
-            "matched_count": 1,
-            "entities": entity_list_payload()["data"],
-        }
-        body = {
-            "filter": {"field": "document_id", "op": "eq", "value": "doc-1"},
-            "fields": ["title", "acl_principals"],
-            "limit": 20,
-        }
-        with LbbClient(
-            "http://h",
-            graph="g",
-            transport=capturing_transport(seen, {"json": payload}),
-        ) as client:
-            result = client.entities.filter(body)
-
-        self.assertIsInstance(result, EntityFilterResponse)
-        self.assertEqual(result.matched_count, 1)
-        self.assertEqual(result.snapshot.commit_seq, 7)
-        self.assertEqual(
-            str(seen[0].url).split("?")[0], "http://h/v1/graph/entities/filter"
-        )
-        self.assertEqual(json.loads(seen[0].content), body)
 
     def test_ontology_evolve_models_have_stable_discriminated_names(self) -> None:
         op = AddEntityTypeOp(op="add_entity_type", name="CUSTOMER")
@@ -409,6 +355,7 @@ class SyncClientTests(unittest.TestCase):
             {"json": {"commit_seq": 128, "snapshot_token": "t", "op_count": 1}},
             {"json": {"snapshot": SNAPSHOT, "vars": [], "solutions": []}},
             {"json": summary_payload()},
+            {"json": {"conforms": True, "result_count": 0}},
         ]
         with LbbClient(
             "http://h",
@@ -422,6 +369,9 @@ class SyncClientTests(unittest.TestCase):
             # On the summary (URL) route the floor + default consistency ride the
             # query string.
             client.summary(min_indexed_seq=commit_seq)
+            # Durable conformance uses the same client default, but has no
+            # read-your-writes floor: strong waits for an exact report.
+            client.ontology_conformance()
 
         self.assertEqual(commit_seq, 128)
         sparql_body = json.loads(seen[1].content)
@@ -432,6 +382,11 @@ class SyncClientTests(unittest.TestCase):
         summary_params = dict(seen[2].url.params)
         self.assertEqual(summary_params["min_indexed_seq"], "128")
         self.assertEqual(summary_params["consistency"], "strong")
+        conformance_params = dict(seen[3].url.params)
+        self.assertEqual(
+            conformance_params,
+            {"graph": "g", "consistency": "strong"},
+        )
 
     def test_a5_per_call_consistency_wins_over_default(self) -> None:
         seen: list[httpx.Request] = []
@@ -542,80 +497,123 @@ class SyncClientTests(unittest.TestCase):
             str(seen[0].url).split("?")[0], "http://h/v1/search/feedback/summary"
         )
 
-    def test_ask_posts_question_and_returns_grounded_answer(self) -> None:
+    def test_schema_namespace_returns_typed_models(self) -> None:
         seen: list[httpx.Request] = []
-        answer = {
-            "mode": "resident_planner",
-            "answer": "user-db stores it.",
-            "grounding": {"candidates": [], "constrained": True},
-            "citations": [],
-            "confidence": 0.82,
-            "explain": {
-                "timings": {"ground_ms": 1.0, "retrieve_ms": 2.0, "total_ms": 3.0},
-                "narrowing": {"vocab_candidates": 3, "entities": 9, "assertions": 14},
-                "embedding": "bge",
-            },
-            "snapshot": SNAPSHOT,
-            "ask_id": "ask_1",
-        }
-        with LbbClient(
-            "http://h", graph="g", transport=capturing_transport(seen, {"json": answer})
-        ) as client:
-            result = client.ask(
-                {
-                    "question": "which databases store customer identity data?",
-                    "top_k": 8,
-                }
-            )
-        self.assertEqual(result["ask_id"], "ask_1")
-        self.assertEqual(result["mode"], "resident_planner")
-        request = seen[0]
-        self.assertEqual(request.method, "POST")
-        self.assertEqual(str(request.url).split("?")[0], "http://h/v1/ask")
-        self.assertEqual(dict(request.url.params)["graph"], "g")
-        self.assertNotIn("idempotency-key", request.headers)
-        self.assertEqual(
-            json.loads(request.content),
-            {"question": "which databases store customer identity data?", "top_k": 8},
-        )
-        # The response validates against the generated typed model.
-        AskResponse.model_validate(result)
-
-    def test_context_namespace_returns_typed_models_without_raw_request(self) -> None:
-        seen: list[httpx.Request] = []
-        answer = {
-            "mode": "resident_planner",
-            "answer": "user-db stores it.",
-            "grounding": {"candidates": [], "constrained": True},
-            "citations": [],
-            "confidence": 0.82,
-            "explain": {
-                "timings": {"ground_ms": 1.0, "retrieve_ms": 2.0, "total_ms": 3.0},
-                "narrowing": {"vocab_candidates": 3, "entities": 9, "assertions": 14},
-                "embedding": "bge",
-            },
-            "snapshot": SNAPSHOT,
-            "ask_id": "ask_1",
-        }
         with LbbClient(
             "http://h",
             graph="g",
-            max_retries=1,
-            retry_delay=0,
             transport=capturing_transport(
                 seen,
                 [
-                    {"status": 503, "json": {"error": {"message": "retry"}}},
-                    {"json": answer},
+                    {"json": schema_view_payload()},
+                    {
+                        "json": {
+                            "graph": GRAPH,
+                            "ontology_version": 3,
+                            "shapes_version": 2,
+                            "enforce_mode": "warn",
+                            "activated": True,
+                            "audit": {"conforms": True, "result_count": 0},
+                            "messages": [],
+                        }
+                    },
                 ],
             ),
         ) as client:
-            result = client.context.ask({"question": "what stores identity data?"})
+            schema = client.schema.view_model()
+            published = client.schema.publish_model(
+                {
+                    "desired_mode": "warn",
+                    "shapes": {
+                        "source": "@prefix sh: <http://www.w3.org/ns/shacl#> ."
+                    },
+                },
+                idempotency_key="schema-1",
+            )
 
-        self.assertIsInstance(result, AskResponse)
-        self.assertEqual(result.ask_id, "ask_1")
-        self.assertEqual(len(seen), 2)
-        self.assertEqual(str(seen[1].url).split("?")[0], "http://h/v1/ask")
+        self.assertIsInstance(schema, SchemaBundleView)
+        self.assertTrue(published.activated)
+        self.assertEqual(
+            [str(request.url).split("?")[0] for request in seen],
+            [
+                "http://h/v1/schema",
+                "http://h/v1/schema/publish",
+            ],
+        )
+        self.assertEqual(seen[1].headers["idempotency-key"], "schema-1")
+
+    def test_preserved_grounding_and_model_dataset_routes(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "json": {
+                            "matches": [],
+                            "method": "lexical",
+                            "snapshot": SNAPSHOT,
+                            "snapshot_token": "snapshot-7",
+                        }
+                    },
+                    {
+                        "json": {
+                            "candidates": [],
+                            "mode": "forced",
+                            "narrowing_source": "signature",
+                            "signature_forced": True,
+                        }
+                    },
+                    {
+                        "json": {
+                            "name_semantics": {
+                                "embeddable_pct": 1.0,
+                                "hash_like_pct": 0.0,
+                                "sampled": 1,
+                            },
+                            "narrowing_recall_sampled": {
+                                "n": 1,
+                                "recall_at_10": 1.0,
+                            },
+                            "recommendation": "narrow",
+                            "signature_sparsity": {
+                                "forced_pct": 1.0,
+                                "le3_pct": 1.0,
+                                "type_pairs": 1,
+                            },
+                            "snapshot": SNAPSHOT,
+                        }
+                    },
+                    *[{"json": {}} for _ in range(5)],
+                ],
+            ),
+        ) as client:
+            client.context.resolve({"text": "writes"})
+            client.context.decode(
+                {"source": {"name": "auth"}, "target": {"name": "db"}}
+            )
+            client.context.groundability(sample=25)
+            client.shadow_eval({"queries": [], "challenger": {}})
+            client.planner_dataset(limit=10, split_seq=7)
+            client.planner_preference_dataset(limit=11, split_seq=8)
+            client.suggest_dataset(limit=12, split_seq=9)
+            client.extractor_dataset(limit=13, split_seq=10)
+
+        self.assertEqual(
+            [str(request.url).split("?")[0] for request in seen],
+            [
+                "http://h/v1/search/resolve-term",
+                "http://h/v1/decode",
+                "http://h/v1/graph/groundability",
+                "http://h/v1/models/shadow-eval",
+                "http://h/v1/models/planner-dataset",
+                "http://h/v1/models/planner-preference-dataset",
+                "http://h/v1/models/suggest-dataset",
+                "http://h/v1/models/extractor-dataset",
+            ],
+        )
 
     def test_typed_query_namespace_retries_read_only_post(self) -> None:
         seen: list[httpx.Request] = []
@@ -637,29 +635,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertIsInstance(result, SparqlSelectResponse)
         self.assertEqual(len(seen), 2)
         self.assertEqual(str(seen[1].url).split("?")[0], "http://h/v1/query/sparql")
-
-    def test_entity_iterator_follows_cursors_and_returns_typed_rows(self) -> None:
-        seen: list[httpx.Request] = []
-        first = entity_list_payload()
-        first["has_more"] = True
-        first["next_cursor"] = "cursor-2"
-        first["total_count"] = 2
-        second = entity_list_payload()
-        second["data"][0]["id"] = "e2"
-        second["data"][0]["name"] = "billing-service"
-        second["total_count"] = 2
-        with LbbClient(
-            "http://h",
-            graph="g",
-            transport=capturing_transport(seen, [{"json": first}, {"json": second}]),
-        ) as client:
-            rows = list(client.entities.iter(limit=1))
-
-        self.assertEqual(
-            [row.name for row in rows], ["auth-service", "billing-service"]
-        )
-        self.assertTrue(all(isinstance(row, EntityExplorerRow) for row in rows))
-        self.assertEqual(dict(seen[1].url.params)["cursor"], "cursor-2")
 
     def test_raw_response_exposes_retry_metadata_and_request_options(self) -> None:
         seen: list[httpx.Request] = []
@@ -827,29 +802,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(events[0].attempt, 1)
         self.assertGreaterEqual(events[0].delay_seconds, 0.0)
 
-    def test_graph_edges_scopes_and_pages_entity_edges(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h", graph="g", transport=capturing_transport(seen)
-        ) as client:
-            client.graph_edges(
-                type="SERVICE",
-                name="auth",
-                direction="out",
-                limit=150,
-                offset=150,
-                as_of_commit_seq=42,
-            )
-        request = seen[0]
-        self.assertEqual(str(request.url).split("?")[0], "http://h/v1/graph/edges")
-        params = dict(request.url.params)
-        self.assertEqual(params["type"], "SERVICE")
-        self.assertEqual(params["name"], "auth")
-        self.assertEqual(params["direction"], "out")
-        self.assertEqual(params["limit"], "150")
-        self.assertEqual(params["offset"], "150")
-        self.assertEqual(params["as_of_commit_seq"], "42")
-
     def test_commit_dry_run_sets_dry_run_and_no_idempotency_key(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -861,16 +813,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(str(request.url).split("?")[0], "http://h/v1/graph/commit")
         self.assertEqual(dict(request.url.params)["dry_run"], "true")
         self.assertNotIn("idempotency-key", request.headers)
-
-    def test_entities_list_projects_fields_and_bulk_ids(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h", graph="g", transport=capturing_transport(seen)
-        ) as client:
-            client.entities.list(fields=["title", "status"], ids=["abc", "def"])
-        params = dict(seen[0].url.params)
-        self.assertEqual(params["fields"], "title,status")
-        self.assertEqual(params["ids"], "abc,def")
 
     def test_entities_filter_by_attributes_builds_structured_sparql(self) -> None:
         seen: list[httpx.Request] = []
@@ -1028,48 +970,8 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(seen[0].headers["idempotency-key"], "fiqa-fusion-1")
         self.assertEqual(dict(seen[1].url.params)["job_id"], "train_model:abc")
 
-    def test_durable_index_submit_and_poll_are_typed(self) -> None:
+    def test_graph_deletion_is_typed(self) -> None:
         seen: list[httpx.Request] = []
-        payload = {
-            "job_id": "index_run:abc",
-            "status": "pending",
-            "graph": GRAPH,
-            "attempts": 0,
-            "enqueued_at_micros": 10,
-            "updated_at_micros": 10,
-        }
-        with LbbClient(
-            "http://h", transport=capturing_transport(seen, {"json": payload})
-        ) as client:
-            submitted = client.index_submit({}, idempotency_key="fiqa-index-1")
-        with LbbClient(
-            "http://h", transport=capturing_transport(seen, {"json": payload})
-        ) as client:
-            polled = client.index_job(submitted.job_id)
-        self.assertIsInstance(submitted, SearchIndexJobStatusResponse)
-        self.assertIsInstance(polled, SearchIndexJobStatusResponse)
-        self.assertEqual(seen[0].headers["idempotency-key"], "fiqa-index-1")
-        self.assertEqual(dict(seen[1].url.params)["job_id"], "index_run:abc")
-
-    def test_index_cancel_gc_jobs_and_graph_deletion_are_typed(self) -> None:
-        seen: list[httpx.Request] = []
-        index_payload = {
-            "job_id": "index_run:abc",
-            "status": "cancelled",
-            "graph": GRAPH,
-            "attempts": 0,
-            "enqueued_at_micros": 10,
-            "updated_at_micros": 11,
-        }
-        gc_payload = {
-            "job_id": "index_gc:abc",
-            "status": "pending",
-            "graph": GRAPH,
-            "request": {"dry_run": False},
-            "attempts": 0,
-            "enqueued_at_micros": 10,
-            "updated_at_micros": 10,
-        }
         graph_payload = {
             "ok": True,
             "graph_id": "main",
@@ -1085,14 +987,7 @@ class SyncClientTests(unittest.TestCase):
             "deleted_objects": 5,
             "deleted_bytes": 50,
         }
-        responses = [
-            index_payload,
-            gc_payload,
-            gc_payload,
-            gc_payload,
-            graph_payload,
-            branch_payload,
-        ]
+        responses = [graph_payload, branch_payload]
         with LbbClient(
             "http://h",
             graph="main",
@@ -1101,22 +996,12 @@ class SyncClientTests(unittest.TestCase):
                 seen, [{"json": payload} for payload in responses]
             ),
         ) as client:
-            cancelled = client.cancel_index_job("index_run:abc")
-            gc = client.index_gc_submit({"dry_run": False}, idempotency_key="gc-1")
-            polled = client.index_gc_job(gc.job_id)
-            stopped = client.cancel_index_gc_job(gc.job_id)
             deleted = client.delete_graph(confirm="main")
             branch = client.delete_branch(confirm="review")
-        self.assertIsInstance(cancelled, SearchIndexJobStatusResponse)
-        self.assertIsInstance(gc, IndexGcJobStatusResponse)
-        self.assertIsInstance(polled, IndexGcJobStatusResponse)
-        self.assertIsInstance(stopped, IndexGcJobStatusResponse)
         self.assertIsInstance(deleted, GraphDeleteResponse)
         self.assertIsInstance(branch, GraphBranchDeleteResponse)
-        self.assertEqual(seen[0].method, "DELETE")
-        self.assertEqual(seen[1].headers["idempotency-key"], "gc-1")
-        self.assertEqual(seen[4].url.params["confirm"], "main")
-        self.assertEqual(seen[5].url.params["confirm"], "review")
+        self.assertEqual(seen[0].url.params["confirm"], "main")
+        self.assertEqual(seen[1].url.params["confirm"], "review")
 
     def test_governed_conflicts_returns_generated_model(self) -> None:
         seen: list[httpx.Request] = []
@@ -1146,28 +1031,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertIsInstance(result, GovernedConflictAggregationResponse)
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/query/conflicts")
 
-    def test_schema_namespace_uses_v1_schema_routes(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h", graph="main", transport=capturing_transport(seen)
-        ) as client:
-            client.schema.view()
-            client.schema.view(audit=True)
-            client.schema.preview({"desired_mode": "warn"})
-            client.schema.publish(
-                {"preview_digest": "sha256:test", "desired_mode": "warn"}
-            )
-            client.schema.audit()
-
-        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/schema")
-        self.assertEqual(dict(seen[0].url.params), {"graph": "main"})
-        self.assertEqual(str(seen[1].url).split("?")[0], "http://h/v1/schema")
-        self.assertEqual(dict(seen[1].url.params), {"graph": "main", "audit": "true"})
-        self.assertEqual(str(seen[2].url).split("?")[0], "http://h/v1/schema/preview")
-        self.assertEqual(json.loads(seen[2].content), {"desired_mode": "warn"})
-        self.assertEqual(str(seen[3].url).split("?")[0], "http://h/v1/schema/publish")
-        self.assertEqual(str(seen[4].url).split("?")[0], "http://h/v1/schema/audit")
-
     def test_facts_import_serializes_ndjson_with_params(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -1196,6 +1059,7 @@ class SyncClientTests(unittest.TestCase):
                 ],
                 batch=500,
                 strict=True,
+                publish=True,
             )
         self.assertEqual(result["triplets"], 1)
         request = seen[0]
@@ -1203,6 +1067,7 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(dict(request.url.params)["graph"], "research")
         self.assertEqual(dict(request.url.params)["batch"], "500")
         self.assertEqual(dict(request.url.params)["strict"], "true")
+        self.assertEqual(dict(request.url.params)["publish"], "true")
         self.assertEqual(request.headers["content-type"], "application/x-ndjson")
         self.assertRegex(request.headers["idempotency-key"], r"^import:")
         lines = request.content.decode().split("\n")
@@ -1224,6 +1089,7 @@ class SyncClientTests(unittest.TestCase):
                 blank_node_scope="document-42",
                 resource_type="RdfResource",
                 edge_idempotency="append",
+                publish=True,
             )
         self.assertEqual(result["imported_triplets"], 1)
         request = seen[0]
@@ -1236,25 +1102,10 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(params["blank_node_scope"], "document-42")
         self.assertEqual(params["resource_type"], "RdfResource")
         self.assertEqual(params["edge_idempotency"], "append")
+        self.assertEqual(params["publish"], "true")
         self.assertEqual(request.headers["content-type"], "application/n-triples")
         self.assertRegex(request.headers["idempotency-key"], r"^import-rdf:")
         self.assertEqual(request.content.decode(), body)
-
-    def test_import_rdf_keeps_published_ntriples_keyword_compatible(self) -> None:
-        body = "<http://ex/s> <http://ex/p> <http://ex/o> .\n"
-        for scoped in (False, True):
-            seen: list[httpx.Request] = []
-            with LbbClient(
-                "http://h",
-                transport=capturing_transport(seen, {"json": {"imported_triplets": 1}}),
-            ) as client:
-                if scoped:
-                    result = client.graph("research").facts.import_rdf(ntriples=body)
-                else:
-                    result = client.import_rdf(ntriples=body)
-            self.assertEqual(result["imported_triplets"], 1)
-            self.assertEqual(seen[0].content.decode(), body)
-            self.assertEqual(seen[0].headers["content-type"], "application/n-triples")
 
     def test_facts_import_rdf_supports_turtle_and_base_iri(self) -> None:
         seen: list[httpx.Request] = []
@@ -1276,65 +1127,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(params["base_iri"], "http://base/")
         self.assertEqual(params["graph_uri"], "http://ex/graph")
         self.assertEqual(request.headers["content-type"], "text/turtle")
-
-    def test_graph_export_rdf_returns_text(self) -> None:
-        seen: list[httpx.Request] = []
-        turtle = "<http://ex/s> <http://ex/p> <http://ex/o> <http://ex/g> .\n"
-        with LbbClient(
-            "http://h",
-            transport=capturing_transport(
-                seen,
-                {
-                    "text": turtle,
-                    "headers": {"content-type": "application/n-quads; charset=utf-8"},
-                },
-            ),
-        ) as client:
-            result = client.graph("research", branch="draft").export_rdf(
-                format="nquads",
-                max_triples=500,
-                as_of_commit_seq=7,
-            )
-        self.assertEqual(result, turtle)
-        request = seen[0]
-        self.assertEqual(str(request.url).split("?")[0], "http://h/v1/graph/export/rdf")
-        params = dict(request.url.params)
-        self.assertEqual(params["graph"], "research")
-        self.assertEqual(params["branch"], "draft")
-        self.assertEqual(params["max_triples"], "500")
-        self.assertEqual(params["as_of_commit_seq"], "7")
-        self.assertEqual(params["format"], "nquads")
-
-    def test_graph_export_rdf_preview_returns_typed_bounded_slice(self) -> None:
-        seen: list[httpx.Request] = []
-        payload = {
-            "snapshot": SNAPSHOT,
-            "format": "ntriples",
-            "data": "<http://ex/s> <http://ex/p> <http://ex/o> .\n",
-            "returned_triples": 1,
-            "total_triples": 109,
-            "truncated": True,
-        }
-        with LbbClient(
-            "http://h",
-            transport=capturing_transport(seen, {"json": payload}),
-        ) as client:
-            result = client.graph("research", branch="draft").export_rdf_preview(
-                format="ntriples",
-                max_triples=1,
-                as_of_commit_seq=7,
-            )
-        self.assertIsInstance(result, RdfExportPreviewResponse)
-        self.assertEqual(result.returned_triples, 1)
-        self.assertEqual(result.total_triples, 109)
-        self.assertTrue(result.truncated)
-        params = dict(seen[0].url.params)
-        self.assertEqual(params["graph"], "research")
-        self.assertEqual(params["branch"], "draft")
-        self.assertEqual(params["format"], "nt")
-        self.assertEqual(params["max_triples"], "1")
-        self.assertEqual(params["truncate"], "true")
-        self.assertEqual(params["as_of_commit_seq"], "7")
 
     def test_graph_retract_posts_edges(self) -> None:
         seen: list[httpx.Request] = []
@@ -1486,7 +1278,7 @@ class SyncClientTests(unittest.TestCase):
                 seen,
                 {
                     "json": {"ok": True},
-                    "headers": {"x-request-id": "req_py", "lbb-version": "2026-07-22"},
+                    "headers": {"x-request-id": "req_py", "lbb-version": "2026-07-23"},
                 },
             ),
         ) as client:
@@ -1494,7 +1286,7 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(response.data, {"ok": True})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.request_id, "req_py")
-        self.assertEqual(response.version, "2026-07-22")
+        self.assertEqual(response.version, "2026-07-23")
 
     def test_raw_response_and_route_model_helpers_validate_generated_models(
         self,
@@ -1508,7 +1300,6 @@ class SyncClientTests(unittest.TestCase):
                 [
                     {"json": summary_payload()},
                     {"json": summary_payload()},
-                    {"json": schema_view_payload()},
                     {"json": sparql_select_payload()},
                 ],
             ),
@@ -1516,7 +1307,6 @@ class SyncClientTests(unittest.TestCase):
             raw = client.raw_request("GET", "/v1/graph/summary")
             summary = raw.model(GraphSummaryResponse)
             summary_again = client.summary_model()
-            schema = client.schema.view_model()
             rows = client.entities.filter_by_attributes_model(
                 patterns=[
                     {
@@ -1533,40 +1323,9 @@ class SyncClientTests(unittest.TestCase):
         self.assertIsInstance(summary, GraphSummaryResponse)
         self.assertEqual(summary.entity_count, 2)
         self.assertIsInstance(summary_again, GraphSummaryResponse)
-        self.assertIsInstance(schema, SchemaBundleView)
-        self.assertFalse(schema.audit_summary.conforms)
         self.assertIsInstance(rows, SparqlSelectResponse)
         self.assertEqual(rows.vars, ["svc"])
-        self.assertEqual(str(seen[2].url).split("?")[0], "http://h/v1/schema")
-        self.assertEqual(str(seen[3].url).split("?")[0], "http://h/v1/query/sparql")
-
-    def test_list_page_helpers_validate_entity_and_edge_rows(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(
-                seen,
-                [
-                    {"json": entity_list_payload()},
-                    {"json": edge_list_payload()},
-                ],
-            ),
-        ) as client:
-            entities = client.entities.list_page(fields="*")
-            edges = client.graph_edges_page(
-                type="SERVICE", name="auth-service", direction="out"
-            )
-
-        self.assertIsInstance(entities, ListPage)
-        self.assertIsInstance(entities.data[0], EntityExplorerRow)
-        assert entities.data[0].attributes is not None
-        self.assertEqual(entities.data[0].attributes["slo"], 0.999)
-        self.assertIsInstance(edges, ListPage)
-        self.assertIsInstance(edges.data[0], GraphEdgeRow)
-        self.assertEqual(edges.data[0].relation.name, "WRITES_TO")
-        self.assertEqual(dict(seen[0].url.params)["fields"], "*")
-        self.assertEqual(dict(seen[1].url.params)["direction"], "out")
+        self.assertEqual(str(seen[2].url).split("?")[0], "http://h/v1/query/sparql")
 
     def test_retries_retryable_failures(self) -> None:
         seen: list[httpx.Request] = []
@@ -1967,11 +1726,9 @@ class SyncClientTests(unittest.TestCase):
             "head_generation": 1,
             "wal_tail_commits": 0,
             "wal_tail_bytes": 0,
-            "object_count": 0,
-            "object_bytes": 0,
             "adjacency_indexed_commit_seq": 7,
             "index_lineage": lineage,
-            "unindexed_tail_commits": 0,
+            "published_lag_commits": 0,
         }
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -2414,53 +2171,17 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(results.rows(), [{"s": "x"}])
 
-    async def test_async_model_and_page_helpers(self) -> None:
+    async def test_async_summary_model_helper(self) -> None:
         seen: list[httpx.Request] = []
         async with AsyncLbbClient(
             "http://h",
             graph="g",
-            transport=capturing_transport(
-                seen,
-                [
-                    {"json": summary_payload()},
-                    {"json": entity_list_payload()},
-                    {"json": edge_list_payload()},
-                ],
-            ),
+            transport=capturing_transport(seen, {"json": summary_payload()}),
         ) as client:
             summary = await client.summary_model()
-            page = await client.entities.list_page(fields=["slo"])
-            edges = await client.graph_edges_page(
-                type="SERVICE", name="auth-service", direction="out"
-            )
 
         self.assertIsInstance(summary, GraphSummaryResponse)
         self.assertEqual(summary.current_edge_count, 3)
-        self.assertIsInstance(page, ListPage)
-        self.assertIsInstance(page.data[0], EntityExplorerRow)
-        self.assertIsInstance(edges.data[0], GraphEdgeRow)
-        self.assertEqual(dict(seen[1].url.params)["fields"], "slo")
-        self.assertEqual(dict(seen[2].url.params)["direction"], "out")
-
-    async def test_async_entity_iterator_follows_cursors(self) -> None:
-        seen: list[httpx.Request] = []
-        first = entity_list_payload()
-        first["has_more"] = True
-        first["next_cursor"] = "cursor-2"
-        second = entity_list_payload()
-        second["data"][0]["id"] = "e2"
-        second["data"][0]["name"] = "billing-service"
-        async with AsyncLbbClient(
-            "http://h",
-            graph="g",
-            transport=capturing_transport(seen, [{"json": first}, {"json": second}]),
-        ) as client:
-            rows = [row async for row in client.entities.iter(limit=1)]
-
-        self.assertEqual(
-            [row.name for row in rows], ["auth-service", "billing-service"]
-        )
-        self.assertEqual(dict(seen[1].url.params)["cursor"], "cursor-2")
 
     def test_typed_suggestion_helper_validates_before_transport_and_sets_idempotency(
         self,
