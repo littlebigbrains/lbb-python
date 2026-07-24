@@ -1140,35 +1140,6 @@ class ManagedEmbeddingBackfillResponse(BaseModel):
     truncated: bool
 
 
-class ManagedEmbeddingModel(BaseModel):
-    """
-    One model returned by the live managed-embedding service catalog.
-    """
-
-    context_length: Annotated[int | None, Field(ge=0)] = None
-    id: str
-    input_modalities: list[str] | None = None
-    name: str
-    output_modalities: Annotated[
-        list[str] | None,
-        Field(
-            description='The model\'s output modalities (e.g. `["embeddings"]`). The catalog is\nfiltered to embedding models on this field, so every entry carries the\nembeddings modality; it is surfaced so clients (and the deploy smoke) can\nre-verify the catalog is embeddings-only.'
-        ),
-    ] = None
-    policy_eligible: Annotated[
-        bool | None,
-        Field(
-            description="True when the model is eligible under the account's data policy — for the\nhosted OpenRouter path, that it has a Zero-Data-Retention route. The\ncatalog only returns eligible models, so this is `true` for every entry\ntoday; the console can trust it to gate selection if ineligible models are\never surfaced alongside them."
-        ),
-    ] = None
-    prompt_price: Annotated[
-        str | None,
-        Field(
-            description='Provider prompt price as a decimal USD/token string when advertised.'
-        ),
-    ] = None
-
-
 class ManagedEmbeddingPromotionEvals(BaseModel):
     """
     Quality comparison used when promoting a fine-tuned embedding run.
@@ -1196,6 +1167,16 @@ class ManagedEmbeddingSource(Enum):
 
     stock = 'stock'
     fine_tuned = 'fine_tuned'
+
+
+class ManagedEmbeddingUnavailableReason(Enum):
+    """
+    Why a managed embedding catalog entry cannot currently be selected.
+    """
+
+    account_policy = 'account_policy'
+    zdr_required = 'zdr_required'
+    price_ceiling = 'price_ceiling'
 
 
 class ModelArtifact(BaseModel):
@@ -4790,6 +4771,40 @@ class ManagedEmbeddingConfigResponse(BaseModel):
     config: ManagedEmbeddingConfig | None = None
     configured: bool
     reconciliation: ManagedEmbeddingBackfillJobStatusResponse | None = None
+
+
+class ManagedEmbeddingModel(BaseModel):
+    """
+    One model returned by the live managed-embedding service catalog.
+    """
+
+    context_length: Annotated[int | None, Field(ge=0)] = None
+    id: str
+    input_modalities: list[str] | None = None
+    name: str
+    output_modalities: Annotated[
+        list[str] | None,
+        Field(
+            description='The model\'s output modalities (e.g. `["embeddings"]`). The catalog is\nfiltered to embedding models on this field, so every entry carries the\nembeddings modality; it is surfaced so clients (and the deploy smoke) can\nre-verify the catalog is embeddings-only.'
+        ),
+    ] = None
+    policy_eligible: Annotated[
+        bool | None,
+        Field(
+            description="True when the model is present in the operator account's policy-filtered\ncatalog. Kept for generated-client compatibility; use `selectable` and\n`unavailable_reason` for selection UI."
+        ),
+    ] = None
+    prompt_price: Annotated[
+        str | None,
+        Field(
+            description='Provider prompt price as a decimal USD/token string when advertised.'
+        ),
+    ] = None
+    selectable: Annotated[
+        bool,
+        Field(description='Whether this deployment can currently select the model.'),
+    ]
+    unavailable_reason: ManagedEmbeddingUnavailableReason | None = None
 
 
 class ManagedEmbeddingModelsResponse(BaseModel):

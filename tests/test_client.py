@@ -1780,6 +1780,8 @@ class SyncClientTests(unittest.TestCase):
                     "context_length": 8192,
                     "input_modalities": ["text"],
                     "prompt_price": "0.00000002",
+                    "policy_eligible": True,
+                    "selectable": True,
                 }
             ],
         }
@@ -1810,6 +1812,7 @@ class SyncClientTests(unittest.TestCase):
 
         self.assertTrue(result.configured)
         self.assertEqual(result.models[0].id, "openai/text-embedding-3-small")
+        self.assertTrue(result.models[0].selectable)
         self.assertTrue(configured.configured)
         self.assertEqual(
             dict(seen[0].url.params),
