@@ -6159,7 +6159,7 @@
             "type": "array"
           },
           "policy_eligible": {
-            "description": "True when the model is eligible under the account's data policy — for the\nhosted OpenRouter path, that it has a Zero-Data-Retention route. The\ncatalog only returns eligible models, so this is `true` for every entry\ntoday; the console can trust it to gate selection if ineligible models are\never surfaced alongside them.",
+            "description": "True when the model is present in the operator account's policy-filtered\ncatalog. Kept for generated-client compatibility; use `selectable` and\n`unavailable_reason` for selection UI.",
             "type": "boolean"
           },
           "prompt_price": {
@@ -6168,11 +6168,27 @@
               "string",
               "null"
             ]
+          },
+          "selectable": {
+            "description": "Whether this deployment can currently select the model.",
+            "type": "boolean"
+          },
+          "unavailable_reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ManagedEmbeddingUnavailableReason",
+                "description": "Why a catalog entry cannot be selected, when `selectable` is false."
+              }
+            ]
           }
         },
         "required": [
           "id",
-          "name"
+          "name",
+          "selectable"
         ],
         "type": "object"
       },
@@ -6268,6 +6284,15 @@
         "enum": [
           "stock",
           "fine_tuned"
+        ],
+        "type": "string"
+      },
+      "ManagedEmbeddingUnavailableReason": {
+        "description": "Why a managed embedding catalog entry cannot currently be selected.",
+        "enum": [
+          "account_policy",
+          "zdr_required",
+          "price_ceiling"
         ],
         "type": "string"
       },
