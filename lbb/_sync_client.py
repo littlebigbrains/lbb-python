@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 import httpx
@@ -36,13 +36,11 @@ from ._client_base import (
     _retry_allowed,
     _retry_delay_seconds,
     _retryable,
+    _SchemaNamespace,
 )
 
 
 class _SyncContextNamespace(_ContextNamespace):
-    def ask(self, body: Body, *, options: RequestOptions | None = None) -> models.AskResponse:
-        return cast(models.AskResponse, super().ask(body, options=options))
-
     def suggest(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.SearchSuggestResponse:
@@ -53,7 +51,9 @@ class _SyncContextNamespace(_ContextNamespace):
     ) -> models.ResolveTermResponse:
         return cast(models.ResolveTermResponse, super().resolve(body, options=options))
 
-    def decode(self, body: Body, *, options: RequestOptions | None = None) -> models.DecodeResponse:
+    def decode(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.DecodeResponse:
         return cast(models.DecodeResponse, super().decode(body, options=options))
 
     def groundability(
@@ -64,15 +64,22 @@ class _SyncContextNamespace(_ContextNamespace):
             super().groundability(sample=sample, options=options),
         )
 
-
 class _SyncOntologyNamespace(_OntologyNamespace):
     def view(
         self, *, counts: bool = False, options: RequestOptions | None = None
     ) -> models.OntologyView:
         return cast(models.OntologyView, super().view(counts=counts, options=options))
 
-    def conformance(self, *, options: RequestOptions | None = None) -> models.SchemaAuditReport:
-        return cast(models.SchemaAuditReport, super().conformance(options=options))
+    def conformance(
+        self,
+        *,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> models.SchemaAuditReport:
+        return cast(
+            models.SchemaAuditReport,
+            super().conformance(consistency=consistency, options=options),
+        )
 
     def search(
         self, body: Body, *, options: RequestOptions | None = None
@@ -121,8 +128,6 @@ class _SyncQueryNamespace(_QueryNamespace):
         *,
         reason: bool | None = None,
         entailment: str | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
         consistency: str | None = None,
@@ -134,8 +139,6 @@ class _SyncQueryNamespace(_QueryNamespace):
                 query,
                 reason=reason,
                 entailment=entailment,
-                as_of_valid_time=as_of_valid_time,
-                as_of_commit_seq=as_of_commit_seq,
                 limit=limit,
                 offset=offset,
                 consistency=consistency,
@@ -148,40 +151,14 @@ class _SyncQueryNamespace(_QueryNamespace):
     ) -> models.AnalyticQueryResponse:
         return cast(models.AnalyticQueryResponse, super().analytics(body, options=options))
 
-    def shacl(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.ShaclQueryResponse:
-        return cast(models.ShaclQueryResponse, super().shacl(body, options=options))
-
-    def infer(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.InferenceRunResponse:
-        return cast(models.InferenceRunResponse, super().infer(body, options=options))
-
-    def premises(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.RetrievalPremiseResponse:
-        return cast(models.RetrievalPremiseResponse, super().premises(body, options=options))
-
-
-class _SyncEntityNamespace(_EntityNamespace):
-    def list_page(self, **kwargs: Any) -> ListPage[models.EntityExplorerRow]:
-        return cast(ListPage[models.EntityExplorerRow], super().list_page(**kwargs))
-
-    def pages(self, **kwargs: Any) -> Iterator[ListPage[models.EntityExplorerRow]]:
-        return cast(Iterator[ListPage[models.EntityExplorerRow]], super().pages(**kwargs))
-
-    def iter(self, **kwargs: Any) -> Iterator[models.EntityExplorerRow]:
-        return cast(Iterator[models.EntityExplorerRow], super().iter(**kwargs))
-
-
 class LbbClient(_BaseLbbClient):
     """Synchronous client. Usable as a context manager."""
 
     context: _SyncContextNamespace
-    entities: _SyncEntityNamespace
+    entities: _EntityNamespace
     ontology: _SyncOntologyNamespace
     query: _SyncQueryNamespace
+    schema: _SchemaNamespace
 
     def __init__(
         self,
@@ -190,7 +167,7 @@ class LbbClient(_BaseLbbClient):
         api_key: str | None = None,
         graph: str | None = None,
         branch: str | None = None,
-        api_version: str = "2026-07-22",
+        api_version: str = "2026-07-23",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
@@ -213,9 +190,10 @@ class LbbClient(_BaseLbbClient):
             default_consistency=default_consistency,
         )
         self.context = _SyncContextNamespace(self)
-        self.entities = _SyncEntityNamespace(self)
+        self.entities = _EntityNamespace(self)
         self.ontology = _SyncOntologyNamespace(self)
         self.query = _SyncQueryNamespace(self)
+        self.schema = _SchemaNamespace(self)
         self._http = httpx.Client(timeout=timeout, transport=transport, event_hooks=event_hooks)
 
     def raw_request(
@@ -354,55 +332,6 @@ class LbbClient(_BaseLbbClient):
     def _page_request(self, row_model: type[RowT], payload: Any) -> ListPage[RowT]:
         return ListPage.from_payload(payload, row_model)
 
-    def _iter_entity_pages(self, **kwargs: Any) -> Iterator[ListPage[models.EntityExplorerRow]]:
-        cursor = kwargs.pop("cursor", None)
-        initial_offset = kwargs.pop("offset", None)
-        seen: set[str] = set()
-        while True:
-            page = self.entities.list_page(
-                **kwargs,
-                cursor=cursor,
-                offset=initial_offset if cursor is None else None,
-            )
-            yield page
-            if not page.has_more or page.next_cursor is None:
-                return
-            if page.next_cursor in seen:
-                raise RuntimeError(f"entity pagination cursor repeated: {page.next_cursor}")
-            seen.add(page.next_cursor)
-            cursor = page.next_cursor
-
-    def _iter_entity_rows(self, **kwargs: Any) -> Iterator[models.EntityExplorerRow]:
-        for page in self._iter_entity_pages(**kwargs):
-            yield from page
-
-    def wait_for_index(
-        self, *, timeout: float = 600.0, poll_interval: float = 2.0
-    ) -> dict[str, Any]:
-        """Block until the persisted index has caught up with the WAL head.
-
-        Pairs with ``index_run(background=True)``: polls :meth:`metadata` until the
-        persisted index has caught up, or until ``timeout`` seconds elapse (raises
-        ``TimeoutError``). Returns the final metadata. Uses the server's
-        authoritative ``index_caught_up`` signal when present, falling back to the
-        BM25/ANN/tail predicate for older servers.
-        """
-        deadline = time.monotonic() + timeout
-        while True:
-            meta = cast(dict[str, Any], self.metadata())
-            caught_up = meta.get("index_caught_up")
-            if caught_up is None:
-                caught_up = (
-                    meta.get("bm25_indexed_commit_seq") is not None
-                    and meta.get("ann_indexed_commit_seq") is not None
-                    and meta.get("unindexed_tail_commits", 1) == 0
-                )
-            if caught_up:
-                return meta
-            if time.monotonic() >= deadline:
-                raise TimeoutError(f"index did not catch up within {timeout}s (last: {meta})")
-            time.sleep(poll_interval)
-
     def wait_for_index_lineage(
         self,
         target_seq: int,
@@ -454,8 +383,6 @@ class LbbClient(_BaseLbbClient):
         *,
         reason: bool | None = None,
         entailment: str | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
         consistency: str | None = None,
@@ -467,8 +394,8 @@ class LbbClient(_BaseLbbClient):
         with ``.rows()``, ``.vars``, and ``.boolean`` already parsed — no manual
         ``json.loads`` of a results string. Engine extensions map to query
         options: ``reason`` (fold rule-derived edges), ``entailment`` (``"none"``
-        to disable the default ``rdfs:subClassOf`` closure), the ``as_of_*``
-        snapshot pins, and ``limit``/``offset``.
+        to disable the default ``rdfs:subClassOf`` closure), and
+        ``limit``/``offset``.
 
         Note: this uses ``/v1/query/sparql-text``. A standalone stack also serves
         the native SPARQL 1.1 *Protocol* at ``/sparql`` for off-the-shelf SPARQL
@@ -479,8 +406,6 @@ class LbbClient(_BaseLbbClient):
             query,
             reason=reason,
             entailment=entailment,
-            as_of_valid_time=as_of_valid_time,
-            as_of_commit_seq=as_of_commit_seq,
             limit=limit,
             offset=offset,
             consistency=consistency,

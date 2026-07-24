@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 
 import httpx
@@ -44,11 +44,6 @@ from ._client_base import (
 
 
 class _AsyncContextNamespace(_ContextNamespace):
-    async def ask(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.AskResponse:
-        return cast(models.AskResponse, await super().ask(body, options=options))
-
     async def suggest(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.SearchSuggestResponse:
@@ -76,7 +71,6 @@ class _AsyncContextNamespace(_ContextNamespace):
             await super().groundability(sample=sample, options=options),
         )
 
-
 class _AsyncOntologyNamespace(_OntologyNamespace):
     async def view(
         self, *, counts: bool = False, options: RequestOptions | None = None
@@ -86,10 +80,14 @@ class _AsyncOntologyNamespace(_OntologyNamespace):
         )
 
     async def conformance(
-        self, *, options: RequestOptions | None = None
+        self,
+        *,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
     ) -> models.SchemaAuditReport:
         return cast(
-            models.SchemaAuditReport, await super().conformance(options=options)
+            models.SchemaAuditReport,
+            await super().conformance(consistency=consistency, options=options),
         )
 
     async def search(
@@ -176,8 +174,6 @@ class _AsyncQueryNamespace(_QueryNamespace):
         *,
         reason: bool | None = None,
         entailment: str | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
         consistency: str | None = None,
@@ -189,8 +185,6 @@ class _AsyncQueryNamespace(_QueryNamespace):
                 query,
                 reason=reason,
                 entailment=entailment,
-                as_of_valid_time=as_of_valid_time,
-                as_of_commit_seq=as_of_commit_seq,
                 limit=limit,
                 offset=offset,
                 consistency=consistency,
@@ -204,28 +198,6 @@ class _AsyncQueryNamespace(_QueryNamespace):
         return cast(
             models.AnalyticQueryResponse,
             await super().analytics(body, options=options),
-        )
-
-    async def shacl(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.ShaclQueryResponse:
-        return cast(
-            models.ShaclQueryResponse, await super().shacl(body, options=options)
-        )
-
-    async def infer(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.InferenceRunResponse:
-        return cast(
-            models.InferenceRunResponse, await super().infer(body, options=options)
-        )
-
-    async def premises(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.RetrievalPremiseResponse:
-        return cast(
-            models.RetrievalPremiseResponse,
-            await super().premises(body, options=options),
         )
 
     async def conflicts(
@@ -244,6 +216,18 @@ class _AsyncFactsNamespace(_FactsNamespace):
         return cast(
             models.GraphCommitResponse,
             await super().create_model(body, idempotency_key=idempotency_key),
+        )
+
+class _AsyncSchemaNamespace(_SchemaNamespace):
+    async def view_model(self) -> models.SchemaBundleView:
+        return cast(models.SchemaBundleView, await super().view_model())
+
+    async def publish_model(
+        self, body: Body, *, idempotency_key: str | None = None
+    ) -> models.SchemaPublishResponse:
+        return cast(
+            models.SchemaPublishResponse,
+            await super().publish_model(body, idempotency_key=idempotency_key),
         )
 
 
@@ -369,43 +353,6 @@ class _AsyncGraphNamespace(_GraphNamespace):
             await super().retract_model(body, idempotency_key=idempotency_key),
         )
 
-    async def export_rdf_preview(
-        self,
-        *,
-        format: str = "turtle",
-        max_triples: int = 100,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
-        entailment: str | None = None,
-        reason: bool | None = None,
-    ) -> models.RdfExportPreviewResponse:
-        return cast(
-            models.RdfExportPreviewResponse,
-            await super().export_rdf_preview(
-                format=format,
-                max_triples=max_triples,
-                as_of_valid_time=as_of_valid_time,
-                as_of_commit_seq=as_of_commit_seq,
-                entailment=entailment,
-                reason=reason,
-            ),
-        )
-
-
-class _AsyncSchemaNamespace(_SchemaNamespace):
-    async def view_model(self, *, audit: bool = False) -> models.SchemaBundleView:
-        return cast(models.SchemaBundleView, await super().view_model(audit=audit))
-
-    async def preview_model(self, body: Body) -> models.SchemaPreviewResponse:
-        return cast(models.SchemaPreviewResponse, await super().preview_model(body))
-
-    async def publish_model(self, body: Body) -> models.SchemaPublishResponse:
-        return cast(models.SchemaPublishResponse, await super().publish_model(body))
-
-    async def audit_model(self) -> models.SchemaAuditReport:
-        return cast(models.SchemaAuditReport, await super().audit_model())
-
-
 class _AsyncEntityNamespace(_EntityNamespace):
     async def sample(
         self,
@@ -419,19 +366,6 @@ class _AsyncEntityNamespace(_EntityNamespace):
             await super().sample(type=type, limit=limit, options=options),
         )
 
-    async def list_page(self, **kwargs: Any) -> ListPage[models.EntityExplorerRow]:
-        return cast(
-            ListPage[models.EntityExplorerRow], await super().list_page(**kwargs)
-        )
-
-    async def filter(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.EntityFilterResponse:
-        return cast(
-            models.EntityFilterResponse,
-            await super().filter(body, options=options),
-        )
-
     async def filter_by_attributes_model(
         self, **kwargs: Any
     ) -> models.SparqlSelectResponse:
@@ -439,15 +373,6 @@ class _AsyncEntityNamespace(_EntityNamespace):
             models.SparqlSelectResponse,
             await super().filter_by_attributes_model(**kwargs),
         )
-
-    def pages(self, **kwargs: Any) -> AsyncIterator[ListPage[models.EntityExplorerRow]]:
-        return cast(
-            AsyncIterator[ListPage[models.EntityExplorerRow]], super().pages(**kwargs)
-        )
-
-    def iter(self, **kwargs: Any) -> AsyncIterator[models.EntityExplorerRow]:
-        return cast(AsyncIterator[models.EntityExplorerRow], super().iter(**kwargs))
-
 
 class AsyncLbbClient(_BaseLbbClient):
     """Asynchronous client. Usable as an async context manager."""
@@ -465,7 +390,7 @@ class AsyncLbbClient(_BaseLbbClient):
         api_key: str | None = None,
         graph: str | None = None,
         branch: str | None = None,
-        api_version: str = "2026-07-22",
+        api_version: str = "2026-07-23",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
@@ -665,28 +590,6 @@ class AsyncLbbClient(_BaseLbbClient):
             ),
         )
 
-    async def export_rdf_preview(
-        self,
-        *,
-        format: str = "turtle",
-        max_triples: int = 100,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
-        entailment: str | None = None,
-        reason: bool | None = None,
-    ) -> models.RdfExportPreviewResponse:
-        return cast(
-            models.RdfExportPreviewResponse,
-            await super().export_rdf_preview(
-                format=format,
-                max_triples=max_triples,
-                as_of_valid_time=as_of_valid_time,
-                as_of_commit_seq=as_of_commit_seq,
-                entailment=entailment,
-                reason=reason,
-            ),
-        )
-
     async def train_submit(
         self, body: Body, *, idempotency_key: str
     ) -> models.TrainModelJobStatusResponse:
@@ -723,52 +626,17 @@ class AsyncLbbClient(_BaseLbbClient):
             await super().governed_conflicts(body),
         )
 
-    async def ontology_conformance_model(self) -> models.SchemaAuditReport:
+    async def ontology_conformance_model(
+        self, *, consistency: str | None = None
+    ) -> models.SchemaAuditReport:
         return cast(
-            models.SchemaAuditReport, await super().ontology_conformance_model()
+            models.SchemaAuditReport,
+            await super().ontology_conformance_model(consistency=consistency),
         )
 
     async def ontology_view_model(self, *, counts: bool = False) -> models.OntologyView:
         return cast(
             models.OntologyView, await super().ontology_view_model(counts=counts)
-        )
-
-    async def index_submit(
-        self, body: Body | None = None, *, idempotency_key: str
-    ) -> models.SearchIndexJobStatusResponse:
-        return cast(
-            models.SearchIndexJobStatusResponse,
-            await super().index_submit(body, idempotency_key=idempotency_key),
-        )
-
-    async def index_job(self, job_id: str) -> models.SearchIndexJobStatusResponse:
-        return cast(
-            models.SearchIndexJobStatusResponse, await super().index_job(job_id)
-        )
-
-    async def cancel_index_job(
-        self, job_id: str
-    ) -> models.SearchIndexJobStatusResponse:
-        return cast(
-            models.SearchIndexJobStatusResponse,
-            await super().cancel_index_job(job_id),
-        )
-
-    async def index_gc_submit(
-        self, body: Body | None = None, *, idempotency_key: str
-    ) -> models.IndexGcJobStatusResponse:
-        return cast(
-            models.IndexGcJobStatusResponse,
-            await super().index_gc_submit(body, idempotency_key=idempotency_key),
-        )
-
-    async def index_gc_job(self, job_id: str) -> models.IndexGcJobStatusResponse:
-        return cast(models.IndexGcJobStatusResponse, await super().index_gc_job(job_id))
-
-    async def cancel_index_gc_job(self, job_id: str) -> models.IndexGcJobStatusResponse:
-        return cast(
-            models.IndexGcJobStatusResponse,
-            await super().cancel_index_gc_job(job_id),
         )
 
     async def metadata_model(self) -> models.GraphMetadataResponse:
@@ -816,9 +684,10 @@ class AsyncLbbClient(_BaseLbbClient):
     async def summary_model(self) -> models.GraphSummaryResponse:
         return cast(models.GraphSummaryResponse, await super().summary_model())
 
-    async def graph_edges_page(self, **kwargs: Any) -> ListPage[models.GraphEdgeRow]:
+    async def read_snapshot_model(self) -> models.PublishedReadStatusResponse:
         return cast(
-            ListPage[models.GraphEdgeRow], await super().graph_edges_page(**kwargs)
+            models.PublishedReadStatusResponse,
+            await super().read_snapshot_model(),
         )
 
     async def list_graphs_model(self) -> models.GraphListResponse:
@@ -970,43 +839,12 @@ class AsyncLbbClient(_BaseLbbClient):
             payload = await payload
         return ListPage.from_payload(payload, row_model)
 
-    async def _iter_entity_pages(
-        self, **kwargs: Any
-    ) -> AsyncIterator[ListPage[models.EntityExplorerRow]]:
-        cursor = kwargs.pop("cursor", None)
-        initial_offset = kwargs.pop("offset", None)
-        seen: set[str] = set()
-        while True:
-            page = await self.entities.list_page(
-                **kwargs,
-                cursor=cursor,
-                offset=initial_offset if cursor is None else None,
-            )
-            yield page
-            if not page.has_more or page.next_cursor is None:
-                return
-            if page.next_cursor in seen:
-                raise RuntimeError(
-                    f"entity pagination cursor repeated: {page.next_cursor}"
-                )
-            seen.add(page.next_cursor)
-            cursor = page.next_cursor
-
-    async def _iter_entity_rows(
-        self, **kwargs: Any
-    ) -> AsyncIterator[models.EntityExplorerRow]:
-        async for page in self._iter_entity_pages(**kwargs):
-            for row in page:
-                yield row
-
     async def sparql(
         self,
         query: str,
         *,
         reason: bool | None = None,
         entailment: str | None = None,
-        as_of_valid_time: str | None = None,
-        as_of_commit_seq: int | None = None,
         limit: int | None = None,
         offset: int | None = None,
         consistency: str | None = None,
@@ -1017,8 +855,6 @@ class AsyncLbbClient(_BaseLbbClient):
             query,
             reason=reason,
             entailment=entailment,
-            as_of_valid_time=as_of_valid_time,
-            as_of_commit_seq=as_of_commit_seq,
             limit=limit,
             offset=offset,
             consistency=consistency,
