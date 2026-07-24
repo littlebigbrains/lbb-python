@@ -1059,7 +1059,6 @@ class SyncClientTests(unittest.TestCase):
                 ],
                 batch=500,
                 strict=True,
-                publish=True,
             )
         self.assertEqual(result["triplets"], 1)
         request = seen[0]
@@ -1067,7 +1066,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(dict(request.url.params)["graph"], "research")
         self.assertEqual(dict(request.url.params)["batch"], "500")
         self.assertEqual(dict(request.url.params)["strict"], "true")
-        self.assertEqual(dict(request.url.params)["publish"], "true")
         self.assertEqual(request.headers["content-type"], "application/x-ndjson")
         self.assertRegex(request.headers["idempotency-key"], r"^import:")
         lines = request.content.decode().split("\n")
@@ -1089,7 +1087,6 @@ class SyncClientTests(unittest.TestCase):
                 blank_node_scope="document-42",
                 resource_type="RdfResource",
                 edge_idempotency="append",
-                publish=True,
             )
         self.assertEqual(result["imported_triplets"], 1)
         request = seen[0]
@@ -1102,7 +1099,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(params["blank_node_scope"], "document-42")
         self.assertEqual(params["resource_type"], "RdfResource")
         self.assertEqual(params["edge_idempotency"], "append")
-        self.assertEqual(params["publish"], "true")
         self.assertEqual(request.headers["content-type"], "application/n-triples")
         self.assertRegex(request.headers["idempotency-key"], r"^import-rdf:")
         self.assertEqual(request.content.decode(), body)

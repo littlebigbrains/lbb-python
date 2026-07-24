@@ -869,7 +869,6 @@ class _BaseLbbClient:
         batch: int | None = None,
         strict: bool | None = None,
         observed_at: str | None = None,
-        publish: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-ingest a dataset as NDJSON.
@@ -879,10 +878,10 @@ class _BaseLbbClient:
         batched into bounded internal commits server-side, so a whole dataset loads
         in one streamed request without a single oversized commit.
 
-        Set ``publish=True`` to durably enqueue one complete
-        published-generation build after the final batch. The import does not
-        wait for visibility; ``published_generation`` carries the durable job
-        identity and due sequence to observe.
+        A successful import durably enqueues one complete published-generation
+        build after the final batch. It does not wait for visibility;
+        ``published_generation`` carries the durable job identity and due
+        sequence to observe.
         """
         ndjson = (
             lines
@@ -896,7 +895,6 @@ class _BaseLbbClient:
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
-                "publish": publish,
             },
             content=ndjson,
             content_type="application/x-ndjson",
@@ -964,7 +962,6 @@ class _BaseLbbClient:
         observed_at: str | None = None,
         resource_type: str | None = None,
         edge_idempotency: str | None = None,
-        publish: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-ingest N-Triples, Turtle, N-Quads, or TriG through the native RDF import endpoint.
@@ -994,7 +991,6 @@ class _BaseLbbClient:
                 "blank_node_scope": blank_node_scope,
                 "resource_type": resource_type,
                 "edge_idempotency": edge_idempotency,
-                "publish": publish,
             },
             content=rdf,
             content_type=content_types[format],
@@ -1858,7 +1854,6 @@ class _FactsNamespace:
         batch: int | None = None,
         strict: bool | None = None,
         observed_at: str | None = None,
-        publish: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-load a dataset as NDJSON. See :meth:`LbbClient.import_ndjson`."""
@@ -1876,7 +1871,6 @@ class _FactsNamespace:
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
-                "publish": publish,
             },
             content=ndjson,
             content_type="application/x-ndjson",
@@ -1896,7 +1890,6 @@ class _FactsNamespace:
         observed_at: str | None = None,
         resource_type: str | None = None,
         edge_idempotency: str | None = None,
-        publish: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-load N-Triples, Turtle, N-Quads, or TriG. See :meth:`LbbClient.import_rdf`."""
@@ -1923,7 +1916,6 @@ class _FactsNamespace:
                 "blank_node_scope": blank_node_scope,
                 "resource_type": resource_type,
                 "edge_idempotency": edge_idempotency,
-                "publish": publish,
             },
             content=rdf,
             content_type=content_types[format],

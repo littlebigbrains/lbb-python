@@ -4393,7 +4393,7 @@
         "type": "object"
       },
       "GraphImportPublishedGenerationOutcome": {
-        "description": "Durable publication accepted after `POST /v1/graph/import?publish=true`.\nThe import request never constructs index families or waits for publication;\nclients can poll the returned job while continuing to observe the previously\npublished generation.",
+        "description": "Durable publication accepted after `POST /v1/graph/import`.\nThe import request never constructs index families or waits for publication;\nclients can poll the returned job while continuing to observe the previously\npublished generation.",
         "properties": {
           "disposition": {
             "$ref": "#/components/schemas/PublishedGenerationEnqueueDisposition"
@@ -4417,7 +4417,7 @@
         "type": "object"
       },
       "GraphImportResponse": {
-        "description": "Aggregate outcome of a bulk NDJSON import. `committed_commit_seq` is the\nsequence of the last internal batch commit (absent if nothing committed).\n`errors` is bounded; `error_count` is the true total even when the list is\ntruncated. `published_generation` is present only when the caller passed\n`?publish=true` and at least one batch committed.",
+        "description": "Aggregate outcome of a bulk NDJSON import. `committed_commit_seq` is the\nsequence of the last internal batch commit (absent if nothing committed).\n`errors` is bounded; `error_count` is the true total even when the list is\ntruncated. `published_generation` is present when at least one batch\ncommitted; publication is automatic.",
         "properties": {
           "batches": {
             "minimum": 0,
