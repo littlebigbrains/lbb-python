@@ -1368,7 +1368,7 @@ class NarrowRelationOp(BaseModel):
     Remove entity types from a relation's domain and/or range (a subtractive
     change). Conflicts when current edges of the relation already use a
     removed source/target type — those edges stay (append-only) but begin to
-    warn. Blocked unless `allow_data_conflicts` is set on the request.
+    warn. Blocked until those edges are migrated or retracted.
     """
 
     op: Literal['narrow_relation']
@@ -1439,10 +1439,16 @@ class OntologyConflict(BaseModel):
     kind: Annotated[
         str,
         Field(
-            description='`entities_of_removed_type` | `edges_of_removed_relation` |\n`edges_outside_narrowed_domain` | `edges_outside_narrowed_range`.'
+            description='`entities_of_removed_type` | `edges_of_removed_relation` |\n`edges_outside_narrowed_domain` | `edges_outside_narrowed_range` |\n`property_values_outside_constraint` | `relation_cardinality`.'
         ),
     ]
     message: str
+    samples: Annotated[
+        list[str] | None,
+        Field(
+            description='Bounded deterministic examples. `affected` remains the exact count.'
+        ),
+    ] = None
     subject: Annotated[
         str,
         Field(
@@ -1993,8 +1999,8 @@ class RemoveEntityTypeOp(BaseModel):
     """
     Tombstone an entity type: existing records of the type stay readable
     (the def is retained, so they still resolve), but it is rejected for new
-    commits. Conflicts when current entities of the type exist; blocked unless
-    `allow_data_conflicts` is set.
+    commits. Conflicts when current entities of the type exist; blocked until
+    those entities are migrated or retracted.
     """
 
     name: str
@@ -2008,8 +2014,8 @@ class Op5(Enum):
 class RemoveRelationOp(BaseModel):
     """
     Tombstone a relation: existing edges stay readable but it is rejected for
-    new commits. Conflicts when current edges use it; blocked unless
-    `allow_data_conflicts` is set.
+    new commits. Conflicts when current edges use it; blocked until those
+    edges are migrated or retracted.
     """
 
     name: str
@@ -2759,9 +2765,9 @@ class Op31(Enum):
 class SetRelationCardinalityOp(BaseModel):
     """
     Change a relation's cardinality (`one_to_one` | `one_to_many` |
-    `many_to_one` | `many_to_many`). Advisory metadata (it informs ranking and
-    query shaping, and is not enforced against stored edges), so it never
-    conflicts with existing data.
+    `many_to_one` | `many_to_many`). A narrowing transition is checked
+    against the exact current reduced edge projection before publication.
+    Once accepted, the declared cardinality is enforced on future commits.
     """
 
     cardinality: str
@@ -4998,7 +5004,7 @@ class OntologyEvolveRequest(BaseModel):
     allow_data_conflicts: Annotated[
         bool | None,
         Field(
-            description='Allow subtractive ops (narrow/remove) to apply even when current data\nconflicts. The affected records are never rewritten or dropped — they stay\nreadable and simply begin to warn. With this false (the default), a\nconflicting subtractive request is rejected without writing and the\nconflicts are reported instead.'
+            description='Deprecated compatibility field. Conflicting subtractive changes are\nalways rejected with structured conflicts until affected data is\nmigrated or retracted; setting this field no longer bypasses that gate.'
         ),
     ] = None
     ops: list[
@@ -5059,7 +5065,7 @@ class OntologyEvolveResponse(BaseModel):
     publishable: Annotated[
         bool,
         Field(
-            description='Whether the exact request can be published. False for a data-conflicting\nsubtractive preview unless `allow_data_conflicts` was explicitly set.'
+            description='Whether the exact request can be published. False for every\ndata-conflicting subtractive preview.'
         ),
     ]
 
