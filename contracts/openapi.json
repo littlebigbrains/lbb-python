@@ -6924,7 +6924,7 @@
         "type": "object"
       },
       "NarrowRelationOp": {
-        "description": "Remove entity types from a relation's domain and/or range (a subtractive\nchange). Conflicts when current edges of the relation already use a\nremoved source/target type — those edges stay (append-only) but begin to\nwarn. Blocked unless `allow_data_conflicts` is set on the request.",
+        "description": "Remove entity types from a relation's domain and/or range (a subtractive\nchange). Conflicts when current edges of the relation already use a\nremoved source/target type — those edges stay (append-only) but begin to\nwarn. Blocked until those edges are migrated or retracted.",
         "properties": {
           "op": {
             "enum": [
@@ -7334,11 +7334,18 @@
             "type": "integer"
           },
           "kind": {
-            "description": "`entities_of_removed_type` | `edges_of_removed_relation` |\n`edges_outside_narrowed_domain` | `edges_outside_narrowed_range`.",
+            "description": "`entities_of_removed_type` | `edges_of_removed_relation` |\n`edges_outside_narrowed_domain` | `edges_outside_narrowed_range` |\n`property_values_outside_constraint` | `relation_cardinality`.",
             "type": "string"
           },
           "message": {
             "type": "string"
+          },
+          "samples": {
+            "description": "Bounded deterministic examples. `affected` remains the exact count.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "subject": {
             "description": "`class:<stable_id>` or `relation:<stable_id>` the conflict is about.",
@@ -7738,7 +7745,7 @@
         "description": "Apply a list of additive ontology changes in order, writing a new ontology\nversion when anything actually changes. Ops are applied against the\nin-progress ontology, so an `add_entity_type` earlier in the list is visible\nto a later `widen_relation`.",
         "properties": {
           "allow_data_conflicts": {
-            "description": "Allow subtractive ops (narrow/remove) to apply even when current data\nconflicts. The affected records are never rewritten or dropped — they stay\nreadable and simply begin to warn. With this false (the default), a\nconflicting subtractive request is rejected without writing and the\nconflicts are reported instead.",
+            "description": "Deprecated compatibility field. Conflicting subtractive changes are\nalways rejected with structured conflicts until affected data is\nmigrated or retracted; setting this field no longer bypasses that gate.",
             "type": "boolean"
           },
           "ops": {
@@ -7808,7 +7815,7 @@
             "type": "integer"
           },
           "publishable": {
-            "description": "Whether the exact request can be published. False for a data-conflicting\nsubtractive preview unless `allow_data_conflicts` was explicitly set.",
+            "description": "Whether the exact request can be published. False for every\ndata-conflicting subtractive preview.",
             "type": "boolean"
           }
         },
@@ -9301,7 +9308,7 @@
         "type": "object"
       },
       "RemoveEntityTypeOp": {
-        "description": "Tombstone an entity type: existing records of the type stay readable\n(the def is retained, so they still resolve), but it is rejected for new\ncommits. Conflicts when current entities of the type exist; blocked unless\n`allow_data_conflicts` is set.",
+        "description": "Tombstone an entity type: existing records of the type stay readable\n(the def is retained, so they still resolve), but it is rejected for new\ncommits. Conflicts when current entities of the type exist; blocked until\nthose entities are migrated or retracted.",
         "properties": {
           "name": {
             "type": "string"
@@ -9320,7 +9327,7 @@
         "type": "object"
       },
       "RemoveRelationOp": {
-        "description": "Tombstone a relation: existing edges stay readable but it is rejected for\nnew commits. Conflicts when current edges use it; blocked unless\n`allow_data_conflicts` is set.",
+        "description": "Tombstone a relation: existing edges stay readable but it is rejected for\nnew commits. Conflicts when current edges use it; blocked until those\nedges are migrated or retracted.",
         "properties": {
           "name": {
             "type": "string"
@@ -12735,7 +12742,7 @@
         "type": "object"
       },
       "SetRelationCardinalityOp": {
-        "description": "Change a relation's cardinality (`one_to_one` | `one_to_many` |\n`many_to_one` | `many_to_many`). Advisory metadata (it informs ranking and\nquery shaping, and is not enforced against stored edges), so it never\nconflicts with existing data.",
+        "description": "Change a relation's cardinality (`one_to_one` | `one_to_many` |\n`many_to_one` | `many_to_many`). A narrowing transition is checked\nagainst the exact current reduced edge projection before publication.\nOnce accepted, the declared cardinality is enforced on future commits.",
         "properties": {
           "cardinality": {
             "type": "string"
