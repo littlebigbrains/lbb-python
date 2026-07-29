@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import Any, cast
 
 import httpx
@@ -16,6 +17,7 @@ from ._client_base import (
     DEFAULT_TIMEOUT,
     Body,
     IndexLineageObservation,
+    LbbCapabilityError,
     ListPage,
     ModelT,
     RawLbbResponse,
@@ -39,12 +41,29 @@ from ._client_base import (
     _SchemaNamespace,
 )
 
+ImportItem = Mapping[str, Any] | str | bytes
+ImportSource = Iterable[ImportItem] | str | bytes
+
+
+def _iter_import_ndjson(lines: ImportSource) -> Iterator[bytes]:
+    source: Iterable[ImportItem] = [lines] if isinstance(lines, (str, bytes)) else lines
+    for line in source:
+        if isinstance(line, bytes):
+            encoded = line
+        elif isinstance(line, str):
+            encoded = line.encode()
+        else:
+            encoded = json.dumps(line, separators=(",", ":")).encode()
+        yield encoded if encoded.endswith(b"\n") else encoded + b"\n"
+
 
 class _SyncContextNamespace(_ContextNamespace):
     def suggest(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.SearchSuggestResponse:
-        return cast(models.SearchSuggestResponse, super().suggest(body, options=options))
+        return cast(
+            models.SearchSuggestResponse, super().suggest(body, options=options)
+        )
 
     def resolve(
         self, body: Body, *, options: RequestOptions | None = None
@@ -63,6 +82,7 @@ class _SyncContextNamespace(_ContextNamespace):
             models.GroundabilityReport,
             super().groundability(sample=sample, options=options),
         )
+
 
 class _SyncOntologyNamespace(_OntologyNamespace):
     def view(
@@ -84,12 +104,16 @@ class _SyncOntologyNamespace(_OntologyNamespace):
     def search(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.OntologySearchResponse:
-        return cast(models.OntologySearchResponse, super().search(body, options=options))
+        return cast(
+            models.OntologySearchResponse, super().search(body, options=options)
+        )
 
     def resolve(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.OntologyResolveResponse:
-        return cast(models.OntologyResolveResponse, super().resolve(body, options=options))
+        return cast(
+            models.OntologyResolveResponse, super().resolve(body, options=options)
+        )
 
     def define(self, body: Body) -> models.OntologyDefineResponse:
         return cast(models.OntologyDefineResponse, super().define(body))
@@ -149,7 +173,10 @@ class _SyncQueryNamespace(_QueryNamespace):
     def analytics(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.AnalyticQueryResponse:
-        return cast(models.AnalyticQueryResponse, super().analytics(body, options=options))
+        return cast(
+            models.AnalyticQueryResponse, super().analytics(body, options=options)
+        )
+
 
 class LbbClient(_BaseLbbClient):
     """Synchronous client. Usable as a context manager."""
@@ -194,7 +221,96 @@ class LbbClient(_BaseLbbClient):
         self.ontology = _SyncOntologyNamespace(self)
         self.query = _SyncQueryNamespace(self)
         self.schema = _SchemaNamespace(self)
-        self._http = httpx.Client(timeout=timeout, transport=transport, event_hooks=event_hooks)
+        self._http = httpx.Client(
+            timeout=timeout, transport=transport, event_hooks=event_hooks
+        )
+        self._capabilities: set[str] | None = None
+
+    def _require_capability(self, capability: str) -> None:
+        if self._capabilities is None:
+            response = self.raw_request("GET", "/version").data
+            advertised = (
+                response.get("capabilities", [])
+                if isinstance(response, Mapping)
+                else []
+            )
+            self._capabilities = {str(item) for item in advertised}
+        if capability not in self._capabilities:
+            raise LbbCapabilityError(capability)
+
+    def submit_import_ndjson(
+        self,
+        lines: ImportSource,
+        *,
+        idempotency_key: str,
+        batch: int | None = None,
+        strict: bool | None = None,
+        observed_at: str | None = None,
+    ) -> models.GraphImportJobAccepted:
+        """Stream NDJSON once and enqueue a durable import job.
+
+        Automatic transport retries are disabled because an arbitrary iterator
+        may be one-shot. Reinvoke with a fresh iterable and the same explicit
+        key for an idempotent replay.
+        """
+        if not idempotency_key.strip():
+            raise ValueError(
+                "submit_import_ndjson requires a non-empty idempotency_key"
+            )
+        self._require_capability("durable_import_jobs_v1")
+        return self._model_request(
+            models.GraphImportJobAccepted,
+            "POST",
+            "/v1/graph/import-jobs",
+            params={"batch": batch, "strict": strict, "observed_at": observed_at},
+            content=_iter_import_ndjson(lines),
+            content_type="application/x-ndjson",
+            idempotency_key=idempotency_key,
+            options={"max_retries": 0, "retry": False},
+        )
+
+    def get_import_job(self, job_id: str) -> models.GraphImportJobStatus:
+        self._require_capability("durable_import_jobs_v1")
+        return self._model_request(
+            models.GraphImportJobStatus,
+            "GET",
+            "/v1/graph/import-jobs",
+            params={"job_id": job_id},
+        )
+
+    def cancel_import_job(self, job_id: str) -> models.GraphImportJobCancelResponse:
+        self._require_capability("durable_import_jobs_v1")
+        return self._model_request(
+            models.GraphImportJobCancelResponse,
+            "DELETE",
+            "/v1/graph/import-jobs",
+            params={"job_id": job_id},
+        )
+
+    def wait_for_import_job(
+        self,
+        job_id: str,
+        *,
+        timeout: float | None = None,
+        poll_interval: float = 1.0,
+    ) -> models.GraphImportJobStatus:
+        if poll_interval < 0:
+            raise ValueError("poll_interval must be non-negative")
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
+        deadline = time.monotonic() + timeout if timeout is not None else None
+        terminal = {
+            models.GraphImportJobState.succeeded,
+            models.GraphImportJobState.failed,
+            models.GraphImportJobState.cancelled,
+        }
+        while True:
+            status = self.get_import_job(job_id)
+            if status.state in terminal:
+                return status
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(f"timed out waiting for durable import job {job_id}")
+            time.sleep(poll_interval)
 
     def raw_request(
         self,
@@ -203,7 +319,7 @@ class LbbClient(_BaseLbbClient):
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
@@ -220,7 +336,9 @@ class LbbClient(_BaseLbbClient):
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]
         response: httpx.Response | None = None
-        can_retry = request_options.get("retry", _retry_allowed(method, idempotency_key))
+        can_retry = request_options.get(
+            "retry", _retry_allowed(method, idempotency_key)
+        )
         max_retries = request_options.get("max_retries", self._max_retries)
         if max_retries < 0:
             raise ValueError("max_retries must be non-negative")
@@ -232,7 +350,9 @@ class LbbClient(_BaseLbbClient):
         for attempt in range(max_retries + 1):
             attempts = attempt + 1
             try:
-                response = self._http.request(method, f"{self._base_url}{path}", **kwargs)
+                response = self._http.request(
+                    method, f"{self._base_url}{path}", **kwargs
+                )
             except httpx.RequestError:
                 if not (can_retry and attempt < max_retries):
                     raise
@@ -286,7 +406,7 @@ class LbbClient(_BaseLbbClient):
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
@@ -310,7 +430,7 @@ class LbbClient(_BaseLbbClient):
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,

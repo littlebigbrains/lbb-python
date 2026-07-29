@@ -93,6 +93,17 @@ class LbbError(RuntimeError):
         )
 
 
+class LbbCapabilityError(RuntimeError):
+    """Raised before upload when the server lacks a required additive capability."""
+
+    def __init__(self, capability: str) -> None:
+        self.capability = capability
+        super().__init__(
+            f"Little Big Brain server does not advertise {capability}; "
+            "upgrade the server before using this SDK method"
+        )
+
+
 def _endpoint_migration_hint(code: str | None) -> str | None:
     if code == "stack_endpoint_required":
         return "Copy endpoint_url from the stack's Connect page and use it as base_url."
@@ -567,7 +578,7 @@ class _BaseLbbClient:
         *,
         params: Mapping[str, Any] | None,
         body: Body | None,
-        content: str | None,
+        content: Any | None,
         content_type: str | None,
         idempotency_key: str | None,
         headers: Mapping[str, str] | None = None,
@@ -626,7 +637,7 @@ class _BaseLbbClient:
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
@@ -640,7 +651,7 @@ class _BaseLbbClient:
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
@@ -1492,9 +1503,7 @@ class _BaseLbbClient:
         provenance to match current head; it never runs validation inline.
         """
         params = self._consistency_params(consistency, None)
-        return self._request(
-            "GET", "/v1/ontology/conformance", params=params or None
-        )
+        return self._request("GET", "/v1/ontology/conformance", params=params or None)
 
     def ontology_conformance_model(
         self, *, consistency: str | None = None
@@ -1620,7 +1629,7 @@ class _BaseLbbClient:
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
@@ -1814,6 +1823,7 @@ class _GraphNamespace:
             body=body,
             idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
         )
+
 
 class _FactsNamespace:
     def __init__(self, client: _BaseLbbClient, graph: str, branch: str | None) -> None:
@@ -2034,6 +2044,7 @@ class _ContextNamespace:
             options=_read_options(options),
         )
 
+
 class _OntologyNamespace:
     """Typed ontology discovery and lifecycle operations."""
 
@@ -2227,6 +2238,7 @@ class _QueryNamespace:
             options=_read_options(options),
         )
 
+
 class _SchemaNamespace:
     """Active ontology/SHACL bundle metadata and atomic publication."""
 
@@ -2238,13 +2250,9 @@ class _SchemaNamespace:
         return self._client._request("GET", "/v1/schema")
 
     def view_model(self) -> models.SchemaBundleView:
-        return self._client._model_request(
-            models.SchemaBundleView, "GET", "/v1/schema"
-        )
+        return self._client._model_request(models.SchemaBundleView, "GET", "/v1/schema")
 
-    def publish(
-        self, body: Body, *, idempotency_key: str | None = None
-    ) -> Any:
+    def publish(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Atomically publish a bundle; conformance is produced asynchronously."""
         return self._client._request(
             "POST",

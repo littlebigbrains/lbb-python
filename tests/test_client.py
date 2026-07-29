@@ -10,7 +10,7 @@ from unittest.mock import patch
 import httpx
 from pydantic import ValidationError
 
-from lbb import AsyncLbbClient, LbbClient, LbbError, __version__
+from lbb import AsyncLbbClient, LbbCapabilityError, LbbClient, LbbError, __version__
 from lbb.models import (
     AddEntityTypeOp,
     AdditiveOntologyEvolveRequest,
@@ -98,6 +98,7 @@ def edge_list_payload() -> dict[str, Any]:
         "total_count": 1,
     }
 
+
 def schema_view_payload() -> dict[str, Any]:
     return {
         "graph": GRAPH,
@@ -180,6 +181,53 @@ def capturing_transport(
 
 
 class SyncClientTests(unittest.TestCase):
+    def test_durable_import_capability_gates_and_streams(self) -> None:
+        seen: list[httpx.Request] = []
+        produced = 0
+
+        def lines() -> Any:
+            nonlocal produced
+            produced += 1
+            yield {"type": "Service", "name": "api", "properties": {}}
+            produced += 1
+            yield b'{"type":"Service","name":"db","properties":{}}'
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if request.url.path == "/version":
+                return httpx.Response(
+                    200, json={"capabilities": ["durable_import_jobs_v1"]}
+                )
+            request.read()
+            return httpx.Response(
+                202,
+                json={
+                    "job_id": "import:1",
+                    "state": "queued",
+                    "idempotent_replay": False,
+                    "upload_bytes": len(request.content),
+                },
+            )
+
+        with LbbClient("http://h", transport=httpx.MockTransport(handler)) as client:
+            accepted = client.submit_import_ndjson(lines(), idempotency_key="source:1")
+
+        self.assertEqual(accepted.job_id, "import:1")
+        self.assertEqual(produced, 2)
+        self.assertEqual(seen[1].headers["idempotency-key"], "source:1")
+        self.assertEqual(seen[1].headers["content-type"], "application/x-ndjson")
+        self.assertEqual(len(seen[1].content.splitlines()), 2)
+
+    def test_durable_import_does_not_fallback_without_capability(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, {"json": {"capabilities": []}}),
+        ) as client:
+            with self.assertRaises(LbbCapabilityError):
+                client.submit_import_ndjson([], idempotency_key="source:2")
+        self.assertEqual([request.url.path for request in seen], ["/version"])
+
     def test_metadata_exposes_only_bounded_index_detail_option(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -524,9 +572,7 @@ class SyncClientTests(unittest.TestCase):
             published = client.schema.publish_model(
                 {
                     "desired_mode": "warn",
-                    "shapes": {
-                        "source": "@prefix sh: <http://www.w3.org/ns/shacl#> ."
-                    },
+                    "shapes": {"source": "@prefix sh: <http://www.w3.org/ns/shacl#> ."},
                 },
                 idempotency_key="schema-1",
             )
@@ -1891,6 +1937,45 @@ class SyncClientTests(unittest.TestCase):
 
 
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_durable_import_streams_async_iterable(self) -> None:
+        seen: list[httpx.Request] = []
+        produced = 0
+
+        async def lines() -> Any:
+            nonlocal produced
+            produced += 1
+            yield {"type": "Service", "name": "api", "properties": {}}
+            produced += 1
+            yield b'{"type":"Service","name":"db","properties":{}}'
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if request.url.path == "/version":
+                return httpx.Response(
+                    200, json={"capabilities": ["durable_import_jobs_v1"]}
+                )
+            await request.aread()
+            return httpx.Response(
+                202,
+                json={
+                    "job_id": "import:async",
+                    "state": "queued",
+                    "idempotent_replay": False,
+                    "upload_bytes": len(request.content),
+                },
+            )
+
+        async with AsyncLbbClient(
+            "http://h", transport=httpx.MockTransport(handler)
+        ) as client:
+            accepted = await client.submit_import_ndjson(
+                lines(), idempotency_key="source:async"
+            )
+
+        self.assertEqual(accepted.job_id, "import:async")
+        self.assertEqual(produced, 2)
+        self.assertEqual(len(seen[1].content.splitlines()), 2)
+
     async def test_async_create_graph_returns_typed_response(self) -> None:
         payload = {"commit_seq": 0, "graph": GRAPH, "ontology_version": 1}
         async with AsyncLbbClient(

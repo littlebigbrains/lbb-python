@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Callable, Mapping, Sequence
+import json
+from collections.abc import (
+    AsyncIterable,
+    AsyncIterator,
+    Callable,
+    Iterable,
+    Mapping,
+    Sequence,
+)
 from typing import Any, cast
 
 import httpx
@@ -17,6 +25,7 @@ from ._client_base import (
     DEFAULT_TIMEOUT,
     Body,
     IndexLineageObservation,
+    LbbCapabilityError,
     ListPage,
     ModelT,
     RawLbbResponse,
@@ -41,6 +50,32 @@ from ._client_base import (
     _retryable,
     _SchemaNamespace,
 )
+
+AsyncImportItem = Mapping[str, Any] | str | bytes
+AsyncImportSource = (
+    AsyncIterable[AsyncImportItem] | Iterable[AsyncImportItem] | str | bytes
+)
+
+
+def _import_bytes(line: AsyncImportItem) -> bytes:
+    if isinstance(line, bytes):
+        encoded = line
+    elif isinstance(line, str):
+        encoded = line.encode()
+    else:
+        encoded = json.dumps(line, separators=(",", ":")).encode()
+    return encoded if encoded.endswith(b"\n") else encoded + b"\n"
+
+
+async def _aiter_import_ndjson(lines: AsyncImportSource) -> AsyncIterator[bytes]:
+    if isinstance(lines, (str, bytes)):
+        yield _import_bytes(lines)
+    elif isinstance(lines, AsyncIterable):
+        async for line in lines:
+            yield _import_bytes(line)
+    else:
+        for line in lines:
+            yield _import_bytes(line)
 
 
 class _AsyncContextNamespace(_ContextNamespace):
@@ -70,6 +105,7 @@ class _AsyncContextNamespace(_ContextNamespace):
             models.GroundabilityReport,
             await super().groundability(sample=sample, options=options),
         )
+
 
 class _AsyncOntologyNamespace(_OntologyNamespace):
     async def view(
@@ -218,6 +254,7 @@ class _AsyncFactsNamespace(_FactsNamespace):
             await super().create_model(body, idempotency_key=idempotency_key),
         )
 
+
 class _AsyncSchemaNamespace(_SchemaNamespace):
     async def view_model(self) -> models.SchemaBundleView:
         return cast(models.SchemaBundleView, await super().view_model())
@@ -353,6 +390,7 @@ class _AsyncGraphNamespace(_GraphNamespace):
             await super().retract_model(body, idempotency_key=idempotency_key),
         )
 
+
 class _AsyncEntityNamespace(_EntityNamespace):
     async def sample(
         self,
@@ -373,6 +411,7 @@ class _AsyncEntityNamespace(_EntityNamespace):
             models.SparqlSelectResponse,
             await super().filter_by_attributes_model(**kwargs),
         )
+
 
 class AsyncLbbClient(_BaseLbbClient):
     """Asynchronous client. Usable as an async context manager."""
@@ -420,6 +459,91 @@ class AsyncLbbClient(_BaseLbbClient):
         self._http = httpx.AsyncClient(
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )
+        self._capabilities: set[str] | None = None
+
+    async def _require_capability(self, capability: str) -> None:
+        if self._capabilities is None:
+            response = (await self.raw_request("GET", "/version")).data
+            advertised = (
+                response.get("capabilities", [])
+                if isinstance(response, Mapping)
+                else []
+            )
+            self._capabilities = {str(item) for item in advertised}
+        if capability not in self._capabilities:
+            raise LbbCapabilityError(capability)
+
+    async def submit_import_ndjson(
+        self,
+        lines: AsyncImportSource,
+        *,
+        idempotency_key: str,
+        batch: int | None = None,
+        strict: bool | None = None,
+        observed_at: str | None = None,
+    ) -> models.GraphImportJobAccepted:
+        """Stream NDJSON once and enqueue a durable import job."""
+        if not idempotency_key.strip():
+            raise ValueError(
+                "submit_import_ndjson requires a non-empty idempotency_key"
+            )
+        await self._require_capability("durable_import_jobs_v1")
+        return await self._model_request(
+            models.GraphImportJobAccepted,
+            "POST",
+            "/v1/graph/import-jobs",
+            params={"batch": batch, "strict": strict, "observed_at": observed_at},
+            content=_aiter_import_ndjson(lines),
+            content_type="application/x-ndjson",
+            idempotency_key=idempotency_key,
+            options={"max_retries": 0, "retry": False},
+        )
+
+    async def get_import_job(self, job_id: str) -> models.GraphImportJobStatus:
+        await self._require_capability("durable_import_jobs_v1")
+        return await self._model_request(
+            models.GraphImportJobStatus,
+            "GET",
+            "/v1/graph/import-jobs",
+            params={"job_id": job_id},
+        )
+
+    async def cancel_import_job(
+        self, job_id: str
+    ) -> models.GraphImportJobCancelResponse:
+        await self._require_capability("durable_import_jobs_v1")
+        return await self._model_request(
+            models.GraphImportJobCancelResponse,
+            "DELETE",
+            "/v1/graph/import-jobs",
+            params={"job_id": job_id},
+        )
+
+    async def wait_for_import_job(
+        self,
+        job_id: str,
+        *,
+        timeout: float | None = None,
+        poll_interval: float = 1.0,
+    ) -> models.GraphImportJobStatus:
+        if poll_interval < 0:
+            raise ValueError("poll_interval must be non-negative")
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout if timeout is not None else None
+        terminal = {
+            models.GraphImportJobState.succeeded,
+            models.GraphImportJobState.failed,
+            models.GraphImportJobState.cancelled,
+        }
+        while True:
+            status = await self.get_import_job(job_id)
+            if status.state in terminal:
+                return status
+            if deadline is not None and loop.time() >= deadline:
+                raise TimeoutError(f"timed out waiting for durable import job {job_id}")
+            await asyncio.sleep(poll_interval)
 
     def graph(self, name: str, *, branch: str | None = None) -> _AsyncGraphNamespace:
         return _AsyncGraphNamespace(self, name, branch)
@@ -439,9 +563,7 @@ class AsyncLbbClient(_BaseLbbClient):
         )
 
     async def fork_graph(self, src: str, dst: str) -> models.GraphForkResponse:
-        return cast(
-            models.GraphForkResponse, await super().fork_graph(src, dst)
-        )
+        return cast(models.GraphForkResponse, await super().fork_graph(src, dst))
 
     async def reload(
         self,
@@ -700,7 +822,7 @@ class AsyncLbbClient(_BaseLbbClient):
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
@@ -788,7 +910,7 @@ class AsyncLbbClient(_BaseLbbClient):
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
@@ -813,7 +935,7 @@ class AsyncLbbClient(_BaseLbbClient):
         *,
         params: Mapping[str, Any] | None = None,
         body: Body | None = None,
-        content: str | None = None,
+        content: Any | None = None,
         content_type: str | None = None,
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
