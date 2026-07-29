@@ -809,6 +809,36 @@ class GraphForkResponse(BaseModel):
     src_graph_id: str
 
 
+class GraphImportJobFailure(BaseModel):
+    """
+    Terminal failure details for a durable import. The message is safe to expose
+    to the submitting client; internal object keys and worker identities stay in
+    structured server logs.
+    """
+
+    code: str
+    message: str
+    retryable: bool
+
+
+class GraphImportJobState(Enum):
+    """
+    Lifecycle of a durable NDJSON import submitted through
+    `POST /v1/graph/import-jobs`.
+
+    A succeeded import has durably committed its records and enqueued the final
+    publication job. It does **not** mean the published read generation has
+    already caught up to [`GraphImportJobStatus::committed_commit_seq`].
+    """
+
+    queued = 'queued'
+    running = 'running'
+    cancellation_requested = 'cancellation_requested'
+    cancelled = 'cancelled'
+    succeeded = 'succeeded'
+    failed = 'failed'
+
+
 class GraphImportLineError(BaseModel):
     """
     A per-line parse/commit failure surfaced by the bulk importer. `line` is the
@@ -3812,6 +3842,34 @@ class VectorMetric(Enum):
     l2 = 'l2'
 
 
+class VersionResponse(BaseModel):
+    """
+    Unauthenticated build, wire-capability, and persisted-format identity.
+    """
+
+    built_at: Annotated[
+        str, Field(description='UTC build timestamp baked into the running binary.')
+    ]
+    capabilities: Annotated[
+        list[str],
+        Field(
+            description='Fine-grained additive features safe for SDK capability gates.'
+        ),
+    ]
+    git_commit: Annotated[
+        str, Field(description='Source revision baked into the running binary.')
+    ]
+    persisted_format: Annotated[
+        str,
+        Field(
+            description='Deterministic fingerprint of all persisted format versions.'
+        ),
+    ]
+    version: Annotated[
+        str, Field(description='Backward-compatibility date sent in `Lbb-Version`.')
+    ]
+
+
 class VocabExportResponse(BaseModel):
     """
     `GET /v1/search/vocab` — the graph's grounding vocabulary as sorted,
@@ -4488,6 +4546,48 @@ class GraphEdgeRow(BaseModel):
     superseded: list[str]
     target: EntityView
     valid_time: ValidTime
+
+
+class GraphImportJobAccepted(BaseModel):
+    """
+    Stable response returned when a durable import is accepted or replayed.
+    """
+
+    idempotent_replay: Annotated[
+        bool,
+        Field(
+            description='True when this request resolved to an existing job with the same\nidempotency key and exact content hash.'
+        ),
+    ]
+    job_id: str
+    state: GraphImportJobState
+    upload_bytes: Annotated[int, Field(ge=0)]
+
+
+class GraphImportJobCancelResponse(BaseModel):
+    """
+    Response to `DELETE /v1/graph/import-jobs`.
+    """
+
+    job_id: str
+    state: GraphImportJobState
+
+
+class GraphImportJobProgress(BaseModel):
+    """
+    Bounded progress persisted by an import worker after every grouped commit.
+    """
+
+    bytes_processed: Annotated[int, Field(ge=0)]
+    committed_commit_seq: CommitSeq | None = None
+    error_count: Annotated[int, Field(ge=0)]
+    errors: list[GraphImportLineError] | None = None
+    groups_committed: Annotated[int, Field(ge=0)]
+    lines_read: Annotated[int, Field(ge=0)]
+    observations: Annotated[int, Field(ge=0)]
+    properties: Annotated[int, Field(ge=0)]
+    triplets: Annotated[int, Field(ge=0)]
+    upload_bytes: Annotated[int, Field(ge=0)]
 
 
 class GraphImportPublishedGenerationOutcome(BaseModel):
@@ -6401,6 +6501,21 @@ class GraphExportResponse(BaseModel):
             description="Opaque, self-describing token for the exact snapshot this export reflects\n(`tenant:graph:branch:epoch:commit_seq`). Records the exported snapshot's\nprovenance so a caller can pin subsequent reads to — and verify\nreproducibility against — the same point in history."
         ),
     ]
+
+
+class GraphImportJobStatus(BaseModel):
+    """
+    Queryable status for a durable import job.
+    """
+
+    committed_commit_seq: CommitSeq | None = None
+    enqueued_at_micros: int
+    failure: GraphImportJobFailure | None = None
+    job_id: str
+    progress: GraphImportJobProgress
+    publication_job: GraphImportPublishedGenerationOutcome | None = None
+    state: GraphImportJobState
+    updated_at_micros: int
 
 
 class GraphImportLine(RootModel[TripletInput | EntityPropertiesInput]):

@@ -13,6 +13,7 @@ def test_public_exports_are_explicit_and_stable() -> None:
         "LbbClient",
         "AsyncLbbClient",
         "LbbError",
+        "LbbCapabilityError",
         "IndexLineageObservation",
         "ListPage",
         "RawLbbResponse",
@@ -25,7 +26,7 @@ def test_public_exports_are_explicit_and_stable() -> None:
 
 
 def test_package_version_and_primary_clients_are_available() -> None:
-    assert lbb.__version__ == "0.8.1"
+    assert lbb.__version__ == "0.9.0"
     try:
         distribution_version = version("littlebigbrain")
     except PackageNotFoundError:
@@ -42,6 +43,7 @@ def test_client_module_keeps_the_documented_import_surface() -> None:
     assert lbb.client.LbbClient is lbb.LbbClient
     assert lbb.client.AsyncLbbClient is lbb.AsyncLbbClient
     assert lbb.client.LbbError is lbb.LbbError
+    assert lbb.client.LbbCapabilityError is lbb.LbbCapabilityError
     assert lbb.client.ListPage is lbb.ListPage
     assert lbb.client.RawLbbResponse is lbb.RawLbbResponse
     assert lbb.client.RequestOptions is lbb.RequestOptions

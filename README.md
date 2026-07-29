@@ -82,6 +82,21 @@ lbb.graph("main").facts.import_ndjson(
 )
 ```
 
+For large or long-running loads, submit a streamed durable job:
+
+```python
+accepted = lbb.submit_import_ndjson(
+    records(),
+    idempotency_key="hubspot:portal-42:run-2026-07-29",
+)
+completed = lbb.wait_for_import_job(accepted.job_id)
+print(completed.state, completed.committed_commit_seq)
+```
+
+The async client accepts an async iterable as well. Success means all grouped
+commits are durable and final publication was enqueued; it does not mean
+published indexes have already reached `committed_commit_seq`.
+
 **Time-travel read.** Pin a SPARQL query to a past instant — results reflect the graph as it was then:
 
 ```python

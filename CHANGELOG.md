@@ -2,6 +2,18 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.9.0
+
+Durable, asynchronous NDJSON imports.
+
+- Sync and async clients add `submit_import_ndjson`, `get_import_job`,
+  `cancel_import_job`, and `wait_for_import_job`.
+- Submissions consume iterable/async-iterable input as a streaming HTTP body,
+  require an explicit idempotency key, and never fall back to the synchronous
+  import route.
+- Durable methods fail clearly unless the server advertises
+  `durable_import_jobs_v1`.
+
 ## 0.8.1
 
 Adjacency-backed Explorer reads now report the coherent adjacency coverage
