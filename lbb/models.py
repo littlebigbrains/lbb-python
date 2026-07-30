@@ -809,18 +809,6 @@ class GraphForkResponse(BaseModel):
     src_graph_id: str
 
 
-class GraphImportJobFailure(BaseModel):
-    """
-    Terminal failure details for a durable import. The message is safe to expose
-    to the submitting client; internal object keys and worker identities stay in
-    structured server logs.
-    """
-
-    code: str
-    message: str
-    retryable: bool
-
-
 class GraphImportJobStage(Enum):
     """
     Low-cardinality execution stage exposed while a durable import is active.
@@ -4584,6 +4572,34 @@ class GraphImportJobCancelResponse(BaseModel):
 
     job_id: str
     state: GraphImportJobState
+
+
+class GraphImportJobFailure(BaseModel):
+    """
+    Terminal failure details for a durable import. The message is safe to expose
+    to the submitting client; internal object keys and worker identities stay in
+    structured server logs.
+    """
+
+    attempts: Annotated[
+        int,
+        Field(
+            description='Delivery attempts consumed when the job became terminal.', ge=0
+        ),
+    ]
+    code: str
+    diagnostic_id: Annotated[
+        str,
+        Field(
+            description='Stable opaque correlation id for server-side logs. It is intentionally\nnot an object key, worker id, or graph identity.'
+        ),
+    ]
+    message: str
+    retryable: bool
+    stage: Annotated[
+        GraphImportJobStage,
+        Field(description='Last durable low-cardinality stage reached by the worker.'),
+    ]
 
 
 class GraphImportJobProgress(BaseModel):
