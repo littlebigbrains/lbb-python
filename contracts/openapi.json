@@ -4410,7 +4410,17 @@
       "GraphImportJobFailure": {
         "description": "Terminal failure details for a durable import. The message is safe to expose\nto the submitting client; internal object keys and worker identities stay in\nstructured server logs.",
         "properties": {
+          "attempts": {
+            "description": "Delivery attempts consumed when the job became terminal.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
           "code": {
+            "type": "string"
+          },
+          "diagnostic_id": {
+            "description": "Stable opaque correlation id for server-side logs. It is intentionally\nnot an object key, worker id, or graph identity.",
             "type": "string"
           },
           "message": {
@@ -4418,12 +4428,19 @@
           },
           "retryable": {
             "type": "boolean"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/GraphImportJobStage",
+            "description": "Last durable low-cardinality stage reached by the worker."
           }
         },
         "required": [
           "code",
           "message",
-          "retryable"
+          "retryable",
+          "stage",
+          "attempts",
+          "diagnostic_id"
         ],
         "type": "object"
       },
