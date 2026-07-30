@@ -488,12 +488,25 @@ class AsyncLbbClient(_BaseLbbClient):
                 "submit_import_ndjson requires a non-empty idempotency_key"
             )
         await self._require_capability("durable_import_jobs_v1")
+        content = _aiter_import_ndjson(lines)
+        try:
+            first = await anext(content)
+        except StopAsyncIteration as error:
+            raise ValueError(
+                "submit_import_ndjson requires at least one NDJSON record or byte chunk"
+            ) from error
+
+        async def nonempty_content() -> AsyncIterator[bytes]:
+            yield first
+            async for chunk in content:
+                yield chunk
+
         return await self._model_request(
             models.GraphImportJobAccepted,
             "POST",
             "/v1/graph/import-jobs",
             params={"batch": batch, "strict": strict, "observed_at": observed_at},
-            content=_aiter_import_ndjson(lines),
+            content=nonempty_content(),
             content_type="application/x-ndjson",
             idempotency_key=idempotency_key,
             options={"max_retries": 0, "retry": False},

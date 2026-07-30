@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from itertools import chain
 from typing import Any, cast
 
 import httpx
@@ -258,12 +259,19 @@ class LbbClient(_BaseLbbClient):
                 "submit_import_ndjson requires a non-empty idempotency_key"
             )
         self._require_capability("durable_import_jobs_v1")
+        content = _iter_import_ndjson(lines)
+        try:
+            first = next(content)
+        except StopIteration as error:
+            raise ValueError(
+                "submit_import_ndjson requires at least one NDJSON record or byte chunk"
+            ) from error
         return self._model_request(
             models.GraphImportJobAccepted,
             "POST",
             "/v1/graph/import-jobs",
             params={"batch": batch, "strict": strict, "observed_at": observed_at},
-            content=_iter_import_ndjson(lines),
+            content=chain((first,), content),
             content_type="application/x-ndjson",
             idempotency_key=idempotency_key,
             options={"max_retries": 0, "retry": False},

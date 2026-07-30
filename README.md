@@ -95,7 +95,8 @@ print(completed.state, completed.committed_commit_seq)
 
 The async client accepts an async iterable as well. Success means all grouped
 commits are durable and final publication was enqueued; it does not mean
-published indexes have already reached `committed_commit_seq`.
+published indexes have already reached `committed_commit_seq`. Empty iterables
+are rejected locally before an import POST is sent.
 
 **Time-travel read.** Pin a SPARQL query to a past instant — results reflect the graph as it was then:
 

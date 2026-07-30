@@ -228,6 +228,18 @@ class SyncClientTests(unittest.TestCase):
                 client.submit_import_ndjson([], idempotency_key="source:2")
         self.assertEqual([request.url.path for request in seen], ["/version"])
 
+    def test_durable_import_rejects_empty_source_before_post(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen, {"json": {"capabilities": ["durable_import_jobs_v1"]}}
+            ),
+        ) as client:
+            with self.assertRaisesRegex(ValueError, "requires at least one NDJSON"):
+                client.submit_import_ndjson([], idempotency_key="source:empty")
+        self.assertEqual([request.url.path for request in seen], ["/version"])
+
     def test_metadata_exposes_only_bounded_index_detail_option(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -1975,6 +1987,20 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(accepted.job_id, "import:async")
         self.assertEqual(produced, 2)
         self.assertEqual(len(seen[1].content.splitlines()), 2)
+
+    async def test_async_durable_import_rejects_empty_source_before_post(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen, {"json": {"capabilities": ["durable_import_jobs_v1"]}}
+            ),
+        ) as client:
+            with self.assertRaisesRegex(ValueError, "requires at least one NDJSON"):
+                await client.submit_import_ndjson(
+                    [], idempotency_key="source:async-empty"
+                )
+        self.assertEqual([request.url.path for request in seen], ["/version"])
 
     async def test_async_create_graph_returns_typed_response(self) -> None:
         payload = {"commit_seq": 0, "graph": GRAPH, "ontology_version": 1}
