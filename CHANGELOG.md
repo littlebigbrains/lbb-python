@@ -2,6 +2,12 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.9.1
+
+- Sync and async durable import submissions now reject an empty iterable before
+  issuing the import POST.
+- The one-record preflight preserves streaming and one-shot iterator semantics.
+
 ## 0.9.0
 
 Durable, asynchronous NDJSON imports.
