@@ -4430,6 +4430,24 @@
       "GraphImportJobProgress": {
         "description": "Bounded progress persisted by an import worker after every grouped commit.",
         "properties": {
+          "active_group_bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "active_group_index": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "active_group_records": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "bytes_processed": {
             "format": "int64",
             "minimum": 0,
@@ -4476,6 +4494,9 @@
             "minimum": 0,
             "type": "integer"
           },
+          "stage": {
+            "$ref": "#/components/schemas/GraphImportJobStage"
+          },
           "triplets": {
             "format": "int64",
             "minimum": 0,
@@ -4498,6 +4519,18 @@
           "error_count"
         ],
         "type": "object"
+      },
+      "GraphImportJobStage": {
+        "description": "Low-cardinality execution stage exposed while a durable import is active.",
+        "enum": [
+          "queued",
+          "reading_payload",
+          "committing_group",
+          "persisting_checkpoint",
+          "enqueueing_publication",
+          "completed"
+        ],
+        "type": "string"
       },
       "GraphImportJobState": {
         "description": "Lifecycle of a durable NDJSON import submitted through\n`POST /v1/graph/import-jobs`.\n\nA succeeded import has durably committed its records and enqueued the final\npublication job. It does **not** mean the published read generation has\nalready caught up to [`GraphImportJobStatus::committed_commit_seq`].",
