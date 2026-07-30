@@ -821,6 +821,19 @@ class GraphImportJobFailure(BaseModel):
     retryable: bool
 
 
+class GraphImportJobStage(Enum):
+    """
+    Low-cardinality execution stage exposed while a durable import is active.
+    """
+
+    queued = 'queued'
+    reading_payload = 'reading_payload'
+    committing_group = 'committing_group'
+    persisting_checkpoint = 'persisting_checkpoint'
+    enqueueing_publication = 'enqueueing_publication'
+    completed = 'completed'
+
+
 class GraphImportJobState(Enum):
     """
     Lifecycle of a durable NDJSON import submitted through
@@ -4578,6 +4591,9 @@ class GraphImportJobProgress(BaseModel):
     Bounded progress persisted by an import worker after every grouped commit.
     """
 
+    active_group_bytes: Annotated[int | None, Field(ge=0)] = None
+    active_group_index: Annotated[int | None, Field(ge=0)] = None
+    active_group_records: Annotated[int | None, Field(ge=0)] = None
     bytes_processed: Annotated[int, Field(ge=0)]
     committed_commit_seq: CommitSeq | None = None
     error_count: Annotated[int, Field(ge=0)]
@@ -4586,6 +4602,7 @@ class GraphImportJobProgress(BaseModel):
     lines_read: Annotated[int, Field(ge=0)]
     observations: Annotated[int, Field(ge=0)]
     properties: Annotated[int, Field(ge=0)]
+    stage: GraphImportJobStage | None = None
     triplets: Annotated[int, Field(ge=0)]
     upload_bytes: Annotated[int, Field(ge=0)]
 
