@@ -3823,6 +3823,21 @@ class TraverseResponse(BaseModel):
     snapshot: SnapshotView
 
 
+class TruncatedCollection(BaseModel):
+    """
+    One capped collection: how many rows came back out of how many the read saw.
+    """
+
+    returned: Annotated[int, Field(description='Rows present in this response.', ge=0)]
+    total_observed: Annotated[
+        int,
+        Field(
+            description='Rows the bounded read observed. This is a **lower bound**: establishing\nthe true total means walking the entity\'s whole degree, which is the\ncost the cap exists to avoid. Render it as "returned of at least total".',
+            ge=0,
+        ),
+    ]
+
+
 class ValidTime(BaseModel):
     end_micros: int | None = None
     granularity: TimeGranularity
@@ -4295,6 +4310,23 @@ class EmbeddingSpaceKey(BaseModel):
     model_id: str
     ontology_version: Annotated[int, Field(ge=0)]
     target_kind: AnnTargetKind
+
+
+class EntityDetailTruncation(BaseModel):
+    """
+    Which of an entity read's degree-proportional collections were cut, and by
+    how much. Only the cut collections appear.
+    """
+
+    edges: TruncatedCollection | None = None
+    history: TruncatedCollection | None = None
+    observations: TruncatedCollection | None = None
+    truncated_by_read_budget: Annotated[
+        bool | None,
+        Field(
+            description="True when the request's object-read budget stopped the read before its\nrow caps did, so the counts below are floors for a different reason:\nthe read gave up rather than the collection being full."
+        ),
+    ] = None
 
 
 class EntityEmbeddingInput(BaseModel):
@@ -6304,6 +6336,7 @@ class EntityDetailResponse(BaseModel):
     observations: list[ObservationRow]
     outgoing: list[GraphEdgeRow]
     snapshot: SnapshotView
+    truncation: EntityDetailTruncation | None = None
 
 
 class EntityNeighborhoodResponse(BaseModel):
