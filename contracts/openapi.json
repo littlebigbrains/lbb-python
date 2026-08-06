@@ -2211,6 +2211,17 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotView"
+          },
+          "truncation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EntityDetailTruncation",
+                "description": "Present only when a per-request cap actually cut one of the collections\nabove, so an ordinary entity's response is byte-identical to the\nuncapped one. A supernode read returns the caps' worth of rows plus this\nblock, rather than its whole degree."
+              }
+            ]
           }
         },
         "required": [
@@ -2223,6 +2234,47 @@
           "history",
           "observations"
         ],
+        "type": "object"
+      },
+      "EntityDetailTruncation": {
+        "description": "Which of an entity read's degree-proportional collections were cut, and by\nhow much. Only the cut collections appear.",
+        "properties": {
+          "edges": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TruncatedCollection",
+                "description": "Set when `outgoing`/`incoming`/`current_state` are a partial view of the\nentity's current edges."
+              }
+            ]
+          },
+          "history": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TruncatedCollection"
+              }
+            ]
+          },
+          "observations": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TruncatedCollection"
+              }
+            ]
+          },
+          "truncated_by_read_budget": {
+            "description": "True when the request's object-read budget stopped the read before its\nrow caps did, so the counts below are floors for a different reason:\nthe read gave up rather than the collection being full.",
+            "type": "boolean"
+          }
+        },
         "type": "object"
       },
       "EntityEmbeddingInput": {
@@ -16097,6 +16149,26 @@
           "confidence",
           "valid_time",
           "evidence"
+        ],
+        "type": "object"
+      },
+      "TruncatedCollection": {
+        "description": "One capped collection: how many rows came back out of how many the read saw.",
+        "properties": {
+          "returned": {
+            "description": "Rows present in this response.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_observed": {
+            "description": "Rows the bounded read observed. This is a **lower bound**: establishing\nthe true total means walking the entity's whole degree, which is the\ncost the cap exists to avoid. Render it as \"returned of at least total\".",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "returned",
+          "total_observed"
         ],
         "type": "object"
       },
