@@ -1896,6 +1896,7 @@ class PublishedReadFamilyView(BaseModel):
     root_format_version: Annotated[
         int, Field(description="That family's persisted root-codec version.", ge=0)
     ]
+    served_at_seq: CommitSeq | None = None
     target_hash: str | None = None
 
 
@@ -4401,7 +4402,25 @@ class EntityNeighborhoodRequest(BaseModel):
     ] = None
     as_of_valid_time: str | None = None
     entity: EntitySelector
+    max_edges_per_direction: Annotated[
+        int | None,
+        Field(
+            description="Maximum edges returned **per direction**, clamped by the engine to\n[`MAX_NEIGHBORHOOD_EDGES_PER_DIRECTION`] and defaulting to\n[`DEFAULT_NEIGHBORHOOD_EDGES_PER_DIRECTION`]. Both read paths are scoped\nto the entity's degree, but a supernode's degree is itself unbounded, so\nthis is the backstop that keeps one hub read from costing a serving node\nits whole request budget.\n\nThe budget is per-direction rather than shared: a shared one is spent\nentirely on whichever direction is walked first, so a hub's out-edges\nconsume it and the read reports no incoming edges at all.",
+            ge=0,
+        ),
+    ] = None
     relations: list[str] | None = None
+
+
+class EntityNeighborhoodTruncation(BaseModel):
+    """
+    Which directions of a neighborhood listing were cut, and by how much. Only
+    the cut directions appear. The two directions are reported separately
+    because they are budgeted separately.
+    """
+
+    incoming: TruncatedCollection | None = None
+    outgoing: TruncatedCollection | None = None
 
 
 class EntityTypeSampleRow(BaseModel):
@@ -5459,6 +5478,7 @@ class PublishedReadSnapshotView(BaseModel):
     format_version: Annotated[int, Field(ge=0)]
     generation: Annotated[int | None, Field(ge=0)] = None
     graph: GraphKey
+    min_family_served_at_seq: CommitSeq | None = None
     predecessor_generation: Annotated[int | None, Field(ge=0)] = None
     projection_version: Annotated[int | None, Field(ge=0)] = None
     served_at_seq: Annotated[int, Field(ge=0)]
@@ -6357,6 +6377,7 @@ class EntityNeighborhoodResponse(BaseModel):
         ),
     ]
     snapshot: SnapshotView
+    truncation: EntityNeighborhoodTruncation | None = None
 
 
 class EntityPropertiesInput(BaseModel):
