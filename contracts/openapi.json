@@ -2571,6 +2571,14 @@
           "entity": {
             "$ref": "#/components/schemas/EntitySelector"
           },
+          "max_edges_per_direction": {
+            "description": "Maximum edges returned **per direction**, clamped by the engine to\n[`MAX_NEIGHBORHOOD_EDGES_PER_DIRECTION`] and defaulting to\n[`DEFAULT_NEIGHBORHOOD_EDGES_PER_DIRECTION`]. Both read paths are scoped\nto the entity's degree, but a supernode's degree is itself unbounded, so\nthis is the backstop that keeps one hub read from costing a serving node\nits whole request budget.\n\nThe budget is per-direction rather than shared: a shared one is spent\nentirely on whichever direction is walked first, so a hub's out-edges\nconsume it and the read reports no incoming edges at all.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "relations": {
             "items": {
               "type": "string"
@@ -2610,6 +2618,17 @@
           },
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotView"
+          },
+          "truncation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EntityNeighborhoodTruncation",
+                "description": "Present only when the per-direction edge cap actually cut a direction, so\nan ordinary entity's response is byte-identical to the uncapped one. A\nsupernode read returns the cap's worth of edges *in each direction* plus\nthis block, rather than its whole degree."
+              }
+            ]
           }
         },
         "required": [
@@ -2619,6 +2638,34 @@
           "snapshot",
           "served_from_ranged"
         ],
+        "type": "object"
+      },
+      "EntityNeighborhoodTruncation": {
+        "description": "Which directions of a neighborhood listing were cut, and by how much. Only\nthe cut directions appear. The two directions are reported separately\nbecause they are budgeted separately.",
+        "properties": {
+          "incoming": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TruncatedCollection",
+                "description": "Set when `incoming` is a partial view of the entity's in-edges."
+              }
+            ]
+          },
+          "outgoing": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TruncatedCollection",
+                "description": "Set when `outgoing` is a partial view of the entity's out-edges."
+              }
+            ]
+          }
+        },
         "type": "object"
       },
       "EntityPropertiesInput": {
@@ -9195,6 +9242,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "served_at_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The watermark this family itself is served at. Absent on a\ncommon-watermark root, where every family serves the root's\n`served_at_seq`; present, and possibly lower, once a root records\nper-family watermarks. Optional rather than defaulted: a missing value\nmust never decode as \"carried at sequence 0\"."
+              }
+            ]
+          },
           "target_hash": {
             "type": [
               "string",
@@ -9247,6 +9305,17 @@
           },
           "graph": {
             "$ref": "#/components/schemas/GraphKey"
+          },
+          "min_family_served_at_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The fail-closed visibility floor of this root: the minimum watermark\nover every family. Absent on a common-watermark root, where it is\n`served_at_seq` by construction. Optional rather than defaulted: a\nmissing value must never decode as a floor of sequence 0."
+              }
+            ]
           },
           "predecessor_generation": {
             "format": "int64",
@@ -24063,6 +24132,15 @@
             "description": "RFC3339 as-of timestamp",
             "in": "query",
             "name": "as_of",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum edges per direction (default 1000, maximum 10000)",
+            "in": "query",
+            "name": "edges",
             "required": false,
             "schema": {
               "type": "string"
