@@ -569,12 +569,6 @@ class ExpandedConceptView(BaseModel):
     weight: float
 
 
-class ExpansionDirection(Enum):
-    out = 'out'
-    in_ = 'in'
-    both = 'both'
-
-
 class ExportSearchField(BaseModel):
     boost: float
     name: str
@@ -1083,7 +1077,6 @@ class IndexLineage(BaseModel):
     Typed convergence view over the persisted serving families.
     """
 
-    adjacency_indexed_commit_seq: CommitSeq | None = None
     ann_indexed_commit_seq: CommitSeq | None = None
     bm25_indexed_commit_seq: CommitSeq | None = None
     caught_up: bool
@@ -1091,7 +1084,7 @@ class IndexLineage(BaseModel):
     manifest_view_token: Annotated[
         str,
         Field(
-            description='Content identity of the head generation plus the exact three manifest\nviews observed while constructing this response.'
+            description='Content identity of the head generation plus the exact manifest\nviews observed while constructing this response.'
         ),
     ]
     observed_at_micros: int
@@ -1106,7 +1099,6 @@ class IndexVisibilityFamily(Enum):
     rdf = 'rdf'
     bm25 = 'bm25'
     ann = 'ann'
-    adjacency = 'adjacency'
 
 
 class LbbErrorBody(BaseModel):
@@ -1263,19 +1255,6 @@ class ModelCheckSpec2(BaseModel):
     expected_target: str
     kind: Kind4
     relation: str
-
-
-class Kind5(Enum):
-    path = 'path'
-
-
-class ModelCheckSpec3(BaseModel):
-    from_: Annotated[EntitySelector, Field(alias='from')]
-    kind: Kind5
-    max_hops: Annotated[int, Field(ge=0)]
-    relations: list[str] | None = None
-    should_exist: bool
-    to: EntitySelector
 
 
 class ModelDataLineage(BaseModel):
@@ -1732,12 +1711,6 @@ class OntologyTermView(BaseModel):
     name: str
 
 
-class PathResult(BaseModel):
-    edges: list[str]
-    nodes: list[EntityView]
-    score: float
-
-
 class PlannerServingDefaults(BaseModel):
     """
     Planner serving default derived from a promoted `planner` run: the LoRA
@@ -1945,37 +1918,6 @@ class RangedReadStats(BaseModel):
             ge=0,
         ),
     ] = None
-
-
-class RangedTraverseStats(BaseModel):
-    block_byte_budget: Annotated[int, Field(ge=0)]
-    block_bytes_fetched: Annotated[int, Field(ge=0)]
-    block_read_budget: Annotated[int, Field(ge=0)]
-    blocks_fetched: Annotated[int, Field(ge=0)]
-    coalesced_range_gets: Annotated[
-        int | None,
-        Field(
-            description='Backend ranged GETs saved by P27 coalescing: each value is one ranged\nread that pre-warmed several byte-contiguous slices at once.',
-            ge=0,
-        ),
-    ] = None
-    decoded_block_bytes_retained: Annotated[int, Field(ge=0)]
-    directory_blocks_fetched: Annotated[int | None, Field(ge=0)] = None
-    fetched_byte_budget: Annotated[
-        int | None,
-        Field(
-            description='Cumulative-fetched-bytes budget (P27); 0 = disabled. Distinct from\n`block_byte_budget`, which caps *resident* decoded bytes.',
-            ge=0,
-        ),
-    ] = None
-    manifest_key: str
-    meta_bytes_fetched: Annotated[int, Field(ge=0)]
-    payload_slices_fetched: Annotated[int | None, Field(ge=0)] = None
-    shard_cache_hits: Annotated[int, Field(ge=0)]
-    topology_slices_fetched: Annotated[int | None, Field(ge=0)] = None
-    truncated_by_block_budget: bool
-    truncated_by_block_byte_budget: bool
-    truncated_by_fetched_byte_budget: bool | None = None
 
 
 class RegionAnchorInput(BaseModel):
@@ -2358,40 +2300,40 @@ class SearchFeedbackSplitCounts(BaseModel):
     train: Annotated[int, Field(ge=0)]
 
 
-class Kind6(Enum):
+class Kind5(Enum):
     entity = 'entity'
 
 
 class SearchFeedbackTarget1(BaseModel):
     entity: EntitySelector
-    kind: Kind6
+    kind: Kind5
 
 
-class Kind7(Enum):
+class Kind6(Enum):
     assertion = 'assertion'
 
 
 class SearchFeedbackTarget2(BaseModel):
     edge_event_id: str
-    kind: Kind7
+    kind: Kind6
 
 
-class Kind8(Enum):
+class Kind7(Enum):
     observation = 'observation'
 
 
 class SearchFeedbackTarget3(BaseModel):
-    kind: Kind8
+    kind: Kind7
     observation_id: str
 
 
-class Kind9(Enum):
+class Kind8(Enum):
     concept = 'concept'
 
 
 class SearchFeedbackTarget4(BaseModel):
     concept_id: str | None = None
-    kind: Kind9
+    kind: Kind8
     name: str | None = None
 
 
@@ -2528,7 +2470,6 @@ class Op29(Enum):
 
 
 class SearchHitContributions(BaseModel):
-    adjacency_indexed_commit_seq: CommitSeq | None = None
     bm25: SearchChannelContribution
     bm25_indexed_commit_seq: CommitSeq | None = None
     bm25_manifest_key: str | None = None
@@ -2755,16 +2696,6 @@ class SemanticSearchTarget(Enum):
     subgraph = 'subgraph'
 
 
-class SemanticTraverseExplain(BaseModel):
-    bm25_candidates: Annotated[int, Field(ge=0)]
-    graph_hops: Annotated[int, Field(ge=0)]
-    paths_returned: Annotated[int, Field(ge=0)]
-    search_mode: str
-    seeds_considered: Annotated[int, Field(ge=0)]
-    seeds_selected: Annotated[int, Field(ge=0)]
-    vector_candidates: Annotated[int, Field(ge=0)]
-
-
 class Op30(Enum):
     set_property_constraint = 'set_property_constraint'
 
@@ -2814,7 +2745,7 @@ class Op32(Enum):
 class SetRelationInverseOp(BaseModel):
     """
     Set (or replace) a relation's inverse-relation display name, enabling
-    one-hop reverse traversal (e.g. `PHASE_OF` for `HAS_PHASE`). Metadata
+    one-hop reverse lookup (e.g. `PHASE_OF` for `HAS_PHASE`). Metadata
     only — never touches stored edges.
     """
 
@@ -3099,7 +3030,7 @@ class SnapshotView(BaseModel):
     stale_reason: Annotated[
         str | None,
         Field(
-            description='The reason a read is `stale`. `"storage_degraded"` (F2),\n`"eventual_consistency"` (served from the immutable published\ngeneration) or `"adjacency_coverage"` (served from that generation\'s\nbounded ranged-adjacency snapshot); omitted when not stale.'
+            description='The reason a read is `stale`. `"storage_degraded"` (F2),\n`"eventual_consistency"` (served from the immutable published\ngeneration); omitted when not stale.'
         ),
     ] = None
 
@@ -3812,18 +3743,6 @@ class TrainModelResponse(BaseModel):
     weights: SearchSignalWeights | None = None
 
 
-class TraverseResponse(BaseModel):
-    paths: list[PathResult]
-    projected_nodes: Annotated[
-        dict[str, dict[str, Any]] | None,
-        Field(
-            description='Same-snapshot field evidence for every node appearing in `paths`, keyed\nby stable entity-id hex. Present as an empty map when no fields were\nrequested.'
-        ),
-    ] = None
-    ranged: RangedTraverseStats | None = None
-    snapshot: SnapshotView
-
-
 class TruncatedCollection(BaseModel):
     """
     One capped collection: how many rows came back out of how many the read saw.
@@ -4380,7 +4299,6 @@ class EntityFilterResponse(BaseModel):
 
 
 class EntityMetadataResponse(BaseModel):
-    adjacency_indexed_commit_seq: CommitSeq | None = None
     ann_indexed_commit_seq: CommitSeq | None = None
     bm25_indexed_commit_seq: CommitSeq | None = None
     entity: EntityView
@@ -4425,10 +4343,9 @@ class EntityNeighborhoodTruncation(BaseModel):
 
 class EntityTypeSampleRow(BaseModel):
     """
-    One bounded, index-backed class member for interactive graph exploration.
-    Unlike [`EntityExplorerRow`], this deliberately carries only fields the
-    adjacency build already knows; exhaustive attributes and observation counts
-    remain on the full entity/browse reads.
+    One bounded class member for interactive graph exploration. Unlike
+    [`EntityExplorerRow`], this deliberately carries only identity and degree;
+    exhaustive attributes and observation counts remain on full entity reads.
     """
 
     entity: EntityView
@@ -4565,8 +4482,8 @@ class GraphAnchor(BaseModel):
     is the engine-native form of the query-conditional channel routing validated
     in the Stage-G ablation (quality-ledger R17) — "documents about X AND in the
     same group as Y" becomes one snapshot-consistent search rather than a blind
-    list fusion. The neighborhood is computed by a bounded, snapshot-reduced
-    traversal; final candidates are still re-verified against snapshot visibility.
+    list fusion. The neighborhood is computed from the snapshot-reduced Base
+    family; final candidates are still re-verified against snapshot visibility.
     """
 
     anchor: Annotated[
@@ -5020,7 +4937,7 @@ class ManagedEmbeddingPromoteResponse(BaseModel):
 
 
 class ModelCheckFile(BaseModel):
-    checks: list[ModelCheckSpec1 | ModelCheckSpec2 | ModelCheckSpec3]
+    checks: list[ModelCheckSpec1 | ModelCheckSpec2]
 
 
 class ModelCheckResponse(BaseModel):
@@ -5102,11 +5019,9 @@ class ModelServingDefaults(BaseModel):
 
 class NeighborhoodEdge(BaseModel):
     """
-    One current-edge projection touching the queried entity, materialized from
-    the entity's own adjacency slice (peer stub + relation + valid time). Unlike
+    One current-edge projection touching the queried entity. Unlike
     `StateEntry`/`TripletView` it carries no `previous`/`evidence`/single
-    `edge_event_id`, because the ranged adjacency run does not store them — so
-    the ranged and snapshot code paths produce identical edges.
+    `edge_event_id`, keeping the point-read representation compact.
     """
 
     confidence: float
@@ -5894,20 +5809,6 @@ class SemanticGraphSearchResponse(BaseModel):
     ] = None
 
 
-class SemanticTraverseResponse(BaseModel):
-    explain: SemanticTraverseExplain | None = None
-    paths: list[PathResult]
-    projected_nodes: Annotated[
-        dict[str, dict[str, Any]] | None,
-        Field(
-            description='Requested properties keyed by entity id for every returned seed and\npath node. Empty when `fields` was omitted.'
-        ),
-    ] = None
-    ranged: RangedTraverseStats | None = None
-    seeds: list[ScoredEntityView]
-    snapshot: SnapshotView
-
-
 class ShaclValidationReport(BaseModel):
     """
     `validate`-mode conformance report. Mirrors the shape of a SHACL
@@ -6231,7 +6132,7 @@ class AnalyticQueryRequest(BaseModel):
     """
     A basic-graph-pattern query: a conjunction of triple patterns evaluated over
     the graph's current edges (joined on shared variables), served from the
-    object-storage permutation view.
+    conformant published RDF dataset.
     """
 
     model_config = ConfigDict(
@@ -6362,9 +6263,8 @@ class EntityDetailResponse(BaseModel):
 class EntityNeighborhoodResponse(BaseModel):
     """
     Result of an entity point lookup: the entity plus its out/in neighborhood.
-    Public reads use adjacency for the published watermark and the same
-    generation's Base family for historical pins; both paths cost the entity's
-    degree rather than the whole graph.
+    Public reads use the generation's Base family and cost the entity's degree
+    rather than the whole graph.
     """
 
     entity: EntityView
@@ -6372,9 +6272,7 @@ class EntityNeighborhoodResponse(BaseModel):
     outgoing: list[NeighborhoodEdge]
     served_from_ranged: Annotated[
         bool,
-        Field(
-            description="True when served directly from the persisted adjacency family. False\nwhen an exact historical pin was reduced from the same published\ngeneration's Base family."
-        ),
+        Field(description='True when served through immutable ranged Base blocks.'),
     ]
     snapshot: SnapshotView
     truncation: EntityNeighborhoodTruncation | None = None
@@ -6443,8 +6341,7 @@ class EntityTransitionsResponse(BaseModel):
 class EntityTypeSampleResponse(BaseModel):
     """
     Exact class cardinality plus a bounded deterministic sample served from the
-    ranged adjacency meta. `indexed_commit_seq` makes index lag explicit while
-    `snapshot.commit_seq` reports the current graph head.
+    published Base family. `indexed_commit_seq` makes publication lag explicit.
     """
 
     entities: list[EntityTypeSampleRow]
@@ -6615,7 +6512,6 @@ class GraphImportLine(RootModel[TripletInput | EntityPropertiesInput]):
 
 
 class GraphMetadataResponse(BaseModel):
-    adjacency_indexed_commit_seq: CommitSeq | None = None
     ann_indexed_commit_seq: CommitSeq | None = None
     bm25_indexed_commit_seq: CommitSeq | None = None
     graph: GraphKey
@@ -6623,7 +6519,7 @@ class GraphMetadataResponse(BaseModel):
     index_caught_up: Annotated[
         bool | None,
         Field(
-            description='One-shot "has the published generation caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the three-field predicate.\n`Some(true)` iff both the BM25 and ANN persisted runs are current to the\nhead commit; `Some(false)` when publication is still\npending or absent; `None` when indexes were not inspected\n(`include_indexes=false`).'
+            description='One-shot "has the published generation caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff both the BM25 and ANN persisted runs are current to the\nhead commit; `Some(false)` when publication is still\npending or absent; `None` when indexes were not inspected\n(`include_indexes=false`).'
         ),
     ] = None
     index_lineage: IndexLineage | None = None
@@ -7744,38 +7640,6 @@ class SemanticGraphSearchRequest(BaseModel):
     top_k: Annotated[int | None, Field(ge=0)] = None
 
 
-class SemanticTraverseRequest(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    direction: ExpansionDirection
-    explain: bool
-    fields: Annotated[
-        list[str] | None,
-        Field(
-            description='Entity properties to project for every returned seed and path node.\nProjections are reduced from the same snapshot used for authorization\nand traversal. Requesting fields routes the operation through the exact\nsnapshot path rather than ranged adjacency.'
-        ),
-    ] = None
-    max_block_bytes: Annotated[
-        int | None,
-        Field(
-            description='Decoded adjacency-block working-set byte budget for persisted-vector\nranged expansion. Defaults to the server/store budget. A request may\nlower the budget, but not raise it.',
-            ge=0,
-        ),
-    ] = None
-    max_frontier_entities: Annotated[int, Field(ge=0)]
-    max_hops: Annotated[int, Field(ge=0)]
-    max_paths: Annotated[int, Field(ge=0)]
-    min_confidence: float | None = None
-    min_seed_score: float | None = None
-    ontology: OntologySearchOptions | None = None
-    ontology_constraints: OntologySearchConstraints | None = None
-    query: str
-    relations: list[str] | None = None
-    search: SearchEngineOptions | None = None
-    seed_top_k: Annotated[int, Field(ge=0)]
-
-
 class ShaclLogical(BaseModel):
     """
     SHACL logical shape combinators over [`ShaclShapeConstraints`] operands, all
@@ -8174,7 +8038,7 @@ class SparqlFilter4(BaseModel):
 class SparqlSelectRequest(BaseModel):
     """
     A SPARQL-subset SELECT/ASK query: a conjunctive basic graph pattern (the
-    WHERE) evaluated over the object-storage permutation view, with variable
+    WHERE) evaluated over the conformant published RDF dataset, with variable
     projection, DISTINCT, and LIMIT/OFFSET. Structured-request-first — the SPARQL
     text syntax is a later addition behind a dialect field, and FILTER plus
     aggregation arrive in later milestones.
@@ -8279,69 +8143,6 @@ class SparqlSelectRequest(BaseModel):
             description='SELECT projection: the variables to return, in order. Absent = `SELECT *`\n(every variable the pattern binds, sorted). Ignored in aggregated mode.'
         ),
     ] = None
-
-
-class TraverseRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin: reproduce the graph state as of this `commit_seq`, hiding\nany event committed later. Public serving reduces the bounded edge\ndomains from the Base family in the one pinned published generation;\nit never discovers or assembles another snapshot. Historical entity\nfilters/field projection fail explicitly because Base does not carry a\npoint-indexed entity-mutation history. Omit for the latest snapshot.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: str | None = None
-    direction: ExpansionDirection
-    fields: Annotated[
-        list[str] | None,
-        Field(
-            description='Entity fields projected for every seed/intermediate/terminal node in\n`TraverseResponse.projected_nodes`.'
-        ),
-    ] = None
-    filter: (
-        SearchFilterExpr1
-        | SearchFilterExpr2
-        | SearchFilterExpr3
-        | SearchFilterExpr4
-        | SearchFilterExpr5
-        | SearchFilterExpr6
-        | SearchFilterExpr7
-        | SearchFilterExpr8
-        | SearchFilterExpr9
-        | SearchFilterExpr10
-        | SearchFilterExpr11
-        | SearchFilterExpr12
-        | SearchFilterExpr13
-        | SearchFilterExpr14
-        | SearchFilterExpr15
-        | SearchFilterExpr16
-        | SearchFilterExpr17
-        | SearchFilterExpr18
-        | SearchFilterExpr19
-        | SearchFilterExpr20
-        | SearchFilterExpr21
-        | SearchFilterExpr22
-        | None
-    ) = None
-    max_block_bytes: Annotated[
-        int | None,
-        Field(
-            description='Decoded adjacency-block working-set byte budget for the ranged path.\nDefaults to the server/store budget. A request may lower the budget,\nbut not raise it. Ignored on the bounded Base-family reducer path.',
-            ge=0,
-        ),
-    ] = None
-    max_block_reads: Annotated[
-        int | None,
-        Field(
-            description='Object-read budget for the ranged adjacency path; defaults to a value\nderived from `max_frontier_entities`. Ignored on the bounded Base-family\nreducer path.',
-            ge=0,
-        ),
-    ] = None
-    max_frontier_entities: Annotated[int, Field(ge=0)]
-    max_hops: Annotated[int, Field(ge=0)]
-    max_paths: Annotated[int, Field(ge=0)]
-    min_confidence: float | None = None
-    relations: list[str] | None = None
-    start: EntitySelector
 
 
 EmbeddingSearchRequest.model_rebuild()

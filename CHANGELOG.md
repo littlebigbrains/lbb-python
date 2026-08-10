@@ -2,6 +2,16 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+Breaking removal of the standalone graph-traversal surface.
+
+- Remove sync, async, and local `traverse` / `semantic_traverse` methods and
+  their request/response models.
+- Entity neighborhoods and class samples now read the published Base family.
+- Use SPARQL 1.1 property paths for exact multi-hop graph queries; semantic
+  search continues to expose bounded graph-path evidence internally.
+
 ## 0.9.1
 
 - Sync and async durable import submissions now reject an empty iterable before

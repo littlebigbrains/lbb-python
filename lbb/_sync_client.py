@@ -467,7 +467,7 @@ class LbbClient(_BaseLbbClient):
         timeout: float = 30.0,
         poll_interval: float = 0.25,
     ) -> IndexLineageObservation:
-        """Wait until BM25, ANN, and adjacency all cover ``target_seq``.
+        """Wait until BM25 and ANN both cover ``target_seq``.
 
         Returns typed lineage plus the build/replica headers from the exact
         observation that satisfied the gate, so a timeout or replica skew is
@@ -485,8 +485,6 @@ class LbbClient(_BaseLbbClient):
                 and lineage.bm25_indexed_commit_seq.root >= target_seq
                 and lineage.ann_indexed_commit_seq is not None
                 and lineage.ann_indexed_commit_seq.root >= target_seq
-                and lineage.adjacency_indexed_commit_seq is not None
-                and lineage.adjacency_indexed_commit_seq.root >= target_seq
             ):
                 return IndexLineageObservation(
                     metadata=metadata,

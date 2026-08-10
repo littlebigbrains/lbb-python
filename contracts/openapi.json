@@ -293,7 +293,7 @@
       },
       "AnalyticQueryRequest": {
         "additionalProperties": false,
-        "description": "A basic-graph-pattern query: a conjunction of triple patterns evaluated over\nthe graph's current edges (joined on shared variables), served from the\nobject-storage permutation view.",
+        "description": "A basic-graph-pattern query: a conjunction of triple patterns evaluated over\nthe graph's current edges (joined on shared variables), served from the\nconformant published RDF dataset.",
         "properties": {
           "combinators": {
             "description": "Group-graph-pattern combinators (UNION / OPTIONAL / MINUS / EXISTS /\nNOT EXISTS) folded over the base `patterns`, left-to-right. Empty (the\ndefault) leaves the query a plain conjunctive BGP.",
@@ -2470,17 +2470,6 @@
       },
       "EntityMetadataResponse": {
         "properties": {
-          "adjacency_indexed_commit_seq": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CommitSeq",
-                "description": "Highest commit covered by the ranged adjacency family."
-              }
-            ]
-          },
           "ann_indexed_commit_seq": {
             "oneOf": [
               {
@@ -2595,7 +2584,7 @@
         "type": "object"
       },
       "EntityNeighborhoodResponse": {
-        "description": "Result of an entity point lookup: the entity plus its out/in neighborhood.\nPublic reads use adjacency for the published watermark and the same\ngeneration's Base family for historical pins; both paths cost the entity's\ndegree rather than the whole graph.",
+        "description": "Result of an entity point lookup: the entity plus its out/in neighborhood.\nPublic reads use the generation's Base family and cost the entity's degree\nrather than the whole graph.",
         "properties": {
           "entity": {
             "$ref": "#/components/schemas/EntityView"
@@ -2613,7 +2602,7 @@
             "type": "array"
           },
           "served_from_ranged": {
-            "description": "True when served directly from the persisted adjacency family. False\nwhen an exact historical pin was reduced from the same published\ngeneration's Base family.",
+            "description": "True when served through immutable ranged Base blocks.",
             "type": "boolean"
           },
           "snapshot": {
@@ -2806,7 +2795,7 @@
         "type": "object"
       },
       "EntityTypeSampleResponse": {
-        "description": "Exact class cardinality plus a bounded deterministic sample served from the\nranged adjacency meta. `indexed_commit_seq` makes index lag explicit while\n`snapshot.commit_seq` reports the current graph head.",
+        "description": "Exact class cardinality plus a bounded deterministic sample served from the\npublished Base family. `indexed_commit_seq` makes publication lag explicit.",
         "properties": {
           "entities": {
             "items": {
@@ -2838,7 +2827,7 @@
         "type": "object"
       },
       "EntityTypeSampleRow": {
-        "description": "One bounded, index-backed class member for interactive graph exploration.\nUnlike [`EntityExplorerRow`], this deliberately carries only fields the\nadjacency build already knows; exhaustive attributes and observation counts\nremain on the full entity/browse reads.",
+        "description": "One bounded class member for interactive graph exploration. Unlike\n[`EntityExplorerRow`], this deliberately carries only identity and degree;\nexhaustive attributes and observation counts remain on full entity reads.",
         "properties": {
           "entity": {
             "$ref": "#/components/schemas/EntityView"
@@ -2943,14 +2932,6 @@
           "weight"
         ],
         "type": "object"
-      },
-      "ExpansionDirection": {
-        "enum": [
-          "out",
-          "in",
-          "both"
-        ],
-        "type": "string"
       },
       "ExportObservationView": {
         "properties": {
@@ -3828,7 +3809,7 @@
         "type": "object"
       },
       "GraphAnchor": {
-        "description": "A structural co-bind constraint: restrict (or boost) the text/vector\ncandidates to entities within an anchor entity's relation-neighborhood. This\nis the engine-native form of the query-conditional channel routing validated\nin the Stage-G ablation (quality-ledger R17) — \"documents about X AND in the\nsame group as Y\" becomes one snapshot-consistent search rather than a blind\nlist fusion. The neighborhood is computed by a bounded, snapshot-reduced\ntraversal; final candidates are still re-verified against snapshot visibility.",
+        "description": "A structural co-bind constraint: restrict (or boost) the text/vector\ncandidates to entities within an anchor entity's relation-neighborhood. This\nis the engine-native form of the query-conditional channel routing validated\nin the Stage-G ablation (quality-ledger R17) — \"documents about X AND in the\nsame group as Y\" becomes one snapshot-consistent search rather than a blind\nlist fusion. The neighborhood is computed from the snapshot-reduced Base\nfamily; final candidates are still re-verified against snapshot visibility.",
         "properties": {
           "anchor": {
             "$ref": "#/components/schemas/EntitySelector",
@@ -4948,16 +4929,6 @@
       },
       "GraphMetadataResponse": {
         "properties": {
-          "adjacency_indexed_commit_seq": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CommitSeq"
-              }
-            ]
-          },
           "ann_indexed_commit_seq": {
             "oneOf": [
               {
@@ -4987,7 +4958,7 @@
             "type": "integer"
           },
           "index_caught_up": {
-            "description": "One-shot \"has the published generation caught up to head?\" signal, so a\nbulk-import caller does not hand-assemble the three-field predicate.\n`Some(true)` iff both the BM25 and ANN persisted runs are current to the\nhead commit; `Some(false)` when publication is still\npending or absent; `None` when indexes were not inspected\n(`include_indexes=false`).",
+            "description": "One-shot \"has the published generation caught up to head?\" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff both the BM25 and ANN persisted runs are current to the\nhead commit; `Some(false)` when publication is still\npending or absent; `None` when indexes were not inspected\n(`include_indexes=false`).",
             "type": [
               "boolean",
               "null"
@@ -5905,16 +5876,6 @@
       "IndexLineage": {
         "description": "Typed convergence view over the persisted serving families.",
         "properties": {
-          "adjacency_indexed_commit_seq": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CommitSeq"
-              }
-            ]
-          },
           "ann_indexed_commit_seq": {
             "oneOf": [
               {
@@ -5942,7 +5903,7 @@
             "$ref": "#/components/schemas/CommitSeq"
           },
           "manifest_view_token": {
-            "description": "Content identity of the head generation plus the exact three manifest\nviews observed while constructing this response.",
+            "description": "Content identity of the head generation plus the exact manifest\nviews observed while constructing this response.",
             "type": "string"
           },
           "observed_at_micros": {
@@ -5964,8 +5925,7 @@
           "base",
           "rdf",
           "bm25",
-          "ann",
-          "adjacency"
+          "ann"
         ],
         "type": "string"
       },
@@ -6834,47 +6794,6 @@
               "kind"
             ],
             "type": "object"
-          },
-          {
-            "properties": {
-              "from": {
-                "$ref": "#/components/schemas/EntitySelector"
-              },
-              "kind": {
-                "enum": [
-                  "path"
-                ],
-                "type": "string"
-              },
-              "max_hops": {
-                "format": "int32",
-                "minimum": 0,
-                "type": "integer"
-              },
-              "relations": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
-              "should_exist": {
-                "type": "boolean"
-              },
-              "to": {
-                "$ref": "#/components/schemas/EntitySelector"
-              }
-            },
-            "required": [
-              "from",
-              "to",
-              "max_hops",
-              "should_exist",
-              "kind"
-            ],
-            "type": "object"
           }
         ]
       },
@@ -7352,7 +7271,7 @@
         "type": "object"
       },
       "NeighborhoodEdge": {
-        "description": "One current-edge projection touching the queried entity, materialized from\nthe entity's own adjacency slice (peer stub + relation + valid time). Unlike\n`StateEntry`/`TripletView` it carries no `previous`/`evidence`/single\n`edge_event_id`, because the ranged adjacency run does not store them — so\nthe ranged and snapshot code paths produce identical edges.",
+        "description": "One current-edge projection touching the queried entity. Unlike\n`StateEntry`/`TripletView` it carries no `previous`/`evidence`/single\n`edge_event_id`, keeping the point-read representation compact.",
         "properties": {
           "confidence": {
             "format": "float",
@@ -8796,32 +8715,6 @@
         ],
         "type": "object"
       },
-      "PathResult": {
-        "properties": {
-          "edges": {
-            "items": {
-              "$ref": "#/components/schemas/EdgeEventId"
-            },
-            "type": "array"
-          },
-          "nodes": {
-            "items": {
-              "$ref": "#/components/schemas/EntityView"
-            },
-            "type": "array"
-          },
-          "score": {
-            "format": "float",
-            "type": "number"
-          }
-        },
-        "required": [
-          "score",
-          "nodes",
-          "edges"
-        ],
-        "type": "object"
-      },
       "PlannerDatasetResponse": {
         "description": "`GET /v1/models/planner-dataset` — the planner fine-tune's training feed:\naccepted/corrected ask feedback joined to its traces (signals ≤ the split\npin only — the WS9 temporal-split obligation), topped up with\nexecution-verified synthetic plans so a cold graph can still personalize.",
         "properties": {
@@ -9449,96 +9342,6 @@
           "attribute_blocks_fetched",
           "candidates_pruned_by_attributes",
           "block_bytes_fetched"
-        ],
-        "type": "object"
-      },
-      "RangedTraverseStats": {
-        "properties": {
-          "block_byte_budget": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "block_bytes_fetched": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "block_read_budget": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "blocks_fetched": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "coalesced_range_gets": {
-            "description": "Backend ranged GETs saved by P27 coalescing: each value is one ranged\nread that pre-warmed several byte-contiguous slices at once.",
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "decoded_block_bytes_retained": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "directory_blocks_fetched": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "fetched_byte_budget": {
-            "description": "Cumulative-fetched-bytes budget (P27); 0 = disabled. Distinct from\n`block_byte_budget`, which caps *resident* decoded bytes.",
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "manifest_key": {
-            "type": "string"
-          },
-          "meta_bytes_fetched": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "payload_slices_fetched": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "shard_cache_hits": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "topology_slices_fetched": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "truncated_by_block_budget": {
-            "type": "boolean"
-          },
-          "truncated_by_block_byte_budget": {
-            "type": "boolean"
-          },
-          "truncated_by_fetched_byte_budget": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "manifest_key",
-          "meta_bytes_fetched",
-          "blocks_fetched",
-          "block_bytes_fetched",
-          "shard_cache_hits",
-          "block_read_budget",
-          "block_byte_budget",
-          "decoded_block_bytes_retained",
-          "truncated_by_block_budget",
-          "truncated_by_block_byte_budget"
         ],
         "type": "object"
       },
@@ -11914,16 +11717,6 @@
       },
       "SearchHitContributions": {
         "properties": {
-          "adjacency_indexed_commit_seq": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CommitSeq"
-              }
-            ]
-          },
           "bm25": {
             "$ref": "#/components/schemas/SearchChannelContribution"
           },
@@ -12881,218 +12674,6 @@
         ],
         "type": "string"
       },
-      "SemanticTraverseExplain": {
-        "properties": {
-          "bm25_candidates": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "graph_hops": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "paths_returned": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "search_mode": {
-            "type": "string"
-          },
-          "seeds_considered": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "seeds_selected": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "vector_candidates": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "seeds_considered",
-          "seeds_selected",
-          "search_mode",
-          "bm25_candidates",
-          "vector_candidates",
-          "graph_hops",
-          "paths_returned"
-        ],
-        "type": "object"
-      },
-      "SemanticTraverseRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "direction": {
-            "$ref": "#/components/schemas/ExpansionDirection"
-          },
-          "explain": {
-            "type": "boolean"
-          },
-          "fields": {
-            "description": "Entity properties to project for every returned seed and path node.\nProjections are reduced from the same snapshot used for authorization\nand traversal. Requesting fields routes the operation through the exact\nsnapshot path rather than ranged adjacency.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "max_block_bytes": {
-            "description": "Decoded adjacency-block working-set byte budget for persisted-vector\nranged expansion. Defaults to the server/store budget. A request may\nlower the budget, but not raise it.",
-            "format": "int64",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "max_frontier_entities": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "max_hops": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "max_paths": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "min_confidence": {
-            "format": "float",
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "min_seed_score": {
-            "format": "float",
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "ontology": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/OntologySearchOptions"
-              }
-            ]
-          },
-          "ontology_constraints": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/OntologySearchConstraints"
-              }
-            ]
-          },
-          "query": {
-            "type": "string"
-          },
-          "relations": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "search": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SearchEngineOptions"
-              }
-            ]
-          },
-          "seed_top_k": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "query",
-          "seed_top_k",
-          "direction",
-          "max_hops",
-          "max_frontier_entities",
-          "max_paths",
-          "explain"
-        ],
-        "type": "object"
-      },
-      "SemanticTraverseResponse": {
-        "properties": {
-          "explain": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SemanticTraverseExplain"
-              }
-            ]
-          },
-          "paths": {
-            "items": {
-              "$ref": "#/components/schemas/PathResult"
-            },
-            "type": "array"
-          },
-          "projected_nodes": {
-            "additionalProperties": {
-              "additionalProperties": {},
-              "propertyNames": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            "description": "Requested properties keyed by entity id for every returned seed and\npath node. Empty when `fields` was omitted.",
-            "propertyNames": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "ranged": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RangedTraverseStats",
-                "description": "Present when both seed resolution and expansion ran against persisted\nranged indexes (no snapshot load); `None` on the snapshot path."
-              }
-            ]
-          },
-          "seeds": {
-            "items": {
-              "$ref": "#/components/schemas/ScoredEntityView"
-            },
-            "type": "array"
-          },
-          "snapshot": {
-            "$ref": "#/components/schemas/SnapshotView"
-          }
-        },
-        "required": [
-          "seeds",
-          "paths",
-          "snapshot"
-        ],
-        "type": "object"
-      },
       "SetPropertyConstraintOp": {
         "description": "Set (or clear) the enforced allowed-value set on an **existing** property\nfield — the tightening path for a field already in use (e.g. constrain\n`status` to its ADR vocabulary). A non-empty list installs the `sh:in`\nconstraint that future commits are checked against; an empty list clears\nit. Enforcement is write-time only: values already stored are not\nretroactively validated. Errors on an unknown field or a non-enumerable\ntype. Bumps the ontology version.",
         "properties": {
@@ -13144,7 +12725,7 @@
         "type": "object"
       },
       "SetRelationInverseOp": {
-        "description": "Set (or replace) a relation's inverse-relation display name, enabling\none-hop reverse traversal (e.g. `PHASE_OF` for `HAS_PHASE`). Metadata\nonly — never touches stored edges.",
+        "description": "Set (or replace) a relation's inverse-relation display name, enabling\none-hop reverse lookup (e.g. `PHASE_OF` for `HAS_PHASE`). Metadata\nonly — never touches stored edges.",
         "properties": {
           "inverse_name": {
             "type": "string"
@@ -13324,7 +12905,7 @@
         "type": "object"
       },
       "ShaclPath": {
-        "description": "A SHACL property path expression, evaluated as a bounded graph traversal from\nthe focus node to a set of value-node entities. Mirrors SHACL's path grammar:\na single predicate, an inverse, a sequence, an alternative, and the\n`*`/`+`/`?` closures.",
+        "description": "A SHACL property path expression, evaluated by the bounded RDF path engine from\nthe focus node to a set of value-node entities. Mirrors SHACL's path grammar:\na single predicate, an inverse, a sequence, an alternative, and the\n`*`/`+`/`?` closures.",
         "oneOf": [
           {
             "description": "A single relation, followed forward (focus -> value).",
@@ -13575,7 +13156,7 @@
               },
               {
                 "$ref": "#/components/schemas/ShaclPath",
-                "description": "Structured SHACL property path. When set it takes precedence over the\nsingle-predicate `path`/`direction` (which then serves only as the\n`resultPath` label). The path is evaluated as a bounded graph traversal\nreaching a set of value-node entities; entity-value constraints (`class`,\n`hasValue`, `min_count`/`max_count`, entity `in`) apply to that set."
+                "description": "Structured SHACL property path. When set it takes precedence over the\nsingle-predicate `path`/`direction` (which then serves only as the\n`resultPath` label). The path is evaluated by the bounded RDF path engine,\nreaching a set of value-node entities; entity-value constraints (`class`,\n`hasValue`, `min_count`/`max_count`, entity `in`) apply to that set."
               }
             ]
           },
@@ -14331,7 +13912,7 @@
               },
               {
                 "$ref": "#/components/schemas/CommitSeq",
-                "description": "The coherent watermark named by the one immutable published generation\npinned for this response. All enabled families (RDF, Base, BM25, ANN,\nadjacency, summary, and conformance) are interpreted against this same\nwatermark; request pressure cannot select an older family or change it\nmid-request. Omitted only for responses that do not use published state."
+                "description": "The coherent watermark named by the one immutable published generation\npinned for this response. All enabled families (RDF, Base, BM25, ANN,\nsummary, and conformance) are interpreted against this same\nwatermark; request pressure cannot select an older family or change it\nmid-request. Omitted only for responses that do not use published state."
               }
             ]
           },
@@ -14340,7 +13921,7 @@
             "type": "boolean"
           },
           "stale_reason": {
-            "description": "The reason a read is `stale`. `\"storage_degraded\"` (F2),\n`\"eventual_consistency\"` (served from the immutable published\ngeneration) or `\"adjacency_coverage\"` (served from that generation's\nbounded ranged-adjacency snapshot); omitted when not stale.",
+            "description": "The reason a read is `stale`. `\"storage_degraded\"` (F2),\n`\"eventual_consistency\"` (served from the immutable published\ngeneration); omitted when not stale.",
             "type": [
               "string",
               "null"
@@ -14733,7 +14314,7 @@
       },
       "SparqlSelectRequest": {
         "additionalProperties": false,
-        "description": "A SPARQL-subset SELECT/ASK query: a conjunctive basic graph pattern (the\nWHERE) evaluated over the object-storage permutation view, with variable\nprojection, DISTINCT, and LIMIT/OFFSET. Structured-request-first — the SPARQL\ntext syntax is a later addition behind a dialect field, and FILTER plus\naggregation arrive in later milestones.",
+        "description": "A SPARQL-subset SELECT/ASK query: a conjunctive basic graph pattern (the\nWHERE) evaluated over the conformant published RDF dataset, with variable\nprojection, DISTINCT, and LIMIT/OFFSET. Structured-request-first — the SPARQL\ntext syntax is a later addition behind a dialect field, and FILTER plus\naggregation arrive in later milestones.",
         "properties": {
           "aggregates": {
             "description": "Aggregate projections (COUNT/SUM/AVG/MIN/MAX … AS …). Presence switches\nthe query into grouped/aggregated mode.",
@@ -15921,146 +15502,6 @@
           "valid_time",
           "commit_seq",
           "edge_event_id"
-        ],
-        "type": "object"
-      },
-      "TraverseRequest": {
-        "properties": {
-          "as_of_commit_seq": {
-            "description": "Snapshot pin: reproduce the graph state as of this `commit_seq`, hiding\nany event committed later. Public serving reduces the bounded edge\ndomains from the Base family in the one pinned published generation;\nit never discovers or assembles another snapshot. Historical entity\nfilters/field projection fail explicitly because Base does not carry a\npoint-indexed entity-mutation history. Omit for the latest snapshot.",
-            "format": "int64",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "as_of_valid_time": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "direction": {
-            "$ref": "#/components/schemas/ExpansionDirection"
-          },
-          "fields": {
-            "description": "Entity fields projected for every seed/intermediate/terminal node in\n`TraverseResponse.projected_nodes`.",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "filter": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SearchFilterExpr",
-                "description": "Authorization/metadata predicate applied before a node is admitted or\nexpanded. Both endpoints of every traversed edge must satisfy it."
-              }
-            ]
-          },
-          "max_block_bytes": {
-            "description": "Decoded adjacency-block working-set byte budget for the ranged path.\nDefaults to the server/store budget. A request may lower the budget,\nbut not raise it. Ignored on the bounded Base-family reducer path.",
-            "format": "int64",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "max_block_reads": {
-            "description": "Object-read budget for the ranged adjacency path; defaults to a value\nderived from `max_frontier_entities`. Ignored on the bounded Base-family\nreducer path.",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "max_frontier_entities": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "max_hops": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "max_paths": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "min_confidence": {
-            "format": "float",
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "relations": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "start": {
-            "$ref": "#/components/schemas/EntitySelector"
-          }
-        },
-        "required": [
-          "start",
-          "direction",
-          "max_hops",
-          "max_frontier_entities",
-          "max_paths"
-        ],
-        "type": "object"
-      },
-      "TraverseResponse": {
-        "properties": {
-          "paths": {
-            "items": {
-              "$ref": "#/components/schemas/PathResult"
-            },
-            "type": "array"
-          },
-          "projected_nodes": {
-            "additionalProperties": {
-              "additionalProperties": {},
-              "propertyNames": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            "description": "Same-snapshot field evidence for every node appearing in `paths`, keyed\nby stable entity-id hex. Present as an empty map when no fields were\nrequested.",
-            "propertyNames": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "ranged": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RangedTraverseStats",
-                "description": "Present when the traversal ran against ranged adjacency blocks; `None`\nmeans the same published generation's bounded Base reducer served it."
-              }
-            ]
-          },
-          "snapshot": {
-            "$ref": "#/components/schemas/SnapshotView"
-          }
-        },
-        "required": [
-          "paths",
-          "snapshot"
         ],
         "type": "object"
       },
@@ -23238,7 +22679,7 @@
             }
           },
           {
-            "description": "Accepted as strong or eventual; adjacency serves the exact immutable base pinned by the published generation without inspecting the live WAL in either mode",
+            "description": "Accepted as strong or eventual; Base serves the immutable generation without inspecting the live WAL",
             "in": "query",
             "name": "consistency",
             "required": false,
@@ -23470,7 +22911,7 @@
             "bearer": []
           }
         ],
-        "summary": "Bounded class sample from the ranged adjacency index",
+        "summary": "Bounded class sample from the published Base family",
         "tags": [
           "graph"
         ]
@@ -28702,286 +28143,6 @@
         ]
       }
     },
-    "/v1/graph/semantic-traverse": {
-      "post": {
-        "operationId": "post_v1_graph_semantic_traverse",
-        "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
-            "in": "header",
-            "name": "Lbb-Version",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SemanticTraverseRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SemanticTraverseResponse"
-                }
-              }
-            },
-            "description": "OK",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Bad request",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not found",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Conflict",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Rate limit exceeded",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal server error",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service unavailable",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Resolve a query to seeds, then return bounded paths",
-        "tags": [
-          "graph"
-        ]
-      }
-    },
     "/v1/graph/summary": {
       "get": {
         "operationId": "get_v1_graph_summary",
@@ -29238,572 +28399,6 @@
           }
         ],
         "summary": "Graph counts and type/relation buckets",
-        "tags": [
-          "graph"
-        ]
-      }
-    },
-    "/v1/graph/traverse": {
-      "get": {
-        "operationId": "get_v1_graph_traverse",
-        "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
-            "in": "header",
-            "name": "Lbb-Version",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Start entity id",
-            "in": "query",
-            "name": "id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "out, in, or both",
-            "in": "query",
-            "name": "direction",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Hop budget",
-            "in": "query",
-            "name": "max_hops",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TraverseResponse"
-                }
-              }
-            },
-            "description": "OK",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Bad request",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not found",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Conflict",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Rate limit exceeded",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal server error",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service unavailable",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Bounded graph traversal (query-string convenience)",
-        "tags": [
-          "graph"
-        ]
-      },
-      "post": {
-        "operationId": "post_v1_graph_traverse",
-        "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
-            "in": "header",
-            "name": "Lbb-Version",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TraverseRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TraverseResponse"
-                }
-              }
-            },
-            "description": "OK",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Bad request",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not found",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Conflict",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Rate limit exceeded",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal server error",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service unavailable",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Bounded graph traversal",
         "tags": [
           "graph"
         ]
@@ -39269,7 +37864,7 @@
             "bearer": []
           }
         ],
-        "summary": "Basic-graph-pattern (BGP) analytic query over the permutation view",
+        "summary": "Basic-graph-pattern (BGP) analytic query over the published RDF dataset",
         "tags": [
           "query"
         ]
