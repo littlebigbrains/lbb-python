@@ -108,9 +108,6 @@ class LbbLocalClient:
             request,
         )
 
-    def traverse(self, request: Mapping[str, Any]) -> dict[str, Any]:
-        return self._request_file(("query", "traverse", *self._scope_args()), request)
-
     def current_state(self, request: Mapping[str, Any]) -> dict[str, Any]:
         return self._request_file(("query", "state", *self._scope_args()), request)
 

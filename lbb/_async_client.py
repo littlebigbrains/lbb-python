@@ -796,8 +796,6 @@ class AsyncLbbClient(_BaseLbbClient):
                 and lineage.bm25_indexed_commit_seq.root >= target_seq
                 and lineage.ann_indexed_commit_seq is not None
                 and lineage.ann_indexed_commit_seq.root >= target_seq
-                and lineage.adjacency_indexed_commit_seq is not None
-                and lineage.adjacency_indexed_commit_seq.root >= target_seq
             ):
                 return IndexLineageObservation(
                     metadata=metadata,

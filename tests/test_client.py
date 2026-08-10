@@ -1768,7 +1768,6 @@ class SyncClientTests(unittest.TestCase):
             "head_commit_seq": 7,
             "bm25_indexed_commit_seq": 7,
             "ann_indexed_commit_seq": 7,
-            "adjacency_indexed_commit_seq": 7,
             "caught_up": True,
             "manifest_view_token": "index-view:abc",
             "observed_at_micros": 1,
@@ -1780,7 +1779,6 @@ class SyncClientTests(unittest.TestCase):
             "head_generation": 1,
             "wal_tail_commits": 0,
             "wal_tail_bytes": 0,
-            "adjacency_indexed_commit_seq": 7,
             "index_lineage": lineage,
             "published_lag_commits": 0,
         }

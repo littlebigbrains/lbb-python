@@ -1371,16 +1371,6 @@ class _BaseLbbClient:
             models.SearchFeedbackSummaryResponse, "GET", "/v1/search/feedback/summary"
         )
 
-    # --- traversal ---
-
-    def traverse(self, body: Body) -> Any:
-        """Bounded k-hop graph traversal."""
-        return self._request("POST", "/v1/graph/traverse", body=body)
-
-    def semantic_traverse(self, body: Body) -> Any:
-        """Resolve a query to seed entities, then return bounded paths."""
-        return self._request("POST", "/v1/graph/semantic-traverse", body=body)
-
     # --- temporal / lineage / shapes ---
 
     def current_state(self, body: Body) -> Any:
@@ -2286,9 +2276,8 @@ class _EntityNamespace:
         limit: int | None = None,
         options: RequestOptions | None = None,
     ) -> models.EntityTypeSampleResponse:
-        """Return exact type cardinality and a bounded sample from the ranged
-        adjacency family pinned by the published generation. Missing published
-        state fails closed instead of falling back to an exhaustive scan.
+        """Return exact type cardinality and a bounded sample from the Base
+        family pinned by the published generation.
         """
         return self._client._model_request(
             models.EntityTypeSampleResponse,
