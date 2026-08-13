@@ -1077,9 +1077,26 @@ class IndexLineage(BaseModel):
     Typed convergence view over the persisted serving families.
     """
 
+    ann_empty: Annotated[
+        bool | None,
+        Field(
+            description='True when the published ANN family is an empty root. Same meaning as\n`bm25_empty`.'
+        ),
+    ] = None
     ann_indexed_commit_seq: CommitSeq | None = None
+    bm25_empty: Annotated[
+        bool | None,
+        Field(
+            description='True when the published BM25 family is an empty root — the deployment\nruns without the search stack\n(`LBB_PUBLISH_EMPTY_INDEX_FAMILIES`), or the corpus genuinely has no\nindexable documents at this watermark. Either way the family is current\n*and* contains nothing, so a health check must not read `caught_up`\nalone as "search is serving results".'
+        ),
+    ] = None
     bm25_indexed_commit_seq: CommitSeq | None = None
-    caught_up: bool
+    caught_up: Annotated[
+        bool,
+        Field(
+            description='Both families are published at the head commit. This is a *publication\nlag* signal — it says the derived families have caught up with graph\ntruth, not that they hold data. An empty family is caught up.'
+        ),
+    ]
     head_commit_seq: Annotated[int, Field(ge=0)]
     manifest_view_token: Annotated[
         str,
@@ -6519,7 +6536,7 @@ class GraphMetadataResponse(BaseModel):
     index_caught_up: Annotated[
         bool | None,
         Field(
-            description='One-shot "has the published generation caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff both the BM25 and ANN persisted runs are current to the\nhead commit; `Some(false)` when publication is still\npending or absent; `None` when indexes were not inspected\n(`include_indexes=false`).'
+            description='One-shot "has the published generation caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff the published generation is served at the head commit;\n`Some(false)` when publication is still pending or absent; `None` when\nindexes were not inspected (`include_indexes=false`).\n\nThis is a **publication lag** signal, not a statement about index\ncontent. A generation whose BM25/ANN families are published as empty\nroots — the steady state when the deployment runs without the search\nstack — is caught up while holding no documents. Read\n`index_lineage.bm25_empty` / `ann_empty` to tell the two apart.'
         ),
     ] = None
     index_lineage: IndexLineage | None = None
