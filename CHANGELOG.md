@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.10.0 (2026-08-21)
 
 Breaking removal of the standalone graph-traversal surface.
 
