@@ -137,7 +137,6 @@ class ContractRouteCoverage(unittest.TestCase):
             "_BaseLbbClient": "AsyncLbbClient",
             "_GraphNamespace": "_AsyncGraphNamespace",
             "_FactsNamespace": "_AsyncFactsNamespace",
-            "_ContextNamespace": "_AsyncContextNamespace",
             "_OntologyNamespace": "_AsyncOntologyNamespace",
             "_QueryNamespace": "_AsyncQueryNamespace",
             "_SchemaNamespace": "_AsyncSchemaNamespace",

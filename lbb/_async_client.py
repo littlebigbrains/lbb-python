@@ -35,7 +35,6 @@ from ._client_base import (
     SparqlResults,
     _BaseLbbClient,
     _body_marks_terminal,
-    _ContextNamespace,
     _EntityNamespace,
     _error_body_field,
     _FactsNamespace,
@@ -76,35 +75,6 @@ async def _aiter_import_ndjson(lines: AsyncImportSource) -> AsyncIterator[bytes]
     else:
         for line in lines:
             yield _import_bytes(line)
-
-
-class _AsyncContextNamespace(_ContextNamespace):
-    async def suggest(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.SearchSuggestResponse:
-        return cast(
-            models.SearchSuggestResponse, await super().suggest(body, options=options)
-        )
-
-    async def resolve(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.ResolveTermResponse:
-        return cast(
-            models.ResolveTermResponse, await super().resolve(body, options=options)
-        )
-
-    async def decode(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.DecodeResponse:
-        return cast(models.DecodeResponse, await super().decode(body, options=options))
-
-    async def groundability(
-        self, *, sample: int | None = None, options: RequestOptions | None = None
-    ) -> models.GroundabilityReport:
-        return cast(
-            models.GroundabilityReport,
-            await super().groundability(sample=sample, options=options),
-        )
 
 
 class _AsyncOntologyNamespace(_OntologyNamespace):
@@ -228,14 +198,6 @@ class _AsyncQueryNamespace(_QueryNamespace):
             ),
         )
 
-    async def analytics(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.AnalyticQueryResponse:
-        return cast(
-            models.AnalyticQueryResponse,
-            await super().analytics(body, options=options),
-        )
-
     async def conflicts(
         self, body: Body, *, options: RequestOptions | None = None
     ) -> models.GovernedConflictAggregationResponse:
@@ -284,104 +246,6 @@ class _AsyncGraphNamespace(_GraphNamespace):
             await super().delete_branch(confirm=confirm),
         )
 
-    async def embedding_models(
-        self,
-        *,
-        options: RequestOptions | None = None,
-    ) -> models.ManagedEmbeddingModelsResponse:
-        return cast(
-            models.ManagedEmbeddingModelsResponse,
-            await super().embedding_models(options=options),
-        )
-
-    async def embedding_config(
-        self, *, options: RequestOptions | None = None
-    ) -> models.ManagedEmbeddingConfigResponse:
-        return cast(
-            models.ManagedEmbeddingConfigResponse,
-            await super().embedding_config(options=options),
-        )
-
-    async def set_embedding_config(
-        self, body: Body
-    ) -> models.ManagedEmbeddingConfigResponse:
-        return cast(
-            models.ManagedEmbeddingConfigResponse,
-            await super().set_embedding_config(body),
-        )
-
-    async def set_embedding_model(
-        self, model_id: str, *, auto_embed_query: bool = True
-    ) -> models.ManagedEmbeddingConfigResponse:
-        return cast(
-            models.ManagedEmbeddingConfigResponse,
-            await super().set_embedding_model(
-                model_id, auto_embed_query=auto_embed_query
-            ),
-        )
-
-    async def backfill_embeddings(
-        self,
-        *,
-        batch_size: int | None = None,
-        limit: int | None = None,
-        full: bool | None = None,
-        idempotency_key: str | None = None,
-        timeout: float = 1800.0,
-        poll_interval: float = 2.0,
-    ) -> models.ManagedEmbeddingBackfillResponse:
-        status = await self._client._model_request(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            "POST",
-            "/v1/graph/embedding/backfill-jobs",
-            params={"graph": self._graph, "branch": self._branch},
-            body={"batch_size": batch_size, "limit": limit, "full": bool(full)},
-            idempotency_key=idempotency_key
-            or self._client.idempotency_key("embedding-backfill"),
-        )
-        deadline = asyncio.get_running_loop().time() + timeout
-        while status.status in {"pending", "running"}:
-            if asyncio.get_running_loop().time() >= deadline:
-                raise TimeoutError(
-                    f"embedding backfill {status.job_id} exceeded {timeout}s"
-                )
-            await asyncio.sleep(poll_interval)
-            status = await self.embedding_backfill_job(status.job_id)
-        if status.status != "succeeded" or status.result is None:
-            raise RuntimeError(
-                status.terminal_error
-                or f"embedding backfill {status.job_id} ended {status.status}"
-            )
-        return cast(models.ManagedEmbeddingBackfillResponse, status.result)
-
-    async def submit_embedding_backfill(
-        self, body: Body, *, idempotency_key: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return cast(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            await super().submit_embedding_backfill(
-                body, idempotency_key=idempotency_key
-            ),
-        )
-
-    async def embedding_backfill_job(
-        self, job_id: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return cast(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            await super().embedding_backfill_job(job_id),
-        )
-
-    async def promote_embedding(
-        self, *, run_id: str, allow_regression: bool | None = None
-    ) -> models.ManagedEmbeddingPromoteResponse:
-        return cast(
-            models.ManagedEmbeddingPromoteResponse,
-            await super().promote_embedding(
-                run_id=run_id, allow_regression=allow_regression
-            ),
-        )
-
     async def retract_model(
         self, body: Body, *, idempotency_key: str | None = None
     ) -> models.GraphRetractResponse:
@@ -416,7 +280,6 @@ class _AsyncEntityNamespace(_EntityNamespace):
 class AsyncLbbClient(_BaseLbbClient):
     """Asynchronous client. Usable as an async context manager."""
 
-    context: _AsyncContextNamespace
     entities: _AsyncEntityNamespace
     ontology: _AsyncOntologyNamespace
     query: _AsyncQueryNamespace
@@ -451,7 +314,6 @@ class AsyncLbbClient(_BaseLbbClient):
             on_retry=on_retry,
             default_consistency=default_consistency,
         )
-        self.context = _AsyncContextNamespace(self)
         self.entities = _AsyncEntityNamespace(self)
         self.ontology = _AsyncOntologyNamespace(self)
         self.query = _AsyncQueryNamespace(self)
@@ -613,116 +475,6 @@ class AsyncLbbClient(_BaseLbbClient):
     ) -> models.GraphCommitDryRunResponse:
         return cast(
             models.GraphCommitDryRunResponse, await super().commit_dry_run_model(body)
-        )
-
-    async def embedding_models(
-        self,
-        *,
-        options: RequestOptions | None = None,
-    ) -> models.ManagedEmbeddingModelsResponse:
-        return cast(
-            models.ManagedEmbeddingModelsResponse,
-            await super().embedding_models(options=options),
-        )
-
-    async def embedding_config(
-        self, *, options: RequestOptions | None = None
-    ) -> models.ManagedEmbeddingConfigResponse:
-        return cast(
-            models.ManagedEmbeddingConfigResponse,
-            await super().embedding_config(options=options),
-        )
-
-    async def set_embedding_config(
-        self, body: Body
-    ) -> models.ManagedEmbeddingConfigResponse:
-        return cast(
-            models.ManagedEmbeddingConfigResponse,
-            await super().set_embedding_config(body),
-        )
-
-    async def set_embedding_model(
-        self, model_id: str, *, auto_embed_query: bool = True
-    ) -> models.ManagedEmbeddingConfigResponse:
-        return cast(
-            models.ManagedEmbeddingConfigResponse,
-            await super().set_embedding_model(
-                model_id, auto_embed_query=auto_embed_query
-            ),
-        )
-
-    async def backfill_embeddings(
-        self,
-        *,
-        batch_size: int | None = None,
-        limit: int | None = None,
-        full: bool | None = None,
-        idempotency_key: str | None = None,
-        timeout: float = 1800.0,
-        poll_interval: float = 2.0,
-    ) -> models.ManagedEmbeddingBackfillResponse:
-        status = await self._model_request(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            "POST",
-            "/v1/graph/embedding/backfill-jobs",
-            body={"batch_size": batch_size, "limit": limit, "full": bool(full)},
-            idempotency_key=idempotency_key
-            or self.idempotency_key("embedding-backfill"),
-        )
-        deadline = asyncio.get_running_loop().time() + timeout
-        while status.status in {"pending", "running"}:
-            if asyncio.get_running_loop().time() >= deadline:
-                raise TimeoutError(
-                    f"embedding backfill {status.job_id} exceeded {timeout}s"
-                )
-            await asyncio.sleep(poll_interval)
-            status = await self._model_request(
-                models.ManagedEmbeddingBackfillJobStatusResponse,
-                "GET",
-                "/v1/graph/embedding/backfill-jobs",
-                params={"job_id": status.job_id},
-            )
-        if status.status != "succeeded" or status.result is None:
-            raise RuntimeError(
-                status.terminal_error
-                or f"embedding backfill {status.job_id} ended {status.status}"
-            )
-        return status.result
-
-    async def submit_embedding_backfill(
-        self, body: Body, *, idempotency_key: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return cast(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            await super().submit_embedding_backfill(
-                body, idempotency_key=idempotency_key
-            ),
-        )
-
-    async def embedding_backfill_job(
-        self, job_id: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return cast(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            await super().embedding_backfill_job(job_id),
-        )
-
-    async def cancel_embedding_backfill(
-        self, job_id: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return cast(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            await super().cancel_embedding_backfill(job_id),
-        )
-
-    async def promote_embedding(
-        self, *, run_id: str, allow_regression: bool | None = None
-    ) -> models.ManagedEmbeddingPromoteResponse:
-        return cast(
-            models.ManagedEmbeddingPromoteResponse,
-            await super().promote_embedding(
-                run_id=run_id, allow_regression=allow_regression
-            ),
         )
 
     async def train_submit(

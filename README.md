@@ -32,14 +32,12 @@ with LbbClient(
     published = lbb.read_snapshot_model()
     print(published.snapshot.served_at_seq, published.query_lag_commits)
 
-    # 3. Hybrid search over the snapshot.
-    results = lbb.search.hybrid(
-        "how much annual leave do employees get?",
-        top_k=5,
-        consistency="eventual",
+    # 3. Query the snapshot with SPARQL.
+    rows = lbb.sparql_select(
+        "SELECT ?s ?o WHERE { ?s <policy:annual_leave> ?o } LIMIT 5"
     )
-    for hit in results.get("assertions", []):
-        print(hit["relation"]["name"], hit["score"])
+    for row in rows:
+        print(row["s"], row["o"])
 ```
 
 For hosted use, pass the exact `endpoint_url` shown on the stack's Connect
@@ -120,11 +118,9 @@ Methods return parsed dictionaries and raise `LbbError` (with `status_code`, `co
 
 Beyond the quickstart: `entities.sample(type=..., limit=...)` for a bounded
 published-generation sample and `entities.filter_by_attributes(...)` for
-relation-bound structured SPARQL; `context.suggest(...)`, `context.resolve(...)`,
-`context.decode(...)`, and `context.groundability(...)` for vocabulary-grounded
-applications; and `ontology`/`schema` for ontology inspection and atomic schema
-publication. Model shadow evaluation and planner, preference, suggestion, and
-extractor datasets remain available. Typed Pydantic responses are exposed by
+relation-bound structured SPARQL; and `ontology`/`schema` for ontology
+inspection and atomic schema publication. SPARQL is the one query language on
+the API. Typed Pydantic responses are exposed by
 matching `*_model` helpers; generated models live in `lbb.models`.
 
 Full reference and guides: [docs.littlebigbrain.com/sdks/python](https://docs.littlebigbrain.com/sdks/python/).

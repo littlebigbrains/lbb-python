@@ -509,8 +509,6 @@ class _BaseLbbClient:
         # the server default is ``eventual``; set ``"strong"`` to keep reads
         # head-exact by default. A per-call ``consistency`` always wins.
         self._default_consistency = default_consistency
-        self.search = _SearchNamespace(self)
-        self.context = _ContextNamespace(self)
         self.entities = _EntityNamespace(self)
         self.ontology = _OntologyNamespace(self)
         self.query = _QueryNamespace(self)
@@ -752,127 +750,6 @@ class _BaseLbbClient:
             options={"retry": True},
         )
 
-    def embedding_config(
-        self, *, options: RequestOptions | None = None
-    ) -> models.ManagedEmbeddingConfigResponse:
-        """Read the scoped graph's managed embedding configuration."""
-        return self._model_request(
-            models.ManagedEmbeddingConfigResponse,
-            "GET",
-            "/v1/graph/embedding",
-            options=options,
-        )
-
-    def embedding_models(
-        self,
-        *,
-        options: RequestOptions | None = None,
-    ) -> models.ManagedEmbeddingModelsResponse:
-        """List the embedding models available on this deployment."""
-        return self._model_request(
-            models.ManagedEmbeddingModelsResponse,
-            "GET",
-            "/v1/graph/embedding/models",
-            options=options,
-        )
-
-    def set_embedding_model(
-        self, model_id: str, *, auto_embed_query: bool = True
-    ) -> models.ManagedEmbeddingConfigResponse:
-        """Choose the model used automatically for writes and vector queries."""
-        return self.set_embedding_config(
-            {
-                "model_id": model_id,
-                "service": "open_router",
-                "auto_embed_query": auto_embed_query,
-            }
-        )
-
-    def set_embedding_config(self, body: Body) -> models.ManagedEmbeddingConfigResponse:
-        """Set advanced managed embedding configuration."""
-        return self._model_request(
-            models.ManagedEmbeddingConfigResponse,
-            "POST",
-            "/v1/graph/embedding",
-            body=body,
-        )
-
-    def backfill_embeddings(
-        self,
-        *,
-        batch_size: int | None = None,
-        limit: int | None = None,
-        full: bool | None = None,
-        idempotency_key: str | None = None,
-        timeout: float = 1800.0,
-        poll_interval: float = 2.0,
-    ) -> models.ManagedEmbeddingBackfillResponse:
-        """Submit the durable backfill job and wait for its terminal result."""
-        status = self.submit_embedding_backfill(
-            {"batch_size": batch_size, "limit": limit, "full": bool(full)},
-            idempotency_key=idempotency_key
-            or self.idempotency_key("embedding-backfill"),
-        )
-        deadline = time.monotonic() + timeout
-        while status.status in {"pending", "running"}:
-            if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    f"embedding backfill {status.job_id} exceeded {timeout}s"
-                )
-            time.sleep(poll_interval)
-            status = self.embedding_backfill_job(status.job_id)
-        if status.status != "succeeded" or status.result is None:
-            raise RuntimeError(
-                status.terminal_error
-                or f"embedding backfill {status.job_id} ended {status.status}"
-            )
-        return status.result
-
-    def submit_embedding_backfill(
-        self,
-        body: Body,
-        *,
-        idempotency_key: str,
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return self._model_request(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            "POST",
-            "/v1/graph/embedding/backfill-jobs",
-            body=body,
-            idempotency_key=idempotency_key,
-        )
-
-    def embedding_backfill_job(
-        self, job_id: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return self._model_request(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            "GET",
-            "/v1/graph/embedding/backfill-jobs",
-            params={"job_id": job_id},
-        )
-
-    def cancel_embedding_backfill(
-        self, job_id: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return self._model_request(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            "DELETE",
-            "/v1/graph/embedding/backfill-jobs",
-            params={"job_id": job_id},
-        )
-
-    def promote_embedding(
-        self, *, run_id: str, allow_regression: bool | None = None
-    ) -> models.ManagedEmbeddingPromoteResponse:
-        """Promote a successful fine-tuned embedding run to the graph default."""
-        return self._model_request(
-            models.ManagedEmbeddingPromoteResponse,
-            "POST",
-            "/v1/graph/embedding/promote",
-            params={"run_id": run_id, "allow_regression": allow_regression},
-        )
-
     def import_ndjson(
         self,
         lines: Sequence[Mapping[str, Any]] | str,
@@ -1052,21 +929,6 @@ class _BaseLbbClient:
         )
 
     # --- models as runs (training-run registry + eval machinery) ---
-
-    def vocab_export(
-        self, *, sections: list[str] | None = None, limit: int | None = None
-    ) -> Any:
-        """The graph's grounding vocabulary as byte-sorted, deduped string
-        sections — decoder-side automaton input / export-bundle half
-        (``GET /v1/search/vocab``)."""
-        return self._request(
-            "GET",
-            "/v1/search/vocab",
-            params={
-                "sections": ",".join(sections) if sections else None,
-                "limit": limit,
-            },
-        )
 
     def read_signals(
         self,
@@ -1297,61 +1159,15 @@ class _BaseLbbClient:
             params={"run_id": run_id, "allow_regression": allow_regression},
         )
 
-    # --- search ---
-
-    def graph_search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
-        """Full semantic hybrid search from a request body."""
-        return self._request(
-            "POST", "/v1/graph/search", body=body, options=_read_options(options)
-        )
-
-    def multi_search(self, body: Body, *, options: RequestOptions | None = None) -> Any:
-        """Reciprocal-rank-fusion across sub-queries."""
-        return self._request(
-            "POST", "/v1/search/multi", body=body, options=_read_options(options)
-        )
-
-    def full_text_search(
-        self,
-        body: Body,
-        *,
-        consistency: str | None = None,
-        min_indexed_seq: int | None = None,
-        options: RequestOptions | None = None,
-    ) -> Any:
-        """BM25 search. ``min_indexed_seq`` sets the A5 read-your-writes floor."""
-        return self._request(
-            "POST",
-            "/v1/search/full-text",
-            body=self._with_consistency(body, consistency, min_indexed_seq),
-            options=_read_options(options),
-        )
-
-    def embedding_search(
-        self,
-        body: Body,
-        *,
-        consistency: str | None = None,
-        min_indexed_seq: int | None = None,
-        options: RequestOptions | None = None,
-    ) -> Any:
-        """ANN/vector search. ``min_indexed_seq`` sets the A5 read-your-writes floor."""
-        return self._request(
-            "POST",
-            "/v1/search/embedding",
-            body=self._with_consistency(body, consistency, min_indexed_seq),
-            options=_read_options(options),
-        )
-
-    # --- search relevance feedback (training data) ---
+    # --- relevance feedback (training data) ---
 
     def search_feedback(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        """Append relevance labels for a set of search results.
+        """Append relevance labels for a set of ranked results.
 
-        How little big brain gathers customer-specific qrels: after a search,
-        grade the results (``3`` ideal/good, ``1`` partially relevant, ``0``
-        bad), referencing the ``search_id`` from the search response so the
-        labels tie back to that exact ranking. Labels are stored apart from
+        How little big brain gathers customer-specific qrels: grade the results
+        (``3`` ideal/good, ``1`` partially relevant, ``0`` bad), referencing the
+        ranking's ``search_id`` so the labels tie back to that exact ranking.
+        Labels are stored apart from
         customer facts (in ``__lbb_feedback``) and exported via
         :meth:`search_feedback_export` as training/eval data for embedding
         fine-tuning. The body is a ``SearchFeedbackRequest`` (``query``,
@@ -1424,16 +1240,6 @@ class _BaseLbbClient:
         return self._model_request(
             models.SparqlSelectResponse, "POST", "/v1/query/sparql", body=body
         )
-
-    def analytics(self, body: Body) -> Any:
-        """Basic-graph-pattern query with group-graph-pattern combinators.
-
-        UNION / OPTIONAL / MINUS / EXISTS / NOT EXISTS folded over the base
-        ``patterns``. The complement to :meth:`sparql_select`: this route carries
-        the combinators (but not FILTER/aggregation), so reach for it when a
-        query needs an optional/union/negated leg rather than a grouped aggregate.
-        """
-        return self._request("POST", "/v1/query/analytics", body=body)
 
     def governed_conflicts(
         self, body: Body
@@ -1673,127 +1479,6 @@ class _GraphNamespace:
             params={"graph": self._graph, "branch": self._branch, "confirm": confirm},
         )
 
-    def embedding_config(
-        self, *, options: RequestOptions | None = None
-    ) -> models.ManagedEmbeddingConfigResponse:
-        return self._client._model_request(
-            models.ManagedEmbeddingConfigResponse,
-            "GET",
-            "/v1/graph/embedding",
-            params={"graph": self._graph, "branch": self._branch},
-            options=options,
-        )
-
-    def embedding_models(
-        self,
-        *,
-        options: RequestOptions | None = None,
-    ) -> models.ManagedEmbeddingModelsResponse:
-        return self._client._model_request(
-            models.ManagedEmbeddingModelsResponse,
-            "GET",
-            "/v1/graph/embedding/models",
-            params={
-                "graph": self._graph,
-                "branch": self._branch,
-            },
-            options=options,
-        )
-
-    def set_embedding_model(
-        self, model_id: str, *, auto_embed_query: bool = True
-    ) -> models.ManagedEmbeddingConfigResponse:
-        return self.set_embedding_config(
-            {
-                "model_id": model_id,
-                "service": "open_router",
-                "auto_embed_query": auto_embed_query,
-            }
-        )
-
-    def set_embedding_config(self, body: Body) -> models.ManagedEmbeddingConfigResponse:
-        return self._client._model_request(
-            models.ManagedEmbeddingConfigResponse,
-            "POST",
-            "/v1/graph/embedding",
-            params={"graph": self._graph, "branch": self._branch},
-            body=body,
-        )
-
-    def backfill_embeddings(
-        self,
-        *,
-        batch_size: int | None = None,
-        limit: int | None = None,
-        full: bool | None = None,
-        idempotency_key: str | None = None,
-        timeout: float = 1800.0,
-        poll_interval: float = 2.0,
-    ) -> models.ManagedEmbeddingBackfillResponse:
-        status = self.submit_embedding_backfill(
-            {"batch_size": batch_size, "limit": limit, "full": bool(full)},
-            idempotency_key=idempotency_key
-            or self._client.idempotency_key("embedding-backfill"),
-        )
-        deadline = time.monotonic() + timeout
-        while status.status in {"pending", "running"}:
-            if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    f"embedding backfill {status.job_id} exceeded {timeout}s"
-                )
-            time.sleep(poll_interval)
-            status = self.embedding_backfill_job(status.job_id)
-        if status.status != "succeeded" or status.result is None:
-            raise RuntimeError(
-                status.terminal_error
-                or f"embedding backfill {status.job_id} ended {status.status}"
-            )
-        return status.result
-
-    def submit_embedding_backfill(
-        self, body: Body, *, idempotency_key: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return self._client._model_request(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            "POST",
-            "/v1/graph/embedding/backfill-jobs",
-            params={
-                "graph": self._graph,
-                "branch": self._branch,
-            },
-            body=body,
-            idempotency_key=idempotency_key,
-        )
-
-    def embedding_backfill_job(
-        self, job_id: str
-    ) -> models.ManagedEmbeddingBackfillJobStatusResponse:
-        return self._client._model_request(
-            models.ManagedEmbeddingBackfillJobStatusResponse,
-            "GET",
-            "/v1/graph/embedding/backfill-jobs",
-            params={
-                "graph": self._graph,
-                "branch": self._branch,
-                "job_id": job_id,
-            },
-        )
-
-    def promote_embedding(
-        self, *, run_id: str, allow_regression: bool | None = None
-    ) -> models.ManagedEmbeddingPromoteResponse:
-        return self._client._model_request(
-            models.ManagedEmbeddingPromoteResponse,
-            "POST",
-            "/v1/graph/embedding/promote",
-            params={
-                "graph": self._graph,
-                "branch": self._branch,
-                "run_id": run_id,
-                "allow_regression": allow_regression,
-            },
-        )
-
     def retract(self, body: Body, *, idempotency_key: str | None = None) -> Any:
         """Retract edges/entities from the scoped graph. See :meth:`LbbClient.retract`."""
         return self._client._request(
@@ -1929,117 +1614,6 @@ class _FactsNamespace:
         )
 
 
-class _SearchNamespace:
-    def __init__(self, client: _BaseLbbClient) -> None:
-        self._client = client
-
-    def __call__(
-        self,
-        query: str,
-        *,
-        top_k: int | None = None,
-        consistency: str | None = None,
-        min_indexed_seq: int | None = None,
-    ) -> Any:
-        """Quick semantic hybrid search while preserving ``client.search(...)``."""
-        return self.hybrid(
-            query,
-            top_k=top_k,
-            consistency=consistency,
-            min_indexed_seq=min_indexed_seq,
-        )
-
-    def hybrid(self, query_or_body: str | Body, **kwargs: Any) -> Any:
-        options = kwargs.get("options")
-        # A5: resolve the client default consistency and thread the floor.
-        consistency = self._client._resolve_consistency(kwargs.get("consistency"))
-        min_indexed_seq = kwargs.get("min_indexed_seq")
-        if isinstance(query_or_body, str):
-            params = {
-                "query": query_or_body,
-                "top_k": kwargs.get("top_k"),
-                "consistency": consistency,
-                "min_indexed_seq": min_indexed_seq,
-                "targets": (
-                    ",".join(kwargs["targets"]) if kwargs.get("targets") else None
-                ),
-                "profile": kwargs.get("profile"),
-            }
-            return self._client._request(
-                "GET", "/v1/search", params=params, options=options
-            )
-        # Hybrid graph search carries consistency on the nested `search` options.
-        body = query_or_body
-        if (consistency is not None or min_indexed_seq is not None) and isinstance(
-            body, Mapping
-        ):
-            merged = dict(body)
-            search = dict(merged.get("search") or {})
-            if consistency is not None and search.get("consistency") is None:
-                search["consistency"] = consistency
-            if min_indexed_seq is not None and search.get("min_indexed_seq") is None:
-                search["min_indexed_seq"] = min_indexed_seq
-            merged["search"] = search
-            body = merged
-        return self._client._request(
-            "POST",
-            "/v1/graph/search",
-            body=body,
-            options=_read_options(options),
-        )
-
-
-class _ContextNamespace:
-    """Typed grounding, completion, and decoding operations."""
-
-    def __init__(self, client: _BaseLbbClient) -> None:
-        self._client = client
-
-    def suggest(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.SearchSuggestResponse:
-        return self._client._model_request(
-            models.SearchSuggestResponse,
-            "POST",
-            "/v1/search/suggest",
-            body=body,
-            options=_read_options(options),
-        )
-
-    def resolve(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.ResolveTermResponse:
-        return self._client._model_request(
-            models.ResolveTermResponse,
-            "POST",
-            "/v1/search/resolve-term",
-            body=body,
-            options=_read_options(options),
-        )
-
-    def decode(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.DecodeResponse:
-        return self._client._model_request(
-            models.DecodeResponse,
-            "POST",
-            "/v1/decode",
-            body=body,
-            options=_read_options(options),
-        )
-
-    def groundability(
-        self, *, sample: int | None = None, options: RequestOptions | None = None
-    ) -> models.GroundabilityReport:
-        return self._client._model_request(
-            models.GroundabilityReport,
-            "GET",
-            "/v1/graph/groundability",
-            params={"sample": sample},
-            options=_read_options(options),
-        )
-
-
 class _OntologyNamespace:
     """Typed ontology discovery and lifecycle operations."""
 
@@ -2169,7 +1743,7 @@ class _OntologyNamespace:
 
 
 class _QueryNamespace:
-    """Typed structured, SPARQL-text, and analytical queries."""
+    """Typed structured and SPARQL-text queries."""
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
@@ -2209,17 +1783,6 @@ class _QueryNamespace:
             offset=offset,
             consistency=consistency,
             min_indexed_seq=min_indexed_seq,
-        )
-
-    def analytics(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.AnalyticQueryResponse:
-        return self._client._model_request(
-            models.AnalyticQueryResponse,
-            "POST",
-            "/v1/query/analytics",
-            body=body,
-            options=_read_options(options),
         )
 
     def conflicts(

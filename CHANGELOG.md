@@ -2,6 +2,30 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.11.0 (2026-08-21)
+
+Breaking removal of every non-SPARQL query surface. The server now serves
+SPARQL as its only query surface, so the client keeps only the SPARQL methods.
+
+- Remove the `client.search` namespace, including the callable
+  `client.search(...)` shortcut and `client.search.hybrid(...)`.
+- Remove the `client.context` namespace (`suggest`, `resolve`, `decode`,
+  `groundability`) from the sync and async clients.
+- Remove `graph_search`, `multi_search`, `full_text_search`,
+  `embedding_search`, `vocab_export`, and `analytics` from the client, plus
+  `query.analytics` from the query namespace.
+- Remove the managed embedding family from the client and from
+  `client.graph(...)`: `embedding_config`, `embedding_models`,
+  `set_embedding_model`, `set_embedding_config`, `backfill_embeddings`,
+  `submit_embedding_backfill`, `embedding_backfill_job`,
+  `cancel_embedding_backfill`, and `promote_embedding`.
+- The removed methods took their generated request/response models with them,
+  since the routes left the contract.
+- Keep `sparql`, `sparql_select`, `sparql_select_model`, `query.structured`,
+  and `query.sparql`. Keep the temporal reads (`current_state`, `history`,
+  `why`), the entity reads, relevance feedback, and every write, ontology,
+  schema, branch, and operations surface.
+
 ## 0.10.0 (2026-08-21)
 
 Breaking removal of the standalone graph-traversal surface.
