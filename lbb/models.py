@@ -367,87 +367,6 @@ class DateBucketGranularity(Enum):
     hour = 'hour'
 
 
-class DecodeEndpoint(BaseModel):
-    name: Annotated[str, Field(description='Entity display name.')]
-    type: Annotated[
-        str | None,
-        Field(
-            description="Entity type — the type signature narrows the relation on this. Optional:\nomit it to have the database recover the type by resolving `name` to a\nreal entity (exact match, most-connected on a cross-type name collision),\nso a caller that knows a name but not its type can still decode. The\nentity it resolved to is echoed in the response's `resolved_source` /\n`resolved_target`."
-        ),
-    ] = None
-
-
-class DecodeMode(Enum):
-    forced = 'forced'
-    model_narrowed = 'model_narrowed'
-    model_blind = 'model_blind'
-    grounding_only = 'grounding_only'
-
-
-class DecodeRequest(BaseModel):
-    source: DecodeEndpoint
-    target: DecodeEndpoint
-    use_model_when_forced: Annotated[
-        bool | None,
-        Field(
-            description='Call the model even when the type signature forces exactly one relation\n(default false — a forced pair is answered by the DB alone, no model).'
-        ),
-    ] = None
-
-
-class DecodeResolved(BaseModel):
-    """
-    The entity a type-less [`DecodeEndpoint`] resolved to — the type the database
-    recovered from the bare name, and how many other entities shared that name.
-    """
-
-    name: str
-    other_candidates: Annotated[
-        int,
-        Field(
-            description='Count of other entities that carry this exact name under a different type\n(0 when the name was unambiguous). The highest-degree match was chosen.',
-            ge=0,
-        ),
-    ]
-    type: str
-
-
-class DecodeResponse(BaseModel):
-    candidates: Annotated[
-        list[str],
-        Field(
-            description='The relations the DB admits for this type pair — the narrowed vocabulary\nthe decode is constrained to.'
-        ),
-    ]
-    gen_ms: Annotated[
-        float | None,
-        Field(
-            description='Model generation latency in ms, present only when the model was called.'
-        ),
-    ] = None
-    mode: DecodeMode
-    narrowing_source: Annotated[
-        str,
-        Field(
-            description='Provenance of the narrowing: `empirical` | `declared` | `none`.'
-        ),
-    ]
-    relation: Annotated[
-        str | None,
-        Field(
-            description='The decoded relation. `None` only in `grounding_only` (no decoder\nconfigured and the pair does not force a single relation).'
-        ),
-    ] = None
-    resolved_source: DecodeResolved | None = None
-    resolved_target: DecodeResolved | None = None
-    signature_forced: Annotated[
-        bool,
-        Field(
-            description='True when the type pair admits exactly one relation (the DB forces it).'
-        ),
-    ]
-
-
 class DecorationStatus(BaseModel):
     """
     One row of the engine's decoration-status catalog: whether a declarable
@@ -1131,92 +1050,6 @@ class LbbErrorBody(BaseModel):
 
 class LbbErrorEnvelope(BaseModel):
     error: LbbErrorBody
-
-
-class ManagedEmbeddingBackfillJobProgress(BaseModel):
-    continuation: str | None = None
-    embedded: Annotated[int, Field(ge=0)]
-    failed: Annotated[int, Field(ge=0)]
-    final_index_job_id: str | None = None
-    heartbeat_micros: int
-    index_lineage: IndexLineage | None = None
-    missing: Annotated[int, Field(ge=0)]
-    processed: Annotated[int, Field(ge=0)]
-    skipped: Annotated[int, Field(ge=0)]
-    source_commit_seq: Annotated[int, Field(ge=0)]
-    source_snapshot_token: str
-    total: Annotated[int, Field(ge=0)]
-    worker: str | None = None
-
-
-class ManagedEmbeddingBackfillJobRequest(BaseModel):
-    batch_size: Annotated[int | None, Field(ge=0)] = None
-    full: bool | None = None
-    limit: Annotated[int | None, Field(ge=0)] = None
-
-
-class ManagedEmbeddingBackfillResponse(BaseModel):
-    """
-    Outcome of embedding the corpus and scheduling a complete published
-    generation. `indexed_commit_seq` remains zero until publication;
-    `final_index_job_id` identifies the durable generation build when one was
-    enqueued. ANN is never cut over independently.
-    """
-
-    batches: Annotated[int, Field(ge=0)]
-    continuation: str | None = None
-    embedded: Annotated[int, Field(ge=0)]
-    entities_total: Annotated[int, Field(ge=0)]
-    failed: Annotated[int, Field(ge=0)]
-    final_index_job_id: str | None = None
-    index_lineage: IndexLineage | None = None
-    indexed_commit_seq: Annotated[int, Field(ge=0)]
-    missing: Annotated[int, Field(ge=0)]
-    model_id: str
-    processed: Annotated[int, Field(ge=0)]
-    skipped: Annotated[int, Field(ge=0)]
-    source_commit_seq: Annotated[int, Field(ge=0)]
-    source_snapshot_token: str
-    truncated: bool
-
-
-class ManagedEmbeddingPromotionEvals(BaseModel):
-    """
-    Quality comparison used when promoting a fine-tuned embedding run.
-    """
-
-    allow_regression: bool
-    baseline_ndcg: float
-    tier: str
-    trained_ndcg: float
-
-
-class ManagedEmbeddingService(Enum):
-    """
-    Service used to generate managed corpus and query embeddings.
-    """
-
-    open_router = 'open_router'
-    modal = 'modal'
-
-
-class ManagedEmbeddingSource(Enum):
-    """
-    Where a managed embedding model came from.
-    """
-
-    stock = 'stock'
-    fine_tuned = 'fine_tuned'
-
-
-class ManagedEmbeddingUnavailableReason(Enum):
-    """
-    Why a managed embedding catalog entry cannot currently be selected.
-    """
-
-    account_policy = 'account_policy'
-    zdr_required = 'zdr_required'
-    price_ceiling = 'price_ceiling'
 
 
 class ModelArtifact(BaseModel):
@@ -2546,54 +2379,6 @@ class SearchOrderBy2(BaseModel):
     field: str
 
 
-class SearchSessionOpenResponse(BaseModel):
-    """
-    Response to `POST /v1/search/session` — a freshly opened, snapshot-pinned
-    session. `session_id` is unguessable and scoped to the authenticated tenant.
-    """
-
-    commit_seq: Annotated[
-        int, Field(description='The head commit the session opened at.', ge=0)
-    ]
-    session_id: Annotated[
-        str,
-        Field(
-            description='Opaque, unguessable session id (hex). Pass it on every `prefix`/`commit`.'
-        ),
-    ]
-    snapshot_token: Annotated[
-        str,
-        Field(
-            description='The snapshot the session is pinned to, as a consistency token.'
-        ),
-    ]
-    ttl_seconds: Annotated[
-        int, Field(description='Sliding time-to-live; each frame refreshes it.', ge=0)
-    ]
-
-
-class SearchSessionPrefixRequest(BaseModel):
-    """
-    `POST /v1/search/session/prefix` — the full query prefix typed so far. `seq`
-    is client-monotonic; a stale `seq` (≤ the last one seen) is a 200 no-op.
-    """
-
-    seq: Annotated[
-        int,
-        Field(
-            description='Client-monotonic frame counter; stale frames are ignored.',
-            ge=0,
-        ),
-    ]
-    session_id: str
-    text: Annotated[
-        str,
-        Field(
-            description='The full prefix so far (not a delta) — the engine diffs it internally.'
-        ),
-    ]
-
-
 class SearchSignalWeights(BaseModel):
     bm25: float | None = None
     graph: float | None = None
@@ -3415,39 +3200,6 @@ class SparqlValue6(BaseModel):
     entity: EntitySelector
 
 
-class SpeculationExplain(BaseModel):
-    """
-    `explain.speculation`: of the blocks this commit read, how many the prior
-    `prefix` warming had already fetched (`hit`), how many it warmed but the
-    commit never read (`wasted`), and the total bytes warming moved.
-    """
-
-    bytes: Annotated[
-        int, Field(description='Total bytes warming moved into the cache.', ge=0)
-    ]
-    hit_blocks: Annotated[
-        int,
-        Field(
-            description='Warmed blocks the commit actually read (the speculation payoff).',
-            ge=0,
-        ),
-    ]
-    warmed_blocks: Annotated[
-        int,
-        Field(
-            description='Blocks the session warmed across all its `prefix` frames.',
-            ge=0,
-        ),
-    ]
-    wasted_blocks: Annotated[
-        int,
-        Field(
-            description='Warmed blocks the commit never read (wasted speculative work).',
-            ge=0,
-        ),
-    ]
-
-
 class SuggestContext(BaseModel):
     """
     Endpoint types for [`SearchSuggestRequest::context`]. Both optional; supplying
@@ -3941,43 +3693,6 @@ class WalCompactResponse(BaseModel):
         ),
     ]
     snapshot: SnapshotView
-
-
-class WarmBudget(BaseModel):
-    """
-    A session's remaining warm budget (reads and bytes), decremented as `prefix`
-    frames warm the cache. Bounds wasted speculative work per session.
-    """
-
-    bytes: Annotated[int, Field(ge=0)]
-    reads: Annotated[int, Field(ge=0)]
-
-
-class WarmedStats(BaseModel):
-    """
-    What a `prefix` frame warmed: new terms diffed in, cache blocks fetched, and
-    bytes read. `exhausted` is set once the session hits a warm budget.
-    """
-
-    blocks: Annotated[
-        int, Field(description='Cache blocks fetched by this frame.', ge=0)
-    ]
-    bytes: Annotated[
-        int, Field(description='Bytes read into the cache by this frame.', ge=0)
-    ]
-    exhausted: Annotated[
-        bool | None,
-        Field(
-            description='`true` once a session budget stopped further warming this frame.'
-        ),
-    ] = None
-    terms: Annotated[
-        int,
-        Field(
-            description='New complete terms warmed by this frame (already-warmed terms are skipped).',
-            ge=0,
-        ),
-    ]
 
 
 class WhyRequest(BaseModel):
@@ -4828,129 +4543,6 @@ class HybridMultiSearchResult(BaseModel):
     score: float
     source_ranks: list[HybridSourceRank]
     type: str
-
-
-class ManagedEmbeddingBackfillJobStatusResponse(BaseModel):
-    attempts: Annotated[int, Field(ge=0)]
-    enqueued_at_micros: int
-    graph: GraphKey
-    idempotency_key: str
-    job_id: str
-    parked: Annotated[
-        bool | None,
-        Field(
-            description='True when the job failed terminally because the provider rejected it for\nan account data-policy / configuration reason (a ZDR-ineligible model,\nauth, model-not-found) rather than a transient error — a *parked* job that\nwill not retry. The console renders this as a "choose a different model"\nblock instead of a retry. It clears when the embedding config version\nchanges, which mints a fresh reconciliation job.'
-        ),
-    ] = None
-    progress: ManagedEmbeddingBackfillJobProgress | None = None
-    result: ManagedEmbeddingBackfillResponse | None = None
-    status: str
-    terminal_error: str | None = None
-    updated_at_micros: int
-
-
-class ManagedEmbeddingConfig(BaseModel):
-    """
-    The resolved, versioned managed embedding configuration.
-    """
-
-    auto_embed_query: bool
-    base_model: str
-    created_at_micros: int
-    dim: Annotated[int, Field(ge=0)]
-    metric: VectorMetric
-    model_id: str
-    run_id: str | None = None
-    service: ManagedEmbeddingService
-    source: ManagedEmbeddingSource
-    version: Annotated[int, Field(ge=0)]
-
-
-class ManagedEmbeddingConfigRequest(BaseModel):
-    """
-    Set the graph branch's default managed embedding model.
-    """
-
-    auto_embed_query: bool | None = None
-    base_model: str | None = None
-    dim: Annotated[
-        int | None,
-        Field(
-            description="Vector width. Required for `modal`; optional for `open_router`, where a\none-text validation call discovers the model's native width.",
-            ge=0,
-        ),
-    ] = None
-    metric: VectorMetric | None = None
-    model_id: str
-    run_id: str | None = None
-    service: ManagedEmbeddingService | None = None
-    source: ManagedEmbeddingSource | None = None
-
-
-class ManagedEmbeddingConfigResponse(BaseModel):
-    """
-    Read/set response. Legacy hash-derived graphs return `configured=false` and no config.
-    """
-
-    config: ManagedEmbeddingConfig | None = None
-    configured: bool
-    reconciliation: ManagedEmbeddingBackfillJobStatusResponse | None = None
-
-
-class ManagedEmbeddingModel(BaseModel):
-    """
-    One model returned by the live managed-embedding service catalog.
-    """
-
-    context_length: Annotated[int | None, Field(ge=0)] = None
-    id: str
-    input_modalities: list[str] | None = None
-    name: str
-    output_modalities: Annotated[
-        list[str] | None,
-        Field(
-            description='The model\'s output modalities (e.g. `["embeddings"]`). The catalog is\nfiltered to embedding models on this field, so every entry carries the\nembeddings modality; it is surfaced so clients (and the deploy smoke) can\nre-verify the catalog is embeddings-only.'
-        ),
-    ] = None
-    policy_eligible: Annotated[
-        bool | None,
-        Field(
-            description="True when the model is present in the operator account's policy-filtered\ncatalog. Kept for generated-client compatibility; use `selectable` and\n`unavailable_reason` for selection UI."
-        ),
-    ] = None
-    prompt_price: Annotated[
-        str | None,
-        Field(
-            description='Provider prompt price as a decimal USD/token string when advertised.'
-        ),
-    ] = None
-    selectable: Annotated[
-        bool,
-        Field(description='Whether this deployment can currently select the model.'),
-    ]
-    unavailable_reason: ManagedEmbeddingUnavailableReason | None = None
-
-
-class ManagedEmbeddingModelsResponse(BaseModel):
-    """
-    Live embedding models available on this deployment.
-    """
-
-    configured: bool
-    models: list[ManagedEmbeddingModel] | None = None
-    service: ManagedEmbeddingService
-
-
-class ManagedEmbeddingPromoteResponse(BaseModel):
-    """
-    Response after promoting a finished training run to the graph default.
-    """
-
-    config: ManagedEmbeddingConfig
-    configured: bool
-    evals: ManagedEmbeddingPromotionEvals | None = None
-    promoted_run: str
-    registry: Any | None = None
 
 
 class ModelCheckFile(BaseModel):
@@ -6928,46 +6520,6 @@ class SearchFeedbackExportResponse(BaseModel):
     rows: list[SearchFeedbackExportRow]
 
 
-class SearchSessionCommitResponse(BaseModel):
-    """
-    Commit result: the ordinary search response plus a `speculation` block
-    reporting how much of the read set the prior warming covered. The `response`
-    is byte-identical to a non-session search of the same request (equivalence
-    invariant); only `speculation` reflects that warming happened.
-    """
-
-    response: SemanticGraphSearchResponse
-    speculation: SpeculationExplain | None = None
-
-
-class SearchSessionPrefixResponse(BaseModel):
-    """
-    Response to a `prefix` frame: index-grounded suggestions for the prefix plus
-    a report of what the frame warmed and the session's remaining warm budget.
-    """
-
-    budget_remaining: Annotated[
-        WarmBudget,
-        Field(description="The session's remaining warm budget after this frame."),
-    ]
-    seq: Annotated[int, Field(description='Echoes the request `seq`.', ge=0)]
-    stale: Annotated[
-        bool | None,
-        Field(
-            description="`true` when this frame's `seq` was stale (≤ the last seen) — a no-op."
-        ),
-    ] = None
-    suggestions: Annotated[
-        list[SearchSuggestion] | None,
-        Field(
-            description='WS1 grounded suggestions for the prefix (real vocabulary, capped).'
-        ),
-    ] = None
-    warmed: Annotated[
-        WarmedStats, Field(description='What this frame warmed into the block cache.')
-    ]
-
-
 class SearchSuggestRequest(BaseModel):
     """
     Turn-level grounding: complete a prefix from the index's own vocabulary
@@ -7612,21 +7164,6 @@ class SearchFilterExpr22(BaseModel):
     op: Op29
 
 
-class SearchSessionCommitRequest(BaseModel):
-    """
-    `POST /v1/search/session/commit` — execute the search against the current
-    published snapshot. The warmed cache makes it read warm; the results are
-    exactly what the same request would return without any prior `prefix`
-    frames.
-    """
-
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    request: SemanticGraphSearchRequest
-    session_id: str
-
-
 class SemanticGraphSearchRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -8173,7 +7710,6 @@ SearchEngineOptions.model_rebuild()
 SearchFilterExpr20.model_rebuild()
 SearchFilterExpr21.model_rebuild()
 SearchFilterExpr22.model_rebuild()
-SearchSessionCommitRequest.model_rebuild()
 ShaclLogical.model_rebuild()
 ShaclNodeShape.model_rebuild()
 ShaclPath2.model_rebuild()

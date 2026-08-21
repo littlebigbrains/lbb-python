@@ -313,33 +313,30 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(request.headers["idempotency-key"], "ik_py_1")
         self.assertEqual(json.loads(request.content), {"triplets": []})
 
-    def test_search_namespace_encodes_query_params(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient("http://h", transport=capturing_transport(seen)) as client:
-            client.search.hybrid(
-                "customer identity",
-                top_k=5,
-                consistency="strong",
-                targets=["concepts", "entities"],
-            )
-        params = dict(seen[0].url.params)
-        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/search")
-        self.assertEqual(params["query"], "customer identity")
-        self.assertEqual(params["top_k"], "5")
-        self.assertNotIn("source", params)
-        self.assertEqual(params["consistency"], "strong")
-        self.assertEqual(params["targets"], "concepts,entities")
-
-    def test_search_namespace_is_callable_for_quick_hybrid_search(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient("http://h", transport=capturing_transport(seen)) as client:
-            client.search("customer identity", top_k=5)
-
-        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/search")
-        self.assertEqual(
-            dict(seen[0].url.params),
-            {"query": "customer identity", "top_k": "5"},
-        )
+    def test_removed_query_surfaces_are_absent_from_the_client(self) -> None:
+        with LbbClient("http://h") as client:
+            for name in (
+                "search",
+                "context",
+                "graph_search",
+                "multi_search",
+                "full_text_search",
+                "embedding_search",
+                "analytics",
+                "vocab_export",
+                "embedding_config",
+                "backfill_embeddings",
+                "promote_embedding",
+            ):
+                self.assertFalse(
+                    hasattr(client, name), f"LbbClient must not expose {name}"
+                )
+            self.assertFalse(hasattr(client.query, "analytics"))
+            scoped = client.graph("g")
+            for name in ("embedding_config", "backfill_embeddings", "promote_embedding"):
+                self.assertFalse(
+                    hasattr(scoped, name), f"graph namespace must not expose {name}"
+                )
 
     def test_entities_sample_is_typed_and_uses_bounded_route(self) -> None:
         seen: list[httpx.Request] = []
@@ -458,10 +455,7 @@ class SyncClientTests(unittest.TestCase):
             ),
             default_consistency="strong",
         ) as client:
-            client.full_text_search(
-                {"query": "x", "targets": [], "top_k": 5, "explain": False},
-                consistency="eventual",
-            )
+            client.sparql_select({"patterns": []}, consistency="eventual")
         self.assertEqual(json.loads(seen[0].content)["consistency"], "eventual")
 
     def test_search_feedback_posts_labels_and_exports(self) -> None:
@@ -600,59 +594,16 @@ class SyncClientTests(unittest.TestCase):
         )
         self.assertEqual(seen[1].headers["idempotency-key"], "schema-1")
 
-    def test_preserved_grounding_and_model_dataset_routes(self) -> None:
+    def test_preserved_model_dataset_routes(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h",
             graph="g",
             transport=capturing_transport(
                 seen,
-                [
-                    {
-                        "json": {
-                            "matches": [],
-                            "method": "lexical",
-                            "snapshot": SNAPSHOT,
-                            "snapshot_token": "snapshot-7",
-                        }
-                    },
-                    {
-                        "json": {
-                            "candidates": [],
-                            "mode": "forced",
-                            "narrowing_source": "signature",
-                            "signature_forced": True,
-                        }
-                    },
-                    {
-                        "json": {
-                            "name_semantics": {
-                                "embeddable_pct": 1.0,
-                                "hash_like_pct": 0.0,
-                                "sampled": 1,
-                            },
-                            "narrowing_recall_sampled": {
-                                "n": 1,
-                                "recall_at_10": 1.0,
-                            },
-                            "recommendation": "narrow",
-                            "signature_sparsity": {
-                                "forced_pct": 1.0,
-                                "le3_pct": 1.0,
-                                "type_pairs": 1,
-                            },
-                            "snapshot": SNAPSHOT,
-                        }
-                    },
-                    *[{"json": {}} for _ in range(5)],
-                ],
+                [{"json": {}} for _ in range(5)],
             ),
         ) as client:
-            client.context.resolve({"text": "writes"})
-            client.context.decode(
-                {"source": {"name": "auth"}, "target": {"name": "db"}}
-            )
-            client.context.groundability(sample=25)
             client.shadow_eval({"queries": [], "challenger": {}})
             client.planner_dataset(limit=10, split_seq=7)
             client.planner_preference_dataset(limit=11, split_seq=8)
@@ -662,9 +613,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(
             [str(request.url).split("?")[0] for request in seen],
             [
-                "http://h/v1/search/resolve-term",
-                "http://h/v1/decode",
-                "http://h/v1/graph/groundability",
                 "http://h/v1/models/shadow-eval",
                 "http://h/v1/models/planner-dataset",
                 "http://h/v1/models/planner-preference-dataset",
@@ -1433,55 +1381,6 @@ class SyncClientTests(unittest.TestCase):
                 client.status()
         sleep.assert_called_once_with(2.0)
 
-    def test_retries_read_only_post_searches(self) -> None:
-        calls = (
-            ("graph_search", "/v1/graph/search"),
-            ("multi_search", "/v1/search/multi"),
-            ("full_text_search", "/v1/search/full-text"),
-            ("embedding_search", "/v1/search/embedding"),
-        )
-        for method_name, path in calls:
-            with self.subTest(method=method_name):
-                seen: list[httpx.Request] = []
-                with LbbClient(
-                    "http://h",
-                    max_retries=1,
-                    retry_delay=0,
-                    transport=capturing_transport(
-                        seen,
-                        [
-                            {
-                                "status": 429,
-                                "headers": {"retry-after": "0"},
-                                "json": {},
-                            },
-                            {"json": {"ok": True}},
-                        ],
-                    ),
-                ) as client:
-                    result = getattr(client, method_name)({"query": "identity"})
-                self.assertEqual(result, {"ok": True})
-                self.assertEqual(len(seen), 2)
-                self.assertEqual(str(seen[0].url).split("?")[0], f"http://h{path}")
-
-    def test_retries_body_based_hybrid_search(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h",
-            max_retries=1,
-            retry_delay=0,
-            transport=capturing_transport(
-                seen,
-                [
-                    {"status": 503, "json": {"error": {"message": "retry"}}},
-                    {"json": {"ok": True}},
-                ],
-            ),
-        ) as client:
-            result = client.search.hybrid({"query": "identity"})
-        self.assertEqual(result, {"ok": True})
-        self.assertEqual(len(seen), 2)
-
     def test_invalid_success_json_includes_response_context(self) -> None:
         with LbbClient(
             "http://h",
@@ -1801,149 +1700,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(observed.replica, "eu1-node2")
         self.assertEqual(observed.request_id, "req-1")
 
-    def test_sync_backfill_convenience_submits_and_polls_to_success(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(
-                seen,
-                [
-                    {"json": backfill_status_payload("running")},
-                    {"json": backfill_status_payload("succeeded")},
-                ],
-            ),
-        ) as client:
-            result = client.backfill_embeddings(
-                limit=10,
-                idempotency_key="backfill-1",
-                poll_interval=0,
-            )
-
-        self.assertEqual(result.processed, 10)
-        self.assertEqual([request.method for request in seen], ["POST", "GET"])
-        self.assertEqual(json.loads(seen[0].content)["limit"], 10)
-
-    def test_scoped_embedding_model_choice_hides_provider_details(self) -> None:
-        seen: list[httpx.Request] = []
-        catalog_payload = {
-            "service": "open_router",
-            "configured": True,
-            "models": [
-                {
-                    "id": "openai/text-embedding-3-small",
-                    "name": "OpenAI: Text Embedding 3 Small",
-                    "context_length": 8192,
-                    "input_modalities": ["text"],
-                    "prompt_price": "0.00000002",
-                    "policy_eligible": True,
-                    "selectable": True,
-                }
-            ],
-        }
-        config_payload = {
-            "configured": True,
-            "config": {
-                "version": 1,
-                "base_model": "openai/text-embedding-3-small",
-                "model_id": "openai/text-embedding-3-small",
-                "dim": 1536,
-                "metric": "cosine",
-                "service": "open_router",
-                "source": "stock",
-                "run_id": None,
-                "auto_embed_query": True,
-                "created_at_micros": 1,
-            },
-        }
-        with LbbClient(
-            "http://h",
-            transport=capturing_transport(
-                seen, [{"json": catalog_payload}, {"json": config_payload}]
-            ),
-        ) as client:
-            graph = client.graph("main", branch="release")
-            result = graph.embedding_models()
-            configured = graph.set_embedding_model("openai/text-embedding-3-small")
-
-        self.assertTrue(result.configured)
-        self.assertEqual(result.models[0].id, "openai/text-embedding-3-small")
-        self.assertTrue(result.models[0].selectable)
-        self.assertTrue(configured.configured)
-        self.assertEqual(
-            dict(seen[0].url.params),
-            {"graph": "main", "branch": "release"},
-        )
-        self.assertEqual(
-            json.loads(seen[1].content),
-            {
-                "model_id": "openai/text-embedding-3-small",
-                "service": "open_router",
-                "auto_embed_query": True,
-            },
-        )
-
-    def test_sync_scoped_backfill_uses_durable_job_routes(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h",
-            transport=capturing_transport(
-                seen,
-                [
-                    {"json": backfill_status_payload("pending")},
-                    {"json": backfill_status_payload("succeeded")},
-                ],
-            ),
-        ) as client:
-            result = client.graph("main", branch="release").backfill_embeddings(
-                idempotency_key="backfill-1",
-                poll_interval=0,
-            )
-
-        self.assertEqual(result.final_index_job_id, "index-1")
-        self.assertEqual(dict(seen[0].url.params)["branch"], "release")
-        self.assertEqual(dict(seen[1].url.params)["job_id"], "backfill-job-1")
-
-    def test_sync_backfill_surfaces_terminal_failure(self) -> None:
-        with LbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(
-                [], {"json": backfill_status_payload("failed")}
-            ),
-        ) as client:
-            with self.assertRaisesRegex(RuntimeError, "ended failed"):
-                client.backfill_embeddings(
-                    idempotency_key="backfill-1",
-                    poll_interval=0,
-                )
-
-    def test_sync_scoped_backfill_exposes_detached_job_control(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(
-                seen,
-                [
-                    {"json": backfill_status_payload("pending")},
-                    {"json": backfill_status_payload("running")},
-                    {"json": backfill_status_payload("cancelled")},
-                ],
-            ),
-        ) as client:
-            graph = client.graph("main")
-            submitted = graph.submit_embedding_backfill(
-                {"batch_size": 25}, idempotency_key="backfill-1"
-            )
-            observed = graph.embedding_backfill_job(submitted.job_id)
-            cancelled = client.cancel_embedding_backfill(submitted.job_id)
-
-        self.assertEqual(observed.status, "running")
-        self.assertEqual(cancelled.status, "cancelled")
-        self.assertEqual(
-            [request.method for request in seen], ["POST", "GET", "DELETE"]
-        )
 
 
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
@@ -2143,98 +1899,6 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(LbbError):
                 await client.raw_request("GET", "/v1/status")
         self.assertEqual(len(seen), 1)
-
-    async def test_async_backfill_convenience_submits_and_polls_to_success(
-        self,
-    ) -> None:
-        seen: list[httpx.Request] = []
-        async with AsyncLbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(
-                seen,
-                [
-                    {"json": backfill_status_payload("running")},
-                    {"json": backfill_status_payload("succeeded")},
-                ],
-            ),
-        ) as client:
-            result = await client.backfill_embeddings(
-                batch_size=50,
-                idempotency_key="backfill-1",
-                poll_interval=0,
-            )
-
-        self.assertEqual(result.embedded, 8)
-        self.assertEqual([request.method for request in seen], ["POST", "GET"])
-        self.assertEqual(seen[0].headers["idempotency-key"], "backfill-1")
-        self.assertEqual(json.loads(seen[0].content)["batch_size"], 50)
-        self.assertEqual(dict(seen[1].url.params)["job_id"], "backfill-job-1")
-
-    async def test_async_scoped_backfill_uses_one_pin_and_durable_job(self) -> None:
-        seen: list[httpx.Request] = []
-        async with AsyncLbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(
-                seen,
-                [
-                    {"json": backfill_status_payload("pending")},
-                    {"json": backfill_status_payload("succeeded")},
-                ],
-            ),
-        ) as client:
-            result = await client.graph("main", branch="release").backfill_embeddings(
-                full=True,
-                idempotency_key="backfill-1",
-                poll_interval=0,
-            )
-
-        self.assertEqual(result.indexed_commit_seq, 7)
-        self.assertEqual([request.method for request in seen], ["POST", "GET"])
-        self.assertEqual(dict(seen[0].url.params)["graph"], "main")
-        self.assertEqual(dict(seen[0].url.params)["branch"], "release")
-
-    async def test_async_backfill_surfaces_terminal_failure(self) -> None:
-        async with AsyncLbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(
-                [], {"json": backfill_status_payload("failed")}
-            ),
-        ) as client:
-            with self.assertRaisesRegex(RuntimeError, "ended failed"):
-                await client.backfill_embeddings(
-                    idempotency_key="backfill-1",
-                    poll_interval=0,
-                )
-
-    async def test_async_scoped_backfill_exposes_detached_job_control(self) -> None:
-        seen: list[httpx.Request] = []
-        async with AsyncLbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(
-                seen,
-                [
-                    {"json": backfill_status_payload("pending")},
-                    {"json": backfill_status_payload("running")},
-                    {"json": backfill_status_payload("cancelled")},
-                ],
-            ),
-        ) as client:
-            graph = client.graph("main")
-            submitted = await graph.submit_embedding_backfill(
-                {"batch_size": 25}, idempotency_key="backfill-1"
-            )
-            observed = await graph.embedding_backfill_job(submitted.job_id)
-            cancelled = await client.cancel_embedding_backfill(submitted.job_id)
-
-        self.assertEqual(observed.status, "running")
-        self.assertEqual(cancelled.status, "cancelled")
-        self.assertEqual(
-            [request.method for request in seen], ["POST", "GET", "DELETE"]
-        )
 
     async def test_async_roundtrip_and_scope(self) -> None:
         seen: list[httpx.Request] = []

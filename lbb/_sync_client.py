@@ -28,7 +28,6 @@ from ._client_base import (
     SparqlResults,
     _BaseLbbClient,
     _body_marks_terminal,
-    _ContextNamespace,
     _EntityNamespace,
     _error_body_field,
     _jittered_backoff,
@@ -56,33 +55,6 @@ def _iter_import_ndjson(lines: ImportSource) -> Iterator[bytes]:
         else:
             encoded = json.dumps(line, separators=(",", ":")).encode()
         yield encoded if encoded.endswith(b"\n") else encoded + b"\n"
-
-
-class _SyncContextNamespace(_ContextNamespace):
-    def suggest(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.SearchSuggestResponse:
-        return cast(
-            models.SearchSuggestResponse, super().suggest(body, options=options)
-        )
-
-    def resolve(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.ResolveTermResponse:
-        return cast(models.ResolveTermResponse, super().resolve(body, options=options))
-
-    def decode(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.DecodeResponse:
-        return cast(models.DecodeResponse, super().decode(body, options=options))
-
-    def groundability(
-        self, *, sample: int | None = None, options: RequestOptions | None = None
-    ) -> models.GroundabilityReport:
-        return cast(
-            models.GroundabilityReport,
-            super().groundability(sample=sample, options=options),
-        )
 
 
 class _SyncOntologyNamespace(_OntologyNamespace):
@@ -171,18 +143,10 @@ class _SyncQueryNamespace(_QueryNamespace):
             ),
         )
 
-    def analytics(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.AnalyticQueryResponse:
-        return cast(
-            models.AnalyticQueryResponse, super().analytics(body, options=options)
-        )
-
 
 class LbbClient(_BaseLbbClient):
     """Synchronous client. Usable as a context manager."""
 
-    context: _SyncContextNamespace
     entities: _EntityNamespace
     ontology: _SyncOntologyNamespace
     query: _SyncQueryNamespace
@@ -217,7 +181,6 @@ class LbbClient(_BaseLbbClient):
             on_retry=on_retry,
             default_consistency=default_consistency,
         )
-        self.context = _SyncContextNamespace(self)
         self.entities = _EntityNamespace(self)
         self.ontology = _SyncOntologyNamespace(self)
         self.query = _SyncQueryNamespace(self)
