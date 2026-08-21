@@ -973,13 +973,15 @@ class _BaseLbbClient:
         observed_at: str | None = None,
         resource_type: str | None = None,
         edge_idempotency: str | None = None,
+        build: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-ingest N-Triples, Turtle, N-Quads, or TriG through the native RDF import endpoint.
 
         Statements are committed through the fixed ``RDF_TRIPLE`` relation;
         source RDF predicates and literal term details are preserved as edge
-        metadata.
+        metadata. Pass ``build=False`` on every chunk except the last of a
+        chunked bulk stream to defer the published-generation enqueue.
         """
         content_types = {
             "ntriples": "application/n-triples",
@@ -1002,6 +1004,7 @@ class _BaseLbbClient:
                 "blank_node_scope": blank_node_scope,
                 "resource_type": resource_type,
                 "edge_idempotency": edge_idempotency,
+                "build": "false" if build is False else None,
             },
             content=rdf,
             content_type=content_types[format],
@@ -1890,6 +1893,7 @@ class _FactsNamespace:
         observed_at: str | None = None,
         resource_type: str | None = None,
         edge_idempotency: str | None = None,
+        build: bool | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-load N-Triples, Turtle, N-Quads, or TriG. See :meth:`LbbClient.import_rdf`."""
@@ -1916,6 +1920,7 @@ class _FactsNamespace:
                 "blank_node_scope": blank_node_scope,
                 "resource_type": resource_type,
                 "edge_idempotency": edge_idempotency,
+                "build": "false" if build is False else None,
             },
             content=rdf,
             content_type=content_types[format],

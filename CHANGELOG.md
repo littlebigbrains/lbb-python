@@ -12,6 +12,17 @@ Breaking removal of the standalone graph-traversal surface.
 - Use SPARQL 1.1 property paths for exact multi-hop graph queries; semantic
   search continues to expose bounded graph-path evidence internally.
 
+RDF import.
+
+- `import_rdf`'s server-side `batch` default changed from 1,000 statements to
+  the 1,000,000 cap — one internal commit per fully-buffered request. Pass an
+  explicit `batch` to opt back into smaller internal commits.
+- `import_rdf` accepts `build`; pass `build=False` on every chunk except the
+  last of a chunked bulk stream to defer the published-generation enqueue so the
+  derived families build once at the final head.
+- Drop the phantom `publish` query param from the generated import operations —
+  the server never read it.
+
 ## 0.9.1
 
 - Sync and async durable import submissions now reject an empty iterable before
