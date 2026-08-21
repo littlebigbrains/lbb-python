@@ -25008,15 +25008,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "description": "Durably enqueue one atomic published-generation build after the final batch",
-            "in": "query",
-            "name": "publish",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -26167,7 +26158,7 @@
             }
           },
           {
-            "description": "RDF statements per internal commit (default 1000, clamped 1-1000000)",
+            "description": "RDF statements per internal commit (default 1000000, the cap: one commit per fully-buffered request; clamped 1-1000000)",
             "in": "query",
             "name": "batch",
             "required": false,
@@ -26248,9 +26239,9 @@
             }
           },
           {
-            "description": "Durably enqueue one atomic published-generation build after the final batch",
+            "description": "Set false to defer the published-generation enqueue; send build=false on every chunk except the last of a chunked bulk stream. Default true.",
             "in": "query",
-            "name": "publish",
+            "name": "build",
             "required": false,
             "schema": {
               "type": "string"
