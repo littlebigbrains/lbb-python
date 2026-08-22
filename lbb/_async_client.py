@@ -26,6 +26,7 @@ from ._client_base import (
     Body,
     IndexLineageObservation,
     LbbCapabilityError,
+    LbbError,
     ListPage,
     ModelT,
     RawLbbResponse,
@@ -536,18 +537,60 @@ class AsyncLbbClient(_BaseLbbClient):
         timeout: float = 30.0,
         poll_interval: float = 0.25,
     ) -> IndexLineageObservation:
+        """Wait until one published generation covers ``target_seq``.
+
+        Publication polling owns ``timeout`` directly and works for both the
+        RDF-only and full-family deployment rosters.
+        """
         deadline = asyncio.get_running_loop().time() + timeout
         last: RawLbbResponse | None = None
+        last_error: Exception | None = None
         while True:
-            last = await self.raw_request("GET", "/v1/graph/metadata")
+            try:
+                # This method owns an explicit publication deadline. Do not
+                # nest the generic request retry-count cap inside that poll.
+                last = await self.raw_request(
+                    "GET",
+                    "/v1/graph/metadata",
+                    options={"max_retries": 0},
+                )
+            except (LbbError, httpx.RequestError) as error:
+                if isinstance(error, LbbError) and (
+                    not _retryable(error.status_code) or error.retryable is False
+                ):
+                    raise
+                last_error = error
+                now = asyncio.get_running_loop().time()
+                if now >= deadline:
+                    raise TimeoutError(
+                        f"index lineage did not reach {target_seq} within {timeout}s "
+                        f"(last_error={error})"
+                    ) from error
+                retry_after = (
+                    float(error.retry_after_seconds or 0)
+                    if isinstance(error, LbbError)
+                    else 0.0
+                )
+                await asyncio.sleep(
+                    min(max(poll_interval, retry_after), deadline - now)
+                )
+                continue
             metadata = last.model(models.GraphMetadataResponse)
             lineage = metadata.index_lineage
+            served_at_seq = metadata.snapshot.served_at_seq
             if (
                 lineage is not None
-                and lineage.bm25_indexed_commit_seq is not None
-                and lineage.bm25_indexed_commit_seq.root >= target_seq
-                and lineage.ann_indexed_commit_seq is not None
-                and lineage.ann_indexed_commit_seq.root >= target_seq
+                and served_at_seq is not None
+                and served_at_seq.root >= target_seq
+                and (
+                    metadata.index_caught_up is True
+                    or (
+                        lineage.bm25_indexed_commit_seq is not None
+                        and lineage.bm25_indexed_commit_seq.root >= target_seq
+                        and lineage.ann_indexed_commit_seq is not None
+                        and lineage.ann_indexed_commit_seq.root >= target_seq
+                    )
+                )
             ):
                 return IndexLineageObservation(
                     metadata=metadata,
@@ -562,7 +605,8 @@ class AsyncLbbClient(_BaseLbbClient):
                 raise TimeoutError(
                     f"index lineage did not reach {target_seq} within {timeout}s "
                     f"(build={last.headers.get('lbb-build-commit')}, "
-                    f"replica={last.headers.get('lbb-replica')}, lineage={lineage})"
+                    f"replica={last.headers.get('lbb-replica')}, lineage={lineage}, "
+                    f"last_error={last_error})"
                 )
             await asyncio.sleep(poll_interval)
 

@@ -2,6 +2,17 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.11.1 (2026-08-22)
+
+- Treat an absent first published generation as normal asynchronous build
+  progress instead of retrying the metadata request until the generic retry
+  budget is exhausted.
+- Give synchronous and asynchronous publication waiters their own explicit
+  deadline and continue through retryable metadata responses, including `429`,
+  without multiplying nested retry loops.
+- Determine readiness from the published generation and served RDF watermark,
+  so RDF-only production deployments do not wait for removed search families.
+
 ## 0.11.0 (2026-08-21)
 
 Breaking removal of every non-SPARQL query surface. The server now serves

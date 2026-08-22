@@ -89,12 +89,17 @@ accepted = lbb.submit_import_ndjson(
 )
 completed = lbb.wait_for_import_job(accepted.job_id)
 print(completed.state, completed.committed_commit_seq)
+if completed.committed_commit_seq is not None:
+    lbb.wait_for_index_lineage(completed.committed_commit_seq.root)
 ```
 
 The async client accepts an async iterable as well. Success means all grouped
 commits are durable and final publication was enqueued; it does not mean
-published indexes have already reached `committed_commit_seq`. Empty iterables
-are rejected locally before an import POST is sent.
+published indexes have already reached `committed_commit_seq`. Wait once after
+the final commit, not after each source row or chunk. The lineage waiter polls
+normal `index_caught_up=false` metadata until its own deadline, including on an
+RDF-only deployment. Empty iterables are rejected locally before an import POST
+is sent.
 
 **Time-travel read.** Pin a SPARQL query to a past instant — results reflect the graph as it was then:
 
@@ -113,6 +118,8 @@ The async client mirrors every method — `async with AsyncLbbClient(...) as lbb
 ## Errors & retries
 
 Methods return parsed dictionaries and raise `LbbError` (with `status_code`, `code`, `param`, `request_id`, and `doc_url`) on any non-2xx response. Safe reads and idempotency-keyed writes retry `429`/`5xx` and transport failures with full-jitter backoff, bounded by a retry budget (`retry_budget_ms`, default 60s) rather than a fixed count, and honor `Retry-After` — a terminal error the server marks non-retryable surfaces immediately. Use `raw_request(...)` for response headers, request id, and retry/timing metadata.
+`wait_for_index_lineage(...)` is a separate deadline-bounded poller, so the
+generic request retry-count cap cannot end publication waiting early.
 
 ## More
 
