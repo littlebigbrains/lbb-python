@@ -1331,10 +1331,15 @@ class OntologyCqAnalysis(BaseModel):
 
 class OntologyDefineRequest(BaseModel):
     """
-    Define a custom ontology for the scoped graph before its first commit.
-    Imports `source` (any [`crate`]-supported format), optionally merges the
-    built-in default so the standard entity types/relations stay available, and
-    creates the graph head with the result. Fails if the graph already exists.
+    Define the scoped graph's ontology. Imports `source` (any
+    [`crate`]-supported format), optionally merges the built-in default so the
+    standard entity types/relations stay available, and creates the graph head
+    with the result.
+
+    The call is re-runnable on a graph that already exists. An unchanged
+    ontology is a no-op; an additive difference is applied, including a widened
+    relation domain or range and a new property field; a narrowing or removing
+    difference is refused with a typed error naming the route that applies it.
     """
 
     format: Annotated[
@@ -4662,10 +4667,27 @@ class ObserveEpisode(BaseModel):
 
 
 class OntologyDefineResponse(BaseModel):
+    changed: Annotated[
+        bool | None,
+        Field(
+            description='True when this call wrote a new ontology version, either by creating the\ngraph or by applying an additive difference. False when the proposed\nontology already matched the active one, which is what makes re-running\nthe same bootstrap request a no-op.\n\nThis tracks what was written, so it never reports `false` for a call\nthat changed the ontology: a widened relation domain or range and a new\nproperty field both set it, even though neither appears in the\nclass-and-relation schema diff.'
+        ),
+    ] = None
+    changes: Annotated[
+        list[SchemaDiffEntry] | None,
+        Field(
+            description="The additive changes this call applied to an existing graph's ontology.\nEmpty when the graph was created and when nothing changed."
+        ),
+    ] = None
     entity_types: list[OntologyTermView]
     format: str
     graph: GraphKey
-    graph_created: bool
+    graph_created: Annotated[
+        bool,
+        Field(
+            description='True when this call created the graph head. False when the graph already\nexisted, whether the ontology then changed or not. This is the `created`\nsignal for the define route.'
+        ),
+    ]
     merged_default: bool
     ontology_version: Annotated[int, Field(ge=0)]
     relations: list[OntologyTermView]
