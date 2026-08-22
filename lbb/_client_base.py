@@ -659,10 +659,10 @@ class _BaseLbbClient:
     # --- writes ---
 
     def create_graph(self) -> models.CreateGraphResponse:
-        """Create the scoped graph and branch with the built-in ontology.
+        """Create the scoped graph and branch with an empty ontology.
 
-        To use a custom ontology, call :meth:`ontology.define` instead before
-        the first commit; defining an ontology also creates the graph head.
+        Call :meth:`ontology.define` before the first typed commit. Defining an
+        ontology can also create the graph head when it does not exist yet.
         """
         return self._model_request(
             models.CreateGraphResponse, "POST", "/v1/graph/create"

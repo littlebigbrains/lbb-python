@@ -18663,7 +18663,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create the scoped graph and branch",
+        "summary": "Create the scoped graph and branch with an empty ontology",
         "tags": [
           "graph"
         ]
