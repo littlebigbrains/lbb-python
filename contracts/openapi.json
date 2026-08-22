@@ -6973,7 +6973,7 @@
         "type": "object"
       },
       "OntologyDefineRequest": {
-        "description": "Define a custom ontology for the scoped graph before its first commit.\nImports `source` (any [`crate`]-supported format), optionally merges the\nbuilt-in default so the standard entity types/relations stay available, and\ncreates the graph head with the result. Fails if the graph already exists.",
+        "description": "Define the scoped graph's ontology. Imports `source` (any\n[`crate`]-supported format), optionally merges the built-in default so the\nstandard entity types/relations stay available, and creates the graph head\nwith the result.\n\nThe call is re-runnable on a graph that already exists. An unchanged\nontology is a no-op; an additive difference is applied, including a widened\nrelation domain or range and a new property field; a narrowing or removing\ndifference is refused with a typed error naming the route that applies it.",
         "properties": {
           "format": {
             "description": "Import format hint. `auto` (the default) sniffs the content.",
@@ -6998,6 +6998,17 @@
       },
       "OntologyDefineResponse": {
         "properties": {
+          "changed": {
+            "description": "True when this call wrote a new ontology version, either by creating the\ngraph or by applying an additive difference. False when the proposed\nontology already matched the active one, which is what makes re-running\nthe same bootstrap request a no-op.\n\nThis tracks what was written, so it never reports `false` for a call\nthat changed the ontology: a widened relation domain or range and a new\nproperty field both set it, even though neither appears in the\nclass-and-relation schema diff.",
+            "type": "boolean"
+          },
+          "changes": {
+            "description": "The additive changes this call applied to an existing graph's ontology.\nEmpty when the graph was created and when nothing changed.",
+            "items": {
+              "$ref": "#/components/schemas/SchemaDiffEntry"
+            },
+            "type": "array"
+          },
           "entity_types": {
             "items": {
               "$ref": "#/components/schemas/OntologyTermView"
@@ -7011,6 +7022,7 @@
             "$ref": "#/components/schemas/GraphKey"
           },
           "graph_created": {
+            "description": "True when this call created the graph head. False when the graph already\nexisted, whether the ontology then changed or not. This is the `created`\nsignal for the define route.",
             "type": "boolean"
           },
           "merged_default": {

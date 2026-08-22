@@ -1670,6 +1670,18 @@ class _OntologyNamespace:
         )
 
     def define(self, body: Body) -> models.OntologyDefineResponse:
+        """Put the scoped graph on an imported ontology.
+
+        Creates the graph when it does not exist yet. Safe to repeat: an
+        unchanged ontology answers ``changed: False`` without writing. An
+        additive difference is applied, including a wider relation domain or
+        range and a new property field, and ``changed`` reports what was
+        written. A document that narrows or drops what the graph already
+        defines, or states a change no additive operation expresses, is refused
+        with ``ontology_restrictive_change``,
+        ``ontology_identity_breaking_change``, or
+        ``ontology_unsupported_change``, and writes nothing.
+        """
         return self._client._model_request(
             models.OntologyDefineResponse, "POST", "/v1/ontology/define", body=body
         )
