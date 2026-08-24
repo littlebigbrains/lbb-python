@@ -12858,7 +12858,7 @@
             "type": "array"
           },
           "reason": {
-            "description": "Reason over the graph's stored inference rules so a pattern matches\nasserted **and** derived edges in one shot. Off by default\n(asserted-only). Public serving requires a compatible reasoned\nprojection in the pinned published generation and fails closed when it\nis absent; it never forces an overlay reduce.",
+            "description": "Not available on the published SPARQL surface: a branch's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error.",
             "type": "boolean"
           },
           "select": {
