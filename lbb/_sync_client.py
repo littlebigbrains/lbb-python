@@ -520,9 +520,10 @@ class LbbClient(_BaseLbbClient):
         The ergonomic entry point: pass query text, get a :class:`SparqlResults`
         with ``.rows()``, ``.vars``, and ``.boolean`` already parsed — no manual
         ``json.loads`` of a results string. Engine extensions map to query
-        options: ``reason`` (fold rule-derived edges), ``entailment`` (``"none"``
-        to disable the default ``rdfs:subClassOf`` closure), and
-        ``limit``/``offset``.
+        options: ``entailment`` (``"rdfs"`` for the query-time RDFS core,
+        ``"subclass"`` for the class-only subset; the default ``"none"`` matches
+        asserted triples only) and ``limit``/``offset``. ``reason`` is refused
+        on the published surface (stored rules already run at publish time).
 
         Note: this uses ``/v1/query/sparql-text``. A standalone stack also serves
         the native SPARQL 1.1 *Protocol* at ``/sparql`` for off-the-shelf SPARQL
