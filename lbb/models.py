@@ -1977,6 +1977,12 @@ class RowPage(BaseModel):
 
 class SchemaAuditResult(BaseModel):
     component: str
+    details: Annotated[
+        list[SchemaAuditResult] | None,
+        Field(
+            description='Nested results explaining a composite violation (`sh:detail`), e.g.\nwhich constraint inside a `sh:node` shape the value node failed.'
+        ),
+    ] = None
     focus_node: str
     message: str | None = None
     result_path: str | None = None
@@ -7198,6 +7204,7 @@ class SparqlSelectRequest(BaseModel):
     ] = None
 
 
+SchemaAuditResult.model_rebuild()
 EmbeddingSearchRequest.model_rebuild()
 EntityFilterRequest.model_rebuild()
 FullTextSearchRequest.model_rebuild()
