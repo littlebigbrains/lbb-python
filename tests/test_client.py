@@ -10,6 +10,7 @@ from unittest.mock import patch
 import httpx
 from pydantic import ValidationError
 
+import lbb.models as model_module
 from lbb import AsyncLbbClient, LbbCapabilityError, LbbClient, LbbError, __version__
 from lbb.models import (
     AddEntityTypeOp,
@@ -181,6 +182,15 @@ def capturing_transport(
 
 
 class SyncClientTests(unittest.TestCase):
+    def test_generated_models_exclude_retired_request_time_shacl_dtos(self) -> None:
+        retired = [
+            "ShaclQueryRequest",
+            "ShaclNodeShape",
+            "ShaclValidationReport",
+            "ShaclViolation",
+        ]
+        self.assertEqual([name for name in retired if hasattr(model_module, name)], [])
+
     def test_durable_import_capability_gates_and_streams(self) -> None:
         seen: list[httpx.Request] = []
         produced = 0
