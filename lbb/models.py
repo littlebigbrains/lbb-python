@@ -2752,10 +2752,14 @@ class SparqlCompareOp(Enum):
 
 class SparqlEntailment(Enum):
     """
-    RDFS entailment regime applied when projecting the graph for a conformant
-    SPARQL query. Controls whether a class term matches subtype instances.
+    RDFS entailment regime applied to a conformant SPARQL query. The regime is
+    evaluated at query time as a closure-driven pattern rewrite over the
+    dataset's asserted schema triples (`rdfs:subClassOf`, `rdfs:subPropertyOf`,
+    `rdfs:domain`, `rdfs:range`); the published dataset itself stays
+    asserted-only.
     """
 
+    rdfs = 'rdfs'
     subclass = 'subclass'
     none = 'none'
 
@@ -2996,7 +3000,7 @@ class SparqlTextRequest(BaseModel):
     entailment: Annotated[
         SparqlEntailment | None,
         Field(
-            description='RDFS entailment regime. `None` (default) reads the asserted published\nprojection. `Subclass` requires a compatible reasoned projection and\nfails closed while one is unavailable.'
+            description="RDFS entailment regime. `None` (default) matches asserted triples only.\n`Rdfs` applies the practical RDFS core at query time; `Subclass` applies\nthe class-only subset. Both derive the closure from the pinned\ngeneration's asserted schema triples."
         ),
     ] = None
     limit: Annotated[
@@ -3014,7 +3018,7 @@ class SparqlTextRequest(BaseModel):
     reason: Annotated[
         bool | None,
         Field(
-            description="Reason over the branch's stored inference rules: project the rule-derived\nfacts into the dataset the conformant engine runs over, so a query reasons\nover asserted **and** derived edges. Off by default; a no-op when the branch\nhas no stored rules. Combine with `entailment: subclass` for full\nreasoning—rule-derived facts plus `rdfs:subClassOf` type closure—once\nmaintenance publishes a compatible reasoned projection."
+            description="Not available on the published SPARQL surface: a branch's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error."
         ),
     ] = None
 
