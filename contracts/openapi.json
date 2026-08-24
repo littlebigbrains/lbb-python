@@ -9250,6 +9250,13 @@
           "component": {
             "type": "string"
           },
+          "details": {
+            "description": "Nested results explaining a composite violation (`sh:detail`), e.g.\nwhich constraint inside a `sh:node` shape the value node failed.",
+            "items": {
+              "$ref": "#/components/schemas/SchemaAuditResult"
+            },
+            "type": "array"
+          },
           "focus_node": {
             "type": "string"
           },
