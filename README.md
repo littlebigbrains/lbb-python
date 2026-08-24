@@ -128,7 +128,9 @@ published-generation sample and `entities.filter_by_attributes(...)` for
 relation-bound structured SPARQL; and `ontology`/`schema` for ontology
 inspection and atomic schema publication. SPARQL is the one query language on
 the API. Typed Pydantic responses are exposed by
-matching `*_model` helpers; generated models live in `lbb.models`.
+matching `*_model` helpers; generated models live in `lbb.models`. Retired
+request-time JSON SHACL DTOs are intentionally absent: publish RDF shapes with
+`schema.publish`, then read `ontology.conformance`.
 
 Full reference and guides: [docs.littlebigbrain.com/sdks/python](https://docs.littlebigbrain.com/sdks/python/).
 

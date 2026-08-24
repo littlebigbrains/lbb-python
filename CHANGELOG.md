@@ -2,6 +2,16 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.12.0 (2026-08-24)
+
+Breaking removal of request-time SHACL models that had no supported client or
+server operation.
+
+- Remove `ShaclQueryRequest`, `ShaclNodeShape`, `ShaclValidationReport`,
+  `ShaclViolation`, and the other retired `Shacl*` generated model classes.
+- Publish RDF SHACL shapes with `schema.publish`, then inspect the durable audit
+  with `ontology.conformance`. There is no one-shot `/v1/query/shacl` route.
+
 ## 0.11.1 (2026-08-22)
 
 - `create_graph` now creates the scoped graph with an empty ontology. The
