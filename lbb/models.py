@@ -1691,6 +1691,47 @@ class PropertyValueInput8(BaseModel):
     ]
 
 
+class PublicationRetryGuidance(BaseModel):
+    eventual_read_available: bool
+    message: str
+    retry_after_ms: Annotated[int, Field(ge=0)]
+
+
+class PublicationState(Enum):
+    """
+    Server-managed publication lifecycle for one graph epoch.
+    """
+
+    current = 'current'
+    queued = 'queued'
+    planning = 'planning'
+    building = 'building'
+    verifying = 'verifying'
+    publishing = 'publishing'
+    blocked = 'blocked'
+
+
+class PublicationStatusResponse(BaseModel):
+    """
+    One bounded status document for automatic exact-generation publication.
+    It is available before the first generation publishes, unlike
+    [`PublishedReadStatusResponse`], so SDKs can wait without probing SPARQL.
+    """
+
+    current_stage: str | None = None
+    epoch: Annotated[int, Field(ge=0)]
+    head_generation: Annotated[int, Field(ge=0)]
+    head_seq: Annotated[int, Field(ge=0)]
+    lag_commits: Annotated[int, Field(ge=0)]
+    last_progress_at_micros: int
+    published_generation: Annotated[int | None, Field(ge=0)] = None
+    published_seq: Annotated[int, Field(ge=0)]
+    retry: PublicationRetryGuidance
+    state: PublicationState
+    target_head_generation: Annotated[int, Field(ge=0)]
+    target_seq: Annotated[int, Field(ge=0)]
+
+
 class PublishedGenerationEnqueueDisposition(Enum):
     """
     Whether an import's deterministic published-generation job was newly

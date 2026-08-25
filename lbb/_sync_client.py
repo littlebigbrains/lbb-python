@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from itertools import chain
 from typing import Any, cast
 
@@ -431,7 +431,7 @@ class LbbClient(_BaseLbbClient):
         timeout: float = 30.0,
         poll_interval: float = 0.25,
     ) -> IndexLineageObservation:
-        """Wait until one published generation covers ``target_seq``.
+        """Deprecated alias for publication readiness; use ``wait_for_published``.
 
         Returns typed lineage plus the build/replica headers from the exact
         observation that satisfied the gate. On an RDF-only deployment the
@@ -503,6 +503,92 @@ class LbbClient(_BaseLbbClient):
                     f"last_error={last_error})"
                 )
             time.sleep(poll_interval)
+
+    def wait_for_published(
+        self,
+        target_seq: int,
+        *,
+        timeout: float = 30.0,
+        poll_interval: float = 0.25,
+    ) -> models.PublicationStatusResponse:
+        """Wait until an exact published generation covers ``target_seq``."""
+        if target_seq < 0:
+            raise ValueError("target_seq must be non-negative")
+        if timeout < 0 or poll_interval < 0:
+            raise ValueError("timeout and poll_interval must be non-negative")
+        deadline = time.monotonic() + timeout
+        while True:
+            status = self._model_request(
+                models.PublicationStatusResponse,
+                "GET",
+                "/v1/graph/publication-status",
+                options={"max_retries": 0},
+            )
+            if status.state == models.PublicationState.blocked:
+                raise RuntimeError(
+                    f"publication blocked at {status.current_stage or 'unknown stage'}: "
+                    f"{status.retry.message}"
+                )
+            if (
+                status.state == models.PublicationState.current
+                and status.published_seq >= target_seq
+            ):
+                return status
+            now = time.monotonic()
+            if now >= deadline:
+                raise TimeoutError(
+                    f"publication did not reach {target_seq} within {timeout}s "
+                    f"(state={status.state.value}, head={status.head_seq}, "
+                    f"target={status.target_seq}, published={status.published_seq}, "
+                    f"stage={status.current_stage or 'unknown'})"
+                )
+            retry_after = status.retry.retry_after_ms / 1000
+            time.sleep(min(max(poll_interval, retry_after), deadline - now))
+
+    def import_rdf_many(
+        self,
+        documents: Sequence[str],
+        *,
+        format: str = "ntriples",
+        base_iri: str | None = None,
+        graph_uri: str | None = None,
+        blank_node_scope: str | None = None,
+        batch: int | None = None,
+        strict: bool | None = None,
+        observed_at: str | None = None,
+        resource_type: str | None = None,
+        edge_idempotency: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Import several RDF documents and publish only after the final one."""
+        if not documents:
+            raise ValueError("import_rdf_many requires at least one document")
+        imports = []
+        for index, document in enumerate(documents):
+            imports.append(
+                self.import_rdf(
+                    document,
+                    format=format,
+                    base_iri=base_iri,
+                    graph_uri=graph_uri,
+                    blank_node_scope=blank_node_scope,
+                    batch=batch,
+                    strict=strict,
+                    observed_at=observed_at,
+                    resource_type=resource_type,
+                    edge_idempotency=edge_idempotency,
+                    build=index == len(documents) - 1,
+                    idempotency_key=(
+                        f"{idempotency_key}:{index + 1}" if idempotency_key else None
+                    ),
+                )
+            )
+        final = imports[-1]
+        return {
+            "imports": imports,
+            "final_sequence": final.get("committed_commit_seq"),
+            "publication": final.get("published_generation"),
+        }
 
     def sparql(
         self,
