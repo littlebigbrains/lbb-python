@@ -2752,13 +2752,13 @@ class SparqlCompareOp(Enum):
 
 class SparqlEntailment(Enum):
     """
-    RDFS entailment regime applied to a conformant SPARQL query. The regime is
+    Entailment regime applied to a conformant SPARQL query. The regime is
     evaluated at query time as a closure-driven pattern rewrite over the
-    dataset's asserted schema triples (`rdfs:subClassOf`, `rdfs:subPropertyOf`,
-    `rdfs:domain`, `rdfs:range`); the published dataset itself stays
+    dataset's asserted schema triples; the published dataset itself stays
     asserted-only.
     """
 
+    owl = 'owl'
     rdfs = 'rdfs'
     subclass = 'subclass'
     none = 'none'
@@ -3000,7 +3000,7 @@ class SparqlTextRequest(BaseModel):
     entailment: Annotated[
         SparqlEntailment | None,
         Field(
-            description="RDFS entailment regime. `None` (default) matches asserted triples only.\n`Rdfs` applies the practical RDFS core at query time; `Subclass` applies\nthe class-only subset. Both derive the closure from the pinned\ngeneration's asserted schema triples."
+            description="Entailment regime. `None` (default) matches asserted triples only.\n`Rdfs` applies the practical RDFS core at query time, `Subclass` the\nclass-only subset, and `Owl` the OWL profile on top of `Rdfs`. All\nderive the closure from the pinned generation's asserted schema\ntriples."
         ),
     ] = None
     limit: Annotated[
