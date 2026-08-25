@@ -8341,6 +8341,111 @@
           }
         ]
       },
+      "PublicationRetryGuidance": {
+        "properties": {
+          "eventual_read_available": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retry_after_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retry_after_ms",
+          "eventual_read_available",
+          "message"
+        ],
+        "type": "object"
+      },
+      "PublicationState": {
+        "description": "Server-managed publication lifecycle for one graph epoch.",
+        "enum": [
+          "current",
+          "queued",
+          "planning",
+          "building",
+          "verifying",
+          "publishing",
+          "blocked"
+        ],
+        "type": "string"
+      },
+      "PublicationStatusResponse": {
+        "description": "One bounded status document for automatic exact-generation publication.\nIt is available before the first generation publishes, unlike\n[`PublishedReadStatusResponse`], so SDKs can wait without probing SPARQL.",
+        "properties": {
+          "current_stage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "head_generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "head_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          },
+          "lag_commits": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "last_progress_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "published_generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "published_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          },
+          "retry": {
+            "$ref": "#/components/schemas/PublicationRetryGuidance"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PublicationState"
+          },
+          "target_head_generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          }
+        },
+        "required": [
+          "state",
+          "epoch",
+          "head_seq",
+          "head_generation",
+          "target_seq",
+          "target_head_generation",
+          "published_seq",
+          "lag_commits",
+          "last_progress_at_micros",
+          "retry"
+        ],
+        "type": "object"
+      },
       "PublishedGenerationEnqueueDisposition": {
         "description": "Whether an import's deterministic published-generation job was newly\nqueued or coalesced with equivalent pending work.",
         "enum": [
@@ -22027,6 +22132,267 @@
           }
         ],
         "summary": "Graph footprint, WAL tail, and index coverage",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/publication-status": {
+      "get": {
+        "operationId": "get_v1_graph_publication_status",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationStatusResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Automatic publication lifecycle and exact read watermarks",
         "tags": [
           "graph"
         ]

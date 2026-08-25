@@ -52,6 +52,34 @@ def summary_payload() -> dict[str, Any]:
     }
 
 
+def publication_status_payload(
+    state: str,
+    *,
+    head_seq: int = 7,
+    target_seq: int = 7,
+    published_seq: int = 0,
+    stage: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "state": state,
+        "epoch": 1,
+        "head_seq": head_seq,
+        "head_generation": head_seq,
+        "target_seq": target_seq,
+        "target_head_generation": target_seq,
+        "published_seq": published_seq,
+        "published_generation": published_seq or None,
+        "lag_commits": max(0, target_seq - published_seq),
+        "current_stage": stage,
+        "last_progress_at_micros": 42,
+        "retry": {
+            "retry_after_ms": 0,
+            "eventual_read_available": published_seq > 0,
+            "message": "wait" if state != "blocked" else "inspect the failed job",
+        },
+    }
+
+
 def entity_list_payload() -> dict[str, Any]:
     return {
         "object": "list",
@@ -343,7 +371,11 @@ class SyncClientTests(unittest.TestCase):
                 )
             self.assertFalse(hasattr(client.query, "analytics"))
             scoped = client.graph("g")
-            for name in ("embedding_config", "backfill_embeddings", "promote_embedding"):
+            for name in (
+                "embedding_config",
+                "backfill_embeddings",
+                "promote_embedding",
+            ):
                 self.assertFalse(
                     hasattr(scoped, name), f"graph namespace must not expose {name}"
                 )
@@ -1140,6 +1172,29 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(params["graph_uri"], "http://ex/graph")
         self.assertEqual(request.headers["content-type"], "text/turtle")
 
+    def test_facts_import_rdf_many_defers_intermediate_publications(self) -> None:
+        seen: list[httpx.Request] = []
+        responses = [
+            {"json": {"imported_triplets": 1, "committed_commit_seq": seq}}
+            for seq in (1, 2, 3)
+        ]
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, responses)
+        ) as client:
+            result = client.graph("research").facts.import_rdf_many(
+                ["<a> <p> <b> .", "<b> <p> <c> .", "<c> <p> <d> ."],
+                idempotency_key="perritos",
+            )
+        self.assertEqual(result["final_sequence"], 3)
+        self.assertEqual(
+            [dict(item.url.params).get("build") for item in seen],
+            ["false", "false", None],
+        )
+        self.assertEqual(
+            [item.headers["idempotency-key"] for item in seen],
+            ["perritos:1", "perritos:2", "perritos:3"],
+        )
+
     def test_graph_retract_posts_edges(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -1710,6 +1765,87 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(observed.replica, "eu1-node2")
         self.assertEqual(observed.request_id, "req-1")
 
+    def test_wait_for_published_follows_server_managed_stages(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen,
+                [
+                    {"json": publication_status_payload("building", stage="rdf")},
+                    {
+                        "json": publication_status_payload(
+                            "current", published_seq=7, stage=None
+                        )
+                    },
+                ],
+            ),
+        ) as client:
+            status = client.wait_for_published(7, poll_interval=0)
+        self.assertEqual(status.state, model_module.PublicationState.current)
+        self.assertEqual(status.published_seq, 7)
+        self.assertEqual(
+            [request.url.path for request in seen],
+            [
+                "/v1/graph/publication-status",
+                "/v1/graph/publication-status",
+            ],
+        )
+
+    def test_wait_for_published_surfaces_blocked_publication(self) -> None:
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                [],
+                {
+                    "json": publication_status_payload(
+                        "blocked", stage="verify published generation"
+                    )
+                },
+            ),
+        ) as client:
+            with self.assertRaisesRegex(RuntimeError, "inspect the failed job"):
+                client.wait_for_published(7, poll_interval=0)
+
+    def test_wait_for_published_reports_lifecycle_watermarks_on_timeout(self) -> None:
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                [],
+                {
+                    "json": publication_status_payload(
+                        "verifying",
+                        head_seq=9,
+                        target_seq=9,
+                        published_seq=7,
+                        stage="verify_generation",
+                    )
+                },
+            ),
+        ) as client:
+            with self.assertRaisesRegex(
+                TimeoutError,
+                "state=verifying, head=9, target=9, published=7, stage=verify_generation",
+            ):
+                client.wait_for_published(9, timeout=0, poll_interval=0)
+
+    def test_graph_wait_for_published_keeps_the_graph_scope(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen,
+                {"json": publication_status_payload("current", published_seq=7)},
+            ),
+        ) as client:
+            status = client.graph("perritos", branch="review").wait_for_published(
+                7, poll_interval=0
+            )
+        self.assertEqual(status.published_seq, 7)
+        self.assertEqual(
+            dict(seen[0].url.params), {"graph": "perritos", "branch": "review"}
+        )
+
     def test_wait_for_index_lineage_owns_deadline_across_pending_publication(
         self,
     ) -> None:
@@ -1769,15 +1905,86 @@ class SyncClientTests(unittest.TestCase):
             max_retries=6,
             transport=httpx.MockTransport(handler),
         ) as client:
-            observed = client.wait_for_index_lineage(
-                7, timeout=1.0, poll_interval=0
-            )
+            observed = client.wait_for_index_lineage(7, timeout=1.0, poll_interval=0)
         self.assertEqual(observed.lineage.manifest_view_token, "index-view:ready")
         self.assertEqual(calls, 3)
 
 
-
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
+
+    async def test_async_wait_for_published_follows_server_managed_stages(
+        self,
+    ) -> None:
+        responses = iter(
+            [
+                httpx.Response(
+                    200,
+                    json=publication_status_payload("verifying", stage="verify"),
+                ),
+                httpx.Response(
+                    200,
+                    json=publication_status_payload("current", published_seq=7),
+                ),
+            ]
+        )
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return next(responses)
+
+        async with AsyncLbbClient(
+            "http://h", transport=httpx.MockTransport(handler)
+        ) as client:
+            status = await client.wait_for_published(7, poll_interval=0)
+        self.assertEqual(status.state, model_module.PublicationState.current)
+        self.assertEqual(status.published_seq, 7)
+
+    async def test_async_graph_wait_for_published_keeps_the_graph_scope(
+        self,
+    ) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen,
+                {"json": publication_status_payload("current", published_seq=7)},
+            ),
+        ) as client:
+            status = await client.graph(
+                "perritos", branch="review"
+            ).wait_for_published(7, poll_interval=0)
+        self.assertEqual(status.published_seq, 7)
+        self.assertEqual(
+            dict(seen[0].url.params), {"graph": "perritos", "branch": "review"}
+        )
+
+    async def test_async_import_rdf_many_defers_intermediate_publications(
+        self,
+    ) -> None:
+        seen: list[httpx.Request] = []
+        next_seq = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal next_seq
+            next_seq += 1
+            seen.append(request)
+            return httpx.Response(
+                200,
+                json={"imported_triplets": 1, "committed_commit_seq": next_seq},
+            )
+
+        async with AsyncLbbClient(
+            "http://h", transport=httpx.MockTransport(handler)
+        ) as client:
+            result = await client.graph("research").facts.import_rdf_many(
+                ["<a> <p> <b> .", "<b> <p> <c> ."],
+                idempotency_key="perritos",
+            )
+        self.assertEqual(result["final_sequence"], 2)
+        self.assertEqual(
+            [dict(item.url.params).get("build") for item in seen],
+            ["false", None],
+        )
+
     async def test_async_wait_for_index_lineage_owns_deadline(self) -> None:
         pending = {
             "graph": GRAPH,
@@ -1832,9 +2039,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             observed = await client.wait_for_index_lineage(
                 7, timeout=1.0, poll_interval=0
             )
-        self.assertEqual(
-            observed.lineage.manifest_view_token, "index-view:async-ready"
-        )
+        self.assertEqual(observed.lineage.manifest_view_token, "index-view:async-ready")
         self.assertEqual(calls, 3)
 
     async def test_async_durable_import_streams_async_iterable(self) -> None:
