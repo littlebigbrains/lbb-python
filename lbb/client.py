@@ -6,7 +6,6 @@ stable ``from lbb.client import LbbClient`` import path.
 
 from ._async_client import AsyncLbbClient
 from ._client_base import (
-    IndexLineageObservation,
     LbbCapabilityError,
     LbbError,
     ListPage,
@@ -22,7 +21,6 @@ __all__ = [
     "AsyncLbbClient",
     "LbbError",
     "LbbCapabilityError",
-    "IndexLineageObservation",
     "ListPage",
     "RawLbbResponse",
     "RequestOptions",

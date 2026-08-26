@@ -89,22 +89,18 @@ accepted = lbb.submit_import_ndjson(
 )
 completed = lbb.wait_for_import_job(accepted.job_id)
 print(completed.state, completed.committed_commit_seq)
-if completed.committed_commit_seq is not None:
-    lbb.wait_for_published(completed.committed_commit_seq.root)
 ```
 
 The async client accepts an async iterable as well. Success means all grouped
-commits are durable and the graph's coalesced desired publication fence
-advanced; it does not mean the exact generation has already reached
-`committed_commit_seq`. Wait once after the final commit, not after each source
-row or chunk. The publication waiter follows concrete lifecycle stages and
-watermarks until its own deadline. Empty iterables are rejected locally before
-an import POST is sent.
+commits are durable and immediately queryable by a strong SPARQL read. The same
+commits advance the graph's coalesced RDF reconciliation fence; waiting for base
+compaction is optional. Empty iterables are rejected locally before an import
+POST is sent.
 
 For several RDF documents, `graph.facts.import_rdf_many(...)` automatically
-defers every intermediate publication and triggers the final one. Call
-`graph.wait_for_published(result["final_sequence"])` once when the caller needs
-strong-read visibility.
+defers every intermediate reconciliation and triggers the final one. Call
+`graph.wait_for_published(result["final_sequence"])` only when the caller needs
+the immutable base itself to cover the import; strong reads need no waiter.
 
 **Time-travel read.** Pin a SPARQL query to a past instant — results reflect the graph as it was then:
 
@@ -123,9 +119,10 @@ The async client mirrors every method — `async with AsyncLbbClient(...) as lbb
 ## Errors & retries
 
 Methods return parsed dictionaries and raise `LbbError` (with `status_code`, `code`, `param`, `request_id`, and `doc_url`) on any non-2xx response. Safe reads and idempotency-keyed writes retry `429`/`5xx` and transport failures with full-jitter backoff, bounded by a retry budget (`retry_budget_ms`, default 60s) rather than a fixed count, and honor `Retry-After` — a terminal error the server marks non-retryable surfaces immediately. Use `raw_request(...)` for response headers, request id, and retry/timing metadata.
-`wait_for_published(...)` is a separate deadline-bounded poller, so the generic
-request retry-count cap cannot end publication waiting early.
-`wait_for_index_lineage(...)` remains as a deprecated compatibility alias.
+`wait_for_published(...)` is an optional, deadline-bounded maintenance poller
+for workflows that want the immutable RDF base itself to cover a commit.
+Strong SPARQL does not need it: acknowledged commits are queryable immediately
+from the branch head's base-plus-delta lineage.
 
 ## More
 

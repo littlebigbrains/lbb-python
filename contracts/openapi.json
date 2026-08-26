@@ -8367,9 +8367,8 @@
         "enum": [
           "current",
           "queued",
-          "planning",
+          "compacting",
           "building",
-          "verifying",
           "publishing",
           "blocked"
         ],

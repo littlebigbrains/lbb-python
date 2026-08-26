@@ -24,9 +24,7 @@ from ._client_base import (
     DEFAULT_RETRY_BUDGET_MS,
     DEFAULT_TIMEOUT,
     Body,
-    IndexLineageObservation,
     LbbCapabilityError,
-    LbbError,
     ListPage,
     ModelT,
     RawLbbResponse,
@@ -658,86 +656,6 @@ class AsyncLbbClient(_BaseLbbClient):
             await super().publication_status_model(),
         )
 
-    async def wait_for_index_lineage(
-        self,
-        target_seq: int,
-        *,
-        timeout: float = 30.0,
-        poll_interval: float = 0.25,
-    ) -> IndexLineageObservation:
-        """Deprecated alias for publication readiness; use ``wait_for_published``.
-
-        Publication polling owns ``timeout`` directly and works for both the
-        RDF-only and full-family deployment rosters.
-        """
-        deadline = asyncio.get_running_loop().time() + timeout
-        last: RawLbbResponse | None = None
-        last_error: Exception | None = None
-        while True:
-            try:
-                # This method owns an explicit publication deadline. Do not
-                # nest the generic request retry-count cap inside that poll.
-                last = await self.raw_request(
-                    "GET",
-                    "/v1/graph/metadata",
-                    options={"max_retries": 0},
-                )
-            except (LbbError, httpx.RequestError) as error:
-                if isinstance(error, LbbError) and (
-                    not _retryable(error.status_code) or error.retryable is False
-                ):
-                    raise
-                last_error = error
-                now = asyncio.get_running_loop().time()
-                if now >= deadline:
-                    raise TimeoutError(
-                        f"index lineage did not reach {target_seq} within {timeout}s "
-                        f"(last_error={error})"
-                    ) from error
-                retry_after = (
-                    float(error.retry_after_seconds or 0)
-                    if isinstance(error, LbbError)
-                    else 0.0
-                )
-                await asyncio.sleep(
-                    min(max(poll_interval, retry_after), deadline - now)
-                )
-                continue
-            metadata = last.model(models.GraphMetadataResponse)
-            lineage = metadata.index_lineage
-            served_at_seq = metadata.snapshot.served_at_seq
-            if (
-                lineage is not None
-                and served_at_seq is not None
-                and served_at_seq.root >= target_seq
-                and (
-                    metadata.index_caught_up is True
-                    or (
-                        lineage.bm25_indexed_commit_seq is not None
-                        and lineage.bm25_indexed_commit_seq.root >= target_seq
-                        and lineage.ann_indexed_commit_seq is not None
-                        and lineage.ann_indexed_commit_seq.root >= target_seq
-                    )
-                )
-            ):
-                return IndexLineageObservation(
-                    metadata=metadata,
-                    lineage=lineage,
-                    build_commit=last.headers.get("lbb-build-commit"),
-                    replica=last.headers.get("lbb-replica"),
-                    request_id=last.request_id,
-                    attempts=last.attempts,
-                    elapsed_ms=last.elapsed_ms,
-                )
-            if asyncio.get_running_loop().time() >= deadline:
-                raise TimeoutError(
-                    f"index lineage did not reach {target_seq} within {timeout}s "
-                    f"(build={last.headers.get('lbb-build-commit')}, "
-                    f"replica={last.headers.get('lbb-replica')}, lineage={lineage}, "
-                    f"last_error={last_error})"
-                )
-            await asyncio.sleep(poll_interval)
-
     async def wait_for_published(
         self,
         target_seq: int,
@@ -745,7 +663,7 @@ class AsyncLbbClient(_BaseLbbClient):
         timeout: float = 30.0,
         poll_interval: float = 0.25,
     ) -> models.PublicationStatusResponse:
-        """Wait until an exact published generation covers ``target_seq``."""
+        """Wait until reconciliation folds ``target_seq`` into the RDF base."""
         if target_seq < 0:
             raise ValueError("target_seq must be non-negative")
         if timeout < 0 or poll_interval < 0:

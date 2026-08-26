@@ -154,17 +154,6 @@ class RetryEvent:
 
 
 @dataclass(frozen=True)
-class IndexLineageObservation:
-    metadata: models.GraphMetadataResponse
-    lineage: models.IndexLineage
-    build_commit: str | None
-    replica: str | None
-    request_id: str | None
-    attempts: int
-    elapsed_ms: float
-
-
-@dataclass(frozen=True)
 class ListPage(Generic[RowT]):
     """Typed view of LBB's unified list envelope.
 
