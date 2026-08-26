@@ -3038,6 +3038,7 @@ class SparqlTextRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+    as_of_commit_seq: CommitSeq | None = None
     entailment: Annotated[
         SparqlEntailment | None,
         Field(
