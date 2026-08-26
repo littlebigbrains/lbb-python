@@ -13097,6 +13097,17 @@
         "additionalProperties": false,
         "description": "Run a SPARQL 1.1 query supplied as **text** (SELECT or ASK) through the\nconformant engine over the live graph, returning SPARQL 1.1 Query Results\nJSON. Distinct from [`SparqlSelectRequest`] (the structured-request form);\nthis is the raw-text dialect. CONSTRUCT/DESCRIBE are rejected (they yield an\nRDF graph, not a results table).",
         "properties": {
+          "as_of_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Exact transaction-time watermark to read from a retained immutable\npublished generation. The server never reconstructs WAL state in the\nrequest path and never substitutes a newer or older generation."
+              }
+            ]
+          },
           "entailment": {
             "$ref": "#/components/schemas/SparqlEntailment",
             "description": "Entailment regime. `None` (default) matches asserted triples only.\n`Rdfs` applies the practical RDFS core at query time, `Subclass` the\nclass-only subset, and `Owl` the OWL profile on top of `Rdfs`. All\nderive the closure from the pinned generation's asserted schema\ntriples."
