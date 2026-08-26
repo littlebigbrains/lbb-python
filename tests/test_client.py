@@ -1727,44 +1727,6 @@ class SyncClientTests(unittest.TestCase):
             json.loads(request.content), {"patterns": [], "select": ["s"], "limit": 5}
         )
 
-    def test_wait_for_index_lineage_retains_build_and_replica_headers(self) -> None:
-        lineage = {
-            "head_commit_seq": 7,
-            "bm25_indexed_commit_seq": 7,
-            "ann_indexed_commit_seq": 7,
-            "caught_up": True,
-            "manifest_view_token": "index-view:abc",
-            "observed_at_micros": 1,
-        }
-        metadata = {
-            "graph": GRAPH,
-            "snapshot": {**SNAPSHOT, "served_at_seq": 7},
-            "ontology_version": 1,
-            "head_generation": 1,
-            "wal_tail_commits": 0,
-            "wal_tail_bytes": 0,
-            "index_lineage": lineage,
-            "published_lag_commits": 0,
-        }
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json=metadata,
-                headers={
-                    "lbb-build-commit": "deadbeef",
-                    "lbb-replica": "eu1-node2",
-                    "x-request-id": "req-1",
-                },
-            )
-
-        with LbbClient("http://h", transport=httpx.MockTransport(handler)) as client:
-            observed = client.wait_for_index_lineage(7)
-        self.assertEqual(observed.lineage.manifest_view_token, "index-view:abc")
-        self.assertEqual(observed.build_commit, "deadbeef")
-        self.assertEqual(observed.replica, "eu1-node2")
-        self.assertEqual(observed.request_id, "req-1")
-
     def test_wait_for_published_follows_server_managed_stages(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -1814,7 +1776,7 @@ class SyncClientTests(unittest.TestCase):
                 [],
                 {
                     "json": publication_status_payload(
-                        "verifying",
+                        "building",
                         head_seq=9,
                         target_seq=9,
                         published_seq=7,
@@ -1825,7 +1787,7 @@ class SyncClientTests(unittest.TestCase):
         ) as client:
             with self.assertRaisesRegex(
                 TimeoutError,
-                "state=verifying, head=9, target=9, published=7, stage=verify_generation",
+                "state=building, head=9, target=9, published=7, stage=verify_generation",
             ):
                 client.wait_for_published(9, timeout=0, poll_interval=0)
 
@@ -1846,70 +1808,6 @@ class SyncClientTests(unittest.TestCase):
             dict(seen[0].url.params), {"graph": "perritos", "branch": "review"}
         )
 
-    def test_wait_for_index_lineage_owns_deadline_across_pending_publication(
-        self,
-    ) -> None:
-        pending = {
-            "graph": GRAPH,
-            "snapshot": {
-                "commit_seq": 7,
-                "compacted_seq": 0,
-                "stale": True,
-                "stale_reason": "published_read_pending",
-            },
-            "ontology_version": 1,
-            "head_generation": 1,
-            "wal_tail_commits": 1,
-            "wal_tail_bytes": 42,
-            "index_caught_up": False,
-            "published_lag_commits": 7,
-        }
-        ready = {
-            **pending,
-            "snapshot": {"commit_seq": 7, "compacted_seq": 0, "served_at_seq": 7},
-            "index_caught_up": True,
-            "published_lag_commits": 0,
-            "index_lineage": {
-                "head_commit_seq": 7,
-                "caught_up": False,
-                "manifest_view_token": "index-view:ready",
-                "observed_at_micros": 2,
-            },
-        }
-        responses = iter(
-            [
-                httpx.Response(
-                    429,
-                    json={
-                        "error": {
-                            "code": "ingest_busy",
-                            "message": "publication pending",
-                            "retryable": True,
-                            "retry_after_seconds": 0,
-                        }
-                    },
-                ),
-                httpx.Response(200, json=pending),
-                httpx.Response(200, json=ready),
-            ]
-        )
-        calls = 0
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            nonlocal calls
-            calls += 1
-            return next(responses)
-
-        with LbbClient(
-            "http://h",
-            max_retries=6,
-            transport=httpx.MockTransport(handler),
-        ) as client:
-            observed = client.wait_for_index_lineage(7, timeout=1.0, poll_interval=0)
-        self.assertEqual(observed.lineage.manifest_view_token, "index-view:ready")
-        self.assertEqual(calls, 3)
-
-
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_async_wait_for_published_follows_server_managed_stages(
@@ -1919,7 +1817,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             [
                 httpx.Response(
                     200,
-                    json=publication_status_payload("verifying", stage="verify"),
+                    json=publication_status_payload("building", stage="build"),
                 ),
                 httpx.Response(
                     200,
@@ -1984,63 +1882,6 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             [dict(item.url.params).get("build") for item in seen],
             ["false", None],
         )
-
-    async def test_async_wait_for_index_lineage_owns_deadline(self) -> None:
-        pending = {
-            "graph": GRAPH,
-            "snapshot": {"commit_seq": 7, "compacted_seq": 0},
-            "ontology_version": 1,
-            "head_generation": 1,
-            "wal_tail_commits": 1,
-            "wal_tail_bytes": 42,
-            "index_caught_up": False,
-            "published_lag_commits": 7,
-        }
-        ready = {
-            **pending,
-            "snapshot": {"commit_seq": 7, "compacted_seq": 0, "served_at_seq": 7},
-            "index_caught_up": True,
-            "published_lag_commits": 0,
-            "index_lineage": {
-                "head_commit_seq": 7,
-                "caught_up": False,
-                "manifest_view_token": "index-view:async-ready",
-                "observed_at_micros": 3,
-            },
-        }
-        responses = iter(
-            [
-                httpx.Response(
-                    429,
-                    json={
-                        "error": {
-                            "code": "ingest_busy",
-                            "retryable": True,
-                            "retry_after_seconds": 0,
-                        }
-                    },
-                ),
-                httpx.Response(200, json=pending),
-                httpx.Response(200, json=ready),
-            ]
-        )
-        calls = 0
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            nonlocal calls
-            calls += 1
-            return next(responses)
-
-        async with AsyncLbbClient(
-            "http://h",
-            max_retries=6,
-            transport=httpx.MockTransport(handler),
-        ) as client:
-            observed = await client.wait_for_index_lineage(
-                7, timeout=1.0, poll_interval=0
-            )
-        self.assertEqual(observed.lineage.manifest_view_token, "index-view:async-ready")
-        self.assertEqual(calls, 3)
 
     async def test_async_durable_import_streams_async_iterable(self) -> None:
         seen: list[httpx.Request] = []

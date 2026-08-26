@@ -1704,9 +1704,8 @@ class PublicationState(Enum):
 
     current = 'current'
     queued = 'queued'
-    planning = 'planning'
+    compacting = 'compacting'
     building = 'building'
-    verifying = 'verifying'
     publishing = 'publishing'
     blocked = 'blocked'
 

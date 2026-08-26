@@ -14,7 +14,6 @@ def test_public_exports_are_explicit_and_stable() -> None:
         "AsyncLbbClient",
         "LbbError",
         "LbbCapabilityError",
-        "IndexLineageObservation",
         "ListPage",
         "RawLbbResponse",
         "RequestOptions",
