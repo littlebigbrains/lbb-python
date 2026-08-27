@@ -1342,6 +1342,12 @@ class OntologyDefineRequest(BaseModel):
     difference is refused with a typed error naming the route that applies it.
     """
 
+    dry_run: Annotated[
+        bool | None,
+        Field(
+            description='Preview the exact definition without creating a graph, writing an\nontology object, or changing the graph head. Equivalent to the\n`?dry_run=true` query parameter; either signal enables preview mode.'
+        ),
+    ] = None
     format: Annotated[
         str | None,
         Field(
@@ -4598,13 +4604,19 @@ class OntologyDefineResponse(BaseModel):
     changed: Annotated[
         bool | None,
         Field(
-            description='True when this call wrote a new ontology version, either by creating the\ngraph or by applying an additive difference. False when the proposed\nontology already matched the active one, which is what makes re-running\nthe same bootstrap request a no-op.\n\nThis tracks what was written, so it never reports `false` for a call\nthat changed the ontology: a widened relation domain or range and a new\nproperty field both set it, even though neither appears in the\nclass-and-relation schema diff.'
+            description='True when this call wrote a new ontology version, or when a dry run\npredicts that it would. False when the proposed ontology already matched\nthe active one, which is what makes re-running the same bootstrap request\na no-op.\n\nA widened relation domain or range and a new property field both set it,\neven though neither appears in the class-and-relation schema diff.'
         ),
     ] = None
     changes: Annotated[
         list[SchemaDiffEntry] | None,
         Field(
-            description="The additive changes this call applied to an existing graph's ontology.\nEmpty when the graph was created and when nothing changed."
+            description="The additive changes this call applied, or would apply during a dry run,\nto an existing graph's ontology. Empty on create and no-op."
+        ),
+    ] = None
+    dry_run: Annotated[
+        bool | None,
+        Field(
+            description='True when this response is a preview and no durable state changed.'
         ),
     ] = None
     entity_types: list[OntologyTermView]
@@ -4613,7 +4625,7 @@ class OntologyDefineResponse(BaseModel):
     graph_created: Annotated[
         bool,
         Field(
-            description='True when this call created the graph head. False when the graph already\nexisted, whether the ontology then changed or not. This is the `created`\nsignal for the define route.'
+            description='True when this call created the graph head, or when a dry run predicts\nthat the real definition would create it.'
         ),
     ]
     merged_default: bool
