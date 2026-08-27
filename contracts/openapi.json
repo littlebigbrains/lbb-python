@@ -21648,7 +21648,7 @@
             }
           },
           {
-            "description": "Set false to defer the published-generation enqueue; send build=false on every chunk except the last of a chunked bulk stream. Default true.",
+            "description": "Set false to defer eager RDF-base reconciliation during a chunked bulk stream. The server still starts one coalesced safety reconciliation when the bounded exact-query delta suffix crosses its soft watermark, so long streams remain writable without client-managed compaction. Send build=false on every chunk except the last. Default true.",
             "in": "query",
             "name": "build",
             "required": false,
