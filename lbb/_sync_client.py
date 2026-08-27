@@ -478,7 +478,7 @@ class LbbClient(_BaseLbbClient):
         edge_idempotency: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """Import RDF documents with a final fence and server-managed safety compaction."""
+        """Import RDF documents as truth-only chunks, then advance one final publication fence."""
         if not documents:
             raise ValueError("import_rdf_many requires at least one document")
         imports = []
