@@ -8721,6 +8721,100 @@
         ],
         "type": "object"
       },
+      "RdfSchemaObjectKind": {
+        "description": "The RDF node kind of a bounded observed-schema statement object.",
+        "enum": [
+          "iri",
+          "blank_node",
+          "literal"
+        ],
+        "type": "string"
+      },
+      "RdfSchemaStatement": {
+        "description": "One OWL/RDFS vocabulary or annotation statement retained for schema UIs.",
+        "properties": {
+          "object": {
+            "type": "string"
+          },
+          "object_kind": {
+            "$ref": "#/components/schemas/RdfSchemaObjectKind"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "predicate",
+          "object",
+          "object_kind"
+        ],
+        "type": "object"
+      },
+      "RdfSchemaSummaryResponse": {
+        "description": "Compact, immutable observed-schema artifact attached to one exact F3 base.\n\nThis is the overview/read-model surface for Explorer and Ontology. It is\nproduced by maintenance while publishing F3 and is therefore cheap to read:\nno request-time graph scan or base-plus-delta assembly is required.",
+        "properties": {
+          "ontology_version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resource_predicate_counts": {
+            "items": {
+              "$ref": "#/components/schemas/RdfSchemaTermCount"
+            },
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotView"
+          },
+          "statements": {
+            "items": {
+              "$ref": "#/components/schemas/RdfSchemaStatement"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "type_counts": {
+            "items": {
+              "$ref": "#/components/schemas/RdfSchemaTermCount"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "snapshot",
+          "ontology_version",
+          "type_counts",
+          "resource_predicate_counts",
+          "statements",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "RdfSchemaTermCount": {
+        "description": "One exact RDF term count in the compact observed-schema summary.\n\n`term` is the complete IRI rather than a display-local name. This keeps\nforeign vocabularies unambiguous; clients may choose their own prefix or\nlocal-name presentation.",
+        "properties": {
+          "count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "term": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "term",
+          "count"
+        ],
+        "type": "object"
+      },
       "RegionAnchorInput": {
         "description": "A page-region provenance anchor on a fact's evidence (region provenance\n§4.1/§6.4(b) BYO import): where the evidence appears in the source\ndocument. Coordinates are **normalized to the page box** (`[0, 1]`, origin\ntop-left, y down) with `x0 <= x1` and `y0 <= y1`; `confidence` is the\nextraction confidence in `[0, 1]`. The commit path validates and quantizes\n(`round(v * 65535)` coords, `round(c * 255)` confidence) into the canonical\nstored anchor; out-of-range, non-finite, or inverted boxes are rejected.",
         "properties": {
@@ -21656,7 +21750,7 @@
             }
           },
           {
-            "description": "Set false on intermediate chunks to suppress the publication enqueue. Each request still atomically commits a compacted truth segment and exact per-commit F3 delta; graph reconstruction, SHACL, and complete F3 construction run off-path. Omit build=false on the final chunk to advance one coalesced publication fence. Default true.",
+            "description": "Set false on intermediate chunks to defer eager publication. Each request still atomically commits a compacted truth segment and exact per-commit F3 delta; graph reconstruction, SHACL, and complete F3 construction run off-path. The server advances one coalesced safety fence when the deferred delta tail reaches 8 entries or 32 MiB, so a large stream cannot wedge itself. Omit build=false on the final chunk to advance the final fence. Default true.",
             "in": "query",
             "name": "build",
             "required": false,
@@ -23258,6 +23352,267 @@
           }
         ],
         "summary": "Retract specific edges and/or every edge touching given entities; appends superseding retract events (history is kept for as_of reads)",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/schema-summary": {
+      "get": {
+        "operationId": "get_v1_graph_schema_summary",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RdfSchemaSummaryResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Compact observed RDF schema attached to the immutable F3 base",
         "tags": [
           "graph"
         ]
@@ -29660,7 +30015,7 @@
             }
           },
           {
-            "description": "eventual (default) serves the referenced durable report; strong requires validation at current head with current ontology/shapes",
+            "description": "eventual (default) serves the selected base sidecar; strong requires an exact-head sidecar with current ontology/shapes",
             "in": "query",
             "name": "consistency",
             "required": false,
@@ -29901,7 +30256,7 @@
             "bearer": []
           }
         ],
-        "summary": "Read the durable ontology-conformance report referenced by the published snapshot, including its validation watermark and ontology/shapes provenance",
+        "summary": "Read the immutable branch-owned ontology-conformance sidecar selected by the F3 checksum and schema identity",
         "tags": [
           "ontology"
         ]
