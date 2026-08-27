@@ -6939,6 +6939,10 @@
       "OntologyDefineRequest": {
         "description": "Define the scoped graph's ontology. Imports `source` (any\n[`crate`]-supported format), optionally merges the built-in default so the\nstandard entity types/relations stay available, and creates the graph head\nwith the result.\n\nThe call is re-runnable on a graph that already exists. An unchanged\nontology is a no-op; an additive difference is applied, including a widened\nrelation domain or range and a new property field; a narrowing or removing\ndifference is refused with a typed error naming the route that applies it.",
         "properties": {
+          "dry_run": {
+            "description": "Preview the exact definition without creating a graph, writing an\nontology object, or changing the graph head. Equivalent to the\n`?dry_run=true` query parameter; either signal enables preview mode.",
+            "type": "boolean"
+          },
           "format": {
             "description": "Import format hint. `auto` (the default) sniffs the content.",
             "type": [
@@ -6963,15 +6967,19 @@
       "OntologyDefineResponse": {
         "properties": {
           "changed": {
-            "description": "True when this call wrote a new ontology version, either by creating the\ngraph or by applying an additive difference. False when the proposed\nontology already matched the active one, which is what makes re-running\nthe same bootstrap request a no-op.\n\nThis tracks what was written, so it never reports `false` for a call\nthat changed the ontology: a widened relation domain or range and a new\nproperty field both set it, even though neither appears in the\nclass-and-relation schema diff.",
+            "description": "True when this call wrote a new ontology version, or when a dry run\npredicts that it would. False when the proposed ontology already matched\nthe active one, which is what makes re-running the same bootstrap request\na no-op.\n\nA widened relation domain or range and a new property field both set it,\neven though neither appears in the class-and-relation schema diff.",
             "type": "boolean"
           },
           "changes": {
-            "description": "The additive changes this call applied to an existing graph's ontology.\nEmpty when the graph was created and when nothing changed.",
+            "description": "The additive changes this call applied, or would apply during a dry run,\nto an existing graph's ontology. Empty on create and no-op.",
             "items": {
               "$ref": "#/components/schemas/SchemaDiffEntry"
             },
             "type": "array"
+          },
+          "dry_run": {
+            "description": "True when this response is a preview and no durable state changed.",
+            "type": "boolean"
           },
           "entity_types": {
             "items": {
@@ -6986,7 +6994,7 @@
             "$ref": "#/components/schemas/GraphKey"
           },
           "graph_created": {
-            "description": "True when this call created the graph head. False when the graph already\nexisted, whether the ontology then changed or not. This is the `created`\nsignal for the define route.",
+            "description": "True when this call created the graph head, or when a dry run predicts\nthat the real definition would create it.",
             "type": "boolean"
           },
           "merged_default": {
@@ -29938,6 +29946,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Validate and return the exact predicted definition without creating a graph, writing an ontology object, or changing the graph head",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -30173,7 +30190,7 @@
             "bearer": []
           }
         ],
-        "summary": "Import a custom ontology and create the scoped graph head with it; fails if the graph already exists",
+        "summary": "Define or additively evolve a graph ontology, or preview the exact result without mutation",
         "tags": [
           "ontology"
         ]
