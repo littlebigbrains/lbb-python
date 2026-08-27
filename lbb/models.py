@@ -1821,6 +1821,40 @@ class RangedReadStats(BaseModel):
     ] = None
 
 
+class RdfSchemaObjectKind(Enum):
+    """
+    The RDF node kind of a bounded observed-schema statement object.
+    """
+
+    iri = 'iri'
+    blank_node = 'blank_node'
+    literal = 'literal'
+
+
+class RdfSchemaStatement(BaseModel):
+    """
+    One OWL/RDFS vocabulary or annotation statement retained for schema UIs.
+    """
+
+    object: str
+    object_kind: RdfSchemaObjectKind
+    predicate: str
+    subject: str
+
+
+class RdfSchemaTermCount(BaseModel):
+    """
+    One exact RDF term count in the compact observed-schema summary.
+
+    `term` is the complete IRI rather than a display-local name. This keeps
+    foreign vocabularies unambiguous; clients may choose their own prefix or
+    local-name presentation.
+    """
+
+    count: Annotated[int, Field(ge=0)]
+    term: str
+
+
 class RegionAnchorInput(BaseModel):
     """
     A page-region provenance anchor on a fact's evidence (region provenance
@@ -4997,6 +5031,23 @@ class PublishedReadStatusResponse(BaseModel):
     head_seq: Annotated[int, Field(ge=0)]
     query_lag_commits: Annotated[int, Field(ge=0)]
     snapshot: PublishedReadSnapshotView
+
+
+class RdfSchemaSummaryResponse(BaseModel):
+    """
+    Compact, immutable observed-schema artifact attached to one exact F3 base.
+
+    This is the overview/read-model surface for Explorer and Ontology. It is
+    produced by maintenance while publishing F3 and is therefore cheap to read:
+    no request-time graph scan or base-plus-delta assembly is required.
+    """
+
+    ontology_version: Annotated[int, Field(ge=0)]
+    resource_predicate_counts: list[RdfSchemaTermCount]
+    snapshot: SnapshotView
+    statements: list[RdfSchemaStatement]
+    truncated: bool
+    type_counts: list[RdfSchemaTermCount]
 
 
 class RelationSearchResult(BaseModel):
