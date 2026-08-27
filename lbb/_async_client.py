@@ -230,7 +230,7 @@ class _AsyncFactsNamespace(_FactsNamespace):
         edge_idempotency: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """Import RDF documents with a final fence and server-managed safety compaction."""
+        """Import RDF documents as truth-only chunks, then advance one final publication fence."""
         return await _import_rdf_many(
             self,
             documents,
@@ -713,7 +713,7 @@ class AsyncLbbClient(_BaseLbbClient):
         edge_idempotency: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """Import RDF documents with a final fence and server-managed safety compaction."""
+        """Import RDF documents as truth-only chunks, then advance one final publication fence."""
         return await _import_rdf_many(
             self,
             documents,

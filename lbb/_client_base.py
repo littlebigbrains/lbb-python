@@ -846,10 +846,10 @@ class _BaseLbbClient:
 
         Statements are committed through the fixed ``RDF_TRIPLE`` relation;
         source RDF predicates and literal term details are preserved as edge
-        metadata. Pass ``build=False`` on every chunk except the last of a
-        chunked bulk stream to defer eager RDF-base reconciliation. The server
-        may still coalesce a safety reconciliation at the bounded exact-query
-        suffix watermark so the stream remains writable.
+        metadata. Pass ``build=False`` on intermediate chunks to suppress the
+        publication enqueue; every request still commits durable truth and an
+        exact per-commit F3 delta. Omit it on the last chunk to advance one
+        final coalesced publication fence.
         """
         content_types = {
             "ntriples": "application/n-triples",
@@ -1684,7 +1684,7 @@ class _FactsNamespace:
         edge_idempotency: str | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        """Import RDF documents with a final fence and server-managed safety compaction."""
+        """Import RDF documents as truth-only chunks, then advance one final publication fence."""
         if not documents:
             raise ValueError("import_rdf_many requires at least one document")
         imports = []
