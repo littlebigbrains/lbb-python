@@ -1218,7 +1218,8 @@ class _BaseLbbClient:
         ``SparqlSelectResponse`` shape. For raw SPARQL *text*, use :meth:`sparql`.
 
         ``consistency`` / ``min_indexed_seq`` select the A5 read mode and the
-        read-your-writes floor (body fields on this structured route).
+        read-your-writes floor (body fields on this structured route). A floor
+        with no explicit consistency implies a strong base-plus-delta read.
         """
         return self._request(
             "POST",
