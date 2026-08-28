@@ -129,13 +129,41 @@
         ],
         "type": "object"
       },
+      "AddSuperTypesOp": {
+        "description": "Add direct parent classes to an existing entity type. All named classes\nmust already exist, or be declared earlier in the same request with\n`add_entity_type`. Existing links are skipped, so the op is idempotent.\nRemoving a parent is not additive and requires an explicit migration.",
+        "properties": {
+          "entity_type": {
+            "description": "Entity type whose direct parents should grow.",
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "add_super_types"
+            ],
+            "type": "string"
+          },
+          "super_types": {
+            "description": "Direct parent entity-type names to add.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity_type",
+          "super_types",
+          "op"
+        ],
+        "type": "object"
+      },
       "AdditiveOntologyEvolveOp": {
         "description": "Governed proposal operation restricted to additive ontology changes.",
         "discriminator": {
           "mapping": {
             "add_entity_type": "#/components/schemas/AddEntityTypeOp",
-            "add_property": "#/components/schemas/AddPropertyOp",
             "add_relation": "#/components/schemas/AddRelationOp",
+            "add_super_types": "#/components/schemas/AddSuperTypesOp",
             "widen_relation": "#/components/schemas/WidenRelationOp"
           },
           "propertyName": "op"
@@ -148,10 +176,10 @@
             "$ref": "#/components/schemas/AddEntityTypeOp"
           },
           {
-            "$ref": "#/components/schemas/AddRelationOp"
+            "$ref": "#/components/schemas/AddSuperTypesOp"
           },
           {
-            "$ref": "#/components/schemas/AddPropertyOp"
+            "$ref": "#/components/schemas/AddRelationOp"
           }
         ]
       },
@@ -7180,6 +7208,10 @@
       "OntologyEntityTypeView": {
         "description": "The full definition of one entity type (class) in the active ontology.",
         "properties": {
+          "iri": {
+            "description": "Canonical query IRI minted by Little Big Brain for this class identity.",
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -7205,6 +7237,17 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "stable_id": {
+            "description": "Frozen class identity used by commits and the RDF projection. This is\nunique even when imported vocabularies reuse the same local name.",
+            "type": "string"
+          },
+          "super_types": {
+            "description": "Direct parent classes (`rdfs:subClassOf`), named by their frozen\n`stable_id`s. Clients can build the full class lattice without a SPARQL\nscan or a second ontology lookup.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -7238,6 +7281,7 @@
             "add_entity_type": "#/components/schemas/AddEntityTypeOp",
             "add_property": "#/components/schemas/AddPropertyOp",
             "add_relation": "#/components/schemas/AddRelationOp",
+            "add_super_types": "#/components/schemas/AddSuperTypesOp",
             "narrow_relation": "#/components/schemas/NarrowRelationOp",
             "remove_entity_type": "#/components/schemas/RemoveEntityTypeOp",
             "remove_relation": "#/components/schemas/RemoveRelationOp",
@@ -7256,6 +7300,9 @@
           },
           {
             "$ref": "#/components/schemas/AddEntityTypeOp"
+          },
+          {
+            "$ref": "#/components/schemas/AddSuperTypesOp"
           },
           {
             "$ref": "#/components/schemas/AddRelationOp"
@@ -9612,6 +9659,10 @@
       },
       "SchemaClassView": {
         "properties": {
+          "iri": {
+            "description": "Canonical query IRI minted by Little Big Brain for this class identity.",
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -9634,6 +9685,13 @@
           },
           "stable_id": {
             "type": "string"
+          },
+          "super_types": {
+            "description": "Direct parent classes (`rdfs:subClassOf`), named by `stable_id`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
