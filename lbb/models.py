@@ -120,6 +120,27 @@ class AddRelationOp(BaseModel):
     ] = None
 
 
+class Op3(Enum):
+    add_super_types = 'add_super_types'
+
+
+class AddSuperTypesOp(BaseModel):
+    """
+    Add direct parent classes to an existing entity type. All named classes
+    must already exist, or be declared earlier in the same request with
+    `add_entity_type`. Existing links are skipped, so the op is idempotent.
+    Removing a parent is not additive and requires an explicit migration.
+    """
+
+    entity_type: Annotated[
+        str, Field(description='Entity type whose direct parents should grow.')
+    ]
+    op: Literal['add_super_types']
+    super_types: Annotated[
+        list[str], Field(description='Direct parent entity-type names to add.')
+    ]
+
+
 class AnalyticTerm1(BaseModel):
     """
     A triple-pattern term: a named query variable (`{"var": "x"}`) or a fixed
@@ -1219,7 +1240,7 @@ class NamedEntityInput(BaseModel):
     type: str
 
 
-class Op3(Enum):
+class Op4(Enum):
     narrow_relation = 'narrow_relation'
 
 
@@ -1900,7 +1921,7 @@ class RelationshipHistoryRequest(BaseModel):
     source: EntitySelector
 
 
-class Op4(Enum):
+class Op5(Enum):
     remove_entity_type = 'remove_entity_type'
 
 
@@ -1916,7 +1937,7 @@ class RemoveEntityTypeOp(BaseModel):
     op: Literal['remove_entity_type']
 
 
-class Op5(Enum):
+class Op6(Enum):
     remove_relation = 'remove_relation'
 
 
@@ -1931,7 +1952,7 @@ class RemoveRelationOp(BaseModel):
     op: Literal['remove_relation']
 
 
-class Op6(Enum):
+class Op7(Enum):
     rename_entity_type = 'rename_entity_type'
 
 
@@ -1949,7 +1970,7 @@ class RenameEntityTypeOp(BaseModel):
     to: str
 
 
-class Op7(Enum):
+class Op8(Enum):
     rename_relation = 'rename_relation'
 
 
@@ -2094,11 +2115,23 @@ class SchemaChangeKind(Enum):
 
 
 class SchemaClassView(BaseModel):
+    iri: Annotated[
+        str | None,
+        Field(
+            description='Canonical query IRI minted by Little Big Brain for this class identity.'
+        ),
+    ] = None
     name: str
     property_count: Annotated[int, Field(ge=0)]
     removed_version: Annotated[int | None, Field(ge=0)] = None
     since_version: Annotated[int, Field(ge=0)]
     stable_id: str
+    super_types: Annotated[
+        list[str] | None,
+        Field(
+            description='Direct parent classes (`rdfs:subClassOf`), named by `stable_id`.'
+        ),
+    ] = None
 
 
 class SchemaCompatibilityVerdict(Enum):
@@ -2278,100 +2311,89 @@ class SearchFeedbackTarget4(BaseModel):
     name: str | None = None
 
 
-class Op8(Enum):
+class Op9(Enum):
     true = 'true'
 
 
 class SearchFilterExpr1(BaseModel):
-    op: Op8
-
-
-class Op9(Enum):
-    false = 'false'
-
-
-class SearchFilterExpr2(BaseModel):
     op: Op9
 
 
 class Op10(Enum):
-    eq = 'eq'
+    false = 'false'
+
+
+class SearchFilterExpr2(BaseModel):
+    op: Op10
 
 
 class Op11(Enum):
-    not_eq = 'not_eq'
+    eq = 'eq'
 
 
 class Op12(Enum):
-    in_ = 'in'
+    not_eq = 'not_eq'
 
 
 class Op13(Enum):
-    not_in = 'not_in'
+    in_ = 'in'
 
 
 class Op14(Enum):
+    not_in = 'not_in'
+
+
+class Op15(Enum):
     exists = 'exists'
 
 
 class SearchFilterExpr7(BaseModel):
     field: str
-    op: Op14
+    op: Op15
 
 
-class Op15(Enum):
+class Op16(Enum):
     not_exists = 'not_exists'
 
 
 class SearchFilterExpr8(BaseModel):
     field: str
-    op: Op15
-
-
-class Op16(Enum):
-    lt = 'lt'
+    op: Op16
 
 
 class Op17(Enum):
-    lte = 'lte'
+    lt = 'lt'
 
 
 class Op18(Enum):
-    gt = 'gt'
+    lte = 'lte'
 
 
 class Op19(Enum):
-    gte = 'gte'
+    gt = 'gt'
 
 
 class Op20(Enum):
-    overlaps = 'overlaps'
+    gte = 'gte'
 
 
 class Op21(Enum):
-    contains_all = 'contains_all'
+    overlaps = 'overlaps'
 
 
 class Op22(Enum):
-    not_overlaps = 'not_overlaps'
+    contains_all = 'contains_all'
 
 
 class Op23(Enum):
+    not_overlaps = 'not_overlaps'
+
+
+class Op24(Enum):
     contains_all_tokens = 'contains_all_tokens'
 
 
 class SearchFilterExpr16(BaseModel):
-    field: str
-    last_as_prefix: bool | None = None
-    op: Op23
-    query: str
-
-
-class Op24(Enum):
-    contains_any_token = 'contains_any_token'
-
-
-class SearchFilterExpr17(BaseModel):
     field: str
     last_as_prefix: bool | None = None
     op: Op24
@@ -2379,34 +2401,45 @@ class SearchFilterExpr17(BaseModel):
 
 
 class Op25(Enum):
+    contains_any_token = 'contains_any_token'
+
+
+class SearchFilterExpr17(BaseModel):
+    field: str
+    last_as_prefix: bool | None = None
+    op: Op25
+    query: str
+
+
+class Op26(Enum):
     glob = 'glob'
 
 
 class SearchFilterExpr18(BaseModel):
-    field: str
-    op: Op25
-    pattern: str
-
-
-class Op26(Enum):
-    regex = 'regex'
-
-
-class SearchFilterExpr19(BaseModel):
     field: str
     op: Op26
     pattern: str
 
 
 class Op27(Enum):
-    and_ = 'and'
+    regex = 'regex'
+
+
+class SearchFilterExpr19(BaseModel):
+    field: str
+    op: Op27
+    pattern: str
 
 
 class Op28(Enum):
-    or_ = 'or'
+    and_ = 'and'
 
 
 class Op29(Enum):
+    or_ = 'or'
+
+
+class Op30(Enum):
     not_ = 'not'
 
 
@@ -2589,7 +2622,7 @@ class SemanticSearchTarget(Enum):
     subgraph = 'subgraph'
 
 
-class Op30(Enum):
+class Op31(Enum):
     set_property_constraint = 'set_property_constraint'
 
 
@@ -2614,7 +2647,7 @@ class SetPropertyConstraintOp(BaseModel):
     ]
 
 
-class Op31(Enum):
+class Op32(Enum):
     set_relation_cardinality = 'set_relation_cardinality'
 
 
@@ -2631,7 +2664,7 @@ class SetRelationCardinalityOp(BaseModel):
     relation: str
 
 
-class Op32(Enum):
+class Op33(Enum):
     set_relation_inverse = 'set_relation_inverse'
 
 
@@ -3681,7 +3714,7 @@ class WhyResponse(BaseModel):
     snapshot: SnapshotView
 
 
-class Op33(Enum):
+class Op34(Enum):
     widen_relation = 'widen_relation'
 
 
@@ -3724,7 +3757,7 @@ class AdditiveOntologyEvolveRequest(BaseModel):
 
     ops: list[
         Annotated[
-            WidenRelationOp | AddEntityTypeOp | AddRelationOp | AddPropertyOp,
+            WidenRelationOp | AddEntityTypeOp | AddSuperTypesOp | AddRelationOp,
             Field(discriminator='op'),
         ]
     ]
@@ -4685,6 +4718,12 @@ class OntologyEntityTypeView(BaseModel):
     The full definition of one entity type (class) in the active ontology.
     """
 
+    iri: Annotated[
+        str | None,
+        Field(
+            description='Canonical query IRI minted by Little Big Brain for this class identity.'
+        ),
+    ] = None
     name: str
     properties: list[OntologyPropertyView]
     removed_version: Annotated[int | None, Field(ge=0)] = None
@@ -4695,6 +4734,18 @@ class OntologyEntityTypeView(BaseModel):
         ),
     ]
     since_version: Annotated[int, Field(ge=0)]
+    stable_id: Annotated[
+        str | None,
+        Field(
+            description='Frozen class identity used by commits and the RDF projection. This is\nunique even when imported vocabularies reuse the same local name.'
+        ),
+    ] = None
+    super_types: Annotated[
+        list[str] | None,
+        Field(
+            description='Direct parent classes (`rdfs:subClassOf`), named by their frozen\n`stable_id`s. Clients can build the full class lattice without a SPARQL\nscan or a second ontology lookup.'
+        ),
+    ] = None
 
 
 class OntologyEvolveRequest(BaseModel):
@@ -4715,6 +4766,7 @@ class OntologyEvolveRequest(BaseModel):
         Annotated[
             WidenRelationOp
             | AddEntityTypeOp
+            | AddSuperTypesOp
             | AddRelationOp
             | AddPropertyOp
             | SetPropertyConstraintOp
@@ -4841,6 +4893,7 @@ class OntologySuggestion(BaseModel):
             Annotated[
                 WidenRelationOp
                 | AddEntityTypeOp
+                | AddSuperTypesOp
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
@@ -5306,49 +5359,49 @@ class SearchFeedbackSummaryResponse(BaseModel):
 
 class SearchFilterExpr3(BaseModel):
     field: str
-    op: Op10
+    op: Op11
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr4(BaseModel):
     field: str
-    op: Op11
+    op: Op12
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr5(BaseModel):
     field: str
-    op: Op12
+    op: Op13
     values: list[bool | int | float | str | None]
 
 
 class SearchFilterExpr6(BaseModel):
     field: str
-    op: Op13
+    op: Op14
     values: list[bool | int | float | str | None]
 
 
 class SearchFilterExpr9(BaseModel):
     field: str
-    op: Op16
+    op: Op17
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr10(BaseModel):
     field: str
-    op: Op17
+    op: Op18
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr11(BaseModel):
     field: str
-    op: Op18
+    op: Op19
     value: bool | int | float | str | None
 
 
 class SearchFilterExpr12(BaseModel):
     field: str
-    op: Op19
+    op: Op20
     value: bool | int | float | str | None
 
 
@@ -5362,7 +5415,7 @@ class SearchFilterExpr13(BaseModel):
     """
 
     field: str
-    op: Op20
+    op: Op21
     values: list[bool | int | float | str | None]
 
 
@@ -5374,7 +5427,7 @@ class SearchFilterExpr14(BaseModel):
     """
 
     field: str
-    op: Op21
+    op: Op22
     values: list[bool | int | float | str | None]
 
 
@@ -5385,7 +5438,7 @@ class SearchFilterExpr15(BaseModel):
     """
 
     field: str
-    op: Op22
+    op: Op23
     values: list[bool | int | float | str | None]
 
 
@@ -6300,6 +6353,7 @@ class OntologyDraft(BaseModel):
         Annotated[
             WidenRelationOp
             | AddEntityTypeOp
+            | AddSuperTypesOp
             | AddRelationOp
             | AddPropertyOp
             | SetPropertyConstraintOp
@@ -7053,7 +7107,7 @@ class SearchFilterExpr20(BaseModel):
         | SearchFilterExpr21
         | SearchFilterExpr22
     ]
-    op: Op27
+    op: Op28
 
 
 class SearchFilterExpr21(BaseModel):
@@ -7081,7 +7135,7 @@ class SearchFilterExpr21(BaseModel):
         | SearchFilterExpr21
         | SearchFilterExpr22
     ]
-    op: Op28
+    op: Op29
 
 
 class SearchFilterExpr22(BaseModel):
@@ -7109,7 +7163,7 @@ class SearchFilterExpr22(BaseModel):
         | SearchFilterExpr21
         | SearchFilterExpr22
     )
-    op: Op29
+    op: Op30
 
 
 class SemanticGraphSearchRequest(BaseModel):
