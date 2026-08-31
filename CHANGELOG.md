@@ -2,6 +2,30 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.13.0 (2026-08-31)
+
+Additive release covering the schema-observability surface that landed since
+0.12.0.
+
+- New `schema_summary()` / `schema_summary_model()`: the compact observed RDF schema attached to the
+  immutable published base (`GET /v1/graph/schema-summary`), with class
+  populations, resource- and literal-valued predicate counts
+  (`resource_predicate_counts` / `literal_predicate_counts`; the literal field
+  is `null` until a summary artifact written by a current server exists), and
+  bounded OWL/RDFS statements.
+- New `publication_status()` / `publication_status_model()` and `wait_for_published(target_seq)`: the automatic
+  RDF publication lifecycle (`PublicationStatusResponse`), available before
+  the first generation exists, and a bounded poll until background
+  reconciliation folds a commit into the published base.
+- New `import_rdf_many()`: multi-document RDF import in one call.
+- Ontology and schema views carry each class's frozen `stable_id`, canonical
+  query `iri`, and direct `super_types`; the evolve surface gains
+  `AddSuperTypesOp` model; ontology define accepts `dry_run`.
+- Server side, defining Turtle/RDF/JSON-LD ontologies now imports
+  `owl:DatatypeProperty` declarations as typed property fields instead of
+  relations spanning every class. No client change is needed; `property_defs`
+  simply carries the imported fields.
+
 ## 0.12.0 (2026-08-24)
 
 Breaking removal of request-time SHACL models that had no supported client or

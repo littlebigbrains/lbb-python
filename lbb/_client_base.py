@@ -1404,6 +1404,22 @@ class _BaseLbbClient:
             "/v1/graph/read-snapshot",
         )
 
+    def schema_summary(self) -> Any:
+        """Compact observed RDF schema attached to the immutable published
+        base: class populations, resource- and literal-valued predicate
+        counts, and bounded OWL/RDFS statements. ``literal_predicate_counts``
+        is ``None`` when the stored summary artifact predates the field; the
+        next full summary rebuild fills it."""
+        return self._request("GET", "/v1/graph/schema-summary")
+
+    def schema_summary_model(self) -> models.RdfSchemaSummaryResponse:
+        """Observed schema validated as ``RdfSchemaSummaryResponse``."""
+        return self._model_request(
+            models.RdfSchemaSummaryResponse,
+            "GET",
+            "/v1/graph/schema-summary",
+        )
+
     def publication_status(self) -> Any:
         """Automatic publication lifecycle, including pre-first-generation state."""
         return self._request("GET", "/v1/graph/publication-status")

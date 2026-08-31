@@ -738,6 +738,12 @@ class AsyncLbbClient(_BaseLbbClient):
             await super().read_snapshot_model(),
         )
 
+    async def schema_summary_model(self) -> models.RdfSchemaSummaryResponse:
+        return cast(
+            models.RdfSchemaSummaryResponse,
+            await super().schema_summary_model(),
+        )
+
     async def list_graphs_model(self) -> models.GraphListResponse:
         return cast(models.GraphListResponse, await super().list_graphs_model())
 
