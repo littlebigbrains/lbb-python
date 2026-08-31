@@ -5095,6 +5095,12 @@ class RdfSchemaSummaryResponse(BaseModel):
     no request-time graph scan or base-plus-delta assembly is required.
     """
 
+    literal_predicate_counts: Annotated[
+        list[RdfSchemaTermCount] | None,
+        Field(
+            description='Per-predicate totals of literal-valued statements, the data-property\nsibling of `resource_predicate_counts`. `None` when the stored summary\nartifact predates this field; the next full summary rebuild fills it.'
+        ),
+    ] = None
     ontology_version: Annotated[int, Field(ge=0)]
     resource_predicate_counts: list[RdfSchemaTermCount]
     snapshot: SnapshotView

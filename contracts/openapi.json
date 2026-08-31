@@ -8804,6 +8804,16 @@
       "RdfSchemaSummaryResponse": {
         "description": "Compact, immutable observed-schema artifact attached to one exact F3 base.\n\nThis is the overview/read-model surface for Explorer and Ontology. It is\nproduced by maintenance while publishing F3 and is therefore cheap to read:\nno request-time graph scan or base-plus-delta assembly is required.",
         "properties": {
+          "literal_predicate_counts": {
+            "description": "Per-predicate totals of literal-valued statements, the data-property\nsibling of `resource_predicate_counts`. `None` when the stored summary\nartifact predates this field; the next full summary rebuild fills it.",
+            "items": {
+              "$ref": "#/components/schemas/RdfSchemaTermCount"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "ontology_version": {
             "format": "int64",
             "minimum": 0,
