@@ -2057,7 +2057,7 @@
         "properties": {
           "attributes": {
             "additionalProperties": {},
-            "description": "The entity's typed scalar properties as native JSON — the flat read-back\nof what a commit's `entity_properties` wrote, so round-trip verification\nis a one-hop lookup. A numeric property reads back as a JSON number, a\nbool as a bool, a datetime as an RFC3339 string; empty when the entity\ncarries no scalar attributes. The `/entities` list returns the same\n`attributes` shape under `?fields=`.",
+            "description": "The entity's RDF-projected properties as typed JSON: numbers, booleans,\nRFC3339 datetime strings, strings and sets. Nulls, bytes, vectors,\nnon-finite numbers and empty sets have no RDF projection and are omitted.",
             "propertyNames": {
               "type": "string"
             },
@@ -2099,6 +2099,17 @@
             },
             "type": "array"
           },
+          "rdf_relations": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EntityRdfRelations",
+                "description": "Current RDF relationships. Unlike native edge events, these facts carry\nno confidence, valid-time interval, event id or evidence attribution."
+              }
+            ]
+          },
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotView"
           },
@@ -2112,6 +2123,13 @@
                 "description": "Present only when a per-request cap actually cut one of the collections\nabove, so an ordinary entity's response is byte-identical to the\nuncapped one. A supernode read returns the caps' worth of rows plus this\nblock, rather than its whole degree."
               }
             ]
+          },
+          "unavailable_sections": {
+            "description": "Legacy sections unavailable in this read model. An empty listed section\nmeans unavailable, not that the entity has no history or relationships.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -2587,6 +2605,47 @@
         "required": [
           "type",
           "name"
+        ],
+        "type": "object"
+      },
+      "EntityRdfRelations": {
+        "properties": {
+          "incoming": {
+            "items": {
+              "$ref": "#/components/schemas/RdfEntityRelation"
+            },
+            "type": "array"
+          },
+          "incoming_truncation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TruncatedCollection"
+              }
+            ]
+          },
+          "outgoing": {
+            "items": {
+              "$ref": "#/components/schemas/RdfEntityRelation"
+            },
+            "type": "array"
+          },
+          "outgoing_truncation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TruncatedCollection"
+              }
+            ]
+          }
+        },
+        "required": [
+          "outgoing",
+          "incoming"
         ],
         "type": "object"
       },
@@ -5593,6 +5652,7 @@
         "enum": [
           "wal",
           "segment",
+          "unavailable",
           "pending"
         ],
         "type": "string"
@@ -8765,6 +8825,21 @@
           "attribute_blocks_fetched",
           "candidates_pruned_by_attributes",
           "block_bytes_fetched"
+        ],
+        "type": "object"
+      },
+      "RdfEntityRelation": {
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/EntityView"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/RelationView"
+          }
+        },
+        "required": [
+          "relation",
+          "entity"
         ],
         "type": "object"
       },
@@ -18834,6 +18909,42 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "External entity key; takes precedence over name",
+            "in": "query",
+            "name": "key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "strong or eventual (default); strong includes the exact durable delta suffix",
+            "in": "query",
+            "name": "consistency",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Retained commit sequence; valid-time as_of is unsupported",
+            "in": "query",
+            "name": "as_of_commit_seq",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum RDF relationships per direction (default 1000, ceiling 10000)",
+            "in": "query",
+            "name": "edges",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -19059,7 +19170,7 @@
             "bearer": []
           }
         ],
-        "summary": "Entity detail",
+        "summary": "Native entity attributes and relationships from the branch-owned RDF view; unavailable provenance sections are explicitly listed",
         "tags": [
           "graph"
         ]

@@ -996,6 +996,7 @@ class GroundabilityRecommendation(Enum):
 class HistoryObjectKind(Enum):
     wal = 'wal'
     segment = 'segment'
+    unavailable = 'unavailable'
     pending = 'pending'
 
 
@@ -5086,6 +5087,11 @@ class PublishedReadStatusResponse(BaseModel):
     snapshot: PublishedReadSnapshotView
 
 
+class RdfEntityRelation(BaseModel):
+    entity: EntityView
+    relation: RelationView
+
+
 class RdfSchemaSummaryResponse(BaseModel):
     """
     Compact, immutable observed-schema artifact attached to one exact F3 base.
@@ -5913,24 +5919,6 @@ class EmbeddingIndexSpaceView(BaseModel):
     target_counts: dict[str, int]
 
 
-class EntityDetailResponse(BaseModel):
-    attributes: Annotated[
-        dict[str, Any] | None,
-        Field(
-            description="The entity's typed scalar properties as native JSON — the flat read-back\nof what a commit's `entity_properties` wrote, so round-trip verification\nis a one-hop lookup. A numeric property reads back as a JSON number, a\nbool as a bool, a datetime as an RFC3339 string; empty when the entity\ncarries no scalar attributes. The `/entities` list returns the same\n`attributes` shape under `?fields=`."
-        ),
-    ] = None
-    current_state: list[StateEntry]
-    entity: EntityView
-    history: list[EdgeEventRow]
-    incoming: list[GraphEdgeRow]
-    metadata: EntityMetadataResponse
-    observations: list[ObservationRow]
-    outgoing: list[GraphEdgeRow]
-    snapshot: SnapshotView
-    truncation: EntityDetailTruncation | None = None
-
-
 class EntityNeighborhoodResponse(BaseModel):
     """
     Result of an entity point lookup: the entity plus its out/in neighborhood.
@@ -5988,6 +5976,13 @@ class EntityPropertiesInput(BaseModel):
         ),
     ] = None
     type: str
+
+
+class EntityRdfRelations(BaseModel):
+    incoming: list[RdfEntityRelation]
+    incoming_truncation: TruncatedCollection | None = None
+    outgoing: list[RdfEntityRelation]
+    outgoing_truncation: TruncatedCollection | None = None
 
 
 class EntityTransitionsResponse(BaseModel):
@@ -6723,6 +6718,31 @@ class EmbeddingIndexInspectResponse(BaseModel):
     provider: EmbeddingProviderSpec
     snapshot: SnapshotView
     spaces: list[EmbeddingIndexSpaceView]
+
+
+class EntityDetailResponse(BaseModel):
+    attributes: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="The entity's RDF-projected properties as typed JSON: numbers, booleans,\nRFC3339 datetime strings, strings and sets. Nulls, bytes, vectors,\nnon-finite numbers and empty sets have no RDF projection and are omitted."
+        ),
+    ] = None
+    current_state: list[StateEntry]
+    entity: EntityView
+    history: list[EdgeEventRow]
+    incoming: list[GraphEdgeRow]
+    metadata: EntityMetadataResponse
+    observations: list[ObservationRow]
+    outgoing: list[GraphEdgeRow]
+    rdf_relations: EntityRdfRelations | None = None
+    snapshot: SnapshotView
+    truncation: EntityDetailTruncation | None = None
+    unavailable_sections: Annotated[
+        list[str] | None,
+        Field(
+            description='Legacy sections unavailable in this read model. An empty listed section\nmeans unavailable, not that the entity has no history or relationships.'
+        ),
+    ] = None
 
 
 class GraphCommitResponse(BaseModel):
