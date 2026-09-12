@@ -13095,6 +13095,17 @@
             },
             "type": "array"
           },
+          "as_of_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Exact transaction-time watermark from the retained branch-owned RDF\nlineage. Uses the same bounded base and commit deltas as SPARQL text;\na missing checkpoint or a pin beyond head fails instead of serving a\ndifferent snapshot. Valid-time selectors are unsupported."
+              }
+            ]
+          },
           "ask": {
             "description": "`ASK` form: return only `boolean` (whether the pattern has any solution).\nProjection, DISTINCT, and limit/offset are ignored.",
             "type": "boolean"

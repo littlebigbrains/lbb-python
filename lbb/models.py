@@ -7300,6 +7300,7 @@ class SparqlSelectRequest(BaseModel):
             description='Aggregate projections (COUNT/SUM/AVG/MIN/MAX … AS …). Presence switches\nthe query into grouped/aggregated mode.'
         ),
     ] = None
+    as_of_commit_seq: CommitSeq | None = None
     ask: Annotated[
         bool | None,
         Field(
