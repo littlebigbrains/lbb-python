@@ -9893,6 +9893,17 @@
               "integer",
               "null"
             ]
+          },
+          "write_enforcement": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaWriteEnforcement",
+                "description": "How and when the engine enforces the published shapes on this branch."
+              }
+            ]
           }
         },
         "required": [
@@ -9947,6 +9958,28 @@
         ],
         "type": "object"
       },
+      "SchemaShapeWriteEnforcement": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaWriteEnforcementBlocker"
+            },
+            "type": "array"
+          },
+          "shape": {
+            "description": "An active root shape: one that selects focus nodes.",
+            "type": "string"
+          },
+          "write_enforceable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "shape",
+          "write_enforceable"
+        ],
+        "type": "object"
+      },
       "SchemaSource": {
         "properties": {
           "format": {
@@ -9965,6 +9998,62 @@
           "source"
         ],
         "type": "object"
+      },
+      "SchemaWriteEnforcement": {
+        "description": "How the published shape set is enforced on this branch.",
+        "properties": {
+          "shapes": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaShapeWriteEnforcement"
+            },
+            "type": "array"
+          },
+          "timing": {
+            "$ref": "#/components/schemas/SchemaWriteEnforcementTiming"
+          },
+          "write_enforceable": {
+            "description": "True when no root shape has a blocker. An RDF-native branch accepts\n`reject` mode only for such a shape set.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "timing",
+          "write_enforceable",
+          "shapes"
+        ],
+        "type": "object"
+      },
+      "SchemaWriteEnforcementBlocker": {
+        "description": "A constraint with no bounded affected set: the engine cannot tell which\nfocus nodes a write changes its verdict for.",
+        "properties": {
+          "constraint": {
+            "description": "The SHACL parameter: `sh:sparql`, or the shape reference that closes a\ncycle (`sh:node`, `sh:property`, `sh:or`, ...).",
+            "type": "string"
+          },
+          "reason": {
+            "description": "`sparql_constraint` or `recursive_shape`.",
+            "type": "string"
+          },
+          "shape": {
+            "description": "The shape that carries the constraint.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shape",
+          "constraint",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SchemaWriteEnforcementTiming": {
+        "description": "When the engine checks the published shapes against a write.",
+        "enum": [
+          "write_time",
+          "write_time_full_scan",
+          "after_publication"
+        ],
+        "type": "string"
       },
       "ScoredCandidateInput": {
         "description": "One scored retrieval candidate on the wire: which entity matched and its raw\n(pre-calibration) score from whatever channel produced it. The entity is\nreferenced by selector (id, or type+name); a candidate not visible in the\nserved snapshot is dropped, not emitted (inv. candidate-not-final).",

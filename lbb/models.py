@@ -2172,6 +2172,34 @@ class SchemaSource(BaseModel):
     source: Annotated[str, Field(description='RDF or ontology document text.')]
 
 
+class SchemaWriteEnforcementBlocker(BaseModel):
+    """
+    A constraint with no bounded affected set: the engine cannot tell which
+    focus nodes a write changes its verdict for.
+    """
+
+    constraint: Annotated[
+        str,
+        Field(
+            description='The SHACL parameter: `sh:sparql`, or the shape reference that closes a\ncycle (`sh:node`, `sh:property`, `sh:or`, ...).'
+        ),
+    ]
+    reason: Annotated[
+        str, Field(description='`sparql_constraint` or `recursive_shape`.')
+    ]
+    shape: Annotated[str, Field(description='The shape that carries the constraint.')]
+
+
+class SchemaWriteEnforcementTiming(Enum):
+    """
+    When the engine checks the published shapes against a write.
+    """
+
+    write_time = 'write_time'
+    write_time_full_scan = 'write_time_full_scan'
+    after_publication = 'after_publication'
+
+
 class ScoredCandidateInput(BaseModel):
     """
     One scored retrieval candidate on the wire: which entity matched and its raw
@@ -5219,14 +5247,27 @@ class SchemaPublishRequest(BaseModel):
     shapes: SchemaSource | None = None
 
 
-class SchemaPublishResponse(BaseModel):
-    activated: bool
-    audit: SchemaAuditReport | None = None
-    enforce_mode: SchemaEnforceMode
-    graph: GraphKey
-    messages: list[str]
-    ontology_version: Annotated[int, Field(ge=0)]
-    shapes_version: Annotated[int | None, Field(ge=0)] = None
+class SchemaShapeWriteEnforcement(BaseModel):
+    blockers: list[SchemaWriteEnforcementBlocker] | None = None
+    shape: Annotated[
+        str, Field(description='An active root shape: one that selects focus nodes.')
+    ]
+    write_enforceable: bool
+
+
+class SchemaWriteEnforcement(BaseModel):
+    """
+    How the published shape set is enforced on this branch.
+    """
+
+    shapes: list[SchemaShapeWriteEnforcement]
+    timing: SchemaWriteEnforcementTiming
+    write_enforceable: Annotated[
+        bool,
+        Field(
+            description='True when no root shape has a blocker. An RDF-native branch accepts\n`reject` mode only for such a shape set.'
+        ),
+    ]
 
 
 class ScoredEntityView(BaseModel):
@@ -6522,6 +6563,17 @@ class ResolveTermResponse(BaseModel):
     ]
     snapshot: SnapshotView
     snapshot_token: str
+
+
+class SchemaPublishResponse(BaseModel):
+    activated: bool
+    audit: SchemaAuditReport | None = None
+    enforce_mode: SchemaEnforceMode
+    graph: GraphKey
+    messages: list[str]
+    ontology_version: Annotated[int, Field(ge=0)]
+    shapes_version: Annotated[int | None, Field(ge=0)] = None
+    write_enforcement: SchemaWriteEnforcement | None = None
 
 
 class SearchFeedbackExportResponse(BaseModel):
