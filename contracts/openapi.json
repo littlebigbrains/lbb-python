@@ -35613,6 +35613,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Parse and check compatibility without activation; returns activated=false and predicted schema versions. Does not run whole-graph conformance",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -35848,7 +35857,7 @@
             "bearer": []
           }
         ],
-        "summary": "Atomically activate a SHACL shapes bundle and enqueue durable conformance validation",
+        "summary": "Atomically activate a SHACL shapes bundle, or preview compatibility without writes or validation jobs",
         "tags": [
           "schema"
         ]
