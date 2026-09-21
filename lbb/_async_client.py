@@ -36,6 +36,7 @@ from ._client_base import (
     _body_marks_terminal,
     _EntityNamespace,
     _error_body_field,
+    _EvalsNamespace,
     _FactsNamespace,
     _GraphNamespace,
     _jittered_backoff,
@@ -439,6 +440,7 @@ class AsyncLbbClient(_BaseLbbClient):
         self.ontology = _AsyncOntologyNamespace(self)
         self.query = _AsyncQueryNamespace(self)
         self.schema = _AsyncSchemaNamespace(self)
+        self.evals = _EvalsNamespace(self)
         self._http = httpx.AsyncClient(
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )
