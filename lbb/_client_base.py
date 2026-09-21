@@ -1963,6 +1963,101 @@ class _SchemaNamespace:
         )
 
 
+class _EvalsNamespace:
+    """Managed evals: traces, labels (thumbs up or down), goldens, and runs."""
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def summary(self) -> Any:
+        """Settings, golden counts, unlabeled traces, the latest run, and the score by commit."""
+        return self._client._request("GET", "/v1/evals")
+
+    def traces(self, *, limit: int | None = None, unlabeled: bool = False) -> Any:
+        """Recent traces, newest first."""
+        return self._client._request(
+            "GET",
+            "/v1/evals/traces",
+            params={"limit": limit, "unlabeled": "true" if unlabeled else None},
+        )
+
+    def label(
+        self,
+        trace_id: str,
+        *,
+        valid: bool,
+        by: str | None = None,
+        note: str | None = None,
+        source: str | None = None,
+    ) -> Any:
+        """Label a trace valid (thumbs up) or not (thumbs down). A valid label
+        promotes the trace to a golden."""
+        body: dict[str, Any] = {"valid": valid}
+        if by is not None:
+            body["by"] = by
+        if note is not None:
+            body["note"] = note
+        if source is not None:
+            body["source"] = source
+        return self._client._request(
+            "POST", "/v1/evals/label", params={"trace": trace_id}, body=body
+        )
+
+    def judge(self, *, trace_id: str | None = None, limit: int | None = None) -> Any:
+        """Let the managed judge label one trace, or a batch of unlabeled traces."""
+        return self._client._request(
+            "POST", "/v1/evals/judge", params={"trace": trace_id, "limit": limit}
+        )
+
+    def goldens(self) -> Any:
+        return self._client._request("GET", "/v1/evals/goldens")
+
+    def create_golden(
+        self,
+        sparql: str,
+        *,
+        request: str | None = None,
+        entailment: str | None = None,
+    ) -> Any:
+        """Freeze a query and the rows it returns now."""
+        body: dict[str, Any] = {"sparql": sparql}
+        if request is not None:
+            body["request"] = request
+        if entailment is not None:
+            body["entailment"] = entailment
+        return self._client._request("POST", "/v1/evals/goldens", body=body)
+
+    def accept_golden(self, golden_id: str, *, consistency: str | None = None) -> Any:
+        """Accept the rows a golden returns now as its new reference."""
+        return self._client._request(
+            "POST",
+            "/v1/evals/goldens/accept",
+            params={"id": golden_id, "consistency": consistency},
+        )
+
+    def delete_golden(self, golden_id: str) -> Any:
+        return self._client._request(
+            "DELETE", "/v1/evals/goldens", params={"id": golden_id}
+        )
+
+    def run(self, *, consistency: str | None = None) -> Any:
+        """Replay every golden at the current commit."""
+        return self._client._request(
+            "POST", "/v1/evals/run", params={"consistency": consistency}
+        )
+
+    def results(self, *, limit: int | None = None) -> Any:
+        return self._client._request(
+            "GET", "/v1/evals/results", params={"limit": limit}
+        )
+
+    def settings(self) -> Any:
+        return self._client._request("GET", "/v1/evals/settings")
+
+    def set_settings(self, body: Body) -> Any:
+        return self._client._request("PUT", "/v1/evals/settings", body=body)
+
+
 class _EntityNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client

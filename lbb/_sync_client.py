@@ -29,6 +29,7 @@ from ._client_base import (
     _body_marks_terminal,
     _EntityNamespace,
     _error_body_field,
+    _EvalsNamespace,
     _jittered_backoff,
     _OntologyNamespace,
     _parse_model,
@@ -150,6 +151,7 @@ class LbbClient(_BaseLbbClient):
     ontology: _SyncOntologyNamespace
     query: _SyncQueryNamespace
     schema: _SchemaNamespace
+    evals: _EvalsNamespace
 
     def __init__(
         self,
@@ -184,6 +186,7 @@ class LbbClient(_BaseLbbClient):
         self.ontology = _SyncOntologyNamespace(self)
         self.query = _SyncQueryNamespace(self)
         self.schema = _SchemaNamespace(self)
+        self.evals = _EvalsNamespace(self)
         self._http = httpx.Client(
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )

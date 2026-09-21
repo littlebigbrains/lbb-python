@@ -502,6 +502,92 @@ class EntityView(BaseModel):
     type: str
 
 
+class EvalJudgeStatus(BaseModel):
+    available: bool
+    provider: Annotated[str, Field(description='`off`, `mock`, or `typesafe`.')]
+
+
+class EvalLabelSource(Enum):
+    """
+    Who labeled a trace.
+    """
+
+    explicit = 'explicit'
+    implicit = 'implicit'
+    judge = 'judge'
+
+
+class EvalMode(Enum):
+    """
+    Where evals run. `Off` records traces and goldens but never runs them on
+    its own; `Advisory` runs them on demand and on the periodic tick. A
+    blocking gate is not part of this increment.
+    """
+
+    off = 'off'
+    advisory = 'advisory'
+
+
+class EvalRows(BaseModel):
+    """
+    The rows a query returned, in a form that compares across commits.
+    """
+
+    row_count: Annotated[int, Field(ge=0)]
+    rows: Annotated[
+        list[Any] | None,
+        Field(
+            description='The SPARQL Results JSON bindings, present when the set has at most\n[`EVAL_INLINE_ROW_LIMIT`] rows.'
+        ),
+    ] = None
+    rows_blake3: Annotated[
+        str, Field(description='blake3 over the canonical, sorted row set.')
+    ]
+
+
+class EvalScorePoint(BaseModel):
+    accepted: Annotated[int, Field(ge=0)]
+    failed: Annotated[int, Field(ge=0)]
+    passed: Annotated[int, Field(ge=0)]
+    ran_at: str
+    regression: bool
+    score: float
+    served_at_seq: Annotated[int, Field(ge=0)]
+
+
+class EvalSettings(BaseModel):
+    max_goldens: Annotated[
+        int,
+        Field(
+            description='Goldens the runner executes per run, at most [`EVAL_HARD_MAX_GOLDENS`].',
+            ge=0,
+        ),
+    ]
+    mode: EvalMode
+    threshold: Annotated[
+        float, Field(description='Score below which a run is reported as a regression.')
+    ]
+    v: Annotated[
+        int, Field(description='Settings format version. Currently `1`.', ge=0)
+    ]
+
+
+class EvalVerdict(Enum):
+    pass_ = 'pass'
+    fail = 'fail'
+    accepted = 'accepted'
+    error = 'error'
+    skipped = 'skipped'
+
+
+class EvalVerdictDetail(BaseModel):
+    judge_probability: float | None = None
+    message: str | None = None
+    row_count: Annotated[int | None, Field(ge=0)] = None
+    rows_blake3: str | None = None
+    verdict: EvalVerdict
+
+
 class ExpandedConceptView(BaseModel):
     from_: Annotated[str, Field(alias='from')]
     kind: ConceptMappingKind
@@ -582,6 +668,16 @@ class FullTextTokenizerConfig(BaseModel):
     min_token_len: Annotated[int | None, Field(ge=0)] = None
     stemming: bool | None = None
     stopwords: list[str] | None = None
+
+
+class GoldenDeleteResponse(BaseModel):
+    deleted: bool
+    suite_version: Annotated[int, Field(ge=0)]
+
+
+class GoldenOrigin(Enum):
+    trace = 'trace'
+    manual = 'manual'
 
 
 class GovernedConflictGroup(BaseModel):
@@ -1747,15 +1843,12 @@ class PublicationStatusResponse(BaseModel):
 
     current_stage: str | None = None
     epoch: Annotated[int, Field(ge=0)]
-    head_generation: Annotated[int, Field(ge=0)]
     head_seq: Annotated[int, Field(ge=0)]
     lag_commits: Annotated[int, Field(ge=0)]
     last_progress_at_micros: int
-    published_generation: Annotated[int | None, Field(ge=0)] = None
     published_seq: Annotated[int, Field(ge=0)]
     retry: PublicationRetryGuidance
     state: PublicationState
-    target_head_generation: Annotated[int, Field(ge=0)]
     target_seq: Annotated[int, Field(ge=0)]
 
 
@@ -3164,6 +3257,12 @@ class SparqlTextRequest(BaseModel):
             description="Not available on the published SPARQL surface: a branch's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error."
         ),
     ] = None
+    request: Annotated[
+        str | None,
+        Field(
+            description="The user's words behind this query, when the caller has them. When\npresent the server records an eval trace and returns its `trace_id`,\nso the caller can label the result valid or not (managed evals)."
+        ),
+    ] = None
 
 
 class SparqlTextResponse(BaseModel):
@@ -3179,6 +3278,12 @@ class SparqlTextResponse(BaseModel):
     ]
     row_page: RowPage
     snapshot: SnapshotView | None = None
+    trace_id: Annotated[
+        str | None,
+        Field(
+            description='The eval trace recorded for this query, present only when the request\ncarried `request`. Label it with `POST /v1/evals/label?trace=<id>`.'
+        ),
+    ] = None
 
 
 class SparqlValue1(BaseModel):
@@ -4120,6 +4225,125 @@ class EntityTypeSampleRow(BaseModel):
     out_degree: Annotated[int, Field(ge=0)]
 
 
+class EvalLabel(BaseModel):
+    by: Annotated[
+        str | None,
+        Field(
+            description='Free-form labeler identity (an agent name, a user id, a judge model).'
+        ),
+    ] = None
+    note: str | None = None
+    probability: Annotated[
+        float | None,
+        Field(description="The judge's probability that the rows answer the request."),
+    ] = None
+    source: EvalLabelSource
+    ts: Annotated[str, Field(description='RFC 3339.')]
+    valid: bool
+
+
+class EvalLabelRequest(BaseModel):
+    by: str | None = None
+    note: str | None = None
+    source: EvalLabelSource | None = None
+    valid: bool
+
+
+class EvalResults(BaseModel):
+    """
+    One run of the suite at one commit of the graph. One object per commit.
+    """
+
+    accepted: Annotated[int, Field(ge=0)]
+    elapsed_ms: Annotated[int, Field(ge=0)]
+    errors: Annotated[int, Field(ge=0)]
+    failed: Annotated[int, Field(ge=0)]
+    goldens_version: Annotated[
+        int, Field(description='The suite version the run read.', ge=0)
+    ]
+    passed: Annotated[int, Field(ge=0)]
+    ran_at: Annotated[str, Field(description='RFC 3339.')]
+    ran_by: Annotated[str, Field(description='`manual`, `tick`, or `judge`.')]
+    regression: Annotated[
+        bool, Field(description='True when `score` is below the settings threshold.')
+    ]
+    score: Annotated[
+        float,
+        Field(
+            description='Share of goldens with `pass` or `accepted`; `1.0` for an empty suite.'
+        ),
+    ]
+    served_at_seq: Annotated[int, Field(ge=0)]
+    skipped: Annotated[int, Field(ge=0)]
+    total: Annotated[int, Field(ge=0)]
+    v: Annotated[int, Field(description='Results format version. Currently `1`.', ge=0)]
+    verdicts: dict[str, EvalVerdictDetail]
+
+
+class EvalResultsListResponse(BaseModel):
+    results: list[EvalResults]
+
+
+class EvalRunResponse(BaseModel):
+    results: EvalResults
+
+
+class EvalSummaryResponse(BaseModel):
+    goldens: Annotated[int, Field(ge=0)]
+    goldens_from_traces: Annotated[int, Field(ge=0)]
+    goldens_manual: Annotated[int, Field(ge=0)]
+    history: Annotated[list[EvalScorePoint], Field(description='Oldest first.')]
+    judge: EvalJudgeStatus
+    latest: EvalResults | None = None
+    review_traces: Annotated[
+        int,
+        Field(
+            description='Traces the judge left for review, among the most recent traces.',
+            ge=0,
+        ),
+    ]
+    settings: EvalSettings
+    suite_version: Annotated[int, Field(ge=0)]
+    unlabeled_traces: Annotated[
+        int,
+        Field(
+            description='Traces without a label, among the most recent traces.', ge=0
+        ),
+    ]
+
+
+class EvalTrace(BaseModel):
+    entailment: SparqlEntailment
+    golden_id: Annotated[
+        str | None,
+        Field(description='The golden this trace was promoted to, when labeled valid.'),
+    ] = None
+    judge_probability: Annotated[
+        float | None,
+        Field(
+            description="The judge's probability when the judge looked at the trace but the\nvalue fell between the two thresholds (the review queue)."
+        ),
+    ] = None
+    label: EvalLabel | None = None
+    request: Annotated[
+        str,
+        Field(description="The user's words, as the caller passed them in `request`."),
+    ]
+    rows: EvalRows
+    served_at_seq: Annotated[
+        int, Field(description='The commit of the graph the rows were read at.', ge=0)
+    ]
+    sparql: str
+    trace_id: str
+    ts: Annotated[str, Field(description='RFC 3339.')]
+    v: Annotated[int, Field(description='Trace format version. Currently `1`.', ge=0)]
+
+
+class EvalTraceListResponse(BaseModel):
+    traces: list[EvalTrace]
+    truncated: bool
+
+
 class EvidenceInput1(BaseModel):
     observation_id: Annotated[
         str | None,
@@ -4228,6 +4452,70 @@ class FusionServingDefaults(BaseModel):
         Field(description='The promoted registry run these weights came from.', ge=0),
     ]
     weights: SearchSignalWeights
+
+
+class Golden(BaseModel):
+    accepted_at: Annotated[
+        str | None,
+        Field(
+            description='RFC 3339; set when a changed row set was accepted as the new reference.'
+        ),
+    ] = None
+    accepted_by: Annotated[
+        str | None,
+        Field(
+            description='Who accepted the last change: `user` or the judge provider.'
+        ),
+    ] = None
+    created_at: Annotated[str, Field(description='RFC 3339.')]
+    entailment: SparqlEntailment
+    expected: EvalRows
+    frozen_at_seq: Annotated[
+        int, Field(description='The commit the expected rows were frozen at.', ge=0)
+    ]
+    id: Annotated[
+        str,
+        Field(
+            description='blake3 of the query text and entailment, so a regenerated or re-added\ngolden keeps its identity and its trend.'
+        ),
+    ]
+    label_source: EvalLabelSource | None = None
+    origin: GoldenOrigin
+    request: str | None = None
+    sparql: str
+    trace_ids: Annotated[
+        list[str] | None,
+        Field(
+            description='The most recent traces that promoted to this golden (bounded).'
+        ),
+    ] = None
+    v: Annotated[int, Field(description='Golden format version. Currently `1`.', ge=0)]
+    valid_count: Annotated[
+        int, Field(description='How many valid labels promoted to this golden.', ge=0)
+    ]
+
+
+class GoldenCreateRequest(BaseModel):
+    entailment: SparqlEntailment | None = None
+    request: str | None = None
+    sparql: str
+
+
+class GoldenResponse(BaseModel):
+    golden: Golden
+    suite_version: Annotated[int, Field(ge=0)]
+
+
+class GoldenSuite(BaseModel):
+    """
+    The suite: one CAS-versioned document per branch.
+    """
+
+    goldens: list[Golden]
+    v: Annotated[int, Field(description='Suite format version. Currently `1`.', ge=0)]
+    version: Annotated[
+        int, Field(description='Monotonic; every write increments it.', ge=0)
+    ]
 
 
 class GovernedConflictAggregationResponse(BaseModel):
@@ -5078,19 +5366,10 @@ class PublishedReadSnapshotView(BaseModel):
     epoch: Annotated[int, Field(ge=0)]
     families: list[PublishedReadFamilyView]
     format_version: Annotated[int, Field(ge=0)]
-    generation: Annotated[int | None, Field(ge=0)] = None
     graph: GraphKey
     min_family_served_at_seq: CommitSeq | None = None
-    predecessor_generation: Annotated[int | None, Field(ge=0)] = None
     projection_version: Annotated[int | None, Field(ge=0)] = None
     served_at_seq: Annotated[int, Field(ge=0)]
-    source_head_generation: Annotated[
-        int,
-        Field(
-            description='Graph-head generation whose metadata/configuration this root reflects.\nThis can trail the current head even when `served_at_seq` is unchanged.',
-            ge=0,
-        ),
-    ]
     summary_available: bool
 
 
@@ -5101,15 +5380,13 @@ class PublishedReadStatusResponse(BaseModel):
     from a separately-polled status response.
     """
 
-    conformance_lag_commits: Annotated[int | None, Field(ge=0)] = None
-    generation_lag: Annotated[
-        int,
+    base_current: Annotated[
+        bool | None,
         Field(
-            description='Head-generation distance, including same-sequence ontology, shapes, or\nindex-configuration changes that commit-sequence lag cannot expose.',
-            ge=0,
+            description='True when the served base reflects the head: no commit lag and no\nsame-sequence ontology, shapes, or index-configuration change pending.'
         ),
-    ]
-    head_generation: Annotated[int, Field(ge=0)]
+    ] = None
+    conformance_lag_commits: Annotated[int | None, Field(ge=0)] = None
     head_seq: Annotated[int, Field(ge=0)]
     query_lag_commits: Annotated[int, Field(ge=0)]
     snapshot: PublishedReadSnapshotView
@@ -6058,6 +6335,26 @@ class EntityTypeSampleResponse(BaseModel):
     total_count: Annotated[int, Field(ge=0)]
 
 
+class EvalJudgeResponse(BaseModel):
+    judged: list[EvalTrace]
+    promoted: Annotated[
+        int,
+        Field(
+            description='Traces the judge labeled valid and promoted to goldens.', ge=0
+        ),
+    ]
+    provider: str
+    rejected: Annotated[
+        int, Field(description='Traces the judge labeled invalid.', ge=0)
+    ]
+    review: Annotated[int, Field(description='Traces left for human review.', ge=0)]
+
+
+class EvalLabelResponse(BaseModel):
+    golden: Golden | None = None
+    trace: EvalTrace
+
+
 class ExtractorDatasetResponse(BaseModel):
     """
     `GET /v1/models/extractor-dataset` — the extractor fine-tune's training
@@ -6222,7 +6519,6 @@ class GraphMetadataResponse(BaseModel):
     ann_indexed_commit_seq: CommitSeq | None = None
     bm25_indexed_commit_seq: CommitSeq | None = None
     graph: GraphKey
-    head_generation: Annotated[int, Field(ge=0)]
     index_caught_up: Annotated[
         bool | None,
         Field(
