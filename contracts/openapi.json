@@ -1426,6 +1426,297 @@
         ],
         "type": "string"
       },
+      "Embedding": {
+        "description": "The persisted embedding (`…/embeddings/epoch=<e>/<name>/embedding.json`):\nthe latest declaration and which version serves, builds, and was served\nbefore.",
+        "properties": {
+          "building": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "next_version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "previous": {
+            "description": "The version that served before the last switch (one rollback).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/EmbeddingRecipe",
+            "description": "The latest declared recipe."
+          },
+          "revision": {
+            "description": "Every write increments it.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "serving": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "v": {
+            "description": "Format version. Currently `1`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "recipe",
+          "next_version",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "EmbeddingBackfill": {
+        "description": "A pass over every instance of the class: the first backfill of a\nversion, or a rescan when the commit deltas are not available.",
+        "properties": {
+          "cursor": {
+            "description": "The last instance IRI done; the next page starts after it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embedded": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rescan": {
+            "description": "A rescan of a ready version (the delta chain was not available).",
+            "type": "boolean"
+          },
+          "reused": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scanned": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "The published commit the pass reads."
+          }
+        },
+        "required": [
+          "target_seq",
+          "scanned",
+          "embedded",
+          "reused",
+          "removed"
+        ],
+        "type": "object"
+      },
+      "EmbeddingCandidate": {
+        "description": "One fact the instances of a class could give their text, measured on a\nsample of the class.",
+        "properties": {
+          "chosen": {
+            "description": "The field is in the previewed recipe.",
+            "type": "boolean"
+          },
+          "coverage": {
+            "description": "Share of the sampled instances with at least one value (0 to 1).",
+            "format": "double",
+            "type": "number"
+          },
+          "examples": {
+            "description": "Up to three values from the sample, as they appear in the text.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EmbeddingCandidateKind"
+          },
+          "max": {
+            "description": "Values per instance the field keeps (the recipe's `max`).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "The line name the field gets in the text.",
+            "type": "string"
+          },
+          "path": {
+            "description": "The path as a recipe stores it: one predicate IRI, or a link and the\npredicate read on the linked entity.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "kind",
+          "coverage",
+          "max",
+          "chosen"
+        ],
+        "type": "object"
+      },
+      "EmbeddingCandidateKind": {
+        "description": "What kind of value a candidate field gives the text.",
+        "enum": [
+          "text",
+          "value",
+          "link"
+        ],
+        "type": "string"
+      },
+      "EmbeddingDeclareRequest": {
+        "description": "Declare or change an embedding (`PUT /v1/embeddings`).",
+        "properties": {
+          "class": {
+            "description": "The class IRI.",
+            "type": "string"
+          },
+          "dim": {
+            "description": "The vector dimension; the model's when absent.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "exclude": {
+            "description": "Names or IRIs to drop from the automatic choice.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "The fields in text order. Absent: the server picks them from a sample\nof the class (the label, frequent text literals, the labels of linked\nentities) and stores the result.",
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingFieldSpec"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "model": {
+            "description": "The model id; the catalog's embedding model when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "`[a-z0-9][a-z0-9-]{0,62}`; defaults to the class's local name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "class"
+        ],
+        "type": "object"
+      },
+      "EmbeddingField": {
+        "description": "A resolved field: the predicate IRIs of the path (one or two), the name\nin the text, and the value cap.",
+        "properties": {
+          "max": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "max"
+        ],
+        "type": "object"
+      },
+      "EmbeddingFieldInput": {
+        "properties": {
+          "max": {
+            "description": "Values kept per entity (default 10).",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The word before the colon in the text; defaults to the local name of\nthe first predicate.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "EmbeddingFieldSpec": {
+        "description": "A field as a caller writes it: a path, or a path with a display name and\na value cap.",
+        "oneOf": [
+          {
+            "description": "`label`, `description`, `calls/label`, `rdfs:label`, `<https://…>`.",
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/EmbeddingFieldInput"
+          }
+        ]
+      },
       "EmbeddingIndexClusterView": {
         "properties": {
           "cluster_id": {
@@ -1557,6 +1848,230 @@
           "cluster_count",
           "target_counts",
           "clusters"
+        ],
+        "type": "object"
+      },
+      "EmbeddingListResponse": {
+        "properties": {
+          "dim": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "embeddings": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingStatus"
+            },
+            "type": "array"
+          },
+          "model_id": {
+            "description": "The embedding model of the graph: every serving embedding of the\nbranch uses it, so one query vector serves a search over all classes.\nAbsent before the first declaration (the catalog's model applies then).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_model_id": {
+            "description": "The model a move goes to: every embedding builds a version with it,\nand the graph switches when all are ready (the search keeps\n`model_id` until then).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "embeddings"
+        ],
+        "type": "object"
+      },
+      "EmbeddingManifest": {
+        "description": "One version (`…/<name>/v<n>/manifest.json`, CAS): its recipe, its runs,\nand how far it covers the graph.",
+        "properties": {
+          "backfill": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EmbeddingBackfill"
+              }
+            ]
+          },
+          "covers_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The published commit the version has embedded through."
+              }
+            ]
+          },
+          "entries": {
+            "description": "Live entries across the runs.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/EmbeddingRecipe"
+          },
+          "revision": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "runs": {
+            "description": "Oldest first. A newer run shadows an older run for the same id.",
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingRunRef"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/EmbeddingVersionState"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/EmbeddingUsage"
+          },
+          "v": {
+            "description": "Format version. Currently `1`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "version",
+          "recipe",
+          "state",
+          "runs",
+          "entries",
+          "revision",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "EmbeddingModelRequest": {
+        "additionalProperties": false,
+        "description": "Move every embedding of the graph to another model\n(`PUT /v1/embeddings/model`). Each embedding builds a new version beside\nthe serving one; the graph switches to the new model at once when every\nembedding has it ready, so a search never mixes two models.",
+        "properties": {
+          "dim": {
+            "description": "The vector dimension; the model's when absent.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "type": "object"
+      },
+      "EmbeddingPreviewRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EmbeddingDeclareRequest"
+          },
+          {
+            "properties": {
+              "iris": {
+                "description": "Show these instances instead of the first ones.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "sample": {
+                "description": "Sample entities to show (default 5, at most 50).",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "Preview a declaration (`POST /v1/embeddings/preview`): stores nothing and\ncalls no model."
+      },
+      "EmbeddingPreviewResponse": {
+        "properties": {
+          "candidates": {
+            "description": "Every field the class could give its text: the recipe's fields first,\nthen the others by coverage. The automatic choice takes the label,\ntext facts on at least 10% of the sample, and links to named\nentities; values and rarer facts are left for the caller to add.",
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingCandidate"
+            },
+            "type": "array"
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/EmbeddingUsage",
+            "description": "The spend of embedding every instance, from the samples' mean length."
+          },
+          "instances": {
+            "description": "Instances of the class at the published generation.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "read_at_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/EmbeddingRecipe"
+          },
+          "sampled": {
+            "description": "Instances the candidates were measured on (up to 1,000).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingSample"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "recipe",
+          "instances",
+          "samples",
+          "estimate"
         ],
         "type": "object"
       },
@@ -1719,6 +2234,166 @@
           "model_id",
           "dim",
           "metric"
+        ],
+        "type": "object"
+      },
+      "EmbeddingRecallStats": {
+        "description": "Recall of the version's index against an exhaustive search over the same\nruns and filter, from sampled searches.",
+        "properties": {
+          "last": {
+            "description": "The last sample's recall@k.",
+            "format": "float",
+            "type": "number"
+          },
+          "last_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recall_at_k": {
+            "description": "The mean recall@k over the samples.",
+            "format": "float",
+            "type": "number"
+          },
+          "samples": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "samples",
+          "recall_at_k",
+          "last"
+        ],
+        "type": "object"
+      },
+      "EmbeddingRecipe": {
+        "description": "What an embedding embeds and with which model. A change of fields or\nmodel is a new version.",
+        "properties": {
+          "class": {
+            "description": "The class IRI whose instances (`?s a <class>`) are embedded.",
+            "type": "string"
+          },
+          "dim": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingField"
+            },
+            "type": "array"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/VectorMetric"
+          },
+          "model_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "class",
+          "fields",
+          "model_id",
+          "dim"
+        ],
+        "type": "object"
+      },
+      "EmbeddingRefreshResponse": {
+        "properties": {
+          "embedding": {
+            "$ref": "#/components/schemas/EmbeddingStatus"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingStep"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps",
+          "embedding"
+        ],
+        "type": "object"
+      },
+      "EmbeddingRunKind": {
+        "enum": [
+          "base",
+          "delta"
+        ],
+        "type": "string"
+      },
+      "EmbeddingRunRef": {
+        "description": "One immutable run of a version: an `lbb-ann` ranged v4 index with a raw\nf32 region, and an `ids` table.",
+        "properties": {
+          "bytes": {
+            "description": "Bytes of the run's objects (meta, blocks, ids); 0 for runs written\nbefore the field existed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clusters": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "entries": {
+            "description": "Entries with a vector.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "description": "`<micros:020>-<nonce>`: unique per write.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EmbeddingRunKind"
+          },
+          "tombstones": {
+            "description": "Ids the run removes from older runs.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "entries",
+          "tombstones",
+          "clusters",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "EmbeddingSample": {
+        "properties": {
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "text": {
+            "description": "The exact text the model would embed; empty when the entity has no\nvalue in any field (it gets no vector).",
+            "type": "string"
+          },
+          "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "iri",
+          "label",
+          "text",
+          "tokens_estimate"
         ],
         "type": "object"
       },
@@ -2050,6 +2725,322 @@
           "metric",
           "ontology_version",
           "target_kind"
+        ],
+        "type": "object"
+      },
+      "EmbeddingStatus": {
+        "description": "An embedding as `GET /v1/embeddings` reports it.",
+        "properties": {
+          "building": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EmbeddingVersionStatus"
+              }
+            ]
+          },
+          "class": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "lag_commits": {
+            "description": "Commits the serving version is behind the published generation.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "previous": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "published_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The commit of the published RDF generation now."
+              }
+            ]
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/EmbeddingRecipe",
+            "description": "The latest declared recipe."
+          },
+          "serving": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EmbeddingVersionStatus"
+              }
+            ]
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "class",
+          "recipe",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "EmbeddingStep": {
+        "description": "What one step of the embed job did.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/EmbeddingStepAction"
+          },
+          "embedded": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "embedded_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "more": {
+            "description": "The version has more work (a backfill page, a fold).",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "removed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reused": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scanned": {
+            "description": "Instances whose text the step rebuilt.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "timings": {
+            "$ref": "#/components/schemas/EmbeddingStepTimings"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/EmbeddingUsage"
+          },
+          "version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "action",
+          "scanned",
+          "embedded",
+          "reused",
+          "removed",
+          "usage",
+          "more"
+        ],
+        "type": "object"
+      },
+      "EmbeddingStepAction": {
+        "enum": [
+          "idle",
+          "backfill",
+          "rescan",
+          "incremental",
+          "fold",
+          "switch"
+        ],
+        "type": "string"
+      },
+      "EmbeddingStepTimings": {
+        "description": "Where the time of one job step went, in milliseconds.",
+        "properties": {
+          "embed_ms": {
+            "description": "Reading reused vectors and calling the model.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scan_ms": {
+            "description": "Finding the instances: the class page, or the commit deltas and the\ninstances they make dirty.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "text_ms": {
+            "description": "Building the texts from the graph.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "write_ms": {
+            "description": "Building and writing the run, and the manifest CAS.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scan_ms",
+          "text_ms",
+          "embed_ms",
+          "write_ms",
+          "total_ms"
+        ],
+        "type": "object"
+      },
+      "EmbeddingUsage": {
+        "description": "Embedding spend. The token count is an estimate: characters / 4.",
+        "properties": {
+          "cost_usd_estimate": {
+            "format": "double",
+            "type": "number"
+          },
+          "texts": {
+            "description": "Texts sent to the model.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "texts",
+          "tokens_estimate",
+          "cost_usd_estimate"
+        ],
+        "type": "object"
+      },
+      "EmbeddingVersionState": {
+        "enum": [
+          "backfilling",
+          "ready"
+        ],
+        "type": "string"
+      },
+      "EmbeddingVersionStatus": {
+        "properties": {
+          "backfill": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EmbeddingBackfill"
+              }
+            ]
+          },
+          "dim": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "embedded_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "entries": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingField"
+            },
+            "type": "array"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "recall": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EmbeddingRecallStats"
+              }
+            ]
+          },
+          "runs": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/EmbeddingVersionState"
+          },
+          "stored_bytes": {
+            "description": "Bytes the version's runs store (the storage it is billed for).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/EmbeddingUsage"
+          },
+          "version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "state",
+          "model_id",
+          "dim",
+          "fields",
+          "entries",
+          "runs",
+          "usage"
         ],
         "type": "object"
       },
@@ -2816,6 +3807,90 @@
         ],
         "type": "object"
       },
+      "EvalItem": {
+        "description": "One result of a query: a hit of a search, or a row of a SPARQL query.",
+        "properties": {
+          "id": {
+            "description": "Stable id of the result: the term id of a hit; the blake3 of the\ncanonical row; `ask:true` / `ask:false` for an ASK answer.",
+            "type": "string"
+          },
+          "iri": {
+            "description": "The entity the result names, when it names one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "description": "A short display form: the hit's label, or the row's values.",
+            "type": "string"
+          },
+          "rank": {
+            "description": "Position in the returned list, from 0.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "value": {
+            "description": "The result as returned: a SPARQL binding row, or a hit."
+          }
+        },
+        "required": [
+          "id",
+          "rank",
+          "label",
+          "value"
+        ],
+        "type": "object"
+      },
+      "EvalItemLabelInput": {
+        "description": "One result to label.",
+        "properties": {
+          "id": {
+            "description": "The result id (`id` on a hit or a trace item).",
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid": {
+            "description": "True: the result answers the request (thumbs up).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "valid"
+        ],
+        "type": "object"
+      },
+      "EvalItems": {
+        "description": "The results a query returned, in a form that compares across commits.",
+        "properties": {
+          "item_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "items": {
+            "description": "The first [`EVAL_INLINE_ITEM_LIMIT`] results, in returned order.",
+            "items": {
+              "$ref": "#/components/schemas/EvalItem"
+            },
+            "type": "array"
+          },
+          "items_blake3": {
+            "description": "blake3 over the sorted result ids: the set, not the order.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_count",
+          "items_blake3"
+        ],
+        "type": "object"
+      },
       "EvalJudgeResponse": {
         "properties": {
           "judged": {
@@ -2824,28 +3899,28 @@
             },
             "type": "array"
           },
-          "promoted": {
-            "description": "Traces the judge labeled valid and promoted to goldens.",
-            "minimum": 0,
-            "type": "integer"
-          },
           "provider": {
             "type": "string"
           },
           "rejected": {
-            "description": "Traces the judge labeled invalid.",
+            "description": "Results the judge labeled not relevant.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relevant": {
+            "description": "Results the judge labeled relevant.",
             "minimum": 0,
             "type": "integer"
           },
           "review": {
-            "description": "Traces left for human review.",
+            "description": "Results the judge left for a person.",
             "minimum": 0,
             "type": "integer"
           }
         },
         "required": [
           "judged",
-          "promoted",
+          "relevant",
           "rejected",
           "review",
           "provider"
@@ -2857,8 +3932,15 @@
           "available": {
             "type": "boolean"
           },
+          "model": {
+            "description": "The model behind the provider, when it has one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "provider": {
-            "description": "`off`, `mock`, or `typesafe`.",
+            "description": "`off`, `mock`, `openrouter`, or `typesafe`.",
             "type": "string"
           }
         },
@@ -2869,6 +3951,7 @@
         "type": "object"
       },
       "EvalLabel": {
+        "description": "A label on one result.",
         "properties": {
           "by": {
             "description": "Free-form labeler identity (an agent name, a user id, a judge model).",
@@ -2884,7 +3967,7 @@
             ]
           },
           "probability": {
-            "description": "The judge's probability that the rows answer the request.",
+            "description": "The judge's probability that the result answers the request.",
             "format": "float",
             "type": [
               "number",
@@ -2899,6 +3982,7 @@
             "type": "string"
           },
           "valid": {
+            "description": "True: the result answers the request (thumbs up).",
             "type": "boolean"
           }
         },
@@ -2910,12 +3994,25 @@
         "type": "object"
       },
       "EvalLabelRequest": {
+        "description": "Thumbs up or down on results of a trace: one result as `item` + `valid`,\nor several in `items`.",
         "properties": {
           "by": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "item": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvalItemLabelInput"
+            },
+            "type": "array"
           },
           "note": {
             "type": [
@@ -2935,12 +4032,12 @@
             ]
           },
           "valid": {
-            "type": "boolean"
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
-        "required": [
-          "valid"
-        ],
         "type": "object"
       },
       "EvalLabelResponse": {
@@ -2952,9 +4049,14 @@
               },
               {
                 "$ref": "#/components/schemas/Golden",
-                "description": "Present when the label was valid and the trace became (or joined) a golden."
+                "description": "The golden that now holds the labels."
               }
             ]
+          },
+          "labeled": {
+            "description": "Results labeled by this call.",
+            "minimum": 0,
+            "type": "integer"
           },
           "trace": {
             "$ref": "#/components/schemas/EvalTrace"
@@ -2966,7 +4068,7 @@
         "type": "object"
       },
       "EvalLabelSource": {
-        "description": "Who labeled a trace.",
+        "description": "Who labeled a result.",
         "enum": [
           "explicit",
           "implicit",
@@ -2985,10 +4087,6 @@
       "EvalResults": {
         "description": "One run of the suite at one commit of the graph. One object per commit.",
         "properties": {
-          "accepted": {
-            "minimum": 0,
-            "type": "integer"
-          },
           "elapsed_ms": {
             "format": "int64",
             "minimum": 0,
@@ -3012,20 +4110,35 @@
             "minimum": 0,
             "type": "integer"
           },
+          "precision": {
+            "description": "Mean precision over the goldens with judged results returned.",
+            "format": "float",
+            "type": "number"
+          },
           "ran_at": {
             "description": "RFC 3339.",
             "type": "string"
           },
           "ran_by": {
-            "description": "`manual`, `tick`, or `judge`.",
+            "description": "`manual` or `tick`.",
             "type": "string"
+          },
+          "recall": {
+            "description": "Mean recall over the goldens with known-relevant results.",
+            "format": "float",
+            "type": "number"
           },
           "regression": {
             "description": "True when `score` is below the settings threshold.",
             "type": "boolean"
           },
+          "review_traces": {
+            "description": "Traces this run opened for results nobody judged yet.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "score": {
-            "description": "Share of goldens with `pass` or `accepted`; `1.0` for an empty suite.",
+            "description": "Share of goldens that pass; `1.0` for an empty suite.",
             "format": "float",
             "type": "number"
           },
@@ -3041,7 +4154,7 @@
             "type": "integer"
           },
           "v": {
-            "description": "Results format version. Currently `1`.",
+            "description": "Results format version. Currently `2`.",
             "format": "int32",
             "minimum": 0,
             "type": "integer"
@@ -3065,7 +4178,6 @@
           "total",
           "passed",
           "failed",
-          "accepted",
           "errors",
           "skipped",
           "regression",
@@ -3089,32 +4201,6 @@
         ],
         "type": "object"
       },
-      "EvalRows": {
-        "description": "The rows a query returned, in a form that compares across commits.",
-        "properties": {
-          "row_count": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "rows": {
-            "description": "The SPARQL Results JSON bindings, present when the set has at most\n[`EVAL_INLINE_ROW_LIMIT`] rows.",
-            "items": {},
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "rows_blake3": {
-            "description": "blake3 over the canonical, sorted row set.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "row_count",
-          "rows_blake3"
-        ],
-        "type": "object"
-      },
       "EvalRunResponse": {
         "properties": {
           "results": {
@@ -3128,10 +4214,6 @@
       },
       "EvalScorePoint": {
         "properties": {
-          "accepted": {
-            "minimum": 0,
-            "type": "integer"
-          },
           "failed": {
             "minimum": 0,
             "type": "integer"
@@ -3140,8 +4222,16 @@
             "minimum": 0,
             "type": "integer"
           },
+          "precision": {
+            "format": "float",
+            "type": "number"
+          },
           "ran_at": {
             "type": "string"
+          },
+          "recall": {
+            "format": "float",
+            "type": "number"
           },
           "regression": {
             "type": "boolean"
@@ -3159,7 +4249,6 @@
           "score",
           "passed",
           "failed",
-          "accepted",
           "regression",
           "ran_at"
         ],
@@ -3219,6 +4308,11 @@
           "judge": {
             "$ref": "#/components/schemas/EvalJudgeStatus"
           },
+          "judged_results": {
+            "description": "Judged results across every golden.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "latest": {
             "oneOf": [
               {
@@ -3230,7 +4324,7 @@
             ]
           },
           "review_traces": {
-            "description": "Traces the judge left for review, among the most recent traces.",
+            "description": "Traces with results the judge left for a person.",
             "minimum": 0,
             "type": "integer"
           },
@@ -3242,8 +4336,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "unlabeled_items": {
+            "description": "Results nobody labeled yet, across those traces.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "unlabeled_traces": {
-            "description": "Traces without a label, among the most recent traces.",
+            "description": "Traces with a result nobody labeled yet, among the most recent traces.",
             "minimum": 0,
             "type": "integer"
           }
@@ -3261,49 +4360,86 @@
         ],
         "type": "object"
       },
+      "EvalSurface": {
+        "description": "Which surface a trace or a golden belongs to.",
+        "enum": [
+          "sparql",
+          "search"
+        ],
+        "type": "string"
+      },
       "EvalTrace": {
         "properties": {
-          "entailment": {
-            "$ref": "#/components/schemas/SparqlEntailment"
-          },
-          "golden_id": {
-            "description": "The golden this trace was promoted to, when labeled valid.",
+          "embedding": {
+            "description": "The embedding name, for `surface: search`.",
             "type": [
               "string",
               "null"
             ]
           },
-          "judge_probability": {
-            "description": "The judge's probability when the judge looked at the trace but the\nvalue fell between the two thresholds (the review queue).",
-            "format": "float",
+          "entailment": {
+            "$ref": "#/components/schemas/SparqlEntailment"
+          },
+          "golden_id": {
+            "description": "The golden that holds this trace's labels.",
             "type": [
-              "number",
+              "string",
               "null"
             ]
           },
-          "label": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/EvalLabel"
-              }
+          "judged_at": {
+            "description": "RFC 3339; set when the judge looked at the trace.",
+            "type": [
+              "string",
+              "null"
             ]
+          },
+          "labels": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EvalLabel"
+            },
+            "description": "Labels by result id.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "request": {
             "description": "The user's words, as the caller passed them in `request`.",
             "type": "string"
           },
-          "rows": {
-            "$ref": "#/components/schemas/EvalRows"
+          "results": {
+            "$ref": "#/components/schemas/EvalItems"
+          },
+          "review": {
+            "additionalProperties": {
+              "format": "float",
+              "type": "number"
+            },
+            "description": "Results the judge looked at but left for a person, with its\nprobability (between the two thresholds).",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "served_at_seq": {
             "$ref": "#/components/schemas/CommitSeq",
-            "description": "The commit of the graph the rows were read at."
+            "description": "The commit of the graph the results were read at."
           },
           "sparql": {
+            "description": "The SPARQL query, or the query text on the vector surface.",
             "type": "string"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/EvalSurface"
+          },
+          "top_k": {
+            "description": "The `top_k` of a search.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "trace_id": {
             "type": "string"
@@ -3313,7 +4449,7 @@
             "type": "string"
           },
           "v": {
-            "description": "Trace format version. Currently `1`.",
+            "description": "Trace format version. Currently `2`: labels per result.",
             "format": "int32",
             "minimum": 0,
             "type": "integer"
@@ -3326,7 +4462,7 @@
           "sparql",
           "entailment",
           "served_at_seq",
-          "rows",
+          "results",
           "ts"
         ],
         "type": "object"
@@ -3353,7 +4489,6 @@
         "enum": [
           "pass",
           "fail",
-          "accepted",
           "error",
           "skipped"
         ],
@@ -3361,10 +4496,11 @@
       },
       "EvalVerdictDetail": {
         "properties": {
-          "judge_probability": {
-            "format": "float",
+          "item_count": {
+            "description": "Results the query returned now.",
+            "minimum": 0,
             "type": [
-              "number",
+              "integer",
               "null"
             ]
           },
@@ -3374,21 +4510,51 @@
               "null"
             ]
           },
-          "row_count": {
-            "minimum": 0,
+          "precision": {
+            "description": "`relevant_returned / (relevant_returned + wrong_returned)`, over the\njudged results that came back.",
+            "format": "float",
             "type": [
-              "integer",
+              "number",
               "null"
             ]
           },
-          "rows_blake3": {
+          "recall": {
+            "description": "`relevant_returned / relevant`, over the known-relevant results.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "relevant_missing": {
+            "description": "Known-relevant results that did not come back.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relevant_returned": {
+            "description": "Known-relevant results that came back.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "review_trace_id": {
+            "description": "The trace opened for the unknown results (the review queue).",
             "type": [
               "string",
               "null"
             ]
           },
+          "unknown_returned": {
+            "description": "Returned results nobody judged yet.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "verdict": {
             "$ref": "#/components/schemas/EvalVerdict"
+          },
+          "wrong_returned": {
+            "description": "Known-wrong results that came back.",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -4231,7 +5397,7 @@
       "Golden": {
         "properties": {
           "accepted_at": {
-            "description": "RFC 3339; set when a changed row set was accepted as the new reference.",
+            "description": "RFC 3339; set when the current results were accepted as the reference.",
             "type": [
               "string",
               "null"
@@ -4248,19 +5414,32 @@
             "description": "RFC 3339.",
             "type": "string"
           },
+          "embedding": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "entailment": {
             "$ref": "#/components/schemas/SparqlEntailment"
           },
-          "expected": {
-            "$ref": "#/components/schemas/EvalRows"
-          },
           "frozen_at_seq": {
             "$ref": "#/components/schemas/CommitSeq",
-            "description": "The commit the expected rows were frozen at."
+            "description": "The commit the judgments were last changed at."
           },
           "id": {
-            "description": "blake3 of the query text and entailment, so a regenerated or re-added\ngolden keeps its identity and its trend.",
+            "description": "blake3 of the request words, the query text and entailment (plus\nembedding and `top_k` for a search), so a regenerated or\nre-added golden keeps its identity and its trend.",
             "type": "string"
+          },
+          "judgments": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GoldenJudgment"
+            },
+            "description": "The judged results by id: the ground truth.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "label_source": {
             "oneOf": [
@@ -4284,21 +5463,25 @@
           "sparql": {
             "type": "string"
           },
+          "surface": {
+            "$ref": "#/components/schemas/EvalSurface"
+          },
+          "top_k": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "trace_ids": {
-            "description": "The most recent traces that promoted to this golden (bounded).",
+            "description": "The most recent traces that labeled into this golden (bounded).",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "v": {
-            "description": "Golden format version. Currently `1`.",
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "valid_count": {
-            "description": "How many valid labels promoted to this golden.",
+            "description": "Golden format version. Currently `2`: judgments per result.",
             "format": "int32",
             "minimum": 0,
             "type": "integer"
@@ -4311,14 +5494,18 @@
           "sparql",
           "entailment",
           "frozen_at_seq",
-          "expected",
-          "valid_count",
           "created_at"
         ],
         "type": "object"
       },
       "GoldenCreateRequest": {
         "properties": {
+          "embedding": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "entailment": {
             "$ref": "#/components/schemas/SparqlEntailment"
           },
@@ -4329,7 +5516,18 @@
             ]
           },
           "sparql": {
+            "description": "The SPARQL query, or the query text for `surface: vector`.",
             "type": "string"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/EvalSurface"
+          },
+          "top_k": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -4351,6 +5549,51 @@
         "required": [
           "deleted",
           "suite_version"
+        ],
+        "type": "object"
+      },
+      "GoldenJudgment": {
+        "description": "What a golden knows about one result.",
+        "properties": {
+          "by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "iri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "probability": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "relevant": {
+            "description": "True: the result answers the request and must keep being returned.\nFalse: the result is wrong and must not come back.",
+            "type": "boolean"
+          },
+          "source": {
+            "$ref": "#/components/schemas/EvalLabelSource"
+          },
+          "ts": {
+            "description": "RFC 3339.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relevant",
+          "label",
+          "source",
+          "ts"
         ],
         "type": "object"
       },
@@ -6705,6 +7948,223 @@
           "error"
         ],
         "type": "object"
+      },
+      "ManagedModel": {
+        "properties": {
+          "dim": {
+            "description": "The vector dimension, for an embedding model.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "The provider's model id (`openai/text-embedding-3-small`,\n`anthropic/claude-sonnet-5`, …).",
+            "type": "string"
+          },
+          "max_price_per_million_usd": {
+            "description": "Refuse the model when the provider prices it above this (USD per\nmillion tokens); `None` leaves the platform default in force.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ManagedModelProvider"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ManagedModelRole"
+          }
+        },
+        "required": [
+          "role",
+          "provider",
+          "id"
+        ],
+        "type": "object"
+      },
+      "ManagedModelCatalog": {
+        "description": "The catalog: one model per role. A role that is absent falls back to the\nserver's compiled default.",
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ManagedModel"
+            },
+            "type": "array"
+          },
+          "updated_at": {
+            "description": "RFC 3339.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "v": {
+            "description": "Catalog format version. Currently `1`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "description": "Monotonic; every write increments it. `0` for the compiled defaults.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "version",
+          "models"
+        ],
+        "type": "object"
+      },
+      "ManagedModelChoice": {
+        "description": "A model the operator can pick for a role: what the platform knows how\nto serve today.",
+        "properties": {
+          "dim": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "max_input_tokens": {
+            "description": "The most tokens one input may have (embedding models). The embed job\nshortens a longer text, longest values first.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price_per_million_usd": {
+            "description": "USD per million input tokens, for cost estimates.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ManagedModelProvider"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ManagedModelRole"
+          }
+        },
+        "required": [
+          "role",
+          "provider",
+          "id",
+          "label"
+        ],
+        "type": "object"
+      },
+      "ManagedModelProvider": {
+        "description": "Who serves the model.",
+        "enum": [
+          "openrouter",
+          "modal",
+          "typesafe",
+          "mock"
+        ],
+        "type": "string"
+      },
+      "ManagedModelRole": {
+        "description": "What a managed model is used for.",
+        "enum": [
+          "embedding",
+          "judge",
+          "rewriter"
+        ],
+        "type": "string"
+      },
+      "ManagedModelsPutRequest": {
+        "description": "Replace the catalog. Every role named here is set; a role left out keeps\nthe compiled default.",
+        "properties": {
+          "expected_version": {
+            "description": "Refuse the write when the document's version is not this one.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ManagedModel"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "models"
+        ],
+        "type": "object"
+      },
+      "ManagedModelsResponse": {
+        "properties": {
+          "catalog": {
+            "$ref": "#/components/schemas/ManagedModelCatalog"
+          },
+          "choices": {
+            "description": "The models the platform can serve per role, for a picker. A catalog\nentry may still name a model outside this list.",
+            "items": {
+              "$ref": "#/components/schemas/ManagedModelChoice"
+            },
+            "type": "array"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ManagedModelsSource"
+          },
+          "writable": {
+            "description": "Whether the caller may write the catalog on this route (single\nmode). In SaaS mode the operator writes it through the ops route.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "catalog",
+          "source"
+        ],
+        "type": "object"
+      },
+      "ManagedModelsSource": {
+        "description": "Where the served catalog came from.",
+        "enum": [
+          "document",
+          "defaults"
+        ],
+        "type": "string"
       },
       "ModelArtifact": {
         "properties": {
@@ -10873,11 +12333,68 @@
         ],
         "type": "object"
       },
+      "SearchClasses": {
+        "description": "One class IRI, or several.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        ]
+      },
+      "SearchConditionResolved": {
+        "description": "One filter condition as the search resolved it, in request order: the\nclasses of a class condition, or a relationship condition's IRI,\ndirection, and entities.",
+        "properties": {
+          "class": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "direction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchDirection"
+              }
+            ]
+          },
+          "to": {
+            "items": {
+              "$ref": "#/components/schemas/SearchTargetResolved"
+            },
+            "type": "array"
+          },
+          "via": {
+            "description": "The relationship IRI.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "SearchConsistency": {
         "description": "Read consistency for a query surface (search, graph summary, SPARQL).\n\nA5 (2026-07-21 product decision): `Eventual` is the **default**. It serves the\npinned published generation at its watermark with no request-time graph\nassembly — the lowest-latency mode and the availability floor during any\npublication backlog. The served watermark rides back on\n`SnapshotView::served_at_seq`. `Strong` requires the immutable published\ngeneration itself to cover the query head and is explicit opt-in; the precise\nread-your-writes contract (`min_indexed_seq`) replaces most former uses of strong. See\n`docs/architecture/segment-native-indexing.md` §6.",
         "enum": [
           "strong",
           "eventual"
+        ],
+        "type": "string"
+      },
+      "SearchDirection": {
+        "description": "Which way a relationship condition reads.",
+        "enum": [
+          "out",
+          "in"
         ],
         "type": "string"
       },
@@ -11621,6 +13138,53 @@
           }
         ]
       },
+      "SearchFilter": {
+        "additionalProperties": false,
+        "description": "One condition of a search's filter: a class (`class`), or a relationship\nto entities (`via`, `to`, and optionally `direction`).",
+        "properties": {
+          "class": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchClasses",
+                "description": "Keep the instances of these classes (one IRI or a list, any of) and\nof their subclasses. An embedding on a class above one takes part,\nwith only these classes' instances."
+              }
+            ]
+          },
+          "direction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchDirection",
+                "description": "`out` (default): the hit links to the entity; `in`: the entity links\nto the hit."
+              }
+            ]
+          },
+          "to": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTargets",
+                "description": "The entities (any of): IRIs, or names matched against the labels of\nthe entities `via` reaches (exact, then case and separators ignored,\nthen one clearly closest label)."
+              }
+            ]
+          },
+          "via": {
+            "description": "The relationship: a local name the instances use (`calls`), a known\nprefix (`schema:knows`), or a full IRI (`<https://…>`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "SearchFilterExpr": {
         "oneOf": [
           {
@@ -12103,6 +13667,48 @@
           }
         ]
       },
+      "SearchFilterMode": {
+        "description": "How a relationship filter ran.",
+        "enum": [
+          "clusters",
+          "after"
+        ],
+        "type": "string"
+      },
+      "SearchFilterReport": {
+        "description": "A search's filter: its conditions as resolved and, with a relationship\ncondition, how it ran and how many entities it allows.",
+        "properties": {
+          "allowed": {
+            "description": "Entities of the searched classes that meet every condition. In mode\n`after` it is the selective limit plus one (there are more).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/SearchConditionResolved"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchFilterMode"
+              }
+            ]
+          }
+        },
+        "required": [
+          "conditions"
+        ],
+        "type": "object"
+      },
       "SearchFilterValue": {
         "oneOf": [
           {
@@ -12124,6 +13730,45 @@
             "type": "string"
           }
         ]
+      },
+      "SearchHit": {
+        "properties": {
+          "class": {
+            "description": "The class of the embedding that found the hit.",
+            "type": "string"
+          },
+          "embedding": {
+            "description": "The embedding that found the hit.",
+            "type": "string"
+          },
+          "id": {
+            "description": "The RDF term id of the IRI (hex).",
+            "type": "string"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "score": {
+            "format": "float",
+            "type": "number"
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "iri",
+          "label",
+          "score"
+        ],
+        "type": "object"
       },
       "SearchHitContributions": {
         "properties": {
@@ -12257,6 +13902,175 @@
             "type": "object"
           }
         ]
+      },
+      "SearchRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/search`. Unknown fields are refused.",
+        "properties": {
+          "embedding": {
+            "description": "Search one embedding by name. Without it, the search covers every\nsearchable class of the graph.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "explain": {
+            "description": "Plan the search without running it: the scope, the resolved filters,\nand how the filter would run. No model call, no hits.",
+            "type": "boolean"
+          },
+          "filter": {
+            "description": "The conditions every hit must meet, checked in the graph at the\nsearch's snapshot: `{\"class\": …}` keeps the instances of a class (one\nIRI or a list, any of; their subclasses too; one class condition per\nsearch), and `{\"via\": …, \"to\": …, \"direction\": …}` keeps the hits\nlinked to entities.",
+            "items": {
+              "$ref": "#/components/schemas/SearchFilter"
+            },
+            "type": "array"
+          },
+          "include": {
+            "description": "Extra hit fields: `text` (the embedded text).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "probe": {
+            "description": "Clusters to read across the big runs (default 4·√clusters, at least\n8). Runs of up to 4,096 entries are always read whole.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "request": {
+            "description": "The user's words behind this search. When present the server records\nan eval trace and returns its `trace_id`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "The query text; embedded with the serving version's model.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "top_k": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "SearchResponse": {
+        "properties": {
+          "clusters_probed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dropped_by_graph": {
+            "description": "Candidates the graph check removed (deleted or re-typed entities).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "embedded_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The oldest commit the searched embeddings have embedded through."
+              }
+            ]
+          },
+          "embeddings": {
+            "description": "The embeddings the search read, and how current each is.",
+            "items": {
+              "$ref": "#/components/schemas/SearchedEmbedding"
+            },
+            "type": "array"
+          },
+          "entries_considered": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "explain": {
+            "description": "Only planned (`explain`): no hits and no model call.",
+            "type": "boolean"
+          },
+          "filter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchFilterReport",
+                "description": "The relationship filter, as resolved and run."
+              }
+            ]
+          },
+          "hits": {
+            "description": "The best hits over every searched embedding, by score; an entity two\nembeddings hold comes back once, with its best score.",
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          },
+          "lag_commits": {
+            "description": "The most published commits one searched embedding does not cover yet\n(`served_at_seq` − its watermark); the embed job catches up by itself.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "not_ready": {
+            "description": "Embeddings in scope that are still building their first version; the\nsearch skipped them.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "query_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "served_at_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The RDF snapshot every hit was checked against."
+              }
+            ]
+          },
+          "timings": {
+            "$ref": "#/components/schemas/SearchTimings"
+          },
+          "trace_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/EmbeddingUsage"
+          }
+        },
+        "required": [
+          "hits",
+          "embeddings",
+          "clusters_probed",
+          "entries_considered",
+          "dropped_by_graph",
+          "usage",
+          "query_ms"
+        ],
+        "type": "object"
       },
       "SearchSignalWeights": {
         "properties": {
@@ -12465,6 +14279,56 @@
         ],
         "type": "object"
       },
+      "SearchTargetMatch": {
+        "description": "How a `to` value matched an entity.",
+        "enum": [
+          "iri",
+          "label",
+          "normalized",
+          "close"
+        ],
+        "type": "string"
+      },
+      "SearchTargetResolved": {
+        "description": "A `to` value and the entity it resolved to.",
+        "properties": {
+          "input": {
+            "type": "string"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "matched": {
+            "$ref": "#/components/schemas/SearchTargetMatch"
+          }
+        },
+        "required": [
+          "input",
+          "iri",
+          "matched"
+        ],
+        "type": "object"
+      },
+      "SearchTargets": {
+        "description": "One entity or several, each an IRI or a name (a label).",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        ]
+      },
       "SearchTemporalCoverage": {
         "description": "Provenance for the immutable family roots selected from one pinned published\ngeneration. `ceiling_commit_seq` is that generation's common query\nwatermark; per-leg fields are `None` only when the corresponding leg was\ndisabled.",
         "properties": {
@@ -12519,6 +14383,111 @@
         },
         "required": [
           "ceiling_commit_seq"
+        ],
+        "type": "object"
+      },
+      "SearchTimings": {
+        "description": "Where the time of a search went, in milliseconds.",
+        "properties": {
+          "check_ms": {
+            "description": "The graph check of the candidates.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "embed_ms": {
+            "description": "Embedding the query text.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "filter_ms": {
+            "description": "Resolving a relationship filter and finding its allowed entities.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "index_ms": {
+            "description": "Probing the runs and scoring their codes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rerank_ms": {
+            "description": "Reading the exact vectors of the best candidates and scoring them.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolve_ms": {
+            "description": "Reading the embedding, its manifest, and its runs.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resolve_ms",
+          "embed_ms",
+          "index_ms",
+          "check_ms"
+        ],
+        "type": "object"
+      },
+      "SearchedEmbedding": {
+        "description": "One embedding a search read.",
+        "properties": {
+          "building_version": {
+            "description": "A newer version that builds while this one serves (a changed recipe).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "class": {
+            "type": "string"
+          },
+          "embedded_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The commit its serving version has embedded through."
+              }
+            ]
+          },
+          "hits": {
+            "description": "The hits of this response it found.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lag_commits": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "class",
+          "version",
+          "model_id",
+          "hits"
         ],
         "type": "object"
       },
@@ -17137,6 +19106,1661 @@
         ]
       }
     },
+    "/v1/embeddings": {
+      "delete": {
+        "operationId": "delete_v1_embeddings",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the embedding",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the embedding name again",
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove an embedding; `graph index-gc` removes its runs",
+        "tags": [
+          "system"
+        ]
+      },
+      "get": {
+        "operationId": "get_v1_embeddings",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one embedding (returns EmbeddingStatus)",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingListResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The embeddings of the branch with their status: serving and building version, backfill progress, watermark, lag, recall; `name` for one",
+        "tags": [
+          "system"
+        ]
+      },
+      "put": {
+        "operationId": "put_v1_embeddings",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingDeclareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingStatus"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Declare or change the embedding of a class: its fields (one-hop property paths, or chosen automatically), and model. A new recipe builds as a new version while the old one serves",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/embeddings/model": {
+      "put": {
+        "operationId": "put_v1_embeddings_model",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingListResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Move every embedding of the graph to another model (one model per graph): each builds a new version beside the serving one, and the graph switches to the new model at once when every embedding has it ready",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/embeddings/preview": {
+      "post": {
+        "operationId": "post_v1_embeddings_preview",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingPreviewResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What a declaration would embed: the resolved fields, every candidate fact of the class with its coverage and examples, the instance count, and the exact text of sample entities. Stores nothing and calls no model",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/embeddings/refresh": {
+      "post": {
+        "operationId": "post_v1_embeddings_refresh",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the embedding",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingRefreshResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run one bounded step of the embed job now (backfill pages, the commit deltas, a fold, a switch)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/v1/evals": {
       "get": {
         "operationId": "get_v1_evals",
@@ -19073,7 +22697,7 @@
             "bearer": []
           }
         ],
-        "summary": "Label a trace valid or not (thumbs up or down); a valid label promotes it to a golden",
+        "summary": "Label results of a trace relevant or not (thumbs up or down per result); the labels become the golden's ground truth",
         "tags": [
           "system"
         ]
@@ -20158,6 +23782,276 @@
         ]
       }
     },
+    "/v1/evals/trace": {
+      "get": {
+        "operationId": "get_v1_evals_trace",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the trace id returned by the query",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalTrace"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One eval trace: the request, its query, its results, and their labels",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/v1/evals/traces": {
       "get": {
         "operationId": "get_v1_evals_traces",
@@ -20199,7 +24093,7 @@
             }
           },
           {
-            "description": "true to return only traces without a label",
+            "description": "true to return only traces with a result nobody labeled yet",
             "in": "query",
             "name": "unlabeled",
             "required": false,
@@ -20431,7 +24325,7 @@
             "bearer": []
           }
         ],
-        "summary": "Recent eval traces (a request, its query, and the rows it got), newest first",
+        "summary": "Recent eval traces (a request, its query, and the results it got), newest first",
         "tags": [
           "system"
         ]
@@ -28449,6 +32343,267 @@
         "summary": "List the graphs (and branches) under the scoped tenant",
         "tags": [
           "graph"
+        ]
+      }
+    },
+    "/v1/managed-models": {
+      "get": {
+        "operationId": "get_v1_managed_models",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedModelsResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The managed models the platform uses per role (embedding, judge, rewriter): the operator's catalog, or the compiled defaults",
+        "tags": [
+          "system"
         ]
       }
     },
@@ -39875,6 +44030,286 @@
         "summary": "Atomically activate a SHACL shapes bundle, or preview compatibility without writes or validation jobs",
         "tags": [
           "schema"
+        ]
+      }
+    },
+    "/v1/search": {
+      "post": {
+        "operationId": "post_v1_search",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Branch name (default `main`)",
+            "in": "query",
+            "name": "branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Search by meaning over every searchable class of the graph, or one `embedding`; `filter` lists the conditions every hit must meet (a class, its subclasses included; relationships to entities by IRI or name); every hit is checked against one RDF snapshot and carries its class; `explain` plans without running; `include: [\"text\"]` returns the embedded text",
+        "tags": [
+          "search"
         ]
       }
     },

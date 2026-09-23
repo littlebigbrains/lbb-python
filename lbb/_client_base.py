@@ -1424,6 +1424,10 @@ class _BaseLbbClient:
         """Automatic publication lifecycle, including pre-first-generation state."""
         return self._request("GET", "/v1/graph/publication-status")
 
+    def managed_models(self) -> Any:
+        """The managed models the platform uses per role (embedding, judge, rewriter)."""
+        return self._request("GET", "/v1/managed-models")
+
     def publication_status_model(self) -> models.PublicationStatusResponse:
         """Publication lifecycle validated as ``PublicationStatusResponse``."""
         return self._model_request(
@@ -1981,18 +1985,31 @@ class _EvalsNamespace:
             params={"limit": limit, "unlabeled": "true" if unlabeled else None},
         )
 
+    def trace(self, trace_id: str) -> Any:
+        """One trace: the request, its query, its results, and their labels."""
+        return self._client._request("GET", "/v1/evals/trace", params={"id": trace_id})
+
     def label(
         self,
         trace_id: str,
         *,
-        valid: bool,
+        item: str | None = None,
+        valid: bool | None = None,
+        items: list[Mapping[str, Any]] | None = None,
         by: str | None = None,
         note: str | None = None,
         source: str | None = None,
     ) -> Any:
-        """Label a trace valid (thumbs up) or not (thumbs down). A valid label
-        promotes the trace to a golden."""
-        body: dict[str, Any] = {"valid": valid}
+        """Thumbs up or down on results of a trace: one result as `item` +
+        `valid`, or several as `items=[{"id": ..., "valid": ...}]`. The labels
+        become the golden's ground truth."""
+        body: dict[str, Any] = {}
+        if item is not None:
+            body["item"] = item
+        if valid is not None:
+            body["valid"] = valid
+        if items is not None:
+            body["items"] = [dict(entry) for entry in items]
         if by is not None:
             body["by"] = by
         if note is not None:
@@ -2004,7 +2021,7 @@ class _EvalsNamespace:
         )
 
     def judge(self, *, trace_id: str | None = None, limit: int | None = None) -> Any:
-        """Let the managed judge label one trace, or a batch of unlabeled traces."""
+        """Let the managed judge label the results of one trace, or of a batch of traces."""
         return self._client._request(
             "POST", "/v1/evals/judge", params={"trace": trace_id, "limit": limit}
         )
@@ -2019,7 +2036,7 @@ class _EvalsNamespace:
         request: str | None = None,
         entailment: str | None = None,
     ) -> Any:
-        """Freeze a query and the rows it returns now."""
+        """Freeze a query: every result it returns now is relevant."""
         body: dict[str, Any] = {"sparql": sparql}
         if request is not None:
             body["request"] = request
@@ -2056,6 +2073,152 @@ class _EvalsNamespace:
 
     def set_settings(self, body: Body) -> Any:
         return self._client._request("PUT", "/v1/evals/settings", body=body)
+
+
+class _EmbeddingsNamespace:
+    """Search: embeddings declared on classes of the graph.
+
+    The platform keeps the vectors in step with the published graph; a
+    search checks every hit against one graph snapshot.
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def list(self) -> Any:
+        """Every embedding of the branch with its status."""
+        return self._client._request("GET", "/v1/embeddings")
+
+    def get(self, name: str) -> Any:
+        """One embedding: serving and building version, backfill, lag, recall."""
+        return self._client._request("GET", "/v1/embeddings", params={"name": name})
+
+    def declare(
+        self,
+        class_: str,
+        *,
+        name: str | None = None,
+        from_: Sequence[str | Mapping[str, Any]] | None = None,
+        exclude: Sequence[str] | None = None,
+        model: str | None = None,
+        dim: int | None = None,
+    ) -> Any:
+        """Declare or change the embedding of a class (``PUT /v1/embeddings``).
+
+        ``from_`` (the wire field ``from``) are one-hop property paths
+        (``"label"``, ``"description"``, ``"calls/label"``); without them the
+        server picks the label, frequent text, and the names of linked
+        entities. On an existing embedding, only what you name changes: no
+        ``from_`` keeps its fields, no ``model`` keeps its model. A new recipe
+        builds as a new version while the old one serves.
+        """
+        body: dict[str, Any] = {"class": class_}
+        if name is not None:
+            body["name"] = name
+        if from_ is not None:
+            body["from"] = list(from_)
+        if exclude is not None:
+            body["exclude"] = list(exclude)
+        if model is not None:
+            body["model"] = model
+        if dim is not None:
+            body["dim"] = dim
+        return self._client._request("PUT", "/v1/embeddings", body=body)
+
+    def preview(
+        self,
+        class_: str,
+        *,
+        name: str | None = None,
+        from_: Sequence[str | Mapping[str, Any]] | None = None,
+        exclude: Sequence[str] | None = None,
+        model: str | None = None,
+        dim: int | None = None,
+        sample: int | None = None,
+        iris: Sequence[str] | None = None,
+    ) -> Any:
+        """What a declaration would embed: the fields, every candidate fact
+        of the class with its coverage and examples, and the exact text of
+        sample entities. Stores nothing and calls no model."""
+        body: dict[str, Any] = {"class": class_}
+        if name is not None:
+            body["name"] = name
+        if from_ is not None:
+            body["from"] = list(from_)
+        if exclude is not None:
+            body["exclude"] = list(exclude)
+        if model is not None:
+            body["model"] = model
+        if dim is not None:
+            body["dim"] = dim
+        if sample is not None:
+            body["sample"] = sample
+        if iris is not None:
+            body["iris"] = list(iris)
+        return self._client._request("POST", "/v1/embeddings/preview", body=body)
+
+    def set_model(self, model: str, *, dim: int | None = None) -> Any:
+        """Move every embedding of the graph to another model (``PUT /v1/embeddings/model``).
+
+        A graph has one embedding model. Each embedding builds a new version
+        with it; the graph switches at once when every embedding has it
+        ready, so a search never mixes two models.
+        """
+        body: dict[str, Any] = {"model": model}
+        if dim is not None:
+            body["dim"] = dim
+        return self._client._request("PUT", "/v1/embeddings/model", body=body)
+
+    def refresh(self, name: str) -> Any:
+        """Run one bounded step of the embed job now."""
+        return self._client._request("POST", "/v1/embeddings/refresh", params={"name": name})
+
+    def delete(self, name: str) -> Any:
+        return self._client._request(
+            "DELETE", "/v1/embeddings", params={"name": name, "confirm": name}
+        )
+
+    def search(
+        self,
+        text: str,
+        *,
+        embedding: str | None = None,
+        filter_: Sequence[Mapping[str, Any]] | None = None,
+        top_k: int | None = None,
+        include: Sequence[str] | None = None,
+        probe: int | None = None,
+        request: str | None = None,
+        explain: bool = False,
+    ) -> Any:
+        """Search by meaning (``POST /v1/search``).
+
+        The search covers every searchable class of the graph, or one
+        ``embedding``. ``filter_`` is the list of conditions every hit must
+        meet (the wire field ``filter``): ``{"class": iri}`` (or a list of
+        IRIs; their subclasses too; one class condition per search) and
+        ``{"via": "calls", "to": "payment-service", "direction": "out"}``
+        (``to`` an IRI or a name, or a list). Every hit carries its ``class``
+        and is checked against one graph snapshot; the response's ``filter``
+        shows how each condition resolved. ``include=["text"]`` returns the
+        embedded text of each hit; ``probe`` sets how many clusters are read;
+        ``explain=True`` returns the plan without a model call.
+        """
+        body: dict[str, Any] = {"text": text}
+        if embedding is not None:
+            body["embedding"] = embedding
+        if filter_:
+            body["filter"] = [dict(condition) for condition in filter_]
+        if top_k is not None:
+            body["top_k"] = top_k
+        if include is not None:
+            body["include"] = list(include)
+        if probe is not None:
+            body["probe"] = probe
+        if request is not None:
+            body["request"] = request
+        if explain:
+            body["explain"] = True
+        return self._client._request("POST", "/v1/search", body=body)
 
 
 class _EntityNamespace:
