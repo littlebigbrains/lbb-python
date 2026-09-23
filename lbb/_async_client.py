@@ -34,6 +34,7 @@ from ._client_base import (
     SparqlResults,
     _BaseLbbClient,
     _body_marks_terminal,
+    _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
     _EvalsNamespace,
@@ -441,6 +442,7 @@ class AsyncLbbClient(_BaseLbbClient):
         self.query = _AsyncQueryNamespace(self)
         self.schema = _AsyncSchemaNamespace(self)
         self.evals = _EvalsNamespace(self)
+        self.embeddings = _EmbeddingsNamespace(self)
         self._http = httpx.AsyncClient(
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )

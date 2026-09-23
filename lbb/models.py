@@ -422,10 +422,87 @@ class EdgeIdempotencyMode(Enum):
     skip_unchanged = 'skip_unchanged'
 
 
+class EmbeddingBackfill(BaseModel):
+    """
+    A pass over every instance of the class: the first backfill of a
+    version, or a rescan when the commit deltas are not available.
+    """
+
+    cursor: Annotated[
+        str | None,
+        Field(description='The last instance IRI done; the next page starts after it.'),
+    ] = None
+    embedded: Annotated[int, Field(ge=0)]
+    removed: Annotated[int, Field(ge=0)]
+    rescan: Annotated[
+        bool | None,
+        Field(
+            description='A rescan of a ready version (the delta chain was not available).'
+        ),
+    ] = None
+    reused: Annotated[int, Field(ge=0)]
+    scanned: Annotated[int, Field(ge=0)]
+    target_seq: Annotated[
+        int, Field(description='The published commit the pass reads.', ge=0)
+    ]
+
+
+class EmbeddingCandidateKind(Enum):
+    """
+    What kind of value a candidate field gives the text.
+    """
+
+    text = 'text'
+    value = 'value'
+    link = 'link'
+
+
+class EmbeddingField(BaseModel):
+    """
+    A resolved field: the predicate IRIs of the path (one or two), the name
+    in the text, and the value cap.
+    """
+
+    max: Annotated[int, Field(ge=0)]
+    name: str
+    path: list[str]
+
+
+class EmbeddingFieldInput(BaseModel):
+    max: Annotated[
+        int | None, Field(description='Values kept per entity (default 10).', ge=0)
+    ] = None
+    name: Annotated[
+        str | None,
+        Field(
+            description='The word before the colon in the text; defaults to the local name of\nthe first predicate.'
+        ),
+    ] = None
+    path: str
+
+
 class EmbeddingIndexClusterView(BaseModel):
     cluster_id: Annotated[int, Field(ge=0)]
     entry_count: Annotated[int, Field(ge=0)]
     sample_labels: list[str]
+
+
+class EmbeddingModelRequest(BaseModel):
+    """
+    Move every embedding of the graph to another model
+    (`PUT /v1/embeddings/model`). Each embedding builds a new version beside
+    the serving one; the graph switches to the new model at once when every
+    embedding has it ready, so a search never mixes two models.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    dim: Annotated[
+        int | None,
+        Field(description="The vector dimension; the model's when absent.", ge=0),
+    ] = None
+    model: str
 
 
 class Kind(Enum):
@@ -446,6 +523,60 @@ class EmbeddingProviderKind(Enum):
     stored = 'stored'
 
 
+class EmbeddingRecallStats(BaseModel):
+    """
+    Recall of the version's index against an exhaustive search over the same
+    runs and filter, from sampled searches.
+    """
+
+    last: Annotated[float, Field(description="The last sample's recall@k.")]
+    last_at: str | None = None
+    recall_at_k: Annotated[
+        float, Field(description='The mean recall@k over the samples.')
+    ]
+    samples: Annotated[int, Field(ge=0)]
+
+
+class EmbeddingRunKind(Enum):
+    base = 'base'
+    delta = 'delta'
+
+
+class EmbeddingRunRef(BaseModel):
+    """
+    One immutable run of a version: an `lbb-ann` ranged v4 index with a raw
+    f32 region, and an `ids` table.
+    """
+
+    bytes: Annotated[
+        int | None,
+        Field(
+            description="Bytes of the run's objects (meta, blocks, ids); 0 for runs written\nbefore the field existed.",
+            ge=0,
+        ),
+    ] = None
+    clusters: Annotated[int, Field(ge=0)]
+    created_at: str
+    entries: Annotated[int, Field(description='Entries with a vector.', ge=0)]
+    id: Annotated[str, Field(description='`<micros:020>-<nonce>`: unique per write.')]
+    kind: EmbeddingRunKind
+    tombstones: Annotated[
+        int, Field(description='Ids the run removes from older runs.', ge=0)
+    ]
+
+
+class EmbeddingSample(BaseModel):
+    iri: str
+    label: str
+    text: Annotated[
+        str,
+        Field(
+            description='The exact text the model would embed; empty when the entity has no\nvalue in any field (it gets no vector).'
+        ),
+    ]
+    tokens_estimate: Annotated[int, Field(ge=0)]
+
+
 class EmbeddingSearchResult(BaseModel):
     cluster_id: Annotated[int, Field(ge=0)]
     label: str
@@ -454,6 +585,76 @@ class EmbeddingSearchResult(BaseModel):
     target: str
     target_kind: AnnTargetKind
     text: str
+
+
+class EmbeddingStepAction(Enum):
+    idle = 'idle'
+    backfill = 'backfill'
+    rescan = 'rescan'
+    incremental = 'incremental'
+    fold = 'fold'
+    switch = 'switch'
+
+
+class EmbeddingStepTimings(BaseModel):
+    """
+    Where the time of one job step went, in milliseconds.
+    """
+
+    embed_ms: Annotated[
+        int, Field(description='Reading reused vectors and calling the model.', ge=0)
+    ]
+    scan_ms: Annotated[
+        int,
+        Field(
+            description='Finding the instances: the class page, or the commit deltas and the\ninstances they make dirty.',
+            ge=0,
+        ),
+    ]
+    text_ms: Annotated[
+        int, Field(description='Building the texts from the graph.', ge=0)
+    ]
+    total_ms: Annotated[int, Field(ge=0)]
+    write_ms: Annotated[
+        int,
+        Field(description='Building and writing the run, and the manifest CAS.', ge=0),
+    ]
+
+
+class EmbeddingUsage(BaseModel):
+    """
+    Embedding spend. The token count is an estimate: characters / 4.
+    """
+
+    cost_usd_estimate: float
+    texts: Annotated[int, Field(description='Texts sent to the model.', ge=0)]
+    tokens_estimate: Annotated[int, Field(ge=0)]
+
+
+class EmbeddingVersionState(Enum):
+    backfilling = 'backfilling'
+    ready = 'ready'
+
+
+class EmbeddingVersionStatus(BaseModel):
+    backfill: EmbeddingBackfill | None = None
+    dim: Annotated[int, Field(ge=0)]
+    embedded_through_seq: CommitSeq | None = None
+    entries: Annotated[int, Field(ge=0)]
+    fields: list[EmbeddingField]
+    model_id: str
+    recall: EmbeddingRecallStats | None = None
+    runs: Annotated[int, Field(ge=0)]
+    state: EmbeddingVersionState
+    stored_bytes: Annotated[
+        int | None,
+        Field(
+            description="Bytes the version's runs store (the storage it is billed for).",
+            ge=0,
+        ),
+    ] = None
+    usage: EmbeddingUsage
+    version: Annotated[int, Field(ge=0)]
 
 
 class EntityFieldsWritten(BaseModel):
@@ -502,14 +703,80 @@ class EntityView(BaseModel):
     type: str
 
 
+class EvalItem(BaseModel):
+    """
+    One result of a query: a hit of a search, or a row of a SPARQL query.
+    """
+
+    id: Annotated[
+        str,
+        Field(
+            description='Stable id of the result: the term id of a hit; the blake3 of the\ncanonical row; `ask:true` / `ask:false` for an ASK answer.'
+        ),
+    ]
+    iri: Annotated[
+        str | None, Field(description='The entity the result names, when it names one.')
+    ] = None
+    label: Annotated[
+        str,
+        Field(
+            description="A short display form: the hit's label, or the row's values."
+        ),
+    ]
+    rank: Annotated[
+        int, Field(description='Position in the returned list, from 0.', ge=0)
+    ]
+    value: Annotated[
+        Any,
+        Field(description='The result as returned: a SPARQL binding row, or a hit.'),
+    ]
+
+
+class EvalItemLabelInput(BaseModel):
+    """
+    One result to label.
+    """
+
+    id: Annotated[
+        str, Field(description='The result id (`id` on a hit or a trace item).')
+    ]
+    note: str | None = None
+    valid: Annotated[
+        bool, Field(description='True: the result answers the request (thumbs up).')
+    ]
+
+
+class EvalItems(BaseModel):
+    """
+    The results a query returned, in a form that compares across commits.
+    """
+
+    item_count: Annotated[int, Field(ge=0)]
+    items: Annotated[
+        list[EvalItem] | None,
+        Field(
+            description='The first [`EVAL_INLINE_ITEM_LIMIT`] results, in returned order.'
+        ),
+    ] = None
+    items_blake3: Annotated[
+        str,
+        Field(description='blake3 over the sorted result ids: the set, not the order.'),
+    ]
+
+
 class EvalJudgeStatus(BaseModel):
     available: bool
-    provider: Annotated[str, Field(description='`off`, `mock`, or `typesafe`.')]
+    model: Annotated[
+        str | None, Field(description='The model behind the provider, when it has one.')
+    ] = None
+    provider: Annotated[
+        str, Field(description='`off`, `mock`, `openrouter`, or `typesafe`.')
+    ]
 
 
 class EvalLabelSource(Enum):
     """
-    Who labeled a trace.
+    Who labeled a result.
     """
 
     explicit = 'explicit'
@@ -528,28 +795,12 @@ class EvalMode(Enum):
     advisory = 'advisory'
 
 
-class EvalRows(BaseModel):
-    """
-    The rows a query returned, in a form that compares across commits.
-    """
-
-    row_count: Annotated[int, Field(ge=0)]
-    rows: Annotated[
-        list[Any] | None,
-        Field(
-            description='The SPARQL Results JSON bindings, present when the set has at most\n[`EVAL_INLINE_ROW_LIMIT`] rows.'
-        ),
-    ] = None
-    rows_blake3: Annotated[
-        str, Field(description='blake3 over the canonical, sorted row set.')
-    ]
-
-
 class EvalScorePoint(BaseModel):
-    accepted: Annotated[int, Field(ge=0)]
     failed: Annotated[int, Field(ge=0)]
     passed: Annotated[int, Field(ge=0)]
+    precision: float | None = None
     ran_at: str
+    recall: float | None = None
     regression: bool
     score: float
     served_at_seq: Annotated[int, Field(ge=0)]
@@ -572,20 +823,59 @@ class EvalSettings(BaseModel):
     ]
 
 
+class EvalSurface(Enum):
+    """
+    Which surface a trace or a golden belongs to.
+    """
+
+    sparql = 'sparql'
+    search = 'search'
+
+
 class EvalVerdict(Enum):
     pass_ = 'pass'
     fail = 'fail'
-    accepted = 'accepted'
     error = 'error'
     skipped = 'skipped'
 
 
 class EvalVerdictDetail(BaseModel):
-    judge_probability: float | None = None
+    item_count: Annotated[
+        int | None, Field(description='Results the query returned now.', ge=0)
+    ] = None
     message: str | None = None
-    row_count: Annotated[int | None, Field(ge=0)] = None
-    rows_blake3: str | None = None
+    precision: Annotated[
+        float | None,
+        Field(
+            description='`relevant_returned / (relevant_returned + wrong_returned)`, over the\njudged results that came back.'
+        ),
+    ] = None
+    recall: Annotated[
+        float | None,
+        Field(
+            description='`relevant_returned / relevant`, over the known-relevant results.'
+        ),
+    ] = None
+    relevant_missing: Annotated[
+        int | None,
+        Field(description='Known-relevant results that did not come back.', ge=0),
+    ] = None
+    relevant_returned: Annotated[
+        int | None, Field(description='Known-relevant results that came back.', ge=0)
+    ] = None
+    review_trace_id: Annotated[
+        str | None,
+        Field(
+            description='The trace opened for the unknown results (the review queue).'
+        ),
+    ] = None
+    unknown_returned: Annotated[
+        int | None, Field(description='Returned results nobody judged yet.', ge=0)
+    ] = None
     verdict: EvalVerdict
+    wrong_returned: Annotated[
+        int | None, Field(description='Known-wrong results that came back.', ge=0)
+    ] = None
 
 
 class ExpandedConceptView(BaseModel):
@@ -673,6 +963,25 @@ class FullTextTokenizerConfig(BaseModel):
 class GoldenDeleteResponse(BaseModel):
     deleted: bool
     suite_version: Annotated[int, Field(ge=0)]
+
+
+class GoldenJudgment(BaseModel):
+    """
+    What a golden knows about one result.
+    """
+
+    by: str | None = None
+    iri: str | None = None
+    label: str
+    probability: float | None = None
+    relevant: Annotated[
+        bool,
+        Field(
+            description='True: the result answers the request and must keep being returned.\nFalse: the result is wrong and must not come back.'
+        ),
+    ]
+    source: EvalLabelSource
+    ts: Annotated[str, Field(description='RFC 3339.')]
 
 
 class GoldenOrigin(Enum):
@@ -1168,6 +1477,36 @@ class LbbErrorBody(BaseModel):
 
 class LbbErrorEnvelope(BaseModel):
     error: LbbErrorBody
+
+
+class ManagedModelProvider(Enum):
+    """
+    Who serves the model.
+    """
+
+    openrouter = 'openrouter'
+    modal = 'modal'
+    typesafe = 'typesafe'
+    mock = 'mock'
+
+
+class ManagedModelRole(Enum):
+    """
+    What a managed model is used for.
+    """
+
+    embedding = 'embedding'
+    judge = 'judge'
+    rewriter = 'rewriter'
+
+
+class ManagedModelsSource(Enum):
+    """
+    Where the served catalog came from.
+    """
+
+    document = 'document'
+    defaults = 'defaults'
 
 
 class ModelArtifact(BaseModel):
@@ -2336,6 +2675,15 @@ class SearchConsistency(Enum):
     eventual = 'eventual'
 
 
+class SearchDirection(Enum):
+    """
+    Which way a relationship condition reads.
+    """
+
+    out = 'out'
+    in_ = 'in'
+
+
 class SearchExplanation(BaseModel):
     detail: str
     score: float
@@ -2565,6 +2913,32 @@ class Op30(Enum):
     not_ = 'not'
 
 
+class SearchFilterMode(Enum):
+    """
+    How a relationship filter ran.
+    """
+
+    clusters = 'clusters'
+    after = 'after'
+
+
+class SearchHit(BaseModel):
+    class_: Annotated[
+        str | None,
+        Field(
+            alias='class', description='The class of the embedding that found the hit.'
+        ),
+    ] = None
+    embedding: Annotated[
+        str | None, Field(description='The embedding that found the hit.')
+    ] = None
+    id: Annotated[str, Field(description='The RDF term id of the IRI (hex).')]
+    iri: str
+    label: str
+    score: float
+    text: str | None = None
+
+
 class SearchHitContributions(BaseModel):
     bm25: SearchChannelContribution
     bm25_indexed_commit_seq: CommitSeq | None = None
@@ -2639,6 +3013,28 @@ class SearchSignalWeights(BaseModel):
     vector: float | None = None
 
 
+class SearchTargetMatch(Enum):
+    """
+    How a `to` value matched an entity.
+    """
+
+    iri = 'iri'
+    label = 'label'
+    normalized = 'normalized'
+    close = 'close'
+
+
+class SearchTargetResolved(BaseModel):
+    """
+    A `to` value and the entity it resolved to.
+    """
+
+    input: str
+    iri: str
+    label: str | None = None
+    matched: SearchTargetMatch
+
+
 class SearchTemporalCoverage(BaseModel):
     """
     Provenance for the immutable family roots selected from one pinned published
@@ -2658,6 +3054,59 @@ class SearchTemporalCoverage(BaseModel):
     ]
     vector_covered_through: CommitSeq | None = None
     vector_run_snapshot_commit_seq: CommitSeq | None = None
+
+
+class SearchTimings(BaseModel):
+    """
+    Where the time of a search went, in milliseconds.
+    """
+
+    check_ms: Annotated[
+        int, Field(description='The graph check of the candidates.', ge=0)
+    ]
+    embed_ms: Annotated[int, Field(description='Embedding the query text.', ge=0)]
+    filter_ms: Annotated[
+        int | None,
+        Field(
+            description='Resolving a relationship filter and finding its allowed entities.',
+            ge=0,
+        ),
+    ] = None
+    index_ms: Annotated[
+        int, Field(description='Probing the runs and scoring their codes.', ge=0)
+    ]
+    rerank_ms: Annotated[
+        int | None,
+        Field(
+            description='Reading the exact vectors of the best candidates and scoring them.',
+            ge=0,
+        ),
+    ] = None
+    resolve_ms: Annotated[
+        int,
+        Field(description='Reading the embedding, its manifest, and its runs.', ge=0),
+    ]
+
+
+class SearchedEmbedding(BaseModel):
+    """
+    One embedding a search read.
+    """
+
+    building_version: Annotated[
+        int | None,
+        Field(
+            description='A newer version that builds while this one serves (a changed recipe).',
+            ge=0,
+        ),
+    ] = None
+    class_: Annotated[str, Field(alias='class')]
+    embedded_through_seq: CommitSeq | None = None
+    hits: Annotated[int, Field(description='The hits of this response it found.', ge=0)]
+    lag_commits: Annotated[int | None, Field(ge=0)] = None
+    model_id: str
+    name: str
+    version: Annotated[int, Field(ge=0)]
 
 
 class SemanticPathResult(BaseModel):
@@ -4028,6 +4477,91 @@ class EdgeEventRow(BaseModel):
     valid_time: ValidTime
 
 
+class EmbeddingCandidate(BaseModel):
+    """
+    One fact the instances of a class could give their text, measured on a
+    sample of the class.
+    """
+
+    chosen: Annotated[bool, Field(description='The field is in the previewed recipe.')]
+    coverage: Annotated[
+        float,
+        Field(
+            description='Share of the sampled instances with at least one value (0 to 1).'
+        ),
+    ]
+    examples: Annotated[
+        list[str] | None,
+        Field(
+            description='Up to three values from the sample, as they appear in the text.'
+        ),
+    ] = None
+    kind: EmbeddingCandidateKind
+    max: Annotated[
+        int,
+        Field(
+            description="Values per instance the field keeps (the recipe's `max`).",
+            ge=0,
+        ),
+    ]
+    name: Annotated[str, Field(description='The line name the field gets in the text.')]
+    path: Annotated[
+        list[str],
+        Field(
+            description='The path as a recipe stores it: one predicate IRI, or a link and the\npredicate read on the linked entity.'
+        ),
+    ]
+
+
+class EmbeddingDeclareRequest(BaseModel):
+    """
+    Declare or change an embedding (`PUT /v1/embeddings`).
+    """
+
+    class_: Annotated[str, Field(alias='class', description='The class IRI.')]
+    dim: Annotated[
+        int | None,
+        Field(description="The vector dimension; the model's when absent.", ge=0),
+    ] = None
+    exclude: Annotated[
+        list[str] | None,
+        Field(description='Names or IRIs to drop from the automatic choice.'),
+    ] = None
+    from_: Annotated[
+        list[str | EmbeddingFieldInput] | None,
+        Field(
+            alias='from',
+            description='The fields in text order. Absent: the server picks them from a sample\nof the class (the label, frequent text literals, the labels of linked\nentities) and stores the result.',
+        ),
+    ] = None
+    model: Annotated[
+        str | None,
+        Field(description="The model id; the catalog's embedding model when absent."),
+    ] = None
+    name: Annotated[
+        str | None,
+        Field(
+            description="`[a-z0-9][a-z0-9-]{0,62}`; defaults to the class's local name."
+        ),
+    ] = None
+
+
+class EmbeddingPreviewRequest(EmbeddingDeclareRequest):
+    """
+    Preview a declaration (`POST /v1/embeddings/preview`): stores nothing and
+    calls no model.
+    """
+
+    iris: Annotated[
+        list[str] | None,
+        Field(description='Show these instances instead of the first ones.'),
+    ] = None
+    sample: Annotated[
+        int | None,
+        Field(description='Sample entities to show (default 5, at most 50).', ge=0),
+    ] = None
+
+
 class EmbeddingProviderConfig1(BaseModel):
     dim: Annotated[int | None, Field(ge=0)] = None
     kind: Kind
@@ -4056,6 +4590,25 @@ class EmbeddingProviderSpec(BaseModel):
     dim: Annotated[int, Field(ge=0)]
     kind: EmbeddingProviderKind
     metric: VectorMetric
+    model_id: str
+
+
+class EmbeddingRecipe(BaseModel):
+    """
+    What an embedding embeds and with which model. A change of fields or
+    model is a new version.
+    """
+
+    class_: Annotated[
+        str,
+        Field(
+            alias='class',
+            description='The class IRI whose instances (`?s a <class>`) are embedded.',
+        ),
+    ]
+    dim: Annotated[int, Field(ge=0)]
+    fields: list[EmbeddingField]
+    metric: VectorMetric | None = None
     model_id: str
 
 
@@ -4102,6 +4655,51 @@ class EmbeddingSpaceKey(BaseModel):
     model_id: str
     ontology_version: Annotated[int, Field(ge=0)]
     target_kind: AnnTargetKind
+
+
+class EmbeddingStatus(BaseModel):
+    """
+    An embedding as `GET /v1/embeddings` reports it.
+    """
+
+    building: EmbeddingVersionStatus | None = None
+    class_: Annotated[str, Field(alias='class')]
+    created_at: str
+    lag_commits: Annotated[
+        int | None,
+        Field(
+            description='Commits the serving version is behind the published generation.',
+            ge=0,
+        ),
+    ] = None
+    name: str
+    previous: Annotated[int | None, Field(ge=0)] = None
+    published_seq: CommitSeq | None = None
+    recipe: Annotated[EmbeddingRecipe, Field(description='The latest declared recipe.')]
+    serving: EmbeddingVersionStatus | None = None
+    updated_at: str
+
+
+class EmbeddingStep(BaseModel):
+    """
+    What one step of the embed job did.
+    """
+
+    action: EmbeddingStepAction
+    embedded: Annotated[int, Field(ge=0)]
+    embedded_through_seq: CommitSeq | None = None
+    more: Annotated[
+        bool, Field(description='The version has more work (a backfill page, a fold).')
+    ]
+    name: str
+    removed: Annotated[int, Field(ge=0)]
+    reused: Annotated[int, Field(ge=0)]
+    scanned: Annotated[
+        int, Field(description='Instances whose text the step rebuilt.', ge=0)
+    ]
+    timings: EmbeddingStepTimings | None = None
+    usage: EmbeddingUsage
+    version: Annotated[int, Field(ge=0)]
 
 
 class EntityDetailTruncation(BaseModel):
@@ -4226,6 +4824,10 @@ class EntityTypeSampleRow(BaseModel):
 
 
 class EvalLabel(BaseModel):
+    """
+    A label on one result.
+    """
+
     by: Annotated[
         str | None,
         Field(
@@ -4235,18 +4837,29 @@ class EvalLabel(BaseModel):
     note: str | None = None
     probability: Annotated[
         float | None,
-        Field(description="The judge's probability that the rows answer the request."),
+        Field(
+            description="The judge's probability that the result answers the request."
+        ),
     ] = None
     source: EvalLabelSource
     ts: Annotated[str, Field(description='RFC 3339.')]
-    valid: bool
+    valid: Annotated[
+        bool, Field(description='True: the result answers the request (thumbs up).')
+    ]
 
 
 class EvalLabelRequest(BaseModel):
+    """
+    Thumbs up or down on results of a trace: one result as `item` + `valid`,
+    or several in `items`.
+    """
+
     by: str | None = None
+    item: str | None = None
+    items: list[EvalItemLabelInput] | None = None
     note: str | None = None
     source: EvalLabelSource | None = None
-    valid: bool
+    valid: bool | None = None
 
 
 class EvalResults(BaseModel):
@@ -4254,7 +4867,6 @@ class EvalResults(BaseModel):
     One run of the suite at one commit of the graph. One object per commit.
     """
 
-    accepted: Annotated[int, Field(ge=0)]
     elapsed_ms: Annotated[int, Field(ge=0)]
     errors: Annotated[int, Field(ge=0)]
     failed: Annotated[int, Field(ge=0)]
@@ -4262,21 +4874,35 @@ class EvalResults(BaseModel):
         int, Field(description='The suite version the run read.', ge=0)
     ]
     passed: Annotated[int, Field(ge=0)]
+    precision: Annotated[
+        float | None,
+        Field(
+            description='Mean precision over the goldens with judged results returned.'
+        ),
+    ] = None
     ran_at: Annotated[str, Field(description='RFC 3339.')]
-    ran_by: Annotated[str, Field(description='`manual`, `tick`, or `judge`.')]
+    ran_by: Annotated[str, Field(description='`manual` or `tick`.')]
+    recall: Annotated[
+        float | None,
+        Field(description='Mean recall over the goldens with known-relevant results.'),
+    ] = None
     regression: Annotated[
         bool, Field(description='True when `score` is below the settings threshold.')
     ]
+    review_traces: Annotated[
+        int | None,
+        Field(
+            description='Traces this run opened for results nobody judged yet.', ge=0
+        ),
+    ] = None
     score: Annotated[
         float,
-        Field(
-            description='Share of goldens with `pass` or `accepted`; `1.0` for an empty suite.'
-        ),
+        Field(description='Share of goldens that pass; `1.0` for an empty suite.'),
     ]
     served_at_seq: Annotated[int, Field(ge=0)]
     skipped: Annotated[int, Field(ge=0)]
     total: Annotated[int, Field(ge=0)]
-    v: Annotated[int, Field(description='Results format version. Currently `1`.', ge=0)]
+    v: Annotated[int, Field(description='Results format version. Currently `2`.', ge=0)]
     verdicts: dict[str, EvalVerdictDetail]
 
 
@@ -4294,49 +4920,74 @@ class EvalSummaryResponse(BaseModel):
     goldens_manual: Annotated[int, Field(ge=0)]
     history: Annotated[list[EvalScorePoint], Field(description='Oldest first.')]
     judge: EvalJudgeStatus
+    judged_results: Annotated[
+        int | None, Field(description='Judged results across every golden.', ge=0)
+    ] = None
     latest: EvalResults | None = None
     review_traces: Annotated[
-        int,
-        Field(
-            description='Traces the judge left for review, among the most recent traces.',
-            ge=0,
-        ),
+        int, Field(description='Traces with results the judge left for a person.', ge=0)
     ]
     settings: EvalSettings
     suite_version: Annotated[int, Field(ge=0)]
+    unlabeled_items: Annotated[
+        int | None,
+        Field(description='Results nobody labeled yet, across those traces.', ge=0),
+    ] = None
     unlabeled_traces: Annotated[
         int,
         Field(
-            description='Traces without a label, among the most recent traces.', ge=0
+            description='Traces with a result nobody labeled yet, among the most recent traces.',
+            ge=0,
         ),
     ]
 
 
 class EvalTrace(BaseModel):
+    embedding: Annotated[
+        str | None, Field(description='The embedding name, for `surface: search`.')
+    ] = None
     entailment: SparqlEntailment
     golden_id: Annotated[
+        str | None, Field(description="The golden that holds this trace's labels.")
+    ] = None
+    judged_at: Annotated[
         str | None,
-        Field(description='The golden this trace was promoted to, when labeled valid.'),
+        Field(description='RFC 3339; set when the judge looked at the trace.'),
     ] = None
-    judge_probability: Annotated[
-        float | None,
-        Field(
-            description="The judge's probability when the judge looked at the trace but the\nvalue fell between the two thresholds (the review queue)."
-        ),
+    labels: Annotated[
+        dict[str, EvalLabel] | None, Field(description='Labels by result id.')
     ] = None
-    label: EvalLabel | None = None
     request: Annotated[
         str,
         Field(description="The user's words, as the caller passed them in `request`."),
     ]
-    rows: EvalRows
+    results: EvalItems
+    review: Annotated[
+        dict[str, float] | None,
+        Field(
+            description='Results the judge looked at but left for a person, with its\nprobability (between the two thresholds).'
+        ),
+    ] = None
     served_at_seq: Annotated[
-        int, Field(description='The commit of the graph the rows were read at.', ge=0)
+        int,
+        Field(description='The commit of the graph the results were read at.', ge=0),
     ]
-    sparql: str
+    sparql: Annotated[
+        str,
+        Field(description='The SPARQL query, or the query text on the vector surface.'),
+    ]
+    surface: EvalSurface | None = None
+    top_k: Annotated[
+        int | None, Field(description='The `top_k` of a search.', ge=0)
+    ] = None
     trace_id: str
     ts: Annotated[str, Field(description='RFC 3339.')]
-    v: Annotated[int, Field(description='Trace format version. Currently `1`.', ge=0)]
+    v: Annotated[
+        int,
+        Field(
+            description='Trace format version. Currently `2`: labels per result.', ge=0
+        ),
+    ]
 
 
 class EvalTraceListResponse(BaseModel):
@@ -4458,7 +5109,7 @@ class Golden(BaseModel):
     accepted_at: Annotated[
         str | None,
         Field(
-            description='RFC 3339; set when a changed row set was accepted as the new reference.'
+            description='RFC 3339; set when the current results were accepted as the reference.'
         ),
     ] = None
     accepted_by: Annotated[
@@ -4468,37 +5119,52 @@ class Golden(BaseModel):
         ),
     ] = None
     created_at: Annotated[str, Field(description='RFC 3339.')]
+    embedding: str | None = None
     entailment: SparqlEntailment
-    expected: EvalRows
     frozen_at_seq: Annotated[
-        int, Field(description='The commit the expected rows were frozen at.', ge=0)
+        int, Field(description='The commit the judgments were last changed at.', ge=0)
     ]
     id: Annotated[
         str,
         Field(
-            description='blake3 of the query text and entailment, so a regenerated or re-added\ngolden keeps its identity and its trend.'
+            description='blake3 of the request words, the query text and entailment (plus\nembedding and `top_k` for a search), so a regenerated or\nre-added golden keeps its identity and its trend.'
         ),
     ]
+    judgments: Annotated[
+        dict[str, GoldenJudgment] | None,
+        Field(description='The judged results by id: the ground truth.'),
+    ] = None
     label_source: EvalLabelSource | None = None
     origin: GoldenOrigin
     request: str | None = None
     sparql: str
+    surface: EvalSurface | None = None
+    top_k: Annotated[int | None, Field(ge=0)] = None
     trace_ids: Annotated[
         list[str] | None,
         Field(
-            description='The most recent traces that promoted to this golden (bounded).'
+            description='The most recent traces that labeled into this golden (bounded).'
         ),
     ] = None
-    v: Annotated[int, Field(description='Golden format version. Currently `1`.', ge=0)]
-    valid_count: Annotated[
-        int, Field(description='How many valid labels promoted to this golden.', ge=0)
+    v: Annotated[
+        int,
+        Field(
+            description='Golden format version. Currently `2`: judgments per result.',
+            ge=0,
+        ),
     ]
 
 
 class GoldenCreateRequest(BaseModel):
+    embedding: str | None = None
     entailment: SparqlEntailment | None = None
     request: str | None = None
-    sparql: str
+    sparql: Annotated[
+        str,
+        Field(description='The SPARQL query, or the query text for `surface: vector`.'),
+    ]
+    surface: EvalSurface | None = None
+    top_k: Annotated[int | None, Field(ge=0)] = None
 
 
 class GoldenResponse(BaseModel):
@@ -4866,6 +5532,105 @@ class HybridMultiSearchResult(BaseModel):
     score: float
     source_ranks: list[HybridSourceRank]
     type: str
+
+
+class ManagedModel(BaseModel):
+    dim: Annotated[
+        int | None,
+        Field(description='The vector dimension, for an embedding model.', ge=0),
+    ] = None
+    id: Annotated[
+        str,
+        Field(
+            description="The provider's model id (`openai/text-embedding-3-small`,\n`anthropic/claude-sonnet-5`, …)."
+        ),
+    ]
+    max_price_per_million_usd: Annotated[
+        float | None,
+        Field(
+            description='Refuse the model when the provider prices it above this (USD per\nmillion tokens); `None` leaves the platform default in force.'
+        ),
+    ] = None
+    note: str | None = None
+    provider: ManagedModelProvider
+    role: ManagedModelRole
+
+
+class ManagedModelCatalog(BaseModel):
+    """
+    The catalog: one model per role. A role that is absent falls back to the
+    server's compiled default.
+    """
+
+    models: list[ManagedModel]
+    updated_at: Annotated[str | None, Field(description='RFC 3339.')] = None
+    updated_by: str | None = None
+    v: Annotated[int, Field(description='Catalog format version. Currently `1`.', ge=0)]
+    version: Annotated[
+        int,
+        Field(
+            description='Monotonic; every write increments it. `0` for the compiled defaults.',
+            ge=0,
+        ),
+    ]
+
+
+class ManagedModelChoice(BaseModel):
+    """
+    A model the operator can pick for a role: what the platform knows how
+    to serve today.
+    """
+
+    dim: Annotated[int | None, Field(ge=0)] = None
+    id: str
+    label: str
+    max_input_tokens: Annotated[
+        int | None,
+        Field(
+            description='The most tokens one input may have (embedding models). The embed job\nshortens a longer text, longest values first.',
+            ge=0,
+        ),
+    ] = None
+    note: str | None = None
+    price_per_million_usd: Annotated[
+        float | None,
+        Field(description='USD per million input tokens, for cost estimates.'),
+    ] = None
+    provider: ManagedModelProvider
+    role: ManagedModelRole
+
+
+class ManagedModelsPutRequest(BaseModel):
+    """
+    Replace the catalog. Every role named here is set; a role left out keeps
+    the compiled default.
+    """
+
+    expected_version: Annotated[
+        int | None,
+        Field(
+            description="Refuse the write when the document's version is not this one.",
+            ge=0,
+        ),
+    ] = None
+    models: list[ManagedModel]
+
+
+class ManagedModelsResponse(BaseModel):
+    catalog: ManagedModelCatalog
+    choices: Annotated[
+        list[ManagedModelChoice] | None,
+        Field(
+            description='The models the platform can serve per role, for a picker. A catalog\nentry may still name a model outside this list.'
+        ),
+    ] = None
+    source: ManagedModelsSource
+    writable: Annotated[
+        bool | None,
+        Field(
+            description='Whether the caller may write the catalog on this route (single\nmode). In SaaS mode the operator writes it through the ops route.'
+        ),
+    ] = None
 
 
 class ModelCheckFile(BaseModel):
@@ -5566,6 +6331,19 @@ class ScoredEntityView(BaseModel):
     score: float
 
 
+class SearchConditionResolved(BaseModel):
+    """
+    One filter condition as the search resolved it, in request order: the
+    classes of a class condition, or a relationship condition's IRI,
+    direction, and entities.
+    """
+
+    class_: Annotated[list[str] | None, Field(alias='class')] = None
+    direction: SearchDirection | None = None
+    to: list[SearchTargetResolved] | None = None
+    via: Annotated[str | None, Field(description='The relationship IRI.')] = None
+
+
 class SearchFeedbackExportImpression(BaseModel):
     """
     One opt-in-logged search's ranking context, returned in the training export
@@ -5687,6 +6465,26 @@ class SearchFeedbackSummaryResponse(BaseModel):
     truncated: bool
 
 
+class SearchFilter(BaseModel):
+    """
+    One condition of a search's filter: a class (`class`), or a relationship
+    to entities (`via`, `to`, and optionally `direction`).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    class_: Annotated[str | list[str] | None, Field(alias='class')] = None
+    direction: SearchDirection | None = None
+    to: str | list[str] | None = None
+    via: Annotated[
+        str | None,
+        Field(
+            description='The relationship: a local name the instances use (`calls`), a known\nprefix (`schema:knows`), or a full IRI (`<https://…>`).'
+        ),
+    ] = None
+
+
 class SearchFilterExpr3(BaseModel):
     field: str
     op: Op11
@@ -5770,6 +6568,119 @@ class SearchFilterExpr15(BaseModel):
     field: str
     op: Op23
     values: list[bool | int | float | str | None]
+
+
+class SearchFilterReport(BaseModel):
+    """
+    A search's filter: its conditions as resolved and, with a relationship
+    condition, how it ran and how many entities it allows.
+    """
+
+    allowed: Annotated[
+        int | None,
+        Field(
+            description='Entities of the searched classes that meet every condition. In mode\n`after` it is the selective limit plus one (there are more).',
+            ge=0,
+        ),
+    ] = None
+    conditions: list[SearchConditionResolved]
+    mode: SearchFilterMode | None = None
+
+
+class SearchRequest(BaseModel):
+    """
+    `POST /v1/search`. Unknown fields are refused.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    embedding: Annotated[
+        str | None,
+        Field(
+            description='Search one embedding by name. Without it, the search covers every\nsearchable class of the graph.'
+        ),
+    ] = None
+    explain: Annotated[
+        bool | None,
+        Field(
+            description='Plan the search without running it: the scope, the resolved filters,\nand how the filter would run. No model call, no hits.'
+        ),
+    ] = None
+    filter: Annotated[
+        list[SearchFilter] | None,
+        Field(
+            description='The conditions every hit must meet, checked in the graph at the\nsearch\'s snapshot: `{"class": …}` keeps the instances of a class (one\nIRI or a list, any of; their subclasses too; one class condition per\nsearch), and `{"via": …, "to": …, "direction": …}` keeps the hits\nlinked to entities.'
+        ),
+    ] = None
+    include: Annotated[
+        list[str] | None,
+        Field(description='Extra hit fields: `text` (the embedded text).'),
+    ] = None
+    probe: Annotated[
+        int | None,
+        Field(
+            description='Clusters to read across the big runs (default 4·√clusters, at least\n8). Runs of up to 4,096 entries are always read whole.',
+            ge=0,
+        ),
+    ] = None
+    request: Annotated[
+        str | None,
+        Field(
+            description="The user's words behind this search. When present the server records\nan eval trace and returns its `trace_id`."
+        ),
+    ] = None
+    text: Annotated[
+        str | None,
+        Field(description="The query text; embedded with the serving version's model."),
+    ] = None
+    top_k: Annotated[int | None, Field(ge=0)] = None
+
+
+class SearchResponse(BaseModel):
+    clusters_probed: Annotated[int, Field(ge=0)]
+    dropped_by_graph: Annotated[
+        int,
+        Field(
+            description='Candidates the graph check removed (deleted or re-typed entities).',
+            ge=0,
+        ),
+    ]
+    embedded_through_seq: CommitSeq | None = None
+    embeddings: Annotated[
+        list[SearchedEmbedding],
+        Field(description='The embeddings the search read, and how current each is.'),
+    ]
+    entries_considered: Annotated[int, Field(ge=0)]
+    explain: Annotated[
+        bool | None,
+        Field(description='Only planned (`explain`): no hits and no model call.'),
+    ] = None
+    filter: SearchFilterReport | None = None
+    hits: Annotated[
+        list[SearchHit],
+        Field(
+            description='The best hits over every searched embedding, by score; an entity two\nembeddings hold comes back once, with its best score.'
+        ),
+    ]
+    lag_commits: Annotated[
+        int | None,
+        Field(
+            description='The most published commits one searched embedding does not cover yet\n(`served_at_seq` − its watermark); the embed job catches up by itself.',
+            ge=0,
+        ),
+    ] = None
+    not_ready: Annotated[
+        list[str] | None,
+        Field(
+            description='Embeddings in scope that are still building their first version; the\nsearch skipped them.'
+        ),
+    ] = None
+    query_ms: Annotated[int, Field(ge=0)]
+    served_at_seq: CommitSeq | None = None
+    timings: SearchTimings | None = None
+    trace_id: str | None = None
+    usage: EmbeddingUsage
 
 
 class SearchSuggestion(BaseModel):
@@ -6216,6 +7127,31 @@ class CurrentStateResponse(BaseModel):
     state: list[StateEntry]
 
 
+class Embedding(BaseModel):
+    """
+    The persisted embedding (`…/embeddings/epoch=<e>/<name>/embedding.json`):
+    the latest declaration and which version serves, builds, and was served
+    before.
+    """
+
+    building: Annotated[int | None, Field(ge=0)] = None
+    created_at: str
+    name: str
+    next_version: Annotated[int, Field(ge=0)]
+    previous: Annotated[
+        int | None,
+        Field(
+            description='The version that served before the last switch (one rollback).',
+            ge=0,
+        ),
+    ] = None
+    recipe: Annotated[EmbeddingRecipe, Field(description='The latest declared recipe.')]
+    revision: Annotated[int, Field(description='Every write increments it.', ge=0)]
+    serving: Annotated[int | None, Field(ge=0)] = None
+    updated_at: str
+    v: Annotated[int, Field(description='Format version. Currently `1`.', ge=0)]
+
+
 class EmbeddingIndexInspectRequest(BaseModel):
     dim: Annotated[int | None, Field(ge=0)] = None
     include_clusters: bool
@@ -6235,6 +7171,82 @@ class EmbeddingIndexSpaceView(BaseModel):
     entry_count: Annotated[int, Field(ge=0)]
     space: EmbeddingSpaceKey
     target_counts: dict[str, int]
+
+
+class EmbeddingListResponse(BaseModel):
+    dim: Annotated[int | None, Field(ge=0)] = None
+    embeddings: list[EmbeddingStatus]
+    model_id: Annotated[
+        str | None,
+        Field(
+            description="The embedding model of the graph: every serving embedding of the\nbranch uses it, so one query vector serves a search over all classes.\nAbsent before the first declaration (the catalog's model applies then)."
+        ),
+    ] = None
+    next_model_id: Annotated[
+        str | None,
+        Field(
+            description='The model a move goes to: every embedding builds a version with it,\nand the graph switches when all are ready (the search keeps\n`model_id` until then).'
+        ),
+    ] = None
+
+
+class EmbeddingManifest(BaseModel):
+    """
+    One version (`…/<name>/v<n>/manifest.json`, CAS): its recipe, its runs,
+    and how far it covers the graph.
+    """
+
+    backfill: EmbeddingBackfill | None = None
+    covers_through_seq: CommitSeq | None = None
+    entries: Annotated[int, Field(description='Live entries across the runs.', ge=0)]
+    name: str
+    recipe: EmbeddingRecipe
+    revision: Annotated[int, Field(ge=0)]
+    runs: Annotated[
+        list[EmbeddingRunRef],
+        Field(
+            description='Oldest first. A newer run shadows an older run for the same id.'
+        ),
+    ]
+    state: EmbeddingVersionState
+    updated_at: str
+    usage: EmbeddingUsage | None = None
+    v: Annotated[int, Field(description='Format version. Currently `1`.', ge=0)]
+    version: Annotated[int, Field(ge=0)]
+
+
+class EmbeddingPreviewResponse(BaseModel):
+    candidates: Annotated[
+        list[EmbeddingCandidate] | None,
+        Field(
+            description="Every field the class could give its text: the recipe's fields first,\nthen the others by coverage. The automatic choice takes the label,\ntext facts on at least 10% of the sample, and links to named\nentities; values and rarer facts are left for the caller to add."
+        ),
+    ] = None
+    estimate: Annotated[
+        EmbeddingUsage,
+        Field(
+            description="The spend of embedding every instance, from the samples' mean length."
+        ),
+    ]
+    instances: Annotated[
+        int,
+        Field(description='Instances of the class at the published generation.', ge=0),
+    ]
+    name: str
+    read_at_seq: CommitSeq | None = None
+    recipe: EmbeddingRecipe
+    sampled: Annotated[
+        int | None,
+        Field(
+            description='Instances the candidates were measured on (up to 1,000).', ge=0
+        ),
+    ] = None
+    samples: list[EmbeddingSample]
+
+
+class EmbeddingRefreshResponse(BaseModel):
+    embedding: EmbeddingStatus
+    steps: list[EmbeddingStep]
 
 
 class EntityNeighborhoodResponse(BaseModel):
@@ -6337,21 +7349,23 @@ class EntityTypeSampleResponse(BaseModel):
 
 class EvalJudgeResponse(BaseModel):
     judged: list[EvalTrace]
-    promoted: Annotated[
-        int,
-        Field(
-            description='Traces the judge labeled valid and promoted to goldens.', ge=0
-        ),
-    ]
     provider: str
     rejected: Annotated[
-        int, Field(description='Traces the judge labeled invalid.', ge=0)
+        int, Field(description='Results the judge labeled not relevant.', ge=0)
     ]
-    review: Annotated[int, Field(description='Traces left for human review.', ge=0)]
+    relevant: Annotated[
+        int, Field(description='Results the judge labeled relevant.', ge=0)
+    ]
+    review: Annotated[
+        int, Field(description='Results the judge left for a person.', ge=0)
+    ]
 
 
 class EvalLabelResponse(BaseModel):
     golden: Golden | None = None
+    labeled: Annotated[
+        int | None, Field(description='Results labeled by this call.', ge=0)
+    ] = None
     trace: EvalTrace
 
 

@@ -1808,6 +1808,118 @@ class SyncClientTests(unittest.TestCase):
             dict(seen[0].url.params), {"graph": "perritos", "branch": "review"}
         )
 
+class SearchAndEvalsNamespaceTests(unittest.TestCase):
+    """The search setup, search, and evals namespaces send the documented requests."""
+
+    def _client(self, seen: list[httpx.Request]) -> LbbClient:
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={"ok": True})
+
+        return LbbClient("http://h", transport=httpx.MockTransport(handler))
+
+    @staticmethod
+    def _body(request: httpx.Request) -> dict[str, Any]:
+        return json.loads(request.content or b"{}")
+
+    def test_embeddings_namespace_routes(self) -> None:
+        seen: list[httpx.Request] = []
+        service = "https://x.test/class/service"
+        with self._client(seen) as client:
+            client.embeddings.list()
+            client.embeddings.get("service")
+            client.embeddings.declare(
+                service,
+                name="service",
+                from_=["label", "calls/label"],
+                exclude=["notes"],
+                model="m",
+                dim=8,
+            )
+            client.embeddings.preview(service, from_=["label"], sample=2, iris=["https://x.test/e/a"])
+            client.embeddings.set_model("openai/text-embedding-3-large", dim=3072)
+            client.embeddings.refresh("service")
+            client.embeddings.delete("service")
+            client.embeddings.search(
+                "fraud checks",
+                embedding="service",
+                filter_=[{"class": service}, {"via": "calls", "to": "payment-service"}],
+                top_k=5,
+                include=["text"],
+                probe=12,
+                request="which services check fraud?",
+                explain=True,
+            )
+        routes = [(request.method, request.url.path) for request in seen]
+        self.assertEqual(
+            routes,
+            [
+                ("GET", "/v1/embeddings"),
+                ("GET", "/v1/embeddings"),
+                ("PUT", "/v1/embeddings"),
+                ("POST", "/v1/embeddings/preview"),
+                ("PUT", "/v1/embeddings/model"),
+                ("POST", "/v1/embeddings/refresh"),
+                ("DELETE", "/v1/embeddings"),
+                ("POST", "/v1/search"),
+            ],
+        )
+        self.assertEqual(seen[1].url.params["name"], "service")
+        self.assertEqual(
+            self._body(seen[2]),
+            {
+                "class": service,
+                "name": "service",
+                "from": ["label", "calls/label"],
+                "exclude": ["notes"],
+                "model": "m",
+                "dim": 8,
+            },
+        )
+        self.assertEqual(self._body(seen[3])["sample"], 2)
+        self.assertEqual(self._body(seen[3])["iris"], ["https://x.test/e/a"])
+        self.assertEqual(self._body(seen[4]), {"model": "openai/text-embedding-3-large", "dim": 3072})
+        self.assertEqual(seen[5].url.params["name"], "service")
+        self.assertEqual(seen[6].url.params["confirm"], "service")
+        search = self._body(seen[7])
+        self.assertEqual(
+            search["filter"],
+            [{"class": service}, {"via": "calls", "to": "payment-service"}],
+        )
+        self.assertTrue(search["explain"])
+        self.assertEqual(search["top_k"], 5)
+        self.assertEqual(search["probe"], 12)
+        self.assertEqual(search["include"], ["text"])
+        self.assertEqual(search["request"], "which services check fraud?")
+
+    def test_a_plain_search_sends_only_the_text(self) -> None:
+        seen: list[httpx.Request] = []
+        with self._client(seen) as client:
+            client.embeddings.search("card payments")
+        self.assertEqual(self._body(seen[0]), {"text": "card payments"})
+
+    def test_evals_namespace_routes(self) -> None:
+        seen: list[httpx.Request] = []
+        with self._client(seen) as client:
+            client.evals.summary()
+            client.evals.traces(limit=5, unlabeled=True)
+            client.evals.trace("t1")
+            client.evals.judge(trace_id="t1", limit=3)
+            client.evals.goldens()
+            client.evals.accept_golden("g1", consistency="strong")
+            client.evals.delete_golden("g1")
+            client.evals.run(consistency="eventual")
+            client.evals.results(limit=2)
+            client.evals.settings()
+            client.evals.set_settings({"judge": "auto"})
+        routes = [(request.method, request.url.path) for request in seen]
+        self.assertEqual(routes[0], ("GET", "/v1/evals"))
+        self.assertIn(("GET", "/v1/evals/traces"), routes)
+        self.assertIn(("GET", "/v1/evals/goldens"), routes)
+        self.assertEqual(seen[1].url.params["limit"], "5")
+        self.assertEqual(len(seen), 11)
+
+
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_async_wait_for_published_follows_server_managed_stages(

@@ -27,6 +27,7 @@ from ._client_base import (
     SparqlResults,
     _BaseLbbClient,
     _body_marks_terminal,
+    _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
     _EvalsNamespace,
@@ -152,6 +153,7 @@ class LbbClient(_BaseLbbClient):
     query: _SyncQueryNamespace
     schema: _SchemaNamespace
     evals: _EvalsNamespace
+    embeddings: _EmbeddingsNamespace
 
     def __init__(
         self,
@@ -187,6 +189,7 @@ class LbbClient(_BaseLbbClient):
         self.query = _SyncQueryNamespace(self)
         self.schema = _SchemaNamespace(self)
         self.evals = _EvalsNamespace(self)
+        self.embeddings = _EmbeddingsNamespace(self)
         self._http = httpx.Client(
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )
