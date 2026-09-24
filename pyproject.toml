@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "littlebigbrain"
 dynamic = ["version"]
-description = "Python client for the little big brain graph + hybrid search HTTP API"
+description = "Python client for little big brain: search, graph queries, and data import"
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{ name = "little big brain" }]

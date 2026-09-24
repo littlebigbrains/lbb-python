@@ -2,6 +2,17 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.13.1 (2026-09-24)
+
+- Add the `embeddings` namespace to preview and configure embeddings, change
+  models, and search by meaning with class and relationship filters.
+- Add the `evals` namespace for query traces, result labels, saved evaluation
+  queries, and evaluation runs. Expose managed model settings with
+  `managed_models()`.
+- Refresh generated Pydantic models and schema preview support.
+- Rewrite the README with a complete RDF import and relationship query,
+  expected output, an async example, and links to the current guides.
+
 ## 0.13.0 (2026-08-31)
 
 Additive release covering the schema-observability surface that landed since
