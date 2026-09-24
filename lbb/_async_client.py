@@ -310,18 +310,12 @@ class _AsyncSchemaNamespace(_SchemaNamespace):
 class _AsyncGraphNamespace(_GraphNamespace):
     facts: _AsyncFactsNamespace
 
-    def __init__(self, client: _BaseLbbClient, graph: str, branch: str | None) -> None:
-        super().__init__(client, graph, branch)
-        self.facts = _AsyncFactsNamespace(client, graph, branch)
+    def __init__(self, client: _BaseLbbClient, graph: str) -> None:
+        super().__init__(client, graph)
+        self.facts = _AsyncFactsNamespace(client, graph)
 
     async def delete(self, *, confirm: str) -> models.GraphDeleteResponse:
         return cast(models.GraphDeleteResponse, await super().delete(confirm=confirm))
-
-    async def delete_branch(self, *, confirm: str) -> models.GraphBranchDeleteResponse:
-        return cast(
-            models.GraphBranchDeleteResponse,
-            await super().delete_branch(confirm=confirm),
-        )
 
     async def publication_status(self) -> Any:
         return await super().publication_status()
@@ -339,7 +333,7 @@ class _AsyncGraphNamespace(_GraphNamespace):
         timeout: float = 30.0,
         poll_interval: float = 0.25,
     ) -> models.PublicationStatusResponse:
-        """Wait for this graph/branch to publish an exact target sequence."""
+        """Wait for this graph to publish an exact target sequence."""
         if target_seq < 0:
             raise ValueError("target_seq must be non-negative")
         if timeout < 0 or poll_interval < 0:
@@ -414,7 +408,6 @@ class AsyncLbbClient(_BaseLbbClient):
         *,
         api_key: str | None = None,
         graph: str | None = None,
-        branch: str | None = None,
         api_version: str = "2026-07-23",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
@@ -429,7 +422,6 @@ class AsyncLbbClient(_BaseLbbClient):
             base_url,
             api_key=api_key,
             graph=graph,
-            branch=branch,
             api_version=api_version,
             max_retries=max_retries,
             retry_delay=retry_delay,
@@ -545,8 +537,8 @@ class AsyncLbbClient(_BaseLbbClient):
                 raise TimeoutError(f"timed out waiting for durable import job {job_id}")
             await asyncio.sleep(poll_interval)
 
-    def graph(self, name: str, *, branch: str | None = None) -> _AsyncGraphNamespace:
-        return _AsyncGraphNamespace(self, name, branch)
+    def graph(self, name: str) -> _AsyncGraphNamespace:
+        return _AsyncGraphNamespace(self, name)
 
     async def create_graph(self) -> models.CreateGraphResponse:
         return cast(models.CreateGraphResponse, await super().create_graph())
@@ -554,12 +546,6 @@ class AsyncLbbClient(_BaseLbbClient):
     async def delete_graph(self, *, confirm: str) -> models.GraphDeleteResponse:
         return cast(
             models.GraphDeleteResponse, await super().delete_graph(confirm=confirm)
-        )
-
-    async def delete_branch(self, *, confirm: str) -> models.GraphBranchDeleteResponse:
-        return cast(
-            models.GraphBranchDeleteResponse,
-            await super().delete_branch(confirm=confirm),
         )
 
     async def fork_graph(self, src: str, dst: str) -> models.GraphForkResponse:

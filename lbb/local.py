@@ -32,7 +32,6 @@ class LbbLocalClient:
     root: str | Path
     tenant: str
     graph: str
-    branch: str = "main"
     repo_root: str | Path | None = None
     testctl_bin: str | Path | None = None
     # May carry credentials (e.g. object-storage keys for `storage
@@ -122,8 +121,6 @@ class LbbLocalClient:
             self.tenant,
             "--graph",
             self.graph,
-            "--branch",
-            self.branch,
         )
 
     def _request_file(

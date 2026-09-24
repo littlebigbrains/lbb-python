@@ -724,38 +724,6 @@
       "BranchId": {
         "type": "string"
       },
-      "BranchMergeConflict": {
-        "properties": {
-          "edge_event_id": {
-            "description": "The dropped branch edge event.",
-            "type": "string"
-          },
-          "kind": {
-            "description": "Conflict class; v1 emits only `supersedure_race`.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "edge_event_id"
-        ],
-        "type": "object"
-      },
-      "BranchParentView": {
-        "properties": {
-          "commit_seq": {
-            "$ref": "#/components/schemas/CommitSeq"
-          },
-          "graph": {
-            "$ref": "#/components/schemas/GraphKey"
-          }
-        },
-        "required": [
-          "graph",
-          "commit_seq"
-        ],
-        "type": "object"
-      },
       "CalibrationServingDefaults": {
         "description": "Calibration serving default derived from a promoted `calibration` run:\nthe Platt scaler the retrieval-premise producer applies when a request\nsupplies no inline `calibration`. The scaler is fit on the BM25 entity\nchannel (the same channel query-driven premise requests use) from\nexecution-verified outcomes.",
         "properties": {
@@ -1875,7 +1843,7 @@
             "type": "array"
           },
           "model_id": {
-            "description": "The embedding model of the graph: every serving embedding of the\nbranch uses it, so one query vector serves a search over all classes.\nAbsent before the first declaration (the catalog's model applies then).",
+            "description": "The embedding model of the graph: every serving embedding of the\ngraph uses it, so one query vector serves a search over all classes.\nAbsent before the first declaration (the catalog's model applies then).",
             "type": [
               "string",
               "null"
@@ -4960,7 +4928,7 @@
         "type": "object"
       },
       "ExtractorFact": {
-        "description": "One extractor training fact, mirroring the resident extractor's strict\noutput JSON (`{statement, source_type, source, relation, target_type,\ntarget, confidence}`) — every committed fact was vocabulary-snapped and\nbranch-gated at observe time, so labels are execution-verified.",
+        "description": "One extractor training fact, mirroring the resident extractor's strict\noutput JSON (`{statement, source_type, source, relation, target_type,\ntarget, confidence}`) — every committed fact was vocabulary-snapped\nbefore it was committed, so labels are execution-verified.",
         "properties": {
           "confidence": {
             "format": "float",
@@ -5658,7 +5626,7 @@
         "type": "object"
       },
       "GoldenSuite": {
-        "description": "The suite: one CAS-versioned document per branch.",
+        "description": "The suite: one CAS-versioned document per graph.",
         "properties": {
           "goldens": {
             "items": {
@@ -5843,144 +5811,6 @@
         ],
         "type": "string"
       },
-      "GraphBranchCreateRequest": {
-        "properties": {
-          "from_branch": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "from_branch"
-        ],
-        "type": "object"
-      },
-      "GraphBranchCreateResponse": {
-        "properties": {
-          "graph": {
-            "$ref": "#/components/schemas/GraphKey"
-          },
-          "parent": {
-            "$ref": "#/components/schemas/BranchParentView"
-          },
-          "snapshot": {
-            "$ref": "#/components/schemas/SnapshotView"
-          }
-        },
-        "required": [
-          "graph",
-          "parent",
-          "snapshot"
-        ],
-        "type": "object"
-      },
-      "GraphBranchDeleteResponse": {
-        "properties": {
-          "branch_id": {
-            "type": "string"
-          },
-          "deleted_bytes": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "deleted_objects": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "graph_id": {
-            "type": "string"
-          },
-          "ok": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok",
-          "graph_id",
-          "branch_id",
-          "deleted_objects",
-          "deleted_bytes"
-        ],
-        "type": "object"
-      },
-      "GraphBranchMergeRequest": {
-        "description": "`POST /v1/graph/branch/merge` — replay a child branch's commits onto its\nfork parent (the branch named by the request URL) as one new commit batch.\nAppend-only: provenance and event ids are preserved, commit seqs are\nre-stamped onto the target's next seq.",
-        "properties": {
-          "delete_source": {
-            "description": "Delete every object under the source branch's prefix after a successful\nmerge (the branch is consumed).",
-            "type": "boolean"
-          },
-          "from_branch": {
-            "description": "The child branch whose post-fork commits are replayed. It must have been\ncreated from the branch this request is addressed to (its fork parent).",
-            "type": "string"
-          },
-          "validate": {
-            "description": "Run the active SHACL schema on the would-be merged state BEFORE the head\nwrite and refuse (merged=false + report) on violations — even when the\ngraph's enforce mode is `report`. With no active shapes (or mode `off`)\nthere is nothing to validate against and this is a no-op.",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "from_branch"
-        ],
-        "type": "object"
-      },
-      "GraphBranchMergeResponse": {
-        "properties": {
-          "commits_applied": {
-            "description": "Branch-local commits replayed (0 for a no-op merge of an unchanged\nbranch).",
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "conflicts": {
-            "description": "Branch facts dropped by the conflict rule: a fact superseded on the\ntarget after the fork point wins over the branch's version.",
-            "items": {
-              "$ref": "#/components/schemas/BranchMergeConflict"
-            },
-            "type": "array"
-          },
-          "idempotent_replay": {
-            "description": "True when this request id was already applied; `commits_applied` and\n`conflicts` are not re-derived on a replay.",
-            "type": "boolean"
-          },
-          "merged": {
-            "description": "False when `validate` refused the merge; the target is untouched and\n`validation` carries the report.",
-            "type": "boolean"
-          },
-          "refusal": {
-            "description": "Why `merged` is false, when it is.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "snapshot": {
-            "$ref": "#/components/schemas/SnapshotView",
-            "description": "The target branch snapshot after the merge (or its untouched head on\nrefusal / no-op)."
-          },
-          "source_deleted": {
-            "description": "True when `delete_source` ran (the source branch's objects are gone).",
-            "type": "boolean"
-          },
-          "validation": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SchemaAuditReport",
-                "description": "The SHACL audit of the would-be merged state (present when shapes are\nactive and either `validate` was requested or violations were found)."
-              }
-            ]
-          }
-        },
-        "required": [
-          "merged",
-          "commits_applied",
-          "snapshot"
-        ],
-        "type": "object"
-      },
       "GraphCard": {
         "description": "WS3 — a per-graph, per-snapshot self-description an agent can inject as prompt\ncontext: the types, relations, properties, and top attribute values that\nactually exist, with counts and a freshness watermark. The database writes\nits own guaranteed-true few-shot examples. Computed from the ontology,\nresident overlay, and BM25 meta — no doc/postings reads — and bounded by\n`limits` so it stays small enough to prompt with.",
         "properties": {
@@ -6046,7 +5876,7 @@
         "type": "object"
       },
       "GraphChangesResponse": {
-        "description": "WS4 — changes since a commit sequence: an agent refreshes its context by\nreading the delta, not re-querying. Records are returned in commit order and\ninclude edge retractions/tombstones. Paging is by whole commits (`next_since`\nwalks the window). Segment folds repackage history rather than reduce it, so\nany `since` up to the head is served; a `since` BEYOND the head (a cursor\nfrom a wiped/re-created branch) returns `reset` and is served as HTTP 409\nwith body `{\"error\":\"delta_unavailable\",\"reset\":true,\"snapshot_token\":…}`.",
+        "description": "WS4 — changes since a commit sequence: an agent refreshes its context by\nreading the delta, not re-querying. Records are returned in commit order and\ninclude edge retractions/tombstones. Paging is by whole commits (`next_since`\nwalks the window). Segment folds repackage history rather than reduce it, so\nany `since` up to the head is served; a `since` BEYOND the head (a cursor\nfrom a wiped/re-created graph) returns `reset` and is served as HTTP 409\nwith body `{\"error\":\"delta_unavailable\",\"reset\":true,\"snapshot_token\":…}`.",
         "properties": {
           "edge_events": {
             "items": {
@@ -6079,7 +5909,7 @@
             "type": "array"
           },
           "reset": {
-            "description": "The cursor cannot be answered from this branch's history (`since` beyond\nthe head — the branch was wiped or re-created); the client must\nfull-read. Served as HTTP 409 with an `error: delta_unavailable` body.",
+            "description": "The cursor cannot be answered from this graph's history (`since` beyond\nthe head — the graph was wiped or re-created); the client must\nfull-read. Served as HTTP 409 with an `error: delta_unavailable` body.",
             "type": "boolean"
           },
           "snapshot_token": {
@@ -6235,10 +6065,6 @@
       },
       "GraphDeleteResponse": {
         "properties": {
-          "deleted_branches": {
-            "minimum": 0,
-            "type": "integer"
-          },
           "deleted_bytes": {
             "format": "int64",
             "minimum": 0,
@@ -6262,7 +6088,6 @@
         "required": [
           "ok",
           "graph_id",
-          "deleted_branches",
           "deleted_objects",
           "deleted_feedback_objects",
           "deleted_bytes"
@@ -6961,16 +6786,6 @@
             "minimum": 0,
             "type": "integer"
           },
-          "parent": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/BranchParentView"
-              }
-            ]
-          },
           "published_lag_commits": {
             "description": "Commit distance from the graph head to the pinned published generation.",
             "minimum": 0,
@@ -7439,20 +7254,12 @@
       },
       "GraphSummary": {
         "properties": {
-          "branches": {
-            "description": "Branches that exist under this graph (e.g. `[\"main\"]`).",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "graph_id": {
             "type": "string"
           }
         },
         "required": [
-          "graph_id",
-          "branches"
+          "graph_id"
         ],
         "type": "object"
       },
@@ -8571,7 +8378,7 @@
         "type": "object"
       },
       "ModelServingDefaults": {
-        "description": "The serving defaults derived from promoted model runs, pinned to the\nbranch head like the embedding config (`model_defaults_ref`). One object\nserves every in-process kind; promotion truth stays the registry's\n`CURRENT` pointer — this is its read-optimized projection. **[PIN]**\nfield names (persisted object).",
+        "description": "The serving defaults derived from promoted model runs, pinned to the\ngraph head like the embedding config (`model_defaults_ref`). One object\nserves every in-process kind; promotion truth stays the registry's\n`CURRENT` pointer — this is its read-optimized projection. **[PIN]**\nfield names (persisted object).",
         "properties": {
           "calibration": {
             "oneOf": [
@@ -8700,7 +8507,7 @@
         "type": "object"
       },
       "ModelTrainingConfig": {
-        "description": "Per-graph automatic-training configuration, stored as one small CAS\nobject under the branch prefix (purged with the tenant). **[PIN]** field\nnames. Default: off — training never starts without an explicit opt-in.",
+        "description": "Per-graph automatic-training configuration, stored as one small CAS\nobject under the graph prefix (purged with the tenant). **[PIN]** field\nnames. Default: off — training never starts without an explicit opt-in.",
         "properties": {
           "auto_train": {
             "description": "Master switch for cadence-triggered training. Off by default.",
@@ -8938,239 +8745,6 @@
           "created_at_commit",
           "extracted_entity_count",
           "extracted_edge_event_count"
-        ],
-        "type": "object"
-      },
-      "ObserveByoFact": {
-        "description": "A caller-extracted candidate fact (`extraction.byo_completion`).",
-        "properties": {
-          "confidence": {
-            "format": "float",
-            "type": "number"
-          },
-          "fact": {
-            "description": "Natural-language statement of the fact.",
-            "type": "string"
-          },
-          "triplet": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/TripletInput",
-                "description": "The structured form. Required for the fact to be committable — a bare\nstatement without structure is answered `needs_review` (structuring\nfree text is the resident extractor's job)."
-              }
-            ]
-          }
-        },
-        "required": [
-          "fact"
-        ],
-        "type": "object"
-      },
-      "ObserveEpisode": {
-        "description": "The raw conversation slice to remember. Ground truth — stored verbatim on\nthe main branch as an `EPISODE` evidence entity.",
-        "properties": {
-          "session_id": {
-            "description": "Caller's conversation id (opaque; drives the default branch name).",
-            "type": "string"
-          },
-          "source": {
-            "description": "Optional source label, e.g. `support-bot`.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "turns": {
-            "description": "1..=500 turns, <= 1 MiB of content in total.",
-            "items": {
-              "$ref": "#/components/schemas/ObserveTurn"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "turns",
-          "session_id"
-        ],
-        "type": "object"
-      },
-      "ObserveExtraction": {
-        "properties": {
-          "byo_completion": {
-            "description": "Caller-side extraction: skip the model, run anchoring / supersedure /\ngating only.",
-            "items": {
-              "$ref": "#/components/schemas/ObserveByoFact"
-            },
-            "type": "array"
-          },
-          "max_facts": {
-            "description": "Cap on extracted facts (clamped to 32).",
-            "minimum": 0,
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "model": {
-            "description": "`byo` | `resident`. Defaults to `resident` when the server has a\nplanner endpoint configured, else `byo`.",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "type": "object"
-      },
-      "ObserveFact": {
-        "description": "Per-fact outcome. `status`: `committed` | `rejected` | `needs_review`.",
-        "properties": {
-          "anchored": {
-            "description": "Both endpoints resolved to entities that already existed.",
-            "type": "boolean"
-          },
-          "confidence": {
-            "format": "float",
-            "type": "number"
-          },
-          "statement": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "supersedes": {
-            "description": "The current edge this fact displaces (commit-ordered reducers only).",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "triplet": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/TripletInput"
-              }
-            ]
-          }
-        },
-        "required": [
-          "statement",
-          "anchored",
-          "confidence",
-          "status"
-        ],
-        "type": "object"
-      },
-      "ObserveRequest": {
-        "properties": {
-          "auto_merge": {
-            "description": "Merge the branch back onto the scoped branch when validation is clean\n(the WS16 validate-then-merge).",
-            "type": "boolean"
-          },
-          "branch": {
-            "description": "Branch the facts commit to. Defaults to `observe-<hash12(session_id)>`\n(branch names are `[a-z0-9-_]{1,32}`, so the session id is hashed, not\nembedded). Created from the scoped branch if absent.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "episode": {
-            "$ref": "#/components/schemas/ObserveEpisode"
-          },
-          "extract": {
-            "description": "`false` stores the episode only (no facts, no branch).",
-            "type": "boolean"
-          },
-          "extraction": {
-            "$ref": "#/components/schemas/ObserveExtraction"
-          }
-        },
-        "required": [
-          "episode"
-        ],
-        "type": "object"
-      },
-      "ObserveResponse": {
-        "properties": {
-          "branch": {
-            "description": "The branch the facts committed to (empty when `extract: false`).",
-            "type": "string"
-          },
-          "episode_id": {
-            "description": "Stable entity id of the stored `EPISODE` evidence entity.",
-            "type": "string"
-          },
-          "facts": {
-            "items": {
-              "$ref": "#/components/schemas/ObserveFact"
-            },
-            "type": "array"
-          },
-          "idempotent_replay": {
-            "description": "True when this Idempotency-Key was already applied (episode replayed).",
-            "type": "boolean"
-          },
-          "merged": {
-            "type": "boolean"
-          },
-          "snapshot": {
-            "$ref": "#/components/schemas/SnapshotView",
-            "description": "The scoped (main) branch snapshot after the observe."
-          },
-          "validation": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SchemaAuditReport",
-                "description": "SHACL audit of the branch commit (present when shapes are active)."
-              }
-            ]
-          }
-        },
-        "required": [
-          "episode_id",
-          "branch",
-          "merged",
-          "snapshot"
-        ],
-        "type": "object"
-      },
-      "ObserveTurn": {
-        "description": "One conversation turn of an episode.",
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "name": {
-            "description": "Optional speaker/tool name.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "role": {
-            "description": "`user` | `assistant` | `tool` (free-form label; not enforced).",
-            "type": "string"
-          },
-          "ts": {
-            "description": "Optional RFC 3339 timestamp of the turn.",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "role",
-          "content"
         ],
         "type": "object"
       },
@@ -12098,7 +11672,7 @@
               },
               {
                 "$ref": "#/components/schemas/SchemaWriteEnforcement",
-                "description": "How and when the engine enforces the published shapes on this branch."
+                "description": "How and when the engine enforces the published shapes on this graph."
               }
             ]
           }
@@ -12197,7 +11771,7 @@
         "type": "object"
       },
       "SchemaWriteEnforcement": {
-        "description": "How the published shape set is enforced on this branch.",
+        "description": "How the published shape set is enforced on this graph.",
         "properties": {
           "shapes": {
             "items": {
@@ -12209,7 +11783,7 @@
             "$ref": "#/components/schemas/SchemaWriteEnforcementTiming"
           },
           "write_enforceable": {
-            "description": "True when no root shape has a blocker. An RDF-native branch accepts\n`reject` mode only for such a shape set.",
+            "description": "True when no root shape has a blocker. An RDF-native graph accepts\n`reject` mode only for such a shape set.",
             "type": "boolean"
           }
         },
@@ -15354,7 +14928,7 @@
         "type": "object"
       },
       "SignalKind": {
-        "description": "The closed set of signal kinds (v1). Extending this is a deliberate format\nchange, not an open string.\n\nv1.1 (2026-07-07, planner-feedback capture): adds the legacy\n`ask_trace`/`ask_feedback` supervision records. They remain decodable for\ndurable training data, but no public Ask endpoint emits them.",
+        "description": "The closed set of signal kinds (v1). Extending this is a deliberate format\nchange, not an open string.\n\nv1.1 (2026-07-07, planner-feedback capture): adds the legacy\n`ask_trace`/`ask_feedback` supervision records. They remain decodable for\ndurable training data, but no public Ask endpoint emits them.\n\n`branch_merge_accepted`/`branch_merge_rejected` stay decodable for stored\nsignal records only: graphs have no branches, and nothing emits them.",
         "enum": [
           "suggestion_shown",
           "suggestion_adopted",
@@ -15897,7 +15471,7 @@
               },
               {
                 "$ref": "#/components/schemas/CommitSeq",
-                "description": "Exact transaction-time watermark from the retained branch-owned RDF\nlineage. Uses the same bounded base and commit deltas as SPARQL text;\na missing checkpoint or a pin beyond head fails instead of serving a\ndifferent snapshot. Valid-time selectors are unsupported."
+                "description": "Exact transaction-time watermark from the retained graph-owned RDF\nlineage. Uses the same bounded base and commit deltas as SPARQL text;\na missing checkpoint or a pin beyond head fails instead of serving a\ndifferent snapshot. Valid-time selectors are unsupported."
               }
             ]
           },
@@ -16014,7 +15588,7 @@
             "type": "array"
           },
           "reason": {
-            "description": "Not available on the published SPARQL surface: a branch's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error.",
+            "description": "Not available on the published SPARQL surface: a graph's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error.",
             "type": "boolean"
           },
           "select": {
@@ -16183,7 +15757,7 @@
             "type": "string"
           },
           "reason": {
-            "description": "Not available on the published SPARQL surface: a branch's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error.",
+            "description": "Not available on the published SPARQL surface: a graph's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error.",
             "type": "boolean"
           },
           "request": {
@@ -17768,7 +17342,7 @@
     }
   },
   "info": {
-    "description": "Object-storage-native temporal graph and hybrid search engine. Public data-plane integrations use `/v1/*`, scoped by `?graph=`/`?branch=` (default `main`) and authenticated with a stack API key (`lbb_sk_test_…` or `lbb_sk_live_…`) or single-mode token as a bearer. Send `Lbb-Version: 2026-07-23` to pin this beta-breaking contract.",
+    "description": "Object-storage-native temporal graph and hybrid search engine. Public data-plane integrations use `/v1/*`, scoped by `?graph=` (default `main`) and authenticated with a stack API key (`lbb_sk_test_…` or `lbb_sk_live_…`) or single-mode token as a bearer. Send `Lbb-Version: 2026-07-23` to pin this beta-breaking contract.",
     "title": "Little Big Brain HTTP API",
     "version": "2026-07-23"
   },
@@ -17782,15 +17356,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -18043,15 +17608,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -18322,15 +17878,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -18616,15 +18163,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -18871,15 +18409,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -19150,15 +18679,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -19442,15 +18962,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -19692,7 +19203,7 @@
             "bearer": []
           }
         ],
-        "summary": "The embeddings of the branch with their status: serving and building version, backfill progress, watermark, lag, recall; `name` for one",
+        "summary": "The embeddings of the graph with their status: serving and building version, backfill progress, watermark, lag, recall; `name` for one",
         "tags": [
           "system"
         ]
@@ -19704,15 +19215,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -19981,15 +19483,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -20246,15 +19739,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -20532,15 +20016,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -20811,15 +20286,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -21066,15 +20532,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -21349,15 +20806,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -21602,15 +21050,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -21882,15 +21321,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -22176,15 +21606,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -22458,15 +21879,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -22753,15 +22165,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -23017,15 +22420,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -23302,15 +22696,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -23543,7 +22928,7 @@
             "bearer": []
           }
         ],
-        "summary": "Read the evals settings of the branch",
+        "summary": "Read the evals settings of the graph",
         "tags": [
           "system"
         ]
@@ -23555,15 +22940,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -23812,7 +23188,7 @@
             "bearer": []
           }
         ],
-        "summary": "Write the evals settings of the branch",
+        "summary": "Write the evals settings of the graph",
         "tags": [
           "system"
         ]
@@ -23826,15 +23202,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -24102,15 +23469,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -24367,843 +23725,6 @@
         ]
       }
     },
-    "/v1/graph/branch": {
-      "delete": {
-        "operationId": "delete_v1_graph_branch",
-        "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
-            "in": "header",
-            "name": "Lbb-Version",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Must equal the target branch id",
-            "in": "query",
-            "name": "confirm",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GraphBranchDeleteResponse"
-                }
-              }
-            },
-            "description": "OK",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Bad request",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not found",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Conflict",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Rate limit exceeded",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal server error",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service unavailable",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Delete the scoped branch; refuses to delete a graph's final live branch",
-        "tags": [
-          "graph"
-        ]
-      },
-      "post": {
-        "operationId": "post_v1_graph_branch",
-        "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
-            "in": "header",
-            "name": "Lbb-Version",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GraphBranchCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GraphBranchCreateResponse"
-                }
-              }
-            },
-            "description": "OK",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Bad request",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not found",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Conflict",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Rate limit exceeded",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal server error",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service unavailable",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Fork the scoped branch from an existing branch in the same graph",
-        "tags": [
-          "graph"
-        ]
-      }
-    },
-    "/v1/graph/branch/merge": {
-      "post": {
-        "operationId": "post_v1_graph_branch_merge",
-        "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
-            "in": "header",
-            "name": "Lbb-Version",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GraphBranchMergeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GraphBranchMergeResponse"
-                }
-              }
-            },
-            "description": "OK",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Bad request",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not found",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Conflict",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Rate limit exceeded",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal server error",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service unavailable",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Replay a child branch's post-fork commits onto the scoped branch (its fork parent) as one commit — validate-then-merge; requires an Idempotency-Key",
-        "tags": [
-          "graph"
-        ]
-      }
-    },
     "/v1/graph/changes": {
       "get": {
         "operationId": "get_v1_graph_changes",
@@ -25212,15 +23733,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -25491,15 +24003,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -25786,15 +24289,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -26074,15 +24568,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -26324,7 +24809,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create the scoped graph and branch with an empty ontology",
+        "summary": "Create the scoped graph with an empty ontology",
         "tags": [
           "graph"
         ]
@@ -26338,15 +24823,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -26603,7 +25079,7 @@
             "bearer": []
           }
         ],
-        "summary": "Delete every branch and deregister the scoped graph; destructive and idempotent",
+        "summary": "Delete and deregister the scoped graph; destructive and idempotent",
         "tags": [
           "graph"
         ]
@@ -26617,15 +25093,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -26905,15 +25372,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -27215,7 +25673,7 @@
             "bearer": []
           }
         ],
-        "summary": "Native entity attributes and relationships from the branch-owned RDF view; unavailable provenance sections are explicitly listed",
+        "summary": "Native entity attributes and relationships from the graph-owned RDF view; unavailable provenance sections are explicitly listed",
         "tags": [
           "graph"
         ]
@@ -27229,15 +25687,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -27526,15 +25975,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -27847,15 +26287,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -28109,15 +26540,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -28388,15 +26810,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -28691,15 +27104,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -28988,15 +27392,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -29265,15 +27660,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -29527,15 +27913,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -29860,15 +28237,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -30226,15 +28594,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -30481,15 +28840,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -30748,15 +29098,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -31003,15 +29344,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -31315,15 +29647,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -31595,15 +29918,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -31850,15 +30164,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -32117,15 +30422,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -32376,7 +30672,7 @@
             "bearer": []
           }
         ],
-        "summary": "List the graphs (and branches) under the scoped tenant",
+        "summary": "List the graphs under the scoped tenant",
         "tags": [
           "graph"
         ]
@@ -32390,15 +30686,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -32643,286 +30930,6 @@
         ]
       }
     },
-    "/v1/memory/observe": {
-      "post": {
-        "operationId": "post_v1_memory_observe",
-        "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
-            "in": "header",
-            "name": "Lbb-Version",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ObserveRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ObserveResponse"
-                }
-              }
-            },
-            "description": "OK",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Bad request",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unauthorized",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Forbidden",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Not found",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Conflict",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Rate limit exceeded",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Internal server error",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LbbErrorEnvelope"
-                }
-              }
-            },
-            "description": "Service unavailable",
-            "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
-                "schema": {
-                  "type": "string"
-                }
-              },
-              "X-Request-Id": {
-                "description": "Request correlation id",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Observe a conversation episode: store it verbatim as EPISODE evidence, anchor and gate extracted facts on an observe branch, optionally auto-merge when validation is clean; requires an Idempotency-Key (flag-gated: --enable-observe)",
-        "tags": [
-          "system"
-        ]
-      }
-    },
     "/v1/models/cadence": {
       "get": {
         "operationId": "get_v1_models_cadence",
@@ -32931,15 +30938,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -33201,15 +31199,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -33486,15 +31475,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -33765,15 +31745,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -34038,15 +32009,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -34332,15 +32294,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -34614,15 +32567,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -34908,15 +32852,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -35188,15 +33123,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -35452,15 +33378,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -35746,15 +33663,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -36020,15 +33928,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -36305,15 +34204,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -36584,15 +34474,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -36854,15 +34735,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -37116,15 +34988,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -37402,15 +35265,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -37682,15 +35536,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -37935,15 +35780,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -38221,15 +36057,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -38476,15 +36303,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -38741,7 +36559,7 @@
             "bearer": []
           }
         ],
-        "summary": "Read the immutable branch-owned ontology-conformance sidecar selected by the F3 checksum and schema identity",
+        "summary": "Read the immutable graph-owned ontology-conformance sidecar selected by the F3 checksum and schema identity",
         "tags": [
           "ontology"
         ]
@@ -38755,15 +36573,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -39050,15 +36859,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -39312,15 +37112,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -39598,15 +37389,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -39871,15 +37653,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -40165,15 +37938,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -40438,15 +38202,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -40733,15 +38488,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -41007,15 +38753,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -41293,15 +39030,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -41567,15 +39295,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -41853,15 +39572,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -42127,15 +39837,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -42413,15 +40114,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -42687,15 +40379,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -42973,15 +40656,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -43247,15 +40921,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -43533,15 +41198,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -43788,15 +41444,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -44083,15 +41730,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -44357,15 +41995,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -44643,15 +42272,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -44904,15 +42524,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -45159,15 +42770,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"
@@ -45451,15 +43053,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -45731,15 +43324,6 @@
             }
           },
           {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
             "in": "header",
             "name": "Lbb-Version",
@@ -45986,15 +43570,6 @@
             "description": "Graph name (default `main`)",
             "in": "query",
             "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Branch name (default `main`)",
-            "in": "query",
-            "name": "branch",
             "required": false,
             "schema": {
               "type": "string"

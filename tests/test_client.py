@@ -18,7 +18,6 @@ from lbb.models import (
     CreateGraphResponse,
     EntityTypeSampleResponse,
     GovernedConflictAggregationResponse,
-    GraphBranchDeleteResponse,
     GraphDeleteResponse,
     GraphForkResponse,
     GraphReloadResponse,
@@ -304,14 +303,13 @@ class SyncClientTests(unittest.TestCase):
             "graph": {
                 "tenant_id": "tenant",
                 "graph_id": "research",
-                "branch_id": "analysis",
+                "branch_id": "main",
             },
             "ontology_version": 1,
         }
         with LbbClient(
             "http://h",
             graph="research",
-            branch="analysis",
             transport=capturing_transport(seen, {"json": payload}),
         ) as client:
             result = client.create_graph()
@@ -320,9 +318,7 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(result.graph.graph_id, "research")
         self.assertEqual(seen[0].method, "POST")
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/create")
-        self.assertEqual(
-            dict(seen[0].url.params), {"graph": "research", "branch": "analysis"}
-        )
+        self.assertEqual(dict(seen[0].url.params), {"graph": "research"})
 
     def test_namespace_facts_create_injects_auth_scope_version_and_idempotency(
         self,
@@ -335,7 +331,7 @@ class SyncClientTests(unittest.TestCase):
                 seen, {"json": {"commit": {"commit_seq": 1}}}
             ),
         ) as client:
-            result = client.graph("main", branch="b").facts.create(
+            result = client.graph("main").facts.create(
                 {"triplets": []}, idempotency_key="ik_py_1"
             )
 
@@ -345,7 +341,7 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(
             str(request.url).split("?")[0], "http://h:7400/v1/graph/commit"
         )
-        self.assertEqual(dict(request.url.params), {"graph": "main", "branch": "b"})
+        self.assertEqual(dict(request.url.params), {"graph": "main"})
         self.assertEqual(request.headers["authorization"], "Bearer lbb_sk_test")
         self.assertEqual(request.headers["lbb-version"], "2026-07-23")
         self.assertEqual(request.headers["idempotency-key"], "ik_py_1")
@@ -365,6 +361,9 @@ class SyncClientTests(unittest.TestCase):
                 "embedding_config",
                 "backfill_embeddings",
                 "promote_embedding",
+                "delete_branch",
+                "merge_branch",
+                "observe",
             ):
                 self.assertFalse(
                     hasattr(client, name), f"LbbClient must not expose {name}"
@@ -375,6 +374,7 @@ class SyncClientTests(unittest.TestCase):
                 "embedding_config",
                 "backfill_embeddings",
                 "promote_embedding",
+                "delete_branch",
             ):
                 self.assertFalse(
                     hasattr(scoped, name), f"graph namespace must not expose {name}"
@@ -1023,33 +1023,22 @@ class SyncClientTests(unittest.TestCase):
         graph_payload = {
             "ok": True,
             "graph_id": "main",
-            "deleted_branches": 2,
             "deleted_objects": 10,
             "deleted_feedback_objects": 1,
             "deleted_bytes": 100,
         }
-        branch_payload = {
-            "ok": True,
-            "graph_id": "main",
-            "branch_id": "review",
-            "deleted_objects": 5,
-            "deleted_bytes": 50,
-        }
-        responses = [graph_payload, branch_payload]
         with LbbClient(
             "http://h",
             graph="main",
-            branch="review",
-            transport=capturing_transport(
-                seen, [{"json": payload} for payload in responses]
-            ),
+            transport=capturing_transport(seen, {"json": graph_payload}),
         ) as client:
             deleted = client.delete_graph(confirm="main")
-            branch = client.delete_branch(confirm="review")
         self.assertIsInstance(deleted, GraphDeleteResponse)
-        self.assertIsInstance(branch, GraphBranchDeleteResponse)
-        self.assertEqual(seen[0].url.params["confirm"], "main")
-        self.assertEqual(seen[1].url.params["confirm"], "review")
+        self.assertEqual(seen[0].method, "POST")
+        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/delete")
+        self.assertEqual(
+            dict(seen[0].url.params), {"graph": "main", "confirm": "main"}
+        )
 
     def test_governed_conflicts_returns_generated_model(self) -> None:
         seen: list[httpx.Request] = []
@@ -1479,7 +1468,7 @@ class SyncClientTests(unittest.TestCase):
             ),
         ) as client:
             with self.assertRaises(LbbError):
-                client.delete_branch(confirm="main")
+                client.embeddings.delete("people")
         self.assertEqual(len(seen), 1)
 
     def test_retries_idempotent_whole_graph_delete(self) -> None:
@@ -1487,7 +1476,6 @@ class SyncClientTests(unittest.TestCase):
         payload = {
             "ok": True,
             "graph_id": "main",
-            "deleted_branches": 0,
             "deleted_objects": 0,
             "deleted_feedback_objects": 0,
             "deleted_bytes": 0,
@@ -1800,13 +1788,9 @@ class SyncClientTests(unittest.TestCase):
                 {"json": publication_status_payload("current", published_seq=7)},
             ),
         ) as client:
-            status = client.graph("perritos", branch="review").wait_for_published(
-                7, poll_interval=0
-            )
+            status = client.graph("perritos").wait_for_published(7, poll_interval=0)
         self.assertEqual(status.published_seq, 7)
-        self.assertEqual(
-            dict(seen[0].url.params), {"graph": "perritos", "branch": "review"}
-        )
+        self.assertEqual(dict(seen[0].url.params), {"graph": "perritos"})
 
 class SearchAndEvalsNamespaceTests(unittest.TestCase):
     """The search setup, search, and evals namespaces send the documented requests."""
@@ -1964,13 +1948,11 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
                 {"json": publication_status_payload("current", published_seq=7)},
             ),
         ) as client:
-            status = await client.graph(
-                "perritos", branch="review"
-            ).wait_for_published(7, poll_interval=0)
+            status = await client.graph("perritos").wait_for_published(
+                7, poll_interval=0
+            )
         self.assertEqual(status.published_seq, 7)
-        self.assertEqual(
-            dict(seen[0].url.params), {"graph": "perritos", "branch": "review"}
-        )
+        self.assertEqual(dict(seen[0].url.params), {"graph": "perritos"})
 
     async def test_async_import_rdf_many_defers_intermediate_publications(
         self,
