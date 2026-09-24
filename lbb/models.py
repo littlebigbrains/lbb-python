@@ -7272,7 +7272,7 @@ class EmbeddingPreviewResponse(BaseModel):
     title_suggestion: Annotated[
         list[str] | None,
         Field(
-            description='A field that looks like a name, when the hits are named by\n`rdfs:label` (found or declared) and the labels look like keys\n(`yc-job:94386`: no space, and a colon, a slash, or digits), or the\ninstances have no name: a text fact on at least 90% of the\nsample, one value each, with short values that are not keys. A\nsuggestion only; the recipe keeps its `title` until a declaration\nnames another.'
+            description='A fact whose values read as names, when the hits are named by\n`rdfs:label` (found or declared) and the labels do not name them (on\nless than half of the instances, keys or codes like `yc-job:94386`,\nor one value repeated), or the instances have no name. The choice\nreads the values, never the property names: a text fact on at least\n90% of the sample, about one value per instance, at least 80%\ndistinct, at most 10% keys or codes, one sentence each, and a median\nof at most 120 characters. The most distinct wins, then the shortest.\nA suggestion only; the recipe keeps its `title` until a declaration\nnames another.'
         ),
     ] = None
 
