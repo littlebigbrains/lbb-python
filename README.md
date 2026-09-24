@@ -1,150 +1,159 @@
-# littlebigbrain — Python SDK
+# littlebigbrain Python SDK
 
-The Python client for [Little Big Brain](https://littlebigbrain.com) — write graph facts and query one immutable published snapshot. Built on `httpx` + `pydantic`; ships sync and async clients.
+Python client for [little big brain](https://littlebigbrain.com), a search
+platform for AI applications such as chatbots, search tools, and agents.
+Load facts, query their relationships, and keep the data version behind an answer
+so you can check it later.
+
+The package supports Python 3.10+ and provides synchronous and asynchronous
+clients built on `httpx`. Generated Pydantic models are available in `lbb.models`.
+
+[Documentation](https://docs.littlebigbrain.com/sdks/python/) ·
+[Quickstart](https://docs.littlebigbrain.com/start/quickstart/) ·
+[Issues](https://github.com/littlebigbrains/lbb-python/issues)
+
+## Install
 
 ```sh
-pip install littlebigbrain   # imports as `lbb`
+pip install littlebigbrain
 ```
 
-## Quickstart
+The package is installed as `littlebigbrain` and imported as `lbb`.
+
+## Load facts and run a query
+
+Create a stack in the [console](https://cloud.littlebigbrain.com) and open
+**Connect**. Copy its complete endpoint and a stack API key:
+
+```sh
+export LBB_URL="https://<your-complete-stack-host>"
+export LBB_API_KEY="<your-stack-api-key>"
+```
+
+This example creates a graph named `quickstart` on its first write. It stores
+three facts: a service writes to a database, and each has a label. The data uses
+Resource Description Framework (RDF), where each line names a subject, a
+relationship, and a value or another record. SPARQL is the query language for
+those facts.
+
+Save as `quickstart.py`, then run `python3 quickstart.py`:
 
 ```python
+import os
+
 from lbb import LbbClient
 
+facts = """
+<https://example.org/auth-service> <https://example.org/writesTo> <https://example.org/user-db> .
+<https://example.org/auth-service> <http://www.w3.org/2000/01/rdf-schema#label> "Auth Service" .
+<https://example.org/user-db> <http://www.w3.org/2000/01/rdf-schema#label> "User Database" .
+"""
+
+query = """
+    SELECT ?service ?database WHERE {
+        ?s <https://example.org/writesTo> ?db .
+        ?s <http://www.w3.org/2000/01/rdf-schema#label> ?service .
+        ?db <http://www.w3.org/2000/01/rdf-schema#label> ?database .
+    } ORDER BY ?service ?database LIMIT 10
+"""
+
 with LbbClient(
-    "https://0abc1def--production.db.eu.littlebigbrain.com",
-    api_key="lbb_sk_live_...",
-    graph="main",
+    os.environ["LBB_URL"],
+    api_key=os.environ["LBB_API_KEY"],
+    graph="quickstart",
 ) as lbb:
-    graph = lbb.graph("main")
-
-    # 1. Write a fact.
-    graph.facts.create({
-        "triplets": [{
-            "source": {"type": "CONCEPT", "name": "handbook", "key": "doc:42"},
-            "relation": "RELATED_TO",
-            "target": {"type": "CONCEPT", "name": "vacation policy", "key": "passage:42:1"},
-            "evidence": "Employees receive 25 days of annual leave.",
-        }],
-    }, idempotency_key="doc:42:v1")
-
-    # 2. Publication is automatic. Inspect one coherent watermark when needed.
-    published = lbb.read_snapshot_model()
-    print(published.snapshot.served_at_seq, published.query_lag_commits)
-
-    # 3. Query the snapshot with SPARQL.
-    rows = lbb.sparql_select(
-        "SELECT ?s ?o WHERE { ?s <policy:annual_leave> ?o } LIMIT 5"
+    imported = lbb.graph("quickstart").facts.import_rdf(
+        facts, format="ntriples", idempotency_key="sdk-quickstart-v1"
     )
-    for row in rows:
-        print(row["s"], row["o"])
+
+    results = lbb.sparql(
+        query,
+        consistency="strong",
+        min_indexed_seq=imported["committed_commit_seq"],
+    )
+    for row in results:
+        print(f"{row['service']} -> {row['database']}")
 ```
 
-For hosted use, pass the exact `endpoint_url` shown on the stack's Connect
-page. Omitting `base_url` retains the loopback default for local/self-hosted
-development only; graph and branch remain ordinary client scope parameters.
+On a fresh graph, this prints:
 
-Facts are graph-scoped (`lbb.graph("main").facts`); search and published-snapshot
-inspection use the client's active graph/branch scope.
+```text
+Auth Service -> User Database
+```
 
-## Examples
+The query follows the stored relationship between the service and database.
+`consistency="strong"` makes the new facts available to this read without
+waiting for a background index job. Reads default to eventual consistency, so
+omit this option only when an earlier version is acceptable.
 
-**Search with filters.** Use the request body to filter before ranking — here, only facts an ACL principal may see:
+The idempotency key makes repeating the same import safe. Use a new key if you
+change the data.
+
+## Async client
+
+`AsyncLbbClient` provides the same methods with `await`. After running the
+quickstart, this script reads its data:
 
 ```python
-results = lbb.graph_search({
-    "query": "incident response runbook",
-    "targets": ["entities"],
-    "search": {
-        "filters": {
-            "op": "overlaps",
-            "field": "acl",
-            "values": ["user:rino@example.com", "group:engineering"],
-        },
-    },
-    "top_k": 20,
-})
+import asyncio
+import os
+
+from lbb import AsyncLbbClient
+
+
+async def main():
+    async with AsyncLbbClient(
+        os.environ["LBB_URL"],
+        api_key=os.environ["LBB_API_KEY"],
+        graph="quickstart",
+    ) as lbb:
+        result = await lbb.sparql(
+            "ASK { ?s <https://example.org/writesTo> ?db }",
+            consistency="strong",
+        )
+        print(result.boolean)  # True
+
+
+asyncio.run(main())
 ```
 
-**Bulk import.** Load many records as NDJSON in one call:
+## Next steps
 
-```python
-lbb.graph("main").facts.import_ndjson(
-    [
-        {"source": {"type": "DOC", "name": "handbook", "key": "doc:42"},
-         "relation": "HAS_PASSAGE",
-         "target": {"type": "PASSAGE", "name": "leave-policy", "key": "p:42:1"}},
-        # …one record per line
-    ],
-    idempotency_key="handbook-batch-1",
-)
-```
+- [Search by meaning](https://docs.littlebigbrain.com/guides/search-by-meaning/): choose which facts to embed and find records from a text description.
+- [Load your own RDF](https://docs.littlebigbrain.com/guides/load-rdf/): import Turtle, N-Triples, N-Quads, or TriG.
+- [Work with JSON records](https://docs.littlebigbrain.com/guides/without-rdf/): define a schema and write records without writing RDF.
+- [Validate writes](https://docs.littlebigbrain.com/guides/sparql-and-shacl/): define constraints with the Shapes Constraint Language (SHACL).
+- [Read the same version again](https://docs.littlebigbrain.com/guides/time-travel-audit/): save a query and its commit sequence, then replay it through the HTTP API.
 
-For large or long-running loads, submit a streamed durable job:
+The RDF and JSON guides use different write workflows. Choose one when creating
+a graph; a graph first written through RDF import does not accept
+`facts.create` or JSON record imports.
 
-```python
-accepted = lbb.submit_import_ndjson(
-    records(),
-    idempotency_key="hubspot:portal-42:run-2026-07-29",
-)
-completed = lbb.wait_for_import_job(accepted.job_id)
-print(completed.state, completed.committed_commit_seq)
-```
+## Errors and retries
 
-The async client accepts an async iterable as well. Success means all grouped
-commits are durable and immediately queryable by a strong SPARQL read. The same
-commits advance the graph's coalesced RDF reconciliation fence; waiting for base
-compaction is optional. Empty iterables are rejected locally before an import
-POST is sent.
+Failed HTTP requests raise `LbbError`, with a status, error code, message, and
+request ID. Use `raw_request()` when you also need response headers or timing.
 
-For several RDF documents, `graph.facts.import_rdf_many(...)` automatically
-defers every intermediate reconciliation and triggers the final one. Call
-`graph.wait_for_published(result["final_sequence"])` only when the caller needs
-the immutable base itself to cover the import; strong reads need no waiter.
+Safe reads and writes with an idempotency key retry rate limits, retryable server
+errors, and network failures. Retries respect `Retry-After` and use a 60-second
+budget by default. See the [client reference](https://docs.littlebigbrain.com/sdks/python/)
+for timeout and retry options.
 
-**Time-travel read.** Pin a SPARQL query to a past instant — results reflect the graph as it was then:
+## Development
 
-```python
-results = lbb.sparql(
-    "SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10",
-    as_of_valid_time="2026-01-01T00:00:00Z",
-)
-print(results.vars)
-for row in results:           # iterates flat {var: value} dicts
-    print(row)
-```
-
-The async client mirrors every method — `async with AsyncLbbClient(...) as lbb:` and `await` each call.
-
-## Errors & retries
-
-Methods return parsed dictionaries and raise `LbbError` (with `status_code`, `code`, `param`, `request_id`, and `doc_url`) on any non-2xx response. Safe reads and idempotency-keyed writes retry `429`/`5xx` and transport failures with full-jitter backoff, bounded by a retry budget (`retry_budget_ms`, default 60s) rather than a fixed count, and honor `Retry-After` — a terminal error the server marks non-retryable surfaces immediately. Use `raw_request(...)` for response headers, request id, and retry/timing metadata.
-`wait_for_published(...)` is an optional, deadline-bounded maintenance poller
-for workflows that want the immutable RDF base itself to cover a commit.
-Strong SPARQL does not need it: acknowledged commits are queryable immediately
-from the branch head's base-plus-delta lineage.
-
-## More
-
-Beyond the quickstart: `entities.sample(type=..., limit=...)` for a bounded
-published-generation sample and `entities.filter_by_attributes(...)` for
-relation-bound structured SPARQL; and `ontology`/`schema` for ontology
-inspection and atomic schema publication. SPARQL is the one query language on
-the API. Typed Pydantic responses are exposed by
-matching `*_model` helpers; generated models live in `lbb.models`. Retired
-request-time JSON SHACL DTOs are intentionally absent: publish RDF shapes with
-`schema.publish`, then read `ontology.conformance`.
-
-Full reference and guides: [docs.littlebigbrain.com/sdks/python](https://docs.littlebigbrain.com/sdks/python/).
-
-## Develop
+From a clone of this repository:
 
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-ruff check lbb tests
-mypy lbb
-pytest tests
+.venv/bin/python -m ruff check lbb tests
+.venv/bin/python -m mypy lbb
+.venv/bin/python -m pytest tests
 ```
 
-`lbb/models.py` is generated from the API contract — change the Rust API types and regenerate rather than editing it by hand.
+`lbb/models.py` is generated from the API contract. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for changes to generated models.
+
+## License
+
+[Apache-2.0](LICENSE).
