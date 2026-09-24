@@ -1050,24 +1050,6 @@ class _BaseLbbClient:
             idempotency_key=idempotency_key,
         )
 
-    def planner_dataset(
-        self, *, limit: int | None = None, split_seq: int | None = None
-    ) -> Any:
-        return self._request(
-            "GET",
-            "/v1/models/planner-dataset",
-            params={"limit": limit, "split_seq": split_seq},
-        )
-
-    def planner_preference_dataset(
-        self, *, limit: int | None = None, split_seq: int | None = None
-    ) -> Any:
-        return self._request(
-            "GET",
-            "/v1/models/planner-preference-dataset",
-            params={"limit": limit, "split_seq": split_seq},
-        )
-
     def suggest_dataset(
         self, *, limit: int | None = None, split_seq: int | None = None
     ) -> Any:
@@ -1096,18 +1078,6 @@ class _BaseLbbClient:
         return self._request(
             "POST",
             "/v1/models/promote-extractor",
-            params={"run_id": run_id, "allow_regression": allow_regression},
-        )
-
-    def promote_planner(
-        self, *, run_id: str, allow_regression: bool | None = None
-    ) -> Any:
-        """Promote a finished ``planner_lora`` run (``POST
-        /v1/models/promote-planner``): gated on held-out slot exactness,
-        recorded as a ``kind=planner`` training run."""
-        return self._request(
-            "POST",
-            "/v1/models/promote-planner",
             params={"run_id": run_id, "allow_regression": allow_regression},
         )
 

@@ -8,6 +8,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 - Remove the `branch` argument from `LbbClient`, `AsyncLbbClient`, `graph()`
   and `LbbLocalClient`. Remove `delete_branch()` and `merge_branch()`.
 - Remove `observe()`.
+- Remove `planner_dataset()`, `planner_preference_dataset()` and
+  `promote_planner()`. The server no longer trains the planner.
+- Remove the generated planner training models and the `planner` field of
+  `ModelServingDefaults`.
 
 ## 0.13.1 (2026-09-24)
 

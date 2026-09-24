@@ -364,6 +364,9 @@ class SyncClientTests(unittest.TestCase):
                 "delete_branch",
                 "merge_branch",
                 "observe",
+                "planner_dataset",
+                "planner_preference_dataset",
+                "promote_planner",
             ):
                 self.assertFalse(
                     hasattr(client, name), f"LbbClient must not expose {name}"
@@ -643,12 +646,10 @@ class SyncClientTests(unittest.TestCase):
             graph="g",
             transport=capturing_transport(
                 seen,
-                [{"json": {}} for _ in range(5)],
+                [{"json": {}} for _ in range(3)],
             ),
         ) as client:
             client.shadow_eval({"queries": [], "challenger": {}})
-            client.planner_dataset(limit=10, split_seq=7)
-            client.planner_preference_dataset(limit=11, split_seq=8)
             client.suggest_dataset(limit=12, split_seq=9)
             client.extractor_dataset(limit=13, split_seq=10)
 
@@ -656,8 +657,6 @@ class SyncClientTests(unittest.TestCase):
             [str(request.url).split("?")[0] for request in seen],
             [
                 "http://h/v1/models/shadow-eval",
-                "http://h/v1/models/planner-dataset",
-                "http://h/v1/models/planner-preference-dataset",
                 "http://h/v1/models/suggest-dataset",
                 "http://h/v1/models/extractor-dataset",
             ],

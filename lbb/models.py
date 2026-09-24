@@ -1971,9 +1971,9 @@ class OntologyTermView(BaseModel):
 
 class PlannerServingDefaults(BaseModel):
     """
-    Planner serving default derived from a promoted `planner` run: the LoRA
-    adapter (a path on the model-serving volume) planner-backed workflows pass
-    to the resident model per generate call.
+    Adapter serving default derived from a promoted adapter run (today only
+    `extractor`): the LoRA adapter (a path on the model-serving volume) the
+    resident model loads per generate call.
     """
 
     adapter: Annotated[
@@ -5696,7 +5696,6 @@ class ModelServingDefaults(BaseModel):
     calibration: CalibrationServingDefaults | None = None
     extractor: PlannerServingDefaults | None = None
     fusion: FusionServingDefaults | None = None
-    planner: PlannerServingDefaults | None = None
     suggest: SuggestServingDefaults | None = None
     v: Annotated[int, Field(description='Format version. Currently `1`.', ge=0)]
 
@@ -6004,66 +6003,6 @@ class OntologyView(BaseModel):
             ge=0,
         ),
     ] = None
-
-
-class PlannerExample(BaseModel):
-    """
-    One planner training example: a question and the gold structured plan,
-    plus (for real-feedback rows) the recorded shortlists that rebuild the
-    exact serving prompt.
-    """
-
-    ask_id: str | None = None
-    example_id: str
-    plan: AskStructuredQuery
-    plan_v2: AskStructuredPlanV2
-    question: str
-    shortlists: Annotated[
-        Any | None,
-        Field(
-            description='The `ask_trace` shortlists (`{classes, relations, anchors}`) for\nfeedback rows; `None` for synthetic rows (the trainer derives\nshortlists from the graph vocabulary).'
-        ),
-    ] = None
-    source: Annotated[
-        str,
-        Field(
-            description='`feedback` (accepted/corrected ask) or `synthetic`\n(execution-verified, generated from current edges).'
-        ),
-    ]
-
-
-class PlannerPreferencePair(BaseModel):
-    """
-    One planner preference pair — the DPO pass's training row: the same
-    question with a plan the user preferred and one they rejected. Corrected
-    verdicts yield the strongest pairs (chosen = the correction, rejected =
-    the plan the model actually decoded, same shortlists); plain rejections
-    pair with a same-question accepted plan when one exists; synthetic pairs
-    corrupt one slot of an execution-verified gold plan.
-    """
-
-    ask_id: str | None = None
-    chosen: AskStructuredQuery
-    chosen_v2: AskStructuredPlanV2
-    original_absent: Annotated[
-        bool,
-        Field(
-            description='True when the corrected ask produced no original structured plan. Such\na row is retained as an explicit absent-original preference pair.'
-        ),
-    ]
-    pair_id: str
-    question: str
-    rejected: AskStructuredQuery | None = None
-    rejected_v2: AskStructuredPlanV2 | None = None
-    shortlists: Annotated[
-        Any | None,
-        Field(
-            description='The `ask_trace` shortlists for feedback pairs; `None` for synthetic.'
-        ),
-    ] = None
-    source: Annotated[
-        str, Field(description='`corrected` | `rejected_paired` | `synthetic`.')
-    ]
 
 
 class PropertyInput(BaseModel):
@@ -7560,65 +7499,6 @@ class OntologySearchResponse(BaseModel):
     concepts: list[ConceptSearchResult]
     explain: OntologySearchExplain | None = None
     relations: list[RelationSearchResult]
-
-
-class PlannerDatasetResponse(BaseModel):
-    """
-    `GET /v1/models/planner-dataset` — the planner fine-tune's training feed:
-    accepted/corrected ask feedback joined to its traces (signals ≤ the split
-    pin only — the WS9 temporal-split obligation), topped up with
-    execution-verified synthetic plans so a cold graph can still personalize.
-    """
-
-    examples: list[PlannerExample]
-    feedback_count: Annotated[int, Field(ge=0)]
-    snapshot: SnapshotView
-    split_seq: Annotated[
-        int,
-        Field(
-            description="Signals with flush seq ≤ this were consumed (record it as the run's\n`trained_at_commit_seq` so the split audit can verify).",
-            ge=0,
-        ),
-    ]
-    synthetic_count: Annotated[int, Field(ge=0)]
-    truncated: bool
-
-
-class PlannerPreferenceDatasetResponse(BaseModel):
-    """
-    `GET /v1/models/planner-preference-dataset` — the DPO pass's training
-    feed: preference pairs joined from `ask_trace` + `ask_feedback` signals
-    ≤ the split pin, topped up with synthetic corrupted-slot pairs.
-    """
-
-    corrected_count: Annotated[
-        int,
-        Field(
-            description='Pairs from `corrected` verdicts (chosen = correction vs decoded plan).',
-            ge=0,
-        ),
-    ]
-    pairs: list[PlannerPreferencePair]
-    rejected_paired_count: Annotated[
-        int,
-        Field(
-            description='Pairs from `rejected` verdicts joined to a same-question accepted plan.',
-            ge=0,
-        ),
-    ]
-    rejected_unpaired: Annotated[
-        int,
-        Field(
-            description='Rejected verdicts left unpaired (no same-question accepted plan yet) —\ncaptured, counted, awaiting a partner.',
-            ge=0,
-        ),
-    ]
-    snapshot: SnapshotView
-    split_seq: Annotated[
-        int, Field(description='Signals with flush seq ≤ this were consumed.', ge=0)
-    ]
-    synthetic_count: Annotated[int, Field(ge=0)]
-    truncated: bool
 
 
 class ResolveTermRequest(BaseModel):
