@@ -2100,6 +2100,7 @@ class _EmbeddingsNamespace:
         name: str | None = None,
         from_: Sequence[str | Mapping[str, Any]] | None = None,
         exclude: Sequence[str] | None = None,
+        title: str | None = None,
         model: str | None = None,
         dim: int | None = None,
     ) -> Any:
@@ -2108,9 +2109,12 @@ class _EmbeddingsNamespace:
         ``from_`` (the wire field ``from``) are one-hop property paths
         (``"label"``, ``"description"``, ``"calls/label"``); without them the
         server picks the label, frequent text, and the names of linked
-        entities. On an existing embedding, only what you name changes: no
-        ``from_`` keeps its fields, no ``model`` keeps its model. A new recipe
-        builds as a new version while the old one serves.
+        entities. ``title`` is the field that names each hit
+        (``"display_name"``); without it a new embedding takes the ontology's
+        name property. On an existing embedding, only what you name changes:
+        no ``from_`` keeps its fields, no ``title`` keeps its name, no
+        ``model`` keeps its model. A new recipe builds as a new version while
+        the old one serves.
         """
         body: dict[str, Any] = {"class": class_}
         if name is not None:
@@ -2119,6 +2123,8 @@ class _EmbeddingsNamespace:
             body["from"] = list(from_)
         if exclude is not None:
             body["exclude"] = list(exclude)
+        if title is not None:
+            body["title"] = title
         if model is not None:
             body["model"] = model
         if dim is not None:
@@ -2132,6 +2138,7 @@ class _EmbeddingsNamespace:
         name: str | None = None,
         from_: Sequence[str | Mapping[str, Any]] | None = None,
         exclude: Sequence[str] | None = None,
+        title: str | None = None,
         model: str | None = None,
         dim: int | None = None,
         sample: int | None = None,
@@ -2147,6 +2154,8 @@ class _EmbeddingsNamespace:
             body["from"] = list(from_)
         if exclude is not None:
             body["exclude"] = list(exclude)
+        if title is not None:
+            body["title"] = title
         if model is not None:
             body["model"] = model
         if dim is not None:

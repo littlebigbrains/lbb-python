@@ -621,6 +621,17 @@ class EmbeddingStepTimings(BaseModel):
     ]
 
 
+class EmbeddingTitleSource(Enum):
+    """
+    Where the name of a hit comes from.
+    """
+
+    declared = 'declared'
+    ontology = 'ontology'
+    label = 'label'
+    iri = 'iri'
+
+
 class EmbeddingUsage(BaseModel):
     """
     Embedding spend. The token count is an estimate: characters / 4.
@@ -4544,6 +4555,12 @@ class EmbeddingDeclareRequest(BaseModel):
             description="`[a-z0-9][a-z0-9-]{0,62}`; defaults to the class's local name."
         ),
     ] = None
+    title: Annotated[
+        str | None,
+        Field(
+            description="The field that names each hit, as a path (`display_name`,\n`schema:name`, `<https://…>`, `company/label`). Absent on a new\nembedding: the ontology's name property (see\n[`EmbeddingTitleSource`]); absent on an existing one: its name stays."
+        ),
+    ] = None
 
 
 class EmbeddingPreviewRequest(EmbeddingDeclareRequest):
@@ -4610,6 +4627,12 @@ class EmbeddingRecipe(BaseModel):
     fields: list[EmbeddingField]
     metric: VectorMetric | None = None
     model_id: str
+    title: Annotated[
+        list[str] | None,
+        Field(
+            description="The path whose value names each hit: one predicate IRI, or a link and\nthe predicate read on the linked entity. Empty: the instance's\n`rdfs:label`. An instance with no value here shows its `rdfs:label`,\nelse the local name of its IRI."
+        ),
+    ] = None
 
 
 class EmbeddingSearchExplain(BaseModel):
@@ -7242,6 +7265,16 @@ class EmbeddingPreviewResponse(BaseModel):
         ),
     ] = None
     samples: list[EmbeddingSample]
+    title_source: Annotated[
+        EmbeddingTitleSource,
+        Field(description="Where the recipe's `title` comes from."),
+    ]
+    title_suggestion: Annotated[
+        list[str] | None,
+        Field(
+            description='A field that looks like a name, when the hits are named by\n`rdfs:label` (found or declared) and the labels look like keys\n(`yc-job:94386`: no space, and a colon, a slash, or digits), or the\ninstances have no name: a text fact on at least 90% of the\nsample, one value each, with short values that are not keys. A\nsuggestion only; the recipe keeps its `title` until a declaration\nnames another.'
+        ),
+    ] = None
 
 
 class EmbeddingRefreshResponse(BaseModel):
