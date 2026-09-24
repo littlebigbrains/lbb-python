@@ -477,7 +477,6 @@ class _BaseLbbClient:
         *,
         api_key: str | None = None,
         graph: str | None = None,
-        branch: str | None = None,
         api_version: str = "2026-07-23",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
@@ -488,7 +487,6 @@ class _BaseLbbClient:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._graph = graph
-        self._branch = branch
         self._api_version = api_version
         self._max_retries = max_retries
         self._retry_delay = retry_delay
@@ -518,8 +516,6 @@ class _BaseLbbClient:
         params: dict[str, Any] = {}
         if self._graph is not None:
             params["graph"] = self._graph
-        if self._branch is not None:
-            params["branch"] = self._branch
         if extra:
             for key, value in extra.items():
                 if value is not None:
@@ -614,8 +610,8 @@ class _BaseLbbClient:
     def idempotency_key(self, prefix: str = "request") -> str:
         return f"{prefix}:{int(time.time() * 1_000_000)}:{uuid.uuid4().hex}"
 
-    def graph(self, name: str, *, branch: str | None = None) -> _GraphNamespace:
-        return _GraphNamespace(self, name, branch)
+    def graph(self, name: str) -> _GraphNamespace:
+        return _GraphNamespace(self, name)
 
     def raw_request(
         self,
@@ -648,7 +644,7 @@ class _BaseLbbClient:
     # --- writes ---
 
     def create_graph(self) -> models.CreateGraphResponse:
-        """Create the scoped graph and branch with an empty ontology.
+        """Create the scoped graph with an empty ontology.
 
         Call :meth:`ontology.define` before the first typed commit. Defining an
         ontology can also create the graph head when it does not exist yet.
@@ -703,22 +699,13 @@ class _BaseLbbClient:
         )
 
     def delete_graph(self, *, confirm: str) -> models.GraphDeleteResponse:
-        """Delete the scoped graph, including all branches and graph-scoped jobs."""
+        """Delete the scoped graph, including its graph-scoped jobs."""
         return self._model_request(
             models.GraphDeleteResponse,
             "POST",
             "/v1/graph/delete",
             params={"confirm": confirm},
             options={"retry": True},
-        )
-
-    def delete_branch(self, *, confirm: str) -> models.GraphBranchDeleteResponse:
-        """Delete only the scoped branch; the final live branch is protected."""
-        return self._model_request(
-            models.GraphBranchDeleteResponse,
-            "DELETE",
-            "/v1/graph/branch",
-            params={"confirm": confirm},
         )
 
     def fork_graph(self, src: str, dst: str) -> models.GraphForkResponse:
@@ -891,32 +878,6 @@ class _BaseLbbClient:
             "/v1/graph/retract",
             body=body,
             idempotency_key=idempotency_key or self.idempotency_key("retract"),
-        )
-
-    def merge_branch(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        """Validate-then-merge a child branch onto the scoped branch (its fork
-        parent) as one commit (``POST /v1/graph/branch/merge``). Body:
-        ``{"from_branch", "validate"?, "delete_source"?}``. A write — carries an
-        Idempotency-Key so a retry replays instead of re-applying.
-        """
-        return self._request(
-            "POST",
-            "/v1/graph/branch/merge",
-            body=body,
-            idempotency_key=idempotency_key or self.idempotency_key("branch-merge"),
-        )
-
-    def observe(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        """Observe (``POST /v1/memory/observe``): store a conversation
-        episode verbatim as EPISODE evidence, anchor + gate extracted facts on an
-        observe branch, and optionally auto-merge when validation is clean.
-        Flag-gated server-side (``--enable-observe``).
-        """
-        return self._request(
-            "POST",
-            "/v1/memory/observe",
-            body=body,
-            idempotency_key=idempotency_key or self.idempotency_key("observe"),
         )
 
     # --- models as runs (training-run registry + eval machinery) ---
@@ -1437,7 +1398,7 @@ class _BaseLbbClient:
         )
 
     def list_graphs(self) -> Any:
-        """List the graphs (and branches) under the scoped tenant."""
+        """List the graphs under the scoped tenant."""
         return self._request("GET", "/v1/graphs")
 
     def list_graphs_model(self) -> models.GraphListResponse:
@@ -1478,46 +1439,36 @@ class _BaseLbbClient:
 
 
 class _GraphNamespace:
-    def __init__(self, client: _BaseLbbClient, graph: str, branch: str | None) -> None:
+    def __init__(self, client: _BaseLbbClient, graph: str) -> None:
         self._client = client
         self._graph = graph
-        self._branch = branch
-        self.facts = _FactsNamespace(client, graph, branch)
+        self.facts = _FactsNamespace(client, graph)
 
     def delete(self, *, confirm: str) -> models.GraphDeleteResponse:
-        """Delete and deregister this whole graph, including every branch."""
+        """Delete and deregister this whole graph."""
         return self._client._model_request(
             models.GraphDeleteResponse,
             "POST",
             "/v1/graph/delete",
-            params={"graph": self._graph, "branch": self._branch, "confirm": confirm},
+            params={"graph": self._graph, "confirm": confirm},
             options={"retry": True},
         )
 
-    def delete_branch(self, *, confirm: str) -> models.GraphBranchDeleteResponse:
-        """Delete this branch; the graph's final live branch is protected."""
-        return self._client._model_request(
-            models.GraphBranchDeleteResponse,
-            "DELETE",
-            "/v1/graph/branch",
-            params={"graph": self._graph, "branch": self._branch, "confirm": confirm},
-        )
-
     def publication_status(self) -> Any:
-        """Read server-managed publication progress for this graph/branch."""
+        """Read server-managed publication progress for this graph."""
         return self._client._request(
             "GET",
             "/v1/graph/publication-status",
-            params={"graph": self._graph, "branch": self._branch},
+            params={"graph": self._graph},
         )
 
     def publication_status_model(self) -> models.PublicationStatusResponse:
-        """Read typed publication progress for this graph/branch."""
+        """Read typed publication progress for this graph."""
         return self._client._model_request(
             models.PublicationStatusResponse,
             "GET",
             "/v1/graph/publication-status",
-            params={"graph": self._graph, "branch": self._branch},
+            params={"graph": self._graph},
         )
 
     def wait_for_published(
@@ -1527,7 +1478,7 @@ class _GraphNamespace:
         timeout: float = 30.0,
         poll_interval: float = 0.25,
     ) -> models.PublicationStatusResponse:
-        """Wait for this graph/branch to publish an exact target sequence."""
+        """Wait for this graph to publish an exact target sequence."""
         if target_seq < 0:
             raise ValueError("target_seq must be non-negative")
         if timeout < 0 or poll_interval < 0:
@@ -1561,7 +1512,7 @@ class _GraphNamespace:
         return self._client._request(
             "POST",
             "/v1/graph/retract",
-            params={"graph": self._graph, "branch": self._branch},
+            params={"graph": self._graph},
             body=body,
             idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
         )
@@ -1574,20 +1525,19 @@ class _GraphNamespace:
             models.GraphRetractResponse,
             "POST",
             "/v1/graph/retract",
-            params={"graph": self._graph, "branch": self._branch},
+            params={"graph": self._graph},
             body=body,
             idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
         )
 
 
 class _FactsNamespace:
-    def __init__(self, client: _BaseLbbClient, graph: str, branch: str | None) -> None:
+    def __init__(self, client: _BaseLbbClient, graph: str) -> None:
         self._client = client
         self._graph = graph
-        self._branch = branch
 
     def create(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        params = {"graph": self._graph, "branch": self._branch}
+        params = {"graph": self._graph}
         return self._client._request(
             "POST",
             "/v1/graph/commit",
@@ -1601,7 +1551,7 @@ class _FactsNamespace:
         self, body: Body, *, idempotency_key: str | None = None
     ) -> models.GraphCommitResponse:
         """Create facts and validate the response as ``GraphCommitResponse``."""
-        params = {"graph": self._graph, "branch": self._branch}
+        params = {"graph": self._graph}
         return self._client._model_request(
             models.GraphCommitResponse,
             "POST",
@@ -1632,7 +1582,6 @@ class _FactsNamespace:
             "/v1/graph/import",
             params={
                 "graph": self._graph,
-                "branch": self._branch,
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
@@ -1672,7 +1621,6 @@ class _FactsNamespace:
             "/v1/graph/import/rdf",
             params={
                 "graph": self._graph,
-                "branch": self._branch,
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
@@ -2086,7 +2034,7 @@ class _EmbeddingsNamespace:
         self._client = client
 
     def list(self) -> Any:
-        """Every embedding of the branch with its status."""
+        """Every embedding of the graph with its status."""
         return self._client._request("GET", "/v1/embeddings")
 
     def get(self, name: str) -> Any:

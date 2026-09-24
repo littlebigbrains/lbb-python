@@ -2,6 +2,13 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- Remove branches. Every graph now has one line of history.
+- Remove the `branch` argument from `LbbClient`, `AsyncLbbClient`, `graph()`
+  and `LbbLocalClient`. Remove `delete_branch()` and `merge_branch()`.
+- Remove `observe()`.
+
 ## 0.13.1 (2026-09-24)
 
 - Add the `embeddings` namespace to preview and configure embeddings, change

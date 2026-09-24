@@ -235,13 +235,6 @@ class AskTypedFilterV2(BaseModel):
     value: Any
 
 
-class BranchMergeConflict(BaseModel):
-    edge_event_id: Annotated[str, Field(description='The dropped branch edge event.')]
-    kind: Annotated[
-        str, Field(description='Conflict class; v1 emits only `supersedure_race`.')
-    ]
-
-
 class CalibrationServingDefaults(BaseModel):
     """
     Calibration serving default derived from a promoted `calibration` run:
@@ -913,8 +906,8 @@ class ExtractorFact(BaseModel):
     """
     One extractor training fact, mirroring the resident extractor's strict
     output JSON (`{statement, source_type, source, relation, target_type,
-    target, confidence}`) — every committed fact was vocabulary-snapped and
-    branch-gated at observe time, so labels are execution-verified.
+    target, confidence}`) — every committed fact was vocabulary-snapped
+    before it was committed, so labels are execution-verified.
     """
 
     confidence: float
@@ -1016,47 +1009,6 @@ class GraphBindMode(Enum):
     boost = 'boost'
 
 
-class GraphBranchCreateRequest(BaseModel):
-    from_branch: str
-
-
-class GraphBranchDeleteResponse(BaseModel):
-    branch_id: str
-    deleted_bytes: Annotated[int, Field(ge=0)]
-    deleted_objects: Annotated[int, Field(ge=0)]
-    graph_id: str
-    ok: bool
-
-
-class GraphBranchMergeRequest(BaseModel):
-    """
-    `POST /v1/graph/branch/merge` — replay a child branch's commits onto its
-    fork parent (the branch named by the request URL) as one new commit batch.
-    Append-only: provenance and event ids are preserved, commit seqs are
-    re-stamped onto the target's next seq.
-    """
-
-    delete_source: Annotated[
-        bool | None,
-        Field(
-            description="Delete every object under the source branch's prefix after a successful\nmerge (the branch is consumed)."
-        ),
-    ] = None
-    from_branch: Annotated[
-        str,
-        Field(
-            description='The child branch whose post-fork commits are replayed. It must have been\ncreated from the branch this request is addressed to (its fork parent).'
-        ),
-    ]
-    validate_: Annotated[
-        bool | None,
-        Field(
-            alias='validate',
-            description="Run the active SHACL schema on the would-be merged state BEFORE the head\nwrite and refuse (merged=false + report) on violations — even when the\ngraph's enforce mode is `report`. With no active shapes (or mode `off`)\nthere is nothing to validate against and this is a no-op.",
-        ),
-    ] = None
-
-
 class GraphCard(BaseModel):
     """
     WS3 — a per-graph, per-snapshot self-description an agent can inject as prompt
@@ -1086,7 +1038,7 @@ class GraphChangesResponse(BaseModel):
     include edge retractions/tombstones. Paging is by whole commits (`next_since`
     walks the window). Segment folds repackage history rather than reduce it, so
     any `since` up to the head is served; a `since` BEYOND the head (a cursor
-    from a wiped/re-created branch) returns `reset` and is served as HTTP 409
+    from a wiped/re-created graph) returns `reset` and is served as HTTP 409
     with body `{"error":"delta_unavailable","reset":true,"snapshot_token":…}`.
     """
 
@@ -1102,7 +1054,7 @@ class GraphChangesResponse(BaseModel):
     reset: Annotated[
         bool | None,
         Field(
-            description="The cursor cannot be answered from this branch's history (`since` beyond\nthe head — the branch was wiped or re-created); the client must\nfull-read. Served as HTTP 409 with an `error: delta_unavailable` body."
+            description="The cursor cannot be answered from this graph's history (`since` beyond\nthe head — the graph was wiped or re-created); the client must\nfull-read. Served as HTTP 409 with an `error: delta_unavailable` body."
         ),
     ] = None
     snapshot_token: str
@@ -1119,7 +1071,6 @@ class GraphChangesResponse(BaseModel):
 
 
 class GraphDeleteResponse(BaseModel):
-    deleted_branches: Annotated[int, Field(ge=0)]
     deleted_bytes: Annotated[int, Field(ge=0)]
     deleted_feedback_objects: Annotated[int, Field(ge=0)]
     deleted_objects: Annotated[int, Field(ge=0)]
@@ -1396,10 +1347,6 @@ class GraphRetractResponse(BaseModel):
 
 
 class GraphSummary(BaseModel):
-    branches: Annotated[
-        list[str],
-        Field(description='Branches that exist under this graph (e.g. `["main"]`).'),
-    ]
     graph_id: str
 
 
@@ -1639,7 +1586,7 @@ class ModelSplitAudit(BaseModel):
 class ModelTrainingConfig(BaseModel):
     """
     Per-graph automatic-training configuration, stored as one small CAS
-    object under the branch prefix (purged with the tenant). **[PIN]** field
+    object under the graph prefix (purged with the tenant). **[PIN]** field
     names. Default: off — training never starts without an explicit opt-in.
     """
 
@@ -1725,24 +1672,6 @@ class ObservationRow(BaseModel):
     source_id: str
     text: str | None = None
     text_preview: str | None = None
-
-
-class ObserveTurn(BaseModel):
-    """
-    One conversation turn of an episode.
-    """
-
-    content: str
-    name: Annotated[str | None, Field(description='Optional speaker/tool name.')] = None
-    role: Annotated[
-        str,
-        Field(
-            description='`user` | `assistant` | `tool` (free-form label; not enforced).'
-        ),
-    ]
-    ts: Annotated[
-        str | None, Field(description='Optional RFC 3339 timestamp of the turn.')
-    ] = None
 
 
 class OntologyCompetencyQuestion(BaseModel):
@@ -3344,6 +3273,9 @@ class SignalKind(Enum):
     v1.1 (2026-07-07, planner-feedback capture): adds the legacy
     `ask_trace`/`ask_feedback` supervision records. They remain decodable for
     durable training data, but no public Ask endpoint emits them.
+
+    `branch_merge_accepted`/`branch_merge_rejected` stay decodable for stored
+    signal records only: graphs have no branches, and nothing emits them.
     """
 
     suggestion_shown = 'suggestion_shown'
@@ -3714,7 +3646,7 @@ class SparqlTextRequest(BaseModel):
     reason: Annotated[
         bool | None,
         Field(
-            description="Not available on the published SPARQL surface: a branch's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error."
+            description="Not available on the published SPARQL surface: a graph's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error."
         ),
     ] = None
     request: Annotated[
@@ -5197,7 +5129,7 @@ class GoldenResponse(BaseModel):
 
 class GoldenSuite(BaseModel):
     """
-    The suite: one CAS-versioned document per branch.
+    The suite: one CAS-versioned document per graph.
     """
 
     goldens: list[Golden]
@@ -5422,6 +5354,38 @@ class GraphMetadataRequest(BaseModel):
         | None
     ) = None
     targets: list[AnnTargetKind]
+
+
+class GraphMetadataResponse(BaseModel):
+    ann_indexed_commit_seq: CommitSeq | None = None
+    bm25_indexed_commit_seq: CommitSeq | None = None
+    graph: GraphKey
+    index_caught_up: Annotated[
+        bool | None,
+        Field(
+            description='One-shot "has the published generation caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff the published generation is served at the head commit;\n`Some(false)` when publication is still pending or absent; `None` when\nindexes were not inspected (`include_indexes=false`).\n\nThis is a **publication lag** signal, not a statement about index\ncontent. A generation whose BM25/ANN families are published as empty\nroots — the steady state when the deployment runs without the search\nstack — is caught up while holding no documents. Read\n`index_lineage.bm25_empty` / `ann_empty` to tell the two apart.'
+        ),
+    ] = None
+    index_lineage: IndexLineage | None = None
+    ontology_version: Annotated[int, Field(ge=0)]
+    published_lag_commits: Annotated[
+        int,
+        Field(
+            description='Commit distance from the graph head to the pinned published generation.',
+            ge=0,
+        ),
+    ]
+    segment_bytes: Annotated[int | None, Field(ge=0)] = None
+    segment_count: Annotated[
+        int | None,
+        Field(
+            description='Compacted snapshot segments referenced by the graph manifest.',
+            ge=0,
+        ),
+    ] = None
+    snapshot: SnapshotView
+    wal_tail_bytes: Annotated[int, Field(ge=0)]
+    wal_tail_commits: Annotated[int, Field(ge=0)]
 
 
 class GraphRdfImportResponse(BaseModel):
@@ -5723,7 +5687,7 @@ class ModelRunView(BaseModel):
 class ModelServingDefaults(BaseModel):
     """
     The serving defaults derived from promoted model runs, pinned to the
-    branch head like the embedding config (`model_defaults_ref`). One object
+    graph head like the embedding config (`model_defaults_ref`). One object
     serves every in-process kind; promotion truth stays the registry's
     `CURRENT` pointer — this is its read-optimized projection. **[PIN]**
     field names (persisted object).
@@ -5749,27 +5713,6 @@ class NeighborhoodEdge(BaseModel):
     peer: EntityView
     relation: RelationView
     valid_time: ValidTime
-
-
-class ObserveEpisode(BaseModel):
-    """
-    The raw conversation slice to remember. Ground truth — stored verbatim on
-    the main branch as an `EPISODE` evidence entity.
-    """
-
-    session_id: Annotated[
-        str,
-        Field(
-            description="Caller's conversation id (opaque; drives the default branch name)."
-        ),
-    ]
-    source: Annotated[
-        str | None, Field(description='Optional source label, e.g. `support-bot`.')
-    ] = None
-    turns: Annotated[
-        list[ObserveTurn],
-        Field(description='1..=500 turns, <= 1 MiB of content in total.'),
-    ]
 
 
 class OntologyDefineResponse(BaseModel):
@@ -6322,7 +6265,7 @@ class SchemaShapeWriteEnforcement(BaseModel):
 
 class SchemaWriteEnforcement(BaseModel):
     """
-    How the published shape set is enforced on this branch.
+    How the published shape set is enforced on this graph.
     """
 
     shapes: list[SchemaShapeWriteEnforcement]
@@ -6330,7 +6273,7 @@ class SchemaWriteEnforcement(BaseModel):
     write_enforceable: Annotated[
         bool,
         Field(
-            description='True when no root shape has a blocker. An RDF-native branch accepts\n`reject` mode only for such a shape set.'
+            description='True when no root shape has a blocker. An RDF-native graph accepts\n`reject` mode only for such a shape set.'
         ),
     ]
 
@@ -7112,11 +7055,6 @@ class AnalyticQueryRequest(BaseModel):
     patterns: list[AnalyticTriplePattern]
 
 
-class BranchParentView(BaseModel):
-    commit_seq: Annotated[int, Field(ge=0)]
-    graph: GraphKey
-
-
 class CapturedSignal(BaseModel):
     """
     One captured signal as the range reader returns it: the stored envelope
@@ -7202,7 +7140,7 @@ class EmbeddingListResponse(BaseModel):
     model_id: Annotated[
         str | None,
         Field(
-            description="The embedding model of the graph: every serving embedding of the\nbranch uses it, so one query vector serves a search over all classes.\nAbsent before the first declaration (the catalog's model applies then)."
+            description="The embedding model of the graph: every serving embedding of the\ngraph uses it, so one query vector serves a search over all classes.\nAbsent before the first declaration (the catalog's model applies then)."
         ),
     ] = None
     next_model_id: Annotated[
@@ -7433,56 +7371,6 @@ class ExtractorDatasetResponse(BaseModel):
     ]
 
 
-class GraphBranchCreateResponse(BaseModel):
-    graph: GraphKey
-    parent: BranchParentView
-    snapshot: SnapshotView
-
-
-class GraphBranchMergeResponse(BaseModel):
-    commits_applied: Annotated[
-        int,
-        Field(
-            description='Branch-local commits replayed (0 for a no-op merge of an unchanged\nbranch).',
-            ge=0,
-        ),
-    ]
-    conflicts: Annotated[
-        list[BranchMergeConflict] | None,
-        Field(
-            description="Branch facts dropped by the conflict rule: a fact superseded on the\ntarget after the fork point wins over the branch's version."
-        ),
-    ] = None
-    idempotent_replay: Annotated[
-        bool | None,
-        Field(
-            description='True when this request id was already applied; `commits_applied` and\n`conflicts` are not re-derived on a replay.'
-        ),
-    ] = None
-    merged: Annotated[
-        bool,
-        Field(
-            description='False when `validate` refused the merge; the target is untouched and\n`validation` carries the report.'
-        ),
-    ]
-    refusal: Annotated[
-        str | None, Field(description='Why `merged` is false, when it is.')
-    ] = None
-    snapshot: Annotated[
-        SnapshotView,
-        Field(
-            description='The target branch snapshot after the merge (or its untouched head on\nrefusal / no-op).'
-        ),
-    ]
-    source_deleted: Annotated[
-        bool | None,
-        Field(
-            description="True when `delete_source` ran (the source branch's objects are gone)."
-        ),
-    ] = None
-    validation: SchemaAuditReport | None = None
-
-
 class GraphCommitDryRunResponse(BaseModel):
     """
     The result of a validate-only commit (`POST /v1/graph/commit?dry_run=true`):
@@ -7562,39 +7450,6 @@ class GraphImportLine(RootModel[TripletInput | EntityPropertiesInput]):
     ]
 
 
-class GraphMetadataResponse(BaseModel):
-    ann_indexed_commit_seq: CommitSeq | None = None
-    bm25_indexed_commit_seq: CommitSeq | None = None
-    graph: GraphKey
-    index_caught_up: Annotated[
-        bool | None,
-        Field(
-            description='One-shot "has the published generation caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff the published generation is served at the head commit;\n`Some(false)` when publication is still pending or absent; `None` when\nindexes were not inspected (`include_indexes=false`).\n\nThis is a **publication lag** signal, not a statement about index\ncontent. A generation whose BM25/ANN families are published as empty\nroots — the steady state when the deployment runs without the search\nstack — is caught up while holding no documents. Read\n`index_lineage.bm25_empty` / `ann_empty` to tell the two apart.'
-        ),
-    ] = None
-    index_lineage: IndexLineage | None = None
-    ontology_version: Annotated[int, Field(ge=0)]
-    parent: BranchParentView | None = None
-    published_lag_commits: Annotated[
-        int,
-        Field(
-            description='Commit distance from the graph head to the pinned published generation.',
-            ge=0,
-        ),
-    ]
-    segment_bytes: Annotated[int | None, Field(ge=0)] = None
-    segment_count: Annotated[
-        int | None,
-        Field(
-            description='Compacted snapshot segments referenced by the graph manifest.',
-            ge=0,
-        ),
-    ] = None
-    snapshot: SnapshotView
-    wal_tail_bytes: Annotated[int, Field(ge=0)]
-    wal_tail_commits: Annotated[int, Field(ge=0)]
-
-
 class HybridMultiSearchResponse(BaseModel):
     explain: HybridMultiSearchExplain | None = None
     results: list[HybridMultiSearchResult]
@@ -7622,102 +7477,6 @@ class NeighborResponse(BaseModel):
     entity: EntityView
     neighbors: list[TripletView]
     snapshot: SnapshotView
-
-
-class ObserveByoFact(BaseModel):
-    """
-    A caller-extracted candidate fact (`extraction.byo_completion`).
-    """
-
-    confidence: float | None = None
-    fact: Annotated[str, Field(description='Natural-language statement of the fact.')]
-    triplet: TripletInput | None = None
-
-
-class ObserveExtraction(BaseModel):
-    byo_completion: Annotated[
-        list[ObserveByoFact] | None,
-        Field(
-            description='Caller-side extraction: skip the model, run anchoring / supersedure /\ngating only.'
-        ),
-    ] = None
-    max_facts: Annotated[
-        int | None, Field(description='Cap on extracted facts (clamped to 32).', ge=0)
-    ] = None
-    model: Annotated[
-        str | None,
-        Field(
-            description='`byo` | `resident`. Defaults to `resident` when the server has a\nplanner endpoint configured, else `byo`.'
-        ),
-    ] = None
-
-
-class ObserveFact(BaseModel):
-    """
-    Per-fact outcome. `status`: `committed` | `rejected` | `needs_review`.
-    """
-
-    anchored: Annotated[
-        bool,
-        Field(description='Both endpoints resolved to entities that already existed.'),
-    ]
-    confidence: float
-    statement: str
-    status: str
-    supersedes: Annotated[
-        str | None,
-        Field(
-            description='The current edge this fact displaces (commit-ordered reducers only).'
-        ),
-    ] = None
-    triplet: TripletInput | None = None
-
-
-class ObserveRequest(BaseModel):
-    auto_merge: Annotated[
-        bool | None,
-        Field(
-            description='Merge the branch back onto the scoped branch when validation is clean\n(the WS16 validate-then-merge).'
-        ),
-    ] = None
-    branch: Annotated[
-        str | None,
-        Field(
-            description='Branch the facts commit to. Defaults to `observe-<hash12(session_id)>`\n(branch names are `[a-z0-9-_]{1,32}`, so the session id is hashed, not\nembedded). Created from the scoped branch if absent.'
-        ),
-    ] = None
-    episode: ObserveEpisode
-    extract: Annotated[
-        bool | None,
-        Field(description='`false` stores the episode only (no facts, no branch).'),
-    ] = None
-    extraction: ObserveExtraction | None = None
-
-
-class ObserveResponse(BaseModel):
-    branch: Annotated[
-        str,
-        Field(
-            description='The branch the facts committed to (empty when `extract: false`).'
-        ),
-    ]
-    episode_id: Annotated[
-        str,
-        Field(description='Stable entity id of the stored `EPISODE` evidence entity.'),
-    ]
-    facts: list[ObserveFact] | None = None
-    idempotent_replay: Annotated[
-        bool | None,
-        Field(
-            description='True when this Idempotency-Key was already applied (episode replayed).'
-        ),
-    ] = None
-    merged: bool
-    snapshot: Annotated[
-        SnapshotView,
-        Field(description='The scoped (main) branch snapshot after the observe.'),
-    ]
-    validation: SchemaAuditReport | None = None
 
 
 class OntologyDraft(BaseModel):
@@ -8777,7 +8536,7 @@ class SparqlSelectRequest(BaseModel):
     reason: Annotated[
         bool | None,
         Field(
-            description="Not available on the published SPARQL surface: a branch's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error."
+            description="Not available on the published SPARQL surface: a graph's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error."
         ),
     ] = None
     select: Annotated[
