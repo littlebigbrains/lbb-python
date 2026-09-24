@@ -1648,6 +1648,13 @@
               "string",
               "null"
             ]
+          },
+          "title": {
+            "description": "The field that names each hit, as a path (`display_name`,\n`schema:name`, `<https://…>`, `company/label`). Absent on a new\nembedding: the ontology's name property (see\n[`EmbeddingTitleSource`]); absent on an existing one: its name stays.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2064,12 +2071,24 @@
               "$ref": "#/components/schemas/EmbeddingSample"
             },
             "type": "array"
+          },
+          "title_source": {
+            "$ref": "#/components/schemas/EmbeddingTitleSource",
+            "description": "Where the recipe's `title` comes from."
+          },
+          "title_suggestion": {
+            "description": "A field that looks like a name, when the hits are named by\n`rdfs:label` (found or declared) and the labels look like keys\n(`yc-job:94386`: no space, and a colon, a slash, or digits), or the\ninstances have no name: a text fact on at least 90% of the\nsample, one value each, with short values that are not keys. A\nsuggestion only; the recipe keeps its `title` until a declaration\nnames another.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
           "name",
           "recipe",
           "instances",
+          "title_source",
           "samples",
           "estimate"
         ],
@@ -2292,6 +2311,13 @@
           },
           "model_id": {
             "type": "string"
+          },
+          "title": {
+            "description": "The path whose value names each hit: one predicate IRI, or a link and\nthe predicate read on the linked entity. Empty: the instance's\n`rdfs:label`. An instance with no value here shows its `rdfs:label`,\nelse the local name of its IRI.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -2926,6 +2952,16 @@
           "total_ms"
         ],
         "type": "object"
+      },
+      "EmbeddingTitleSource": {
+        "description": "Where the name of a hit comes from.",
+        "enum": [
+          "declared",
+          "ontology",
+          "label",
+          "iri"
+        ],
+        "type": "string"
       },
       "EmbeddingUsage": {
         "description": "Embedding spend. The token count is an estimate: characters / 4.",

@@ -1833,10 +1833,13 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
                 name="service",
                 from_=["label", "calls/label"],
                 exclude=["notes"],
+                title="display_name",
                 model="m",
                 dim=8,
             )
-            client.embeddings.preview(service, from_=["label"], sample=2, iris=["https://x.test/e/a"])
+            client.embeddings.preview(
+                service, from_=["label"], title="label", sample=2, iris=["https://x.test/e/a"]
+            )
             client.embeddings.set_model("openai/text-embedding-3-large", dim=3072)
             client.embeddings.refresh("service")
             client.embeddings.delete("service")
@@ -1872,10 +1875,12 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
                 "name": "service",
                 "from": ["label", "calls/label"],
                 "exclude": ["notes"],
+                "title": "display_name",
                 "model": "m",
                 "dim": 8,
             },
         )
+        self.assertEqual(self._body(seen[3])["title"], "label")
         self.assertEqual(self._body(seen[3])["sample"], 2)
         self.assertEqual(self._body(seen[3])["iris"], ["https://x.test/e/a"])
         self.assertEqual(self._body(seen[4]), {"model": "openai/text-embedding-3-large", "dim": 3072})
