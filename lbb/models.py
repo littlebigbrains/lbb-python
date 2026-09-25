@@ -1411,6 +1411,34 @@ class IndexLineage(BaseModel):
     observed_at_micros: int
 
 
+class IndexUpgradeRequest(BaseModel):
+    """
+    Online upgrades of optional accelerators; RDF truth is never reingested.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    dry_run: Annotated[
+        bool | None,
+        Field(
+            description='Plan only by default. Set false to enqueue durable maintenance work.'
+        ),
+    ] = None
+    retry_id: Annotated[
+        str | None,
+        Field(
+            description='Optional operator retry identity, after inspecting a terminal attempt.\nFor the same starting published root, repeating this identity coalesces\nonto the same job.'
+        ),
+    ] = None
+    target: Annotated[
+        str | None,
+        Field(
+            description='Versioned build recipe. Omit to use the current server recipe.'
+        ),
+    ] = None
+
+
 class IndexVisibilityFamily(Enum):
     """
     One of the index families referenced by an atomic published read root.
@@ -3625,6 +3653,12 @@ class SparqlTextRequest(BaseModel):
         extra='forbid',
     )
     as_of_commit_seq: CommitSeq | None = None
+    cursor: Annotated[
+        str | None,
+        Field(
+            description='Opt into snapshot-bound keyset pagination: empty string starts a page,\notherwise echo `next_cursor` with the identical query. Requires one\nsupported indexed ordered LIMIT (1..10000), OFFSET 0, and no transport\n`limit`/`offset`. An unavailable snapshot expires the cursor explicitly.'
+        ),
+    ] = None
     entailment: Annotated[
         SparqlEntailment | None,
         Field(
@@ -3665,6 +3699,12 @@ class SparqlTextResponse(BaseModel):
     shape). Clients parse `results` as JSON.
     """
 
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description="Continuation for the query's inner ordered window. OPTIONAL enrichment\ncan return more rows than that window. Absent when exhausted or when\ncursor pagination was not requested; a full final page may yield a\ncontinuation whose following page is empty."
+        ),
+    ] = None
     results: Annotated[
         str, Field(description='SPARQL 1.1 Query Results JSON, serialized.')
     ]
@@ -5519,6 +5559,45 @@ class HybridMultiSearchResult(BaseModel):
     score: float
     source_ranks: list[HybridSourceRank]
     type: str
+
+
+class IndexUpgradePlan(BaseModel):
+    build_enabled: bool
+    current_tables: Annotated[
+        int,
+        Field(
+            description='Tables already carrying this accelerator format. This does not promise\nexpression coverage for every predicate or every query shape.',
+            ge=0,
+        ),
+    ]
+    epoch: Annotated[int, Field(ge=0)]
+    graph: GraphKey
+    max_additional_bytes: Annotated[
+        int,
+        Field(
+            description='Conservative optional-index output ceiling, excluding root metadata.',
+            ge=0,
+        ),
+    ]
+    missing_tables: Annotated[int, Field(ge=0)]
+    outdated_tables: Annotated[int, Field(ge=0)]
+    root_checksum: str | None = None
+    served_at_seq: CommitSeq | None = None
+    source_bytes: Annotated[
+        int,
+        Field(
+            description='Logical bytes of source PSO tables requiring a build; dictionary reads\nand metadata are additional. This is not a billing quote.',
+            ge=0,
+        ),
+    ]
+    tables: Annotated[int, Field(ge=0)]
+    target: str
+
+
+class IndexUpgradeResponse(BaseModel):
+    job_id: str | None = None
+    plan: IndexUpgradePlan
+    queued: bool
 
 
 class ManagedModel(BaseModel):

@@ -1035,9 +1035,7 @@ class SyncClientTests(unittest.TestCase):
         self.assertIsInstance(deleted, GraphDeleteResponse)
         self.assertEqual(seen[0].method, "POST")
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/delete")
-        self.assertEqual(
-            dict(seen[0].url.params), {"graph": "main", "confirm": "main"}
-        )
+        self.assertEqual(dict(seen[0].url.params), {"graph": "main", "confirm": "main"})
 
     def test_governed_conflicts_returns_generated_model(self) -> None:
         seen: list[httpx.Request] = []
@@ -1678,6 +1676,25 @@ class SyncClientTests(unittest.TestCase):
         assert results.row_page is not None
         self.assertEqual(results.row_page["total"], 2)
 
+    def test_sparql_cursor_preserves_continuation_and_snapshot(self) -> None:
+        seen: list[httpx.Request] = []
+        envelope = {
+            "results": json.dumps(
+                {"head": {"vars": ["s"]}, "results": {"bindings": []}}
+            ),
+            "next_cursor": "opaque-next",
+            "snapshot": SNAPSHOT,
+        }
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": envelope})
+        ) as client:
+            first = client.query.sparql("ordered query LIMIT 25", cursor="")
+            client.sparql("ordered query LIMIT 25", cursor=first.next_cursor)
+        self.assertEqual(first.next_cursor, "opaque-next")
+        self.assertEqual(first.snapshot, SNAPSHOT)
+        self.assertEqual(json.loads(seen[0].content)["cursor"], "")
+        self.assertEqual(json.loads(seen[1].content)["cursor"], "opaque-next")
+
     def test_sparql_parses_ask_boolean(self) -> None:
         seen: list[httpx.Request] = []
         envelope = {
@@ -1790,6 +1807,7 @@ class SyncClientTests(unittest.TestCase):
             status = client.graph("perritos").wait_for_published(7, poll_interval=0)
         self.assertEqual(status.published_seq, 7)
         self.assertEqual(dict(seen[0].url.params), {"graph": "perritos"})
+
 
 class SearchAndEvalsNamespaceTests(unittest.TestCase):
     """The search setup, search, and evals namespaces send the documented requests."""
@@ -2220,6 +2238,22 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             str(seen[0].url).split("?")[0], "http://h/v1/query/sparql-text"
         )
         self.assertEqual(results.rows(), [{"s": "x"}])
+
+    async def test_async_sparql_cursor_preserves_continuation(self) -> None:
+        seen: list[httpx.Request] = []
+        envelope = {
+            "results": json.dumps({"head": {"vars": []}, "results": {"bindings": []}}),
+            "next_cursor": "next",
+            "snapshot": SNAPSHOT,
+        }
+        async with AsyncLbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": envelope})
+        ) as client:
+            first = await client.query.sparql("ordered query LIMIT 25", cursor="")
+            await client.sparql("ordered query LIMIT 25", cursor=first.next_cursor)
+        self.assertEqual(first.snapshot, SNAPSHOT)
+        self.assertEqual(json.loads(seen[0].content)["cursor"], "")
+        self.assertEqual(json.loads(seen[1].content)["cursor"], "next")
 
     async def test_async_summary_model_helper(self) -> None:
         seen: list[httpx.Request] = []

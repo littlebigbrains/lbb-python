@@ -205,28 +205,51 @@ class SparqlResults:
       these rows.
     - :attr:`row_page` — the server's pagination envelope (``returned``,
       ``total``, ``has_more``, ``next_offset``), when present.
+    - :attr:`next_cursor` — pass to ``sparql(query, cursor=...)`` to continue the
+      same snapshot; start with ``cursor=""`` and an indexed ordered LIMIT.
+    - :attr:`snapshot` — served watermark and current head metadata, when present.
     """
 
     vars: list[str]
     bindings: list[dict[str, Any]]
     boolean: bool | None
     row_page: dict[str, Any] | None
+    next_cursor: str | None = None
+    snapshot: dict[str, Any] | None = None
 
     @classmethod
     def from_results_json(
-        cls, doc: Mapping[str, Any], row_page: Mapping[str, Any] | None = None
+        cls,
+        doc: Mapping[str, Any],
+        row_page: Mapping[str, Any] | None = None,
+        *,
+        next_cursor: str | None = None,
+        snapshot: Mapping[str, Any] | None = None,
     ) -> SparqlResults:
         """Build from a parsed SPARQL Results JSON document."""
         head = doc.get("head") or {}
         variables = list(head.get("vars") or [])
         page = dict(row_page) if row_page is not None else None
+        retained = dict(snapshot) if snapshot is not None else None
         if "boolean" in doc:
             return cls(
-                vars=variables, bindings=[], boolean=bool(doc["boolean"]), row_page=page
+                vars=variables,
+                bindings=[],
+                boolean=bool(doc["boolean"]),
+                row_page=page,
+                next_cursor=next_cursor,
+                snapshot=retained,
             )
         results = doc.get("results") or {}
         bindings = [dict(binding) for binding in results.get("bindings") or []]
-        return cls(vars=variables, bindings=bindings, boolean=None, row_page=page)
+        return cls(
+            vars=variables,
+            bindings=bindings,
+            boolean=None,
+            row_page=page,
+            next_cursor=next_cursor,
+            snapshot=retained,
+        )
 
     @classmethod
     def from_envelope(cls, envelope: Mapping[str, Any]) -> SparqlResults:
@@ -237,7 +260,12 @@ class SparqlResults:
         """
         raw = envelope.get("results")
         doc = json.loads(raw) if isinstance(raw, str) else (raw or {})
-        return cls.from_results_json(doc, row_page=envelope.get("row_page"))
+        return cls.from_results_json(
+            doc,
+            row_page=envelope.get("row_page"),
+            next_cursor=envelope.get("next_cursor"),
+            snapshot=envelope.get("snapshot"),
+        )
 
     def rows(self) -> list[dict[str, Any]]:
         """The bindings as plain ``{variable: lexical_value}`` dicts."""
@@ -1180,6 +1208,7 @@ class _BaseLbbClient:
         self,
         query: str,
         *,
+        cursor: str | None = None,
         reason: bool | None = None,
         entailment: str | None = None,
         limit: int | None = None,
@@ -1193,6 +1222,8 @@ class _BaseLbbClient:
         concrete :meth:`sparql` wrappers parse it into :class:`SparqlResults`.
         """
         body: dict[str, Any] = {"query": query}
+        if cursor is not None:
+            body["cursor"] = cursor
         if reason is not None:
             body["reason"] = reason
         if entailment is not None:
@@ -1397,6 +1428,7 @@ class _BaseLbbClient:
         self,
         query: str,
         *,
+        cursor: str | None = None,
         reason: bool | None = None,
         entailment: str | None = None,
         limit: int | None = None,
@@ -1820,6 +1852,7 @@ class _QueryNamespace:
         self,
         query: str,
         *,
+        cursor: str | None = None,
         reason: bool | None = None,
         entailment: str | None = None,
         limit: int | None = None,
@@ -1829,6 +1862,7 @@ class _QueryNamespace:
     ) -> Any:
         return self._client.sparql(
             query,
+            cursor=cursor,
             reason=reason,
             entailment=entailment,
             limit=limit,
