@@ -201,13 +201,6 @@ class _AsyncQueryNamespace(_QueryNamespace):
             ),
         )
 
-    async def conflicts(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.GovernedConflictAggregationResponse:
-        return cast(
-            models.GovernedConflictAggregationResponse,
-            await super().conflicts(body, options=options),
-        )
 
 
 class _AsyncFactsNamespace(_FactsNamespace):
@@ -375,18 +368,6 @@ class _AsyncGraphNamespace(_GraphNamespace):
 
 
 class _AsyncEntityNamespace(_EntityNamespace):
-    async def sample(
-        self,
-        *,
-        type: str,
-        limit: int | None = None,
-        options: RequestOptions | None = None,
-    ) -> models.EntityTypeSampleResponse:
-        return cast(
-            models.EntityTypeSampleResponse,
-            await super().sample(type=type, limit=limit, options=options),
-        )
-
     async def filter_by_attributes_model(
         self, **kwargs: Any
     ) -> models.SparqlSelectResponse:
@@ -616,14 +597,6 @@ class AsyncLbbClient(_BaseLbbClient):
     async def sparql_select_model(self, body: Body) -> models.SparqlSelectResponse:
         return cast(
             models.SparqlSelectResponse, await super().sparql_select_model(body)
-        )
-
-    async def governed_conflicts(
-        self, body: Body
-    ) -> models.GovernedConflictAggregationResponse:
-        return cast(
-            models.GovernedConflictAggregationResponse,
-            await super().governed_conflicts(body),
         )
 
     async def ontology_conformance_model(

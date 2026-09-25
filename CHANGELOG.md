@@ -2,6 +2,23 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+Breaking removal of the Base-family reads. Their routes answered
+`429 ingest_busy` on every graph. No publication job writes the Base read root
+they need. The server now answers 404 and names the replacement.
+
+- Remove `current_state()`, `history()` and `why()` from `LbbClient` and
+  `AsyncLbbClient`. Read the graph at a past commit with SPARQL and
+  `as_of_commit_seq`.
+- Remove `governed_conflicts()` and `query.conflicts()`.
+- Remove `entities.sample()`. Page class members with SPARQL.
+- Remove the generated models of those routes. Also remove the models of
+  `/v1/graph/changes`, `/v1/graph/entity/metadata` and
+  `/v1/graph/entity/neighborhood`, which are gone too.
+- `LbbLocalClient.current_state()` and `relationship_history()` stay. They run
+  the local `lbb-testctl` commands.
+
 ## 0.14.0 (2026-09-25)
 
 - Remove branches. Every graph now has one line of history.

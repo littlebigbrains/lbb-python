@@ -299,42 +299,6 @@ class CardType(BaseModel):
     name: str
 
 
-class ChangedEdge(BaseModel):
-    commit_seq: Annotated[int, Field(ge=0)]
-    edge_event_id: str
-    op: Annotated[
-        str,
-        Field(
-            description='`assert`, `retract`, `supersede`, `confidence_update`, or `annotation`.'
-        ),
-    ]
-    relation: str
-    source: str
-    source_id: Annotated[
-        str,
-        Field(
-            description='Stable entity id of the source — names are neither unique nor stable,\nso consumers mirroring the graph join on the ids.'
-        ),
-    ]
-    target: str
-    target_id: Annotated[
-        str, Field(description='Stable entity id of the target (see `source_id`).')
-    ]
-
-
-class ChangedEntity(BaseModel):
-    commit_seq: Annotated[int, Field(ge=0)]
-    id: str
-    name: str
-    type: str
-
-
-class ChangedObservation(BaseModel):
-    commit_seq: Annotated[int, Field(ge=0)]
-    id: str
-    text: str | None = None
-
-
 class CommitSeq(RootModel[int]):
     root: Annotated[int, Field(ge=0)]
 
@@ -683,24 +647,6 @@ class EntitySelector(BaseModel):
     name: str | None = None
 
 
-class EntityTransitionsRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin: trace the transitions as they had been recorded by this\n`commit_seq`. Errors if it exceeds the current head.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: str | None = None
-    entity: EntitySelector
-    relation: Annotated[
-        str,
-        Field(
-            description='The state/status relation to trace, e.g. `IN_STAGE` or `HAS_STATUS`.'
-        ),
-    ]
-
-
 class EntityView(BaseModel):
     id: str
     name: str
@@ -993,13 +939,6 @@ class GoldenOrigin(Enum):
     manual = 'manual'
 
 
-class GovernedConflictGroup(BaseModel):
-    distinct_values: list[Any]
-    evidence_entity_ids: list[str]
-    evidence_truncated: bool
-    keys: dict[str, Any]
-
-
 class GraphBindMode(Enum):
     """
     How a graph anchor co-binds with the text/vector channels.
@@ -1029,45 +968,6 @@ class GraphCard(BaseModel):
     relations: list[CardRelation]
     snapshot_token: str
     types: list[CardType]
-
-
-class GraphChangesResponse(BaseModel):
-    """
-    WS4 — changes since a commit sequence: an agent refreshes its context by
-    reading the delta, not re-querying. Records are returned in commit order and
-    include edge retractions/tombstones. Paging is by whole commits (`next_since`
-    walks the window). Segment folds repackage history rather than reduce it, so
-    any `since` up to the head is served; a `since` BEYOND the head (a cursor
-    from a wiped/re-created graph) returns `reset` and is served as HTTP 409
-    with body `{"error":"delta_unavailable","reset":true,"snapshot_token":…}`.
-    """
-
-    edge_events: list[ChangedEdge]
-    entities: list[ChangedEntity]
-    from_commit_seq: Annotated[
-        int, Field(description='Exclusive lower bound == the request `since`.', ge=0)
-    ]
-    next_since: Annotated[
-        int, Field(description='Pass back as `since` for the next page.', ge=0)
-    ]
-    observations: list[ChangedObservation]
-    reset: Annotated[
-        bool | None,
-        Field(
-            description="The cursor cannot be answered from this graph's history (`since` beyond\nthe head — the graph was wiped or re-created); the client must\nfull-read. Served as HTTP 409 with an `error: delta_unavailable` body."
-        ),
-    ] = None
-    snapshot_token: str
-    to_commit_seq: Annotated[
-        int,
-        Field(
-            description='Inclusive upper bound of this page (head unless paged/truncated).',
-            ge=0,
-        ),
-    ]
-    truncated: Annotated[
-        bool, Field(description='More commits remained beyond this page.')
-    ]
 
 
 class GraphDeleteResponse(BaseModel):
@@ -2315,11 +2215,6 @@ class RelationAdjacencyCount(BaseModel):
 class RelationView(BaseModel):
     id: Annotated[int, Field(ge=0)]
     name: str
-
-
-class RelationshipHistoryRequest(BaseModel):
-    relation: str | None = None
-    source: EntitySelector
 
 
 class Op5(Enum):
@@ -4267,19 +4162,6 @@ class WalCompactResponse(BaseModel):
     snapshot: SnapshotView
 
 
-class WhyRequest(BaseModel):
-    relation: str
-    source: EntitySelector
-    target: EntitySelector
-
-
-class WhyResponse(BaseModel):
-    current_edge: str | None = None
-    evidence: list[str]
-    previous_edges: list[str]
-    snapshot: SnapshotView
-
-
 class Op34(Enum):
     widen_relation = 'widen_relation'
 
@@ -4431,19 +4313,6 @@ class ConformanceResult(BaseModel):
     value: Annotated[
         str, Field(description="The offending value (the endpoint's entity-type name).")
     ]
-
-
-class CurrentStateRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description='Snapshot pin: reproduce the state as of this `commit_seq`, hiding any\nevent committed later. Errors if it exceeds the current head. Omit for\nthe latest snapshot.',
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: str | None = None
-    entity: EntitySelector
-    relations: list[str] | None = None
 
 
 class EdgeEventRow(BaseModel):
@@ -4773,49 +4642,6 @@ class EntityMetadataResponse(BaseModel):
     object_key: str | None = None
     object_kind: HistoryObjectKind | None = None
     snapshot: SnapshotView
-
-
-class EntityNeighborhoodRequest(BaseModel):
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description="Snapshot pin: reproduce the neighborhood as of this `commit_seq`, hiding\nany event committed later. Public serving reduces the entity's bounded\nincident domains from the Base family in the one pinned published\ngeneration; it never discovers or assembles another snapshot. Omit for\nthe latest snapshot.",
-            ge=0,
-        ),
-    ] = None
-    as_of_valid_time: str | None = None
-    entity: EntitySelector
-    max_edges_per_direction: Annotated[
-        int | None,
-        Field(
-            description="Maximum edges returned **per direction**, clamped by the engine to\n[`MAX_NEIGHBORHOOD_EDGES_PER_DIRECTION`] and defaulting to\n[`DEFAULT_NEIGHBORHOOD_EDGES_PER_DIRECTION`]. Both read paths are scoped\nto the entity's degree, but a supernode's degree is itself unbounded, so\nthis is the backstop that keeps one hub read from costing a serving node\nits whole request budget.\n\nThe budget is per-direction rather than shared: a shared one is spent\nentirely on whichever direction is walked first, so a hub's out-edges\nconsume it and the read reports no incoming edges at all.",
-            ge=0,
-        ),
-    ] = None
-    relations: list[str] | None = None
-
-
-class EntityNeighborhoodTruncation(BaseModel):
-    """
-    Which directions of a neighborhood listing were cut, and by how much. Only
-    the cut directions appear. The two directions are reported separately
-    because they are budgeted separately.
-    """
-
-    incoming: TruncatedCollection | None = None
-    outgoing: TruncatedCollection | None = None
-
-
-class EntityTypeSampleRow(BaseModel):
-    """
-    One bounded class member for interactive graph exploration. Unlike
-    [`EntityExplorerRow`], this deliberately carries only identity and degree;
-    exhaustive attributes and observation counts remain on full entity reads.
-    """
-
-    entity: EntityView
-    in_degree: Annotated[int, Field(ge=0)]
-    out_degree: Annotated[int, Field(ge=0)]
 
 
 class EvalLabel(BaseModel):
@@ -5179,18 +5005,6 @@ class GoldenSuite(BaseModel):
     ]
 
 
-class GovernedConflictAggregationResponse(BaseModel):
-    authorized_entities: Annotated[int, Field(ge=0)]
-    entities_scanned: Annotated[int, Field(ge=0)]
-    grouped_entities: Annotated[int, Field(ge=0)]
-    groups: list[GovernedConflictGroup]
-    snapshot: SnapshotView
-    truncated: Annotated[
-        bool,
-        Field(description='Scan or output-group ceiling made the result incomplete.'),
-    ]
-
-
 class GraphAnchor(BaseModel):
     """
     A structural co-bind constraint: restrict (or boost) the text/vector
@@ -5539,20 +5353,6 @@ class GroundabilityReport(BaseModel):
     snapshot: SnapshotView
 
 
-class HistoryEntry(BaseModel):
-    commit_seq: Annotated[int, Field(ge=0)]
-    confidence: float
-    edge_event_id: str
-    evidence: list[str]
-    object_hash: str | None = None
-    object_key: str | None = None
-    object_kind: HistoryObjectKind | None = None
-    relation: RelationView
-    supersedes: list[str]
-    target: EntityView
-    valid_time: ValidTime
-
-
 class HybridMultiSearchResult(BaseModel):
     key: str
     label: str
@@ -5777,20 +5577,6 @@ class ModelServingDefaults(BaseModel):
     fusion: FusionServingDefaults | None = None
     suggest: SuggestServingDefaults | None = None
     v: Annotated[int, Field(description='Format version. Currently `1`.', ge=0)]
-
-
-class NeighborhoodEdge(BaseModel):
-    """
-    One current-edge projection touching the queried entity. Unlike
-    `StateEntry`/`TripletView` it carries no `previous`/`evidence`/single
-    `edge_event_id`, keeping the point-read representation compact.
-    """
-
-    confidence: float
-    derived_from: list[str]
-    peer: EntityView
-    relation: RelationView
-    valid_time: ValidTime
 
 
 class OntologyDefineResponse(BaseModel):
@@ -6173,12 +5959,6 @@ class RelationSearchResult(BaseModel):
     name: str
     relation_id: Annotated[int, Field(ge=0)]
     score: float
-
-
-class RelationshipHistoryResponse(BaseModel):
-    history: list[HistoryEntry]
-    snapshot: SnapshotView
-    source: EntityView
 
 
 class ResolutionResult(BaseModel):
@@ -6881,37 +6661,6 @@ class TrainModelJobStatusResponse(BaseModel):
     updated_at_micros: int
 
 
-class TransitionEntry(BaseModel):
-    """
-    One transition in an entity's history of a state relation, with the dwell
-    time spent at this value before the next transition.
-    """
-
-    at_from_valid_time: Annotated[
-        bool,
-        Field(
-            description='True when `at_micros` came from `valid_time.start`; false when it fell\nback to the commit (transaction) time.'
-        ),
-    ]
-    at_micros: Annotated[
-        int,
-        Field(
-            description="Effective transition instant (epoch micros): the edge's `valid_time.start`\nwhen set, otherwise its transaction time (`commit_time`). Always present,\nso dwell time is computable even for live writes that omitted `valid_time`."
-        ),
-    ]
-    commit_seq: Annotated[int, Field(ge=0)]
-    confidence: float
-    dwell_micros: Annotated[
-        int | None,
-        Field(
-            description='Micros spent at this value before the next transition. `None` for the\ncurrent (last) value, unless its `valid_time.end` is set (then it is the\nclosed interval `end - at`).'
-        ),
-    ] = None
-    edge_event_id: str
-    target: EntityView
-    valid_time: ValidTime
-
-
 class TripletInput(BaseModel):
     confidence: float | None = None
     evidence: str | EvidenceInput1 | None = None
@@ -7100,12 +6849,6 @@ class CreateGraphResponse(BaseModel):
     ontology_version: Annotated[int, Field(ge=0)]
 
 
-class CurrentStateResponse(BaseModel):
-    entity: EntityView
-    snapshot: SnapshotView
-    state: list[StateEntry]
-
-
 class Embedding(BaseModel):
     """
     The persisted embedding (`…/embeddings/epoch=<e>/<name>/embedding.json`):
@@ -7238,24 +6981,6 @@ class EmbeddingRefreshResponse(BaseModel):
     steps: list[EmbeddingStep]
 
 
-class EntityNeighborhoodResponse(BaseModel):
-    """
-    Result of an entity point lookup: the entity plus its out/in neighborhood.
-    Public reads use the generation's Base family and cost the entity's degree
-    rather than the whole graph.
-    """
-
-    entity: EntityView
-    incoming: list[NeighborhoodEdge]
-    outgoing: list[NeighborhoodEdge]
-    served_from_ranged: Annotated[
-        bool,
-        Field(description='True when served through immutable ranged Base blocks.'),
-    ]
-    snapshot: SnapshotView
-    truncation: EntityNeighborhoodTruncation | None = None
-
-
 class EntityPropertiesInput(BaseModel):
     """
     Literal property values to attach to one entity (matched by type + name).
@@ -7302,38 +7027,6 @@ class EntityRdfRelations(BaseModel):
     incoming_truncation: TruncatedCollection | None = None
     outgoing: list[RdfEntityRelation]
     outgoing_truncation: TruncatedCollection | None = None
-
-
-class EntityTransitionsResponse(BaseModel):
-    entity: EntityView
-    is_state_relation: Annotated[
-        bool,
-        Field(
-            description='True when the relation keeps a single active value per source, so this\nsequence is a genuine state machine (each entry supersedes the prior).\nFalse (append-only/multi-active) means the entries co-exist and the dwell\nfigures are between recordings rather than between exclusive states.'
-        ),
-    ]
-    reducer: Annotated[
-        str,
-        Field(
-            description="The relation's state-reducer token (e.g. `single_active_value`)."
-        ),
-    ]
-    relation: RelationView
-    snapshot: SnapshotView
-    transitions: list[TransitionEntry]
-
-
-class EntityTypeSampleResponse(BaseModel):
-    """
-    Exact class cardinality plus a bounded deterministic sample served from the
-    published Base family. `indexed_commit_seq` makes publication lag explicit.
-    """
-
-    entities: list[EntityTypeSampleRow]
-    entity_type: str
-    indexed_commit_seq: Annotated[int, Field(ge=0)]
-    snapshot: SnapshotView
-    total_count: Annotated[int, Field(ge=0)]
 
 
 class EvalJudgeResponse(BaseModel):
@@ -8061,47 +7754,6 @@ class FullTextSearchRequest(BaseModel):
     top_k: Annotated[int, Field(ge=0)]
 
 
-class GovernedConflictAggregationRequest(BaseModel):
-    """
-    Snapshot-pinned governed fact-conflict aggregation. Authorization is a
-    required filter and is evaluated before any grouping or value collection.
-    """
-
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    entity_type: str
-    key_fields: list[str]
-    limit: Annotated[int | None, Field(ge=0)] = None
-    max_entities_scanned: Annotated[int | None, Field(ge=0)] = None
-    max_evidence_per_group: Annotated[int | None, Field(ge=0)] = None
-    value_field: str
-    visibility_filter: (
-        SearchFilterExpr1
-        | SearchFilterExpr2
-        | SearchFilterExpr3
-        | SearchFilterExpr4
-        | SearchFilterExpr5
-        | SearchFilterExpr6
-        | SearchFilterExpr7
-        | SearchFilterExpr8
-        | SearchFilterExpr9
-        | SearchFilterExpr10
-        | SearchFilterExpr11
-        | SearchFilterExpr12
-        | SearchFilterExpr13
-        | SearchFilterExpr14
-        | SearchFilterExpr15
-        | SearchFilterExpr16
-        | SearchFilterExpr17
-        | SearchFilterExpr18
-        | SearchFilterExpr19
-        | SearchFilterExpr20
-        | SearchFilterExpr21
-        | SearchFilterExpr22
-    )
-
-
 class GraphRecallRequest(BaseModel):
     dim: Annotated[int | None, Field(ge=0)] = None
     filters: (
@@ -8510,7 +8162,6 @@ SchemaAuditResult.model_rebuild()
 EmbeddingSearchRequest.model_rebuild()
 EntityFilterRequest.model_rebuild()
 FullTextSearchRequest.model_rebuild()
-GovernedConflictAggregationRequest.model_rebuild()
 GraphRecallRequest.model_rebuild()
 HybridMultiSearchRequest.model_rebuild()
 HybridSubquery.model_rebuild()
