@@ -124,6 +124,7 @@ class _SyncQueryNamespace(_QueryNamespace):
         self,
         query: str,
         *,
+        cursor: str | None = None,
         reason: bool | None = None,
         entailment: str | None = None,
         limit: int | None = None,
@@ -135,6 +136,7 @@ class _SyncQueryNamespace(_QueryNamespace):
             SparqlResults,
             super().sparql(
                 query,
+                cursor=cursor,
                 reason=reason,
                 entailment=entailment,
                 limit=limit,
@@ -516,6 +518,7 @@ class LbbClient(_BaseLbbClient):
         self,
         query: str,
         *,
+        cursor: str | None = None,
         reason: bool | None = None,
         entailment: str | None = None,
         limit: int | None = None,
@@ -540,6 +543,7 @@ class LbbClient(_BaseLbbClient):
         """
         envelope = self._sparql_text_envelope(
             query,
+            cursor=cursor,
             reason=reason,
             entailment=entailment,
             limit=limit,

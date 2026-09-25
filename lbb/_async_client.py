@@ -179,6 +179,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         self,
         query: str,
         *,
+        cursor: str | None = None,
         reason: bool | None = None,
         entailment: str | None = None,
         limit: int | None = None,
@@ -190,6 +191,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
             SparqlResults,
             await super().sparql(
                 query,
+                cursor=cursor,
                 reason=reason,
                 entailment=entailment,
                 limit=limit,
@@ -887,6 +889,7 @@ class AsyncLbbClient(_BaseLbbClient):
         self,
         query: str,
         *,
+        cursor: str | None = None,
         reason: bool | None = None,
         entailment: str | None = None,
         limit: int | None = None,
@@ -897,6 +900,7 @@ class AsyncLbbClient(_BaseLbbClient):
         """Async :meth:`LbbClient.sparql`: run SPARQL text, return parsed results."""
         envelope = await self._sparql_text_envelope(
             query,
+            cursor=cursor,
             reason=reason,
             entailment=entailment,
             limit=limit,
