@@ -16,8 +16,6 @@ from lbb.models import (
     AddEntityTypeOp,
     AdditiveOntologyEvolveRequest,
     CreateGraphResponse,
-    EntityTypeSampleResponse,
-    GovernedConflictAggregationResponse,
     GraphDeleteResponse,
     GraphForkResponse,
     GraphReloadResponse,
@@ -383,29 +381,13 @@ class SyncClientTests(unittest.TestCase):
                     hasattr(scoped, name), f"graph namespace must not expose {name}"
                 )
 
-    def test_entities_sample_is_typed_and_uses_bounded_route(self) -> None:
-        seen: list[httpx.Request] = []
-        payload = {
-            "entity_type": "SERVICE",
-            "total_count": 59150,
-            "entities": [],
-            "snapshot": SNAPSHOT,
-            "indexed_commit_seq": 7,
-        }
-        with LbbClient(
-            "http://h",
-            graph="g",
-            transport=capturing_transport(seen, {"json": payload}),
-        ) as client:
-            result = client.entities.sample(type="SERVICE", limit=48)
-
-        self.assertIsInstance(result, EntityTypeSampleResponse)
-        self.assertEqual(result.total_count, 59150)
-        self.assertEqual(
-            str(seen[0].url).split("?")[0],
-            "http://h/v1/graph/entities/sample",
-        )
-        self.assertEqual(dict(seen[0].url.params)["limit"], "48")
+    def test_base_family_read_methods_are_removed(self) -> None:
+        # Their routes answered 429 on every graph and are gone from the server.
+        with LbbClient("http://h") as client:
+            for name in ("current_state", "history", "why", "governed_conflicts"):
+                self.assertFalse(hasattr(client, name), f"{name} must be gone")
+            self.assertFalse(hasattr(client.entities, "sample"))
+            self.assertFalse(hasattr(client.query, "conflicts"))
 
     def test_ontology_evolve_models_have_stable_discriminated_names(self) -> None:
         op = AddEntityTypeOp(op="add_entity_type", name="CUSTOMER")
@@ -1036,34 +1018,6 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(seen[0].method, "POST")
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/delete")
         self.assertEqual(dict(seen[0].url.params), {"graph": "main", "confirm": "main"})
-
-    def test_governed_conflicts_returns_generated_model(self) -> None:
-        seen: list[httpx.Request] = []
-        payload = {
-            "snapshot": SNAPSHOT,
-            "groups": [],
-            "entities_scanned": 100,
-            "authorized_entities": 20,
-            "grouped_entities": 18,
-            "truncated": False,
-        }
-        with LbbClient(
-            "http://h", transport=capturing_transport(seen, {"json": payload})
-        ) as client:
-            result = client.governed_conflicts(
-                {
-                    "entity_type": "OBSERVATION",
-                    "visibility_filter": {
-                        "op": "overlaps",
-                        "field": "acl",
-                        "values": ["team:a"],
-                    },
-                    "key_fields": ["subject", "metric", "period"],
-                    "value_field": "value",
-                }
-            )
-        self.assertIsInstance(result, GovernedConflictAggregationResponse)
-        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/query/conflicts")
 
     def test_facts_import_serializes_ndjson_with_params(self) -> None:
         seen: list[httpx.Request] = []
@@ -2202,13 +2156,11 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             "http://h",
             api_key="k",
             graph="g",
-            transport=capturing_transport(seen, {"json": {"state": []}}),
+            transport=capturing_transport(seen, {"json": {"solutions": []}}),
         ) as client:
-            result = await client.current_state(
-                {"entity": {"entity_type": "SERVICE", "name": "x"}}
-            )
-        self.assertEqual(result, {"state": []})
-        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/query/state")
+            result = await client.sparql_select({"patterns": [], "select": []})
+        self.assertEqual(result, {"solutions": []})
+        self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/query/sparql")
         self.assertEqual(seen[0].headers["authorization"], "Bearer k")
 
     async def test_async_sparql_parses_rows(self) -> None:

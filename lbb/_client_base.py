@@ -1140,20 +1140,6 @@ class _BaseLbbClient:
             models.SearchFeedbackSummaryResponse, "GET", "/v1/search/feedback/summary"
         )
 
-    # --- temporal / lineage / shapes ---
-
-    def current_state(self, body: Body) -> Any:
-        """Current state of an entity's relations, optionally as-of a timestamp."""
-        return self._request("POST", "/v1/query/state", body=body)
-
-    def history(self, body: Body) -> Any:
-        """Full edge-event history for a relationship."""
-        return self._request("POST", "/v1/query/history", body=body)
-
-    def why(self, body: Body) -> Any:
-        """Lineage and evidence for a single edge."""
-        return self._request("POST", "/v1/query/why", body=body)
-
     # --- SPARQL ---
 
     def sparql_select(
@@ -1190,18 +1176,6 @@ class _BaseLbbClient:
         """Structured SPARQL response validated as ``SparqlSelectResponse``."""
         return self._model_request(
             models.SparqlSelectResponse, "POST", "/v1/query/sparql", body=body
-        )
-
-    def governed_conflicts(
-        self, body: Body
-    ) -> models.GovernedConflictAggregationResponse:
-        """Return ACL-first distinct-value conflicts without raw corpus transfer."""
-        return self._model_request(
-            models.GovernedConflictAggregationResponse,
-            "POST",
-            "/v1/query/conflicts",
-            body=body,
-            options=_read_options(None),
         )
 
     def _sparql_text_envelope(
@@ -1871,16 +1845,6 @@ class _QueryNamespace:
             min_indexed_seq=min_indexed_seq,
         )
 
-    def conflicts(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.GovernedConflictAggregationResponse:
-        return self._client._model_request(
-            models.GovernedConflictAggregationResponse,
-            "POST",
-            "/v1/query/conflicts",
-            body=body,
-            options=_read_options(options),
-        )
 
 
 class _SchemaNamespace:
@@ -2185,24 +2149,6 @@ class _EmbeddingsNamespace:
 class _EntityNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
-
-    def sample(
-        self,
-        *,
-        type: str,  # noqa: A002 - mirrors the HTTP query param.
-        limit: int | None = None,
-        options: RequestOptions | None = None,
-    ) -> models.EntityTypeSampleResponse:
-        """Return exact type cardinality and a bounded sample from the Base
-        family pinned by the published generation.
-        """
-        return self._client._model_request(
-            models.EntityTypeSampleResponse,
-            "GET",
-            "/v1/graph/entities/sample",
-            params={"type": type, "limit": limit},
-            options=_read_options(options),
-        )
 
     def filter_by_attributes(
         self,
