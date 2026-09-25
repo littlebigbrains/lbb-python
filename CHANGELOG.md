@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.14.0 (2026-09-25)
 
 - Remove branches. Every graph now has one line of history.
 - Remove the `branch` argument from `LbbClient`, `AsyncLbbClient`, `graph()`
@@ -12,6 +12,8 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   `promote_planner()`. The server no longer trains the planner.
 - Remove the generated planner training models and the `planner` field of
   `ModelServingDefaults`.
+- Add `cursor` to `sparql()` and `next_cursor` plus `snapshot` to its results,
+  for snapshot-bound pagination of an indexed, ordered `LIMIT` query.
 
 ## 0.13.1 (2026-09-24)
 
