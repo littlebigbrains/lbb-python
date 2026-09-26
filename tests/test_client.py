@@ -34,6 +34,7 @@ from lbb.models import (
     SearchFeedbackSummaryResponse,
     SparqlSelectResponse,
     TrainModelJobStatusResponse,
+    TripletCommitFile,
 )
 
 SNAPSHOT = {"commit_seq": 7, "compacted_seq": 7}
@@ -373,6 +374,49 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(request.headers["lbb-version"], "2026-07-23")
         self.assertEqual(request.headers["idempotency-key"], "ik_py_1")
         self.assertEqual(json.loads(request.content), {"triplets": []})
+
+    def test_facts_create_accepts_flat_entity_properties_in_the_model(self) -> None:
+        # The flat `{ field: value }` map validates as the generated model and
+        # reaches the wire unchanged, next to the verbose `{field, value}` list.
+        ticket = {"type": "Ticket", "key": "4821", "name": "login fails after 3.1"}
+        flat = {
+            "description": "Sent back to the login screen.",
+            "priority": 2,
+            "score": 0.5,
+            "open": True,
+            "labels": ["auth", "3.1"],
+            "builds": [310, 311],
+        }
+        verbose = [{"field": "priority", "value": {"i64": 2}}]
+        body = TripletCommitFile.model_validate(
+            {
+                "entity_properties": [
+                    {**ticket, "properties": flat},
+                    {**ticket, "properties": verbose},
+                ]
+            }
+        )
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen, {"json": {"commit": {"commit_seq": 1}}}
+            ),
+        ) as client:
+            client.graph("main").facts.create(body, idempotency_key="ik_flat")
+
+        sent = json.loads(seen[0].content)["entity_properties"]
+        self.assertEqual(sent[0]["properties"], flat)
+        self.assertEqual(sent[1]["properties"], verbose)
+        # A flat value is a scalar or an array, never a typed object.
+        with self.assertRaises(ValidationError):
+            TripletCommitFile.model_validate(
+                {
+                    "entity_properties": [
+                        {**ticket, "properties": {"priority": {"i64": 2}}}
+                    ]
+                }
+            )
 
     def test_removed_query_surfaces_are_absent_from_the_client(self) -> None:
         with LbbClient("http://h") as client:

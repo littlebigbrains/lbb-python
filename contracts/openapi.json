@@ -3315,10 +3315,8 @@
             "type": "string"
           },
           "properties": {
-            "items": {
-              "$ref": "#/components/schemas/PropertyInput"
-            },
-            "type": "array"
+            "$ref": "#/components/schemas/PropertiesInput",
+            "description": "The field values to write, as a list of `{ \"field\", \"value\" }` objects or\nas a flat `{ \"field\": value }` map (see [`PropertiesInput`])."
           },
           "remove_fields": {
             "description": "Field names to **drop** from this entity, applied after `properties` in the\nsame commit — a surgical per-field delete that avoids a replace-mode\nre-send of the whole survivor set (the silent-wipe footgun). Works in\neither `property_merge` mode: the named fields are removed from the\nentity's stored set even when the rest of the commit merges. A field\nlisted in both `properties` and `remove_fields` is rejected (you cannot\nboth set and drop it); an unknown field name is rejected. Dropped fields\nare echoed back under `written_properties[].removed_fields`.",
@@ -4636,6 +4634,38 @@
           "missing"
         ],
         "type": "object"
+      },
+      "FlatPropertyValue": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "format": "int64",
+            "type": "integer"
+          },
+          {
+            "format": "double",
+            "type": "number"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        ],
+        "description": "A bare JSON value in the flat `{ field: value }` property shape: a boolean,\nan integer, a number, a string, or an array of integers or of strings. The\nwire type is inferred from JSON; the commit path coerces it to the field's\ndeclared `PropertyType`, so the inferred variant only needs to be in the\nright ballpark."
       },
       "FullTextIndexInspectRequest": {
         "properties": {
@@ -9414,6 +9444,26 @@
           "b"
         ],
         "type": "object"
+      },
+      "PropertiesInput": {
+        "description": "The accepted shapes of [`EntityPropertiesInput::properties`]: a list of\n[`PropertyInput`] objects, or a flat map of field name to\n[`FlatPropertyValue`].",
+        "oneOf": [
+          {
+            "items": {
+              "$ref": "#/components/schemas/PropertyInput"
+            },
+            "type": "array"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FlatPropertyValue"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        ]
       },
       "PropertyInput": {
         "description": "One literal property: an ontology field name plus a typed value.",

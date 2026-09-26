@@ -6981,47 +6981,6 @@ class EmbeddingRefreshResponse(BaseModel):
     steps: list[EmbeddingStep]
 
 
-class EntityPropertiesInput(BaseModel):
-    """
-    Literal property values to attach to one entity (matched by type + name).
-
-    `properties` accepts **two interchangeable shapes**:
-    - verbose — a list of `{ "field": "...", "value": { "<type>": v } }` objects,
-      where `<type>` is one of `bool|i64|f64|date_time|keyword|text`; and
-    - flat — a `{ "field": value }` object, e.g. `{ "h_index": 52, "title": "VP" }`,
-      where the value type is inferred from JSON (bool/integer/float/string) and
-      then coerced to the field's declared type at commit (so a flat string lands
-      in a `keyword` field, a flat `"2026-06-26"` in a `date_time` field, and a
-      flat integer in an `f64` field).
-
-    The flat shape removes the nested-`value` ceremony that made `entity_properties`
-    hard to get right; reach for the verbose shape only when you need to force a
-    specific wire type.
-    """
-
-    entity_id: Annotated[
-        str | None,
-        Field(
-            description="Optional resolved entity id (32-char hex). When set, these properties\nattach to exactly this entity, bypassing `(type, key, name)` resolution —\nthe same escape hatch [`EntityEmbeddingInput::entity_id`] provides. A\nmanaged backfill enumerating a snapshot holds each entity's id but not the\noriginal external `key` (the id is a one-way hash of it), so resolving by\nname would attach to — or mint — a phantom name-keyed twin instead of the\nreal keyed entity. `entity_id` takes precedence over `key`/`name`; `type`\nis still resolved for the entity record."
-        ),
-    ] = None
-    key: Annotated[
-        str | None,
-        Field(
-            description='Optional stable external key, matching [`NamedEntityInput::key`]. Set it to\nattach these properties to a keyed entity; omit it for `(type, name)`\nidentity.'
-        ),
-    ] = None
-    name: str
-    properties: list[PropertyInput] | None = None
-    remove_fields: Annotated[
-        list[str] | None,
-        Field(
-            description="Field names to **drop** from this entity, applied after `properties` in the\nsame commit — a surgical per-field delete that avoids a replace-mode\nre-send of the whole survivor set (the silent-wipe footgun). Works in\neither `property_merge` mode: the named fields are removed from the\nentity's stored set even when the rest of the commit merges. A field\nlisted in both `properties` and `remove_fields` is rejected (you cannot\nboth set and drop it); an unknown field name is rejected. Dropped fields\nare echoed back under `written_properties[].removed_fields`."
-        ),
-    ] = None
-    type: str
-
-
 class EntityRdfRelations(BaseModel):
     incoming: list[RdfEntityRelation]
     incoming_truncation: TruncatedCollection | None = None
@@ -7150,15 +7109,6 @@ class GraphImportJobStatus(BaseModel):
     publication_job: GraphImportPublishedGenerationOutcome | None = None
     state: GraphImportJobState
     updated_at_micros: int
-
-
-class GraphImportLine(RootModel[TripletInput | EntityPropertiesInput]):
-    root: Annotated[
-        TripletInput | EntityPropertiesInput,
-        Field(
-            description='One line of an NDJSON bulk-import stream (`POST /v1/graph/import`). Each line\nis a single JSON object that is either a triplet (carries `relation`) or an\nentity-properties record (carries `properties`); the two shapes are disjoint,\nso the importer routes each line by shape. This is the streamable counterpart\nof `TripletCommitFile`: a client streams a large dataset line-by-line instead\nof buffering one giant commit, and the server batches lines into bounded\ninternal commits.'
-        ),
-    ]
 
 
 class HybridMultiSearchResponse(BaseModel):
@@ -7457,36 +7407,6 @@ class SparqlFilter1(BaseModel):
     compare: Compare
 
 
-class TripletCommitFile(BaseModel):
-    edge_idempotency: EdgeIdempotencyMode | None = None
-    entity_embeddings: Annotated[
-        list[EntityEmbeddingInput] | None,
-        Field(
-            description='Client-supplied vectors to attach to entities in this commit. Entities\nare matched by (type, name); ones not mentioned in `triplets` are\nupserted standalone so vectors can be attached without new edges.'
-        ),
-    ] = None
-    entity_properties: Annotated[
-        list[EntityPropertiesInput] | None,
-        Field(
-            description="Client-supplied literal property values to attach to entities in this\ncommit. Entities are matched by (type, name) against the triplet endpoints\n(and embedding targets) in the same commit; each property's `field` is\nresolved against the ontology. This is the ingest side of the typed-value\nchannel that FILTER/aggregation read."
-        ),
-    ] = None
-    observed_at: Annotated[
-        str | None,
-        Field(
-            description='Backfill timestamp (RFC3339). When set, this commit is recorded **as of**\nthat instant rather than now: every edge\'s transaction time\n(`commit_time_micros`) is stamped with it, and any triplet that does not\ncarry its own `valid_time` defaults its `valid_time.start` to it. Replaying\nhistory in source-chronological order with `observed_at` set per commit is\nwhat makes `as_of` reads (by date) and the temporal-coverage probe\nfaithful — without it, a backfill stamps everything "now" and every past\n`as_of` returns empty. Omit it for normal live writes (stamped now).'
-        ),
-    ] = None
-    preconditions: WritePreconditions | None = None
-    property_merge: PropertyMergeMode | None = None
-    triplets: Annotated[
-        list[TripletInput] | None,
-        Field(
-            description='The edges to commit. Defaults to empty so a properties-only or\nembeddings-only commit needs no placeholder `"triplets": []`; the commit\nstill requires at least one triplet, embedding, or entity-property overall.'
-        ),
-    ] = None
-
-
 class CommitResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     conformance: ConformanceReport | None = None
@@ -7551,6 +7471,54 @@ class EntityDetailResponse(BaseModel):
     ] = None
 
 
+class EntityPropertiesInput(BaseModel):
+    """
+    Literal property values to attach to one entity (matched by type + name).
+
+    `properties` accepts **two interchangeable shapes**:
+    - verbose — a list of `{ "field": "...", "value": { "<type>": v } }` objects,
+      where `<type>` is one of `bool|i64|f64|date_time|keyword|text`; and
+    - flat — a `{ "field": value }` object, e.g. `{ "h_index": 52, "title": "VP" }`,
+      where the value type is inferred from JSON (bool/integer/float/string) and
+      then coerced to the field's declared type at commit (so a flat string lands
+      in a `keyword` field, a flat `"2026-06-26"` in a `date_time` field, and a
+      flat integer in an `f64` field).
+
+    The flat shape removes the nested-`value` ceremony that made `entity_properties`
+    hard to get right; reach for the verbose shape only when you need to force a
+    specific wire type.
+    """
+
+    entity_id: Annotated[
+        str | None,
+        Field(
+            description="Optional resolved entity id (32-char hex). When set, these properties\nattach to exactly this entity, bypassing `(type, key, name)` resolution —\nthe same escape hatch [`EntityEmbeddingInput::entity_id`] provides. A\nmanaged backfill enumerating a snapshot holds each entity's id but not the\noriginal external `key` (the id is a one-way hash of it), so resolving by\nname would attach to — or mint — a phantom name-keyed twin instead of the\nreal keyed entity. `entity_id` takes precedence over `key`/`name`; `type`\nis still resolved for the entity record."
+        ),
+    ] = None
+    key: Annotated[
+        str | None,
+        Field(
+            description='Optional stable external key, matching [`NamedEntityInput::key`]. Set it to\nattach these properties to a keyed entity; omit it for `(type, name)`\nidentity.'
+        ),
+    ] = None
+    name: str
+    properties: Annotated[
+        list[PropertyInput]
+        | dict[str, bool | int | float | str | list[int] | list[str]]
+        | None,
+        Field(
+            description='The field values to write, as a list of `{ "field", "value" }` objects or\nas a flat `{ "field": value }` map (see [`PropertiesInput`]).'
+        ),
+    ] = None
+    remove_fields: Annotated[
+        list[str] | None,
+        Field(
+            description="Field names to **drop** from this entity, applied after `properties` in the\nsame commit — a surgical per-field delete that avoids a replace-mode\nre-send of the whole survivor set (the silent-wipe footgun). Works in\neither `property_merge` mode: the named fields are removed from the\nentity's stored set even when the rest of the commit merges. A field\nlisted in both `properties` and `remove_fields` is rejected (you cannot\nboth set and drop it); an unknown field name is rejected. Dropped fields\nare echoed back under `written_properties[].removed_fields`."
+        ),
+    ] = None
+    type: str
+
+
 class GraphCommitResponse(BaseModel):
     commit: CommitResponse
     commit_seq: Annotated[int, Field(ge=0)]
@@ -7583,6 +7551,45 @@ class GraphCommitResponse(BaseModel):
         list[EntityFieldsWritten] | None,
         Field(
             description='Top-level echo of property fields actually written by this request.\nEmpty on idempotent replays and no-ops.'
+        ),
+    ] = None
+
+
+class GraphImportLine(RootModel[TripletInput | EntityPropertiesInput]):
+    root: Annotated[
+        TripletInput | EntityPropertiesInput,
+        Field(
+            description='One line of an NDJSON bulk-import stream (`POST /v1/graph/import`). Each line\nis a single JSON object that is either a triplet (carries `relation`) or an\nentity-properties record (carries `properties`); the two shapes are disjoint,\nso the importer routes each line by shape. This is the streamable counterpart\nof `TripletCommitFile`: a client streams a large dataset line-by-line instead\nof buffering one giant commit, and the server batches lines into bounded\ninternal commits.'
+        ),
+    ]
+
+
+class TripletCommitFile(BaseModel):
+    edge_idempotency: EdgeIdempotencyMode | None = None
+    entity_embeddings: Annotated[
+        list[EntityEmbeddingInput] | None,
+        Field(
+            description='Client-supplied vectors to attach to entities in this commit. Entities\nare matched by (type, name); ones not mentioned in `triplets` are\nupserted standalone so vectors can be attached without new edges.'
+        ),
+    ] = None
+    entity_properties: Annotated[
+        list[EntityPropertiesInput] | None,
+        Field(
+            description="Client-supplied literal property values to attach to entities in this\ncommit. Entities are matched by (type, name) against the triplet endpoints\n(and embedding targets) in the same commit; each property's `field` is\nresolved against the ontology. This is the ingest side of the typed-value\nchannel that FILTER/aggregation read."
+        ),
+    ] = None
+    observed_at: Annotated[
+        str | None,
+        Field(
+            description='Backfill timestamp (RFC3339). When set, this commit is recorded **as of**\nthat instant rather than now: every edge\'s transaction time\n(`commit_time_micros`) is stamped with it, and any triplet that does not\ncarry its own `valid_time` defaults its `valid_time.start` to it. Replaying\nhistory in source-chronological order with `observed_at` set per commit is\nwhat makes `as_of` reads (by date) and the temporal-coverage probe\nfaithful — without it, a backfill stamps everything "now" and every past\n`as_of` returns empty. Omit it for normal live writes (stamped now).'
+        ),
+    ] = None
+    preconditions: WritePreconditions | None = None
+    property_merge: PropertyMergeMode | None = None
+    triplets: Annotated[
+        list[TripletInput] | None,
+        Field(
+            description='The edges to commit. Defaults to empty so a properties-only or\nembeddings-only commit needs no placeholder `"triplets": []`; the commit\nstill requires at least one triplet, embedding, or entity-property overall.'
         ),
     ] = None
 
