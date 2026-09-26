@@ -30,6 +30,10 @@ Added:
   could run twice.
 - `RequestOptions.retry` accepts `"rate_limited"`, which retries only a
   retryable `429`.
+- The generated `EntityPropertiesInput.properties` accepts the flat
+  `{ field: value }` map as well as a list of `PropertyInput`. The server always
+  decoded both shapes, but a `TripletCommitFile` or `EntityPropertiesInput`
+  model built with a flat map raised a validation error.
 
 ## 0.14.0 (2026-09-25)
 
