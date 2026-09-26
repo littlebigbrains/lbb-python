@@ -25,7 +25,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Any, Generic, TypedDict, TypeVar
+from typing import Any, Generic, Literal, TypedDict, TypeVar
 
 import httpx
 from pydantic import BaseModel
@@ -57,10 +57,15 @@ RowT = TypeVar("RowT", bound=BaseModel)
 
 
 class RequestOptions(TypedDict, total=False):
-    """Per-request transport overrides accepted by :meth:`raw_request`."""
+    """Per-request transport overrides accepted by :meth:`raw_request`.
+
+    ``retry`` overrides the retry-safety classification: ``True`` retries a
+    ``429``, a ``5xx`` and a transport failure; ``"rate_limited"`` retries only
+    a retryable ``429``, which the server returns before it runs the request.
+    """
 
     max_retries: int
-    retry: bool
+    retry: bool | Literal["rate_limited"]
     retry_budget_ms: float
     timeout: float
     headers: Mapping[str, str]
@@ -389,6 +394,20 @@ def _retryable(status_code: int) -> bool:
 
 def _retry_allowed(method: str, idempotency_key: str | None) -> bool:
     return method.upper() in {"GET", "HEAD", "OPTIONS"} or idempotency_key is not None
+
+
+def _retries_transport_error(retry: bool | str) -> bool:
+    """Whether a request's ``retry`` classification covers a transport failure.
+    ``"rate_limited"`` does not: the request may have run on the server."""
+    return retry != "rate_limited" and bool(retry)
+
+
+def _retries_status(retry: bool | str, status_code: int) -> bool:
+    """Whether a request's ``retry`` classification covers a retryable status.
+    ``"rate_limited"`` covers only ``429``."""
+    if retry == "rate_limited":
+        return status_code == 429
+    return bool(retry)
 
 
 def _error_body_field(response: httpx.Response, name: str) -> Any:
@@ -1189,13 +1208,21 @@ class _BaseLbbClient:
         offset: int | None = None,
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
+        as_of_commit_seq: int | None = None,
     ) -> Any:
         """POST raw SPARQL text to ``/v1/query/sparql-text``; returns the envelope.
 
         Value in :class:`LbbClient`, awaitable in :class:`AsyncLbbClient`; the
         concrete :meth:`sparql` wrappers parse it into :class:`SparqlResults`.
+
+        The query is read-only, so a retryable ``429`` (for example
+        ``read_your_writes_pending`` while publication catches up to
+        ``min_indexed_seq``) is retried within the client's retry budget. A
+        ``5xx`` is not retried: a query that timed out would run again.
         """
         body: dict[str, Any] = {"query": query}
+        if as_of_commit_seq is not None:
+            body["as_of_commit_seq"] = as_of_commit_seq
         if cursor is not None:
             body["cursor"] = cursor
         if reason is not None:
@@ -1209,7 +1236,11 @@ class _BaseLbbClient:
         # A5: the text dialect carries consistency/floor on the URL, not the body.
         params = self._consistency_params(consistency, min_indexed_seq)
         return self._request(
-            "POST", "/v1/query/sparql-text", body=body, params=params or None
+            "POST",
+            "/v1/query/sparql-text",
+            body=body,
+            params=params or None,
+            options={"retry": "rate_limited"},
         )
 
     # --- ontology ---
@@ -1409,6 +1440,7 @@ class _BaseLbbClient:
         offset: int | None = None,
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
+        as_of_commit_seq: int | None = None,
     ) -> Any:
         """Run SPARQL text; concrete transports return or await parsed results."""
         raise NotImplementedError
@@ -1833,6 +1865,7 @@ class _QueryNamespace:
         offset: int | None = None,
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
+        as_of_commit_seq: int | None = None,
     ) -> Any:
         return self._client.sparql(
             query,
@@ -1843,6 +1876,7 @@ class _QueryNamespace:
             offset=offset,
             consistency=consistency,
             min_indexed_seq=min_indexed_seq,
+            as_of_commit_seq=as_of_commit_seq,
         )
 
 

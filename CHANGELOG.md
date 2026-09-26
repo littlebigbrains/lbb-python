@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.15.0 (2026-09-26)
 
 Breaking removal of the Base-family reads. Their routes answered
 `429 ingest_busy` on every graph. No publication job writes the Base read root
@@ -18,6 +18,18 @@ they need. The server now answers 404 and names the replacement.
   `/v1/graph/entity/neighborhood`, which are gone too.
 - `LbbLocalClient.current_state()` and `relationship_history()` stay. They run
   the local `lbb-testctl` commands.
+
+Added:
+
+- Add `as_of_commit_seq` to `sparql()` and `query.sparql()`, sync and async.
+  The query reads the retained state of that exact commit, and
+  `SparqlResults.snapshot` echoes the pin.
+- `sparql()` retries a retryable `429` within the retry budget. A read right
+  after a write with `min_indexed_seq` now waits for `read_your_writes_pending`
+  to clear. A `5xx` or a transport failure is not retried, because the query
+  could run twice.
+- `RequestOptions.retry` accepts `"rate_limited"`, which retries only a
+  retryable `429`.
 
 ## 0.14.0 (2026-09-25)
 

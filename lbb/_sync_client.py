@@ -36,6 +36,8 @@ from ._client_base import (
     _parse_model,
     _QueryNamespace,
     _raw_response,
+    _retries_status,
+    _retries_transport_error,
     _retry_allowed,
     _retry_delay_seconds,
     _retryable,
@@ -131,6 +133,7 @@ class _SyncQueryNamespace(_QueryNamespace):
         offset: int | None = None,
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
+        as_of_commit_seq: int | None = None,
     ) -> SparqlResults:
         return cast(
             SparqlResults,
@@ -143,6 +146,7 @@ class _SyncQueryNamespace(_QueryNamespace):
                 offset=offset,
                 consistency=consistency,
                 min_indexed_seq=min_indexed_seq,
+                as_of_commit_seq=as_of_commit_seq,
             ),
         )
 
@@ -312,9 +316,7 @@ class LbbClient(_BaseLbbClient):
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]
         response: httpx.Response | None = None
-        can_retry = request_options.get(
-            "retry", _retry_allowed(method, idempotency_key)
-        )
+        retry = request_options.get("retry", _retry_allowed(method, idempotency_key))
         max_retries = request_options.get("max_retries", self._max_retries)
         if max_retries < 0:
             raise ValueError("max_retries must be non-negative")
@@ -330,7 +332,7 @@ class LbbClient(_BaseLbbClient):
                     method, f"{self._base_url}{path}", **kwargs
                 )
             except httpx.RequestError:
-                if not (can_retry and attempt < max_retries):
+                if not (_retries_transport_error(retry) and attempt < max_retries):
                     raise
                 delay = _jittered_backoff(self._retry_delay, attempt)
                 if time.monotonic() + delay > deadline:
@@ -348,7 +350,10 @@ class LbbClient(_BaseLbbClient):
                 continue
             if response.status_code // 100 == 2 or not _retryable(response.status_code):
                 break
-            if not can_retry or attempt >= max_retries:
+            if (
+                not _retries_status(retry, response.status_code)
+                or attempt >= max_retries
+            ):
                 break
             # Honor the server's typed body verdict: a terminal error
             # (`retryable: false`, e.g. an exhausted quota) is surfaced at once
@@ -525,6 +530,7 @@ class LbbClient(_BaseLbbClient):
         offset: int | None = None,
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
+        as_of_commit_seq: int | None = None,
     ) -> SparqlResults:
         """Run a SPARQL 1.1 text query (SELECT or ASK) and return parsed results.
 
@@ -535,6 +541,13 @@ class LbbClient(_BaseLbbClient):
         ``"subclass"`` for the class-only subset; the default ``"none"`` matches
         asserted triples only) and ``limit``/``offset``. ``reason`` is refused
         on the published surface (stored rules already run at publish time).
+
+        ``as_of_commit_seq`` reads the retained published generation of that
+        exact commit. The result's ``snapshot`` names the commit the rows were
+        read from (``served_at_seq``) for an eventual or pinned read, and is
+        ``None`` for a plain strong read. A retryable ``429``, such as
+        ``read_your_writes_pending`` under a ``min_indexed_seq`` floor, is
+        retried within the retry budget.
 
         Note: this uses ``/v1/query/sparql-text``. A standalone stack also serves
         the native SPARQL 1.1 *Protocol* at ``/sparql`` for off-the-shelf SPARQL
@@ -550,6 +563,7 @@ class LbbClient(_BaseLbbClient):
             offset=offset,
             consistency=consistency,
             min_indexed_seq=min_indexed_seq,
+            as_of_commit_seq=as_of_commit_seq,
         )
         return SparqlResults.from_envelope(envelope)
 

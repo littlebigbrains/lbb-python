@@ -11,7 +11,14 @@ import httpx
 from pydantic import ValidationError
 
 import lbb.models as model_module
-from lbb import AsyncLbbClient, LbbCapabilityError, LbbClient, LbbError, __version__
+from lbb import (
+    AsyncLbbClient,
+    LbbCapabilityError,
+    LbbClient,
+    LbbError,
+    RetryEvent,
+    __version__,
+)
 from lbb.models import (
     AddEntityTypeOp,
     AdditiveOntologyEvolveRequest,
@@ -184,6 +191,28 @@ def backfill_status_payload(status: str) -> dict[str, Any]:
         "terminal_error": None,
         "updated_at_micros": 2,
     }
+
+
+def sparql_text_envelope(snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A one-row ``/v1/query/sparql-text`` envelope, with an optional snapshot."""
+    envelope: dict[str, Any] = {
+        "results": json.dumps(
+            {
+                "head": {"vars": ["s"]},
+                "results": {"bindings": [{"s": {"type": "uri", "value": "x"}}]},
+            }
+        ),
+        "row_page": {
+            "returned": 1,
+            "total": 1,
+            "offset": 0,
+            "limit": 50,
+            "has_more": False,
+        },
+    }
+    if snapshot is not None:
+        envelope["snapshot"] = snapshot
+    return envelope
 
 
 def capturing_transport(
@@ -1668,6 +1697,124 @@ class SyncClientTests(unittest.TestCase):
         self.assertTrue(results.boolean)
         self.assertEqual(results.rows(), [])
 
+    def test_sparql_pins_as_of_commit_seq_and_exposes_snapshot(self) -> None:
+        seen: list[httpx.Request] = []
+        snapshot = {
+            "commit_seq": 9,
+            "compacted_seq": 9,
+            "as_of_commit_seq": 4,
+            "served_at_seq": 4,
+        }
+        with LbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(
+                seen, {"json": sparql_text_envelope(snapshot=snapshot)}
+            ),
+        ) as client:
+            results = client.query.sparql(
+                "SELECT ?s WHERE { ?s ?p ?o }", as_of_commit_seq=4
+            )
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"query": "SELECT ?s WHERE { ?s ?p ?o }", "as_of_commit_seq": 4},
+        )
+        self.assertEqual(dict(seen[0].url.params), {"graph": "main"})
+        self.assertEqual(results.snapshot, snapshot)
+        self.assertEqual(results.rows(), [{"s": "x"}])
+
+    def test_sparql_retries_read_your_writes_pending_until_the_floor_is_served(
+        self,
+    ) -> None:
+        # A read right after a write: the published generation does not cover
+        # the floor yet, so the server answers 429 with a Retry-After. The
+        # query is read-only, so the client waits and asks again.
+        seen: list[httpx.Request] = []
+        events: list[RetryEvent] = []
+        with LbbClient(
+            "http://h",
+            graph="main",
+            retry_delay=0,
+            on_retry=events.append,
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "status": 429,
+                        "headers": {"retry-after": "0"},
+                        "json": {
+                            "error": {
+                                "code": "read_your_writes_pending",
+                                "retryable": True,
+                            }
+                        },
+                    },
+                    {
+                        "json": sparql_text_envelope(
+                            snapshot={
+                                "commit_seq": 12,
+                                "compacted_seq": 12,
+                                "served_at_seq": 12,
+                            }
+                        )
+                    },
+                ],
+            ),
+        ) as client:
+            results = client.sparql(
+                "SELECT ?s WHERE { ?s ?p ?o }",
+                consistency="eventual",
+                min_indexed_seq=12,
+            )
+        self.assertEqual(len(seen), 2)
+        self.assertEqual(
+            dict(seen[1].url.params),
+            {"graph": "main", "consistency": "eventual", "min_indexed_seq": "12"},
+        )
+        self.assertEqual(
+            [event.error_code for event in events], ["read_your_writes_pending"]
+        )
+        assert results.snapshot is not None
+        self.assertEqual(results.snapshot["served_at_seq"], 12)
+
+    def test_sparql_does_not_retry_a_server_error_or_a_transport_failure(
+        self,
+    ) -> None:
+        # Only a 429 is retried: the server refused the query before it ran. A
+        # query that timed out (503) or a lost connection would run again.
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "status": 503,
+                        "json": {"error": {"code": "query_deadline_exceeded"}},
+                    },
+                    {"json": sparql_text_envelope()},
+                ],
+            ),
+        ) as client:
+            with self.assertRaises(LbbError) as ctx:
+                client.sparql("SELECT ?s WHERE { ?s ?p ?o }")
+        self.assertEqual(ctx.exception.code, "query_deadline_exceeded")
+        self.assertEqual(len(seen), 1)
+
+        attempts: list[httpx.Request] = []
+
+        def refuse(request: httpx.Request) -> httpx.Response:
+            attempts.append(request)
+            raise httpx.ConnectError("connection refused", request=request)
+
+        with LbbClient(
+            "http://h", retry_delay=0, transport=httpx.MockTransport(refuse)
+        ) as client:
+            with self.assertRaises(httpx.ConnectError):
+                client.sparql("SELECT ?s WHERE { ?s ?p ?o }")
+        self.assertEqual(len(attempts), 1)
+
     def test_sparql_select_posts_structured_body(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -2206,6 +2353,37 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first.snapshot, SNAPSHOT)
         self.assertEqual(json.loads(seen[0].content)["cursor"], "")
         self.assertEqual(json.loads(seen[1].content)["cursor"], "next")
+
+    async def test_async_sparql_retries_a_429_only_and_pins_a_commit(self) -> None:
+        # Async parity: a 429 is retried, a 5xx is not, and `as_of_commit_seq`
+        # travels in the body.
+        pinned = {"commit_seq": 9, "compacted_seq": 9, "as_of_commit_seq": 4}
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {
+                        "status": 429,
+                        "headers": {"retry-after": "0"},
+                        "json": {"error": {"code": "read_your_writes_pending"}},
+                    },
+                    {"json": sparql_text_envelope(snapshot=pinned)},
+                    {"status": 503, "json": {"error": {"code": "storage_degraded"}}},
+                    {"json": sparql_text_envelope()},
+                ],
+            ),
+        ) as client:
+            results = await client.query.sparql(
+                "SELECT ?s WHERE { ?s ?p ?o }", as_of_commit_seq=4
+            )
+            with self.assertRaises(LbbError):
+                await client.sparql("SELECT ?s WHERE { ?s ?p ?o }")
+        self.assertEqual(results.snapshot, pinned)
+        self.assertEqual(len(seen), 3)
+        self.assertEqual(json.loads(seen[1].content)["as_of_commit_seq"], 4)
 
     async def test_async_summary_model_helper(self) -> None:
         seen: list[httpx.Request] = []
