@@ -45,6 +45,8 @@ from ._client_base import (
     _parse_model,
     _QueryNamespace,
     _raw_response,
+    _retries_status,
+    _retries_transport_error,
     _retry_allowed,
     _retry_delay_seconds,
     _retryable,
@@ -186,6 +188,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         offset: int | None = None,
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
+        as_of_commit_seq: int | None = None,
     ) -> SparqlResults:
         return cast(
             SparqlResults,
@@ -198,6 +201,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
                 offset=offset,
                 consistency=consistency,
                 min_indexed_seq=min_indexed_seq,
+                as_of_commit_seq=as_of_commit_seq,
             ),
         )
 
@@ -736,9 +740,7 @@ class AsyncLbbClient(_BaseLbbClient):
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]
         response: httpx.Response | None = None
-        can_retry = request_options.get(
-            "retry", _retry_allowed(method, idempotency_key)
-        )
+        retry = request_options.get("retry", _retry_allowed(method, idempotency_key))
         max_retries = request_options.get("max_retries", self._max_retries)
         if max_retries < 0:
             raise ValueError("max_retries must be non-negative")
@@ -755,7 +757,7 @@ class AsyncLbbClient(_BaseLbbClient):
                     method, f"{self._base_url}{path}", **kwargs
                 )
             except httpx.RequestError:
-                if not (can_retry and attempt < max_retries):
+                if not (_retries_transport_error(retry) and attempt < max_retries):
                     raise
                 delay = _jittered_backoff(self._retry_delay, attempt)
                 if loop.time() + delay > deadline:
@@ -773,7 +775,10 @@ class AsyncLbbClient(_BaseLbbClient):
                 continue
             if response.status_code // 100 == 2 or not _retryable(response.status_code):
                 break
-            if not can_retry or attempt >= max_retries:
+            if (
+                not _retries_status(retry, response.status_code)
+                or attempt >= max_retries
+            ):
                 break
             # Honor the server's typed body verdict: a terminal error
             # (`retryable: false`, e.g. an exhausted quota) is surfaced at once
@@ -869,6 +874,7 @@ class AsyncLbbClient(_BaseLbbClient):
         offset: int | None = None,
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
+        as_of_commit_seq: int | None = None,
     ) -> SparqlResults:
         """Async :meth:`LbbClient.sparql`: run SPARQL text, return parsed results."""
         envelope = await self._sparql_text_envelope(
@@ -880,6 +886,7 @@ class AsyncLbbClient(_BaseLbbClient):
             offset=offset,
             consistency=consistency,
             min_indexed_seq=min_indexed_seq,
+            as_of_commit_seq=as_of_commit_seq,
         )
         return SparqlResults.from_envelope(envelope)
 
