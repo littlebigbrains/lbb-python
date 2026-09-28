@@ -9,6 +9,97 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
+class ActivityEmbeddingState(Enum):
+    ready = 'ready'
+    backfilling = 'backfilling'
+    behind = 'behind'
+    failed = 'failed'
+
+
+class ActivityError(BaseModel):
+    """
+    A tenant-safe failure: a stable code and a short message. Unknown
+    failures carry `job_failed`; the item id identifies the job for an
+    operator.
+    """
+
+    code: str
+    message: str
+    retryable: Annotated[
+        bool,
+        Field(
+            description='True when a retry can succeed without a change by the user.'
+        ),
+    ]
+
+
+class ActivityKind(Enum):
+    publish = 'publish'
+    compaction = 'compaction'
+    statistics = 'statistics'
+    validation = 'validation'
+    embeddings = 'embeddings'
+    import_ = 'import'
+    export = 'export'
+    fork = 'fork'
+    index_upgrade = 'index_upgrade'
+
+
+class ActivityState(Enum):
+    queued = 'queued'
+    waiting = 'waiting'
+    running = 'running'
+    succeeded = 'succeeded'
+    failed = 'failed'
+    cancelled = 'cancelled'
+
+
+class ActivityUnit(Enum):
+    phases = 'phases'
+    partitions = 'partitions'
+    lines = 'lines'
+    bytes = 'bytes'
+    entities = 'entities'
+    commits = 'commits'
+    tables = 'tables'
+
+
+class ActivityWriteLimit(BaseModel):
+    """
+    The unpublished commits on the graph head against the write path's limits
+    on them. Past any `soft_*` limit each write waits a little (the wait grows
+    toward the hard limit); at any `max_*` (hard) limit a write is refused with
+    a retryable `429 ingest_busy` until the index catches up.
+    """
+
+    max_pending_bytes: Annotated[int, Field(ge=0)]
+    max_pending_commits: Annotated[int, Field(ge=0)]
+    max_pending_records: Annotated[int | None, Field(ge=0)] = None
+    pending_bytes: Annotated[
+        int,
+        Field(
+            description="What the unpublished commits store for strong reads: their runs'\nbytes, or the decoded text of a commit without runs.",
+            ge=0,
+        ),
+    ]
+    pending_commits: Annotated[int, Field(ge=0)]
+    pending_records: Annotated[
+        int | None,
+        Field(
+            description='Statements the unpublished commits assert or retract.', ge=0
+        ),
+    ] = None
+    soft_pending_bytes: Annotated[int | None, Field(ge=0)] = None
+    soft_pending_commits: Annotated[
+        int | None,
+        Field(
+            description='Where writes start to slow down. 0 when the server has no soft limit.',
+            ge=0,
+        ),
+    ] = None
+    soft_pending_records: Annotated[int | None, Field(ge=0)] = None
+
+
 class Op(Enum):
     add_entity_type = 'add_entity_type'
 
@@ -4198,6 +4289,16 @@ class WritePreconditions(BaseModel):
     expected_snapshot_token: str | None = None
 
 
+class ActivityProgress(BaseModel):
+    """
+    How far a job has come. `total` is absent when the job does not know it.
+    """
+
+    done: Annotated[int, Field(ge=0)]
+    total: Annotated[int | None, Field(ge=0)] = None
+    unit: ActivityUnit
+
+
 class AdditiveOntologyEvolveRequest(BaseModel):
     """
     Additive-only ontology proposal helper for structured-output systems.
@@ -6698,6 +6799,58 @@ class VocabularyFilter(BaseModel):
     origins: list[VocabularyOrigin] | None = None
 
 
+class ActivityEmbedding(BaseModel):
+    """
+    One embedding declared on a class of the graph.
+    """
+
+    class_: Annotated[
+        str, Field(alias='class', description='The class IRI the embedding covers.')
+    ]
+    embedded_through_seq: CommitSeq | None = None
+    error: ActivityError | None = None
+    lag_commits: Annotated[
+        int,
+        Field(
+            description='Commits the serving version is behind `published_seq`.', ge=0
+        ),
+    ]
+    name: str
+    progress: ActivityProgress | None = None
+    state: ActivityEmbeddingState
+
+
+class ActivityItem(BaseModel):
+    """
+    One background job.
+    """
+
+    attempts: Annotated[int, Field(ge=0)]
+    enqueued_at_micros: int
+    error: ActivityError | None = None
+    finished_at_micros: Annotated[
+        int | None, Field(description='Set for succeeded, failed and cancelled items.')
+    ] = None
+    id: Annotated[str, Field(description='The job id.')]
+    kind: ActivityKind
+    progress: ActivityProgress | None = None
+    stage: Annotated[
+        str | None,
+        Field(
+            description='Machine stage, for example `compacting_truth`, `building`,\n`publishing`, `rdf_partitions_pending`, `admission_deferred`, or the\nimport stage.'
+        ),
+    ] = None
+    state: ActivityState
+    subject: Annotated[
+        str | None,
+        Field(
+            description='What the job works on beyond the graph: the export id, or the graph a\nfork writes.'
+        ),
+    ] = None
+    target_seq: CommitSeq | None = None
+    updated_at_micros: int
+
+
 class AnalyticCombinator1(BaseModel):
     """
     `{ base } UNION { patterns }` — multiset union of the two solution sets.
@@ -7037,6 +7190,58 @@ class ExtractorDatasetResponse(BaseModel):
         list[str],
         Field(
             description="The extraction prompt's entity-type vocabulary at this snapshot."
+        ),
+    ]
+
+
+class GraphActivityResponse(BaseModel):
+    """
+    The background work on one graph epoch, as `GET /v1/graph/activity`
+    reports it.
+    """
+
+    embeddings: list[ActivityEmbedding]
+    epoch: Annotated[int, Field(ge=0)]
+    graph_id: str
+    head_seq: Annotated[
+        int, Field(description='The newest commit written to the graph.', ge=0)
+    ]
+    idle: Annotated[
+        bool,
+        Field(
+            description='True when no item is queued, waiting or running, `publication` is\n`current`, and every embedding is `ready` with `lag_commits` 0 or\n`failed` (a failed embedding waits for a fix, so no work runs).'
+        ),
+    ]
+    items: Annotated[
+        list[ActivityItem],
+        Field(
+            description='Queued, waiting and running items first, then finished items. Newest\nfirst in each group. At most 25.'
+        ),
+    ]
+    lag_commits: Annotated[
+        int, Field(description='`target_seq - published_seq`.', ge=0)
+    ]
+    observed_at_micros: Annotated[
+        int,
+        Field(
+            description='Server clock when the route read the state (micros since the Unix\nepoch).'
+        ),
+    ]
+    publication: PublicationState
+    published_seq: Annotated[
+        int,
+        Field(
+            description='The newest commit the published RDF generation covers (queries see\nit). 0 before the first generation.',
+            ge=0,
+        ),
+    ]
+    target_seq: Annotated[
+        int, Field(description='The commit the publication works toward.', ge=0)
+    ]
+    write_limit: Annotated[
+        ActivityWriteLimit,
+        Field(
+            description='How close the unpublished commits are to the limit at which the\nserver refuses new writes (retryable `429 ingest_busy`) until the\nindex catches up.'
         ),
     ]
 

@@ -325,6 +325,12 @@ class _AsyncGraphNamespace(_GraphNamespace):
             await super().publication_status_model(),
         )
 
+    async def activity(self) -> Any:
+        return await super().activity()
+
+    async def activity_model(self) -> models.GraphActivityResponse:
+        return cast(models.GraphActivityResponse, await super().activity_model())
+
     async def wait_for_published(
         self,
         target_seq: int,
@@ -624,6 +630,9 @@ class AsyncLbbClient(_BaseLbbClient):
             models.PublicationStatusResponse,
             await super().publication_status_model(),
         )
+
+    async def activity_model(self) -> models.GraphActivityResponse:
+        return cast(models.GraphActivityResponse, await super().activity_model())
 
     async def wait_for_published(
         self,
