@@ -34,6 +34,9 @@ Added:
   `{ field: value }` map as well as a list of `PropertyInput`. The server always
   decoded both shapes, but a `TripletCommitFile` or `EntityPropertiesInput`
   model built with a flat map raised a validation error.
+- The generated `SchemaBundleView` has a new `shapes` field: the active SHACL
+  shapes as the validator parsed them. New models: `SchemaShapeView`,
+  `SchemaShapeTarget`, and `SchemaShapeConstraint`.
 
 ## 0.14.0 (2026-09-25)
 

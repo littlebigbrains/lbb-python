@@ -11137,6 +11137,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "shapes": {
+            "description": "Every shape of the active set as the validator parsed it: the root\nshapes that select focus nodes and the property, node, and logical\nshapes they reference. Terms use the N-Triples form the conformance\nreport uses (`<iri>`, `_:label`, `\"lexical\"^^<datatype>`), so a report\nresult's `source_node_shape`, `source_shape`, and `result_path` match a\nshape's `id` and `path` exactly. Empty when no shapes are active.",
+            "items": {
+              "$ref": "#/components/schemas/SchemaShapeView"
+            },
+            "type": "array"
+          },
           "shapes_digest": {
             "type": [
               "string",
@@ -11383,6 +11390,105 @@
           "src_types",
           "dst_types",
           "since_version"
+        ],
+        "type": "object"
+      },
+      "SchemaShapeConstraint": {
+        "description": "One constraint parameter of a shape.",
+        "properties": {
+          "parameter": {
+            "description": "The SHACL parameter's local name: `minCount`, `class`, `datatype`,\n`in`, `pattern`, `node`, `property`, `or`, `qualifiedValueShape`,\n`sparql`, and so on.",
+            "type": "string"
+          },
+          "values": {
+            "description": "The parameter's values. Terms (a class, a datatype, a referenced\nshape, an `sh:in` member) use N-Triples form; counts and lengths are\ndecimal numbers; `pattern` is the regular expression, `nodeKind` the\n`sh:` local name, `languageIn` the tags, and `sparql` the SELECT text.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "parameter"
+        ],
+        "type": "object"
+      },
+      "SchemaShapeTarget": {
+        "description": "How a root shape selects its focus nodes.",
+        "properties": {
+          "kind": {
+            "description": "`class` (`sh:targetClass`, or the shape is itself a class), `node`\n(`sh:targetNode`), `subjects_of` (`sh:targetSubjectsOf`), or\n`objects_of` (`sh:targetObjectsOf`).",
+            "type": "string"
+          },
+          "term": {
+            "description": "The class, node, or predicate term.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "term"
+        ],
+        "type": "object"
+      },
+      "SchemaShapeView": {
+        "description": "One parsed SHACL shape: a node shape, or a property shape when `path` is set.",
+        "properties": {
+          "closed": {
+            "description": "`sh:closed true`: a focus node may carry only the declared properties.",
+            "type": "boolean"
+          },
+          "constraints": {
+            "description": "The constraint parameters, in declaration order.",
+            "items": {
+              "$ref": "#/components/schemas/SchemaShapeConstraint"
+            },
+            "type": "array"
+          },
+          "deactivated": {
+            "description": "`sh:deactivated true`: the validator skips the shape.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "The shape's term, `<iri>` or `_:label`.",
+            "type": "string"
+          },
+          "ignored_properties": {
+            "description": "`sh:ignoredProperties` of a closed shape, as `<iri>` terms.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "message": {
+            "description": "The shape's `sh:message`, when it declares one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "description": "The property path in SPARQL path syntax (`<p>`, `^<p>`, `<p>/<q>`),\nthe form of the report's `result_path`. Absent for a node shape.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "severity": {
+            "description": "`violation`, `warning`, or `info`.",
+            "type": "string"
+          },
+          "targets": {
+            "description": "How the shape selects focus nodes. Only root shapes have targets.",
+            "items": {
+              "$ref": "#/components/schemas/SchemaShapeTarget"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "severity"
         ],
         "type": "object"
       },
