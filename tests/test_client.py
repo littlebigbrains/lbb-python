@@ -1953,6 +1953,57 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(status.published_seq, 7)
         self.assertEqual(dict(seen[0].url.params), {"graph": "perritos"})
 
+    def test_activity_reads_the_graphs_background_work(self) -> None:
+        payload = {
+            "graph_id": "perritos",
+            "epoch": 0,
+            "observed_at_micros": 10,
+            "idle": False,
+            "head_seq": 3,
+            "published_seq": 2,
+            "target_seq": 3,
+            "lag_commits": 1,
+            "publication": "building",
+            "write_limit": {
+                "pending_commits": 1,
+                "max_pending_commits": 256,
+                "pending_bytes": 300,
+                "max_pending_bytes": 4294967296,
+            },
+            "embeddings": [],
+            "items": [
+                {
+                    "id": "graph-import:abc",
+                    "kind": "import",
+                    "state": "running",
+                    "stage": "committing_group",
+                    "subject": None,
+                    "progress": {"done": 100, "total": 400, "unit": "bytes"},
+                    "target_seq": None,
+                    "attempts": 1,
+                    "enqueued_at_micros": 1,
+                    "updated_at_micros": 2,
+                    "finished_at_micros": None,
+                    "error": None,
+                }
+            ],
+        }
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = client.graph("perritos").activity()
+            typed = client.graph("perritos").activity_model()
+        self.assertEqual(raw["items"][0]["kind"], "import")
+        self.assertEqual(typed.publication, model_module.PublicationState.building)
+        self.assertEqual(typed.items[0].progress.total, 400)
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("GET", "/v1/graph/activity"), ("GET", "/v1/graph/activity")],
+        )
+        self.assertEqual(dict(seen[0].url.params), {"graph": "perritos"})
+
 
 class SearchAndEvalsNamespaceTests(unittest.TestCase):
     """The search setup, search, and evals namespaces send the documented requests."""

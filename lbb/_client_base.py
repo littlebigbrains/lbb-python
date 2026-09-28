@@ -1403,6 +1403,20 @@ class _BaseLbbClient:
             "/v1/graph/publication-status",
         )
 
+    def activity(self) -> Any:
+        """Background work on the graph: publication, compaction, query
+        statistics, validation, embeddings, and imports, exports, forks and
+        index upgrades. Needs the server capability ``graph_activity_v1``."""
+        return self._request("GET", "/v1/graph/activity")
+
+    def activity_model(self) -> models.GraphActivityResponse:
+        """Background work validated as ``GraphActivityResponse``."""
+        return self._model_request(
+            models.GraphActivityResponse,
+            "GET",
+            "/v1/graph/activity",
+        )
+
     def list_graphs(self) -> Any:
         """List the graphs under the scoped tenant."""
         return self._request("GET", "/v1/graphs")
@@ -1476,6 +1490,23 @@ class _GraphNamespace:
             models.PublicationStatusResponse,
             "GET",
             "/v1/graph/publication-status",
+            params={"graph": self._graph},
+        )
+
+    def activity(self) -> Any:
+        """Read the background work on this graph."""
+        return self._client._request(
+            "GET",
+            "/v1/graph/activity",
+            params={"graph": self._graph},
+        )
+
+    def activity_model(self) -> models.GraphActivityResponse:
+        """Read the typed background work on this graph."""
+        return self._client._model_request(
+            models.GraphActivityResponse,
+            "GET",
+            "/v1/graph/activity",
             params={"graph": self._graph},
         )
 

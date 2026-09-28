@@ -1,6 +1,311 @@
 {
   "components": {
     "schemas": {
+      "ActivityEmbedding": {
+        "description": "One embedding declared on a class of the graph.",
+        "properties": {
+          "class": {
+            "description": "The class IRI the embedding covers.",
+            "type": "string"
+          },
+          "embedded_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The newest commit the serving version covers."
+              }
+            ]
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityError",
+                "description": "The newest failure of the embed job when it is newer than the\nembedding's last update and the embedding is not ready and current."
+              }
+            ]
+          },
+          "lag_commits": {
+            "description": "Commits the serving version is behind `published_seq`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityProgress",
+                "description": "While `backfilling`: the instances the pass visited, and the class's\ninstance count when one bounded read gives it."
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ActivityEmbeddingState"
+          }
+        },
+        "required": [
+          "name",
+          "class",
+          "state",
+          "lag_commits"
+        ],
+        "type": "object"
+      },
+      "ActivityEmbeddingState": {
+        "enum": [
+          "ready",
+          "backfilling",
+          "behind",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "ActivityError": {
+        "description": "A tenant-safe failure: a stable code and a short message. Unknown\nfailures carry `job_failed`; the item id identifies the job for an\noperator.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryable": {
+            "description": "True when a retry can succeed without a change by the user.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "type": "object"
+      },
+      "ActivityItem": {
+        "description": "One background job.",
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enqueued_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityError",
+                "description": "The failure of a failed item, or the last failure of an item that\nwaits for a retry (`retryable: true`)."
+              }
+            ]
+          },
+          "finished_at_micros": {
+            "description": "Set for succeeded, failed and cancelled items.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "The job id.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ActivityKind"
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActivityProgress"
+              }
+            ]
+          },
+          "stage": {
+            "description": "Machine stage, for example `compacting_truth`, `building`,\n`publishing`, `rdf_partitions_pending`, `admission_deferred`, or the\nimport stage.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ActivityState"
+          },
+          "subject": {
+            "description": "What the job works on beyond the graph: the export id, or the graph a\nfork writes.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The commit the job works toward, when it has one."
+              }
+            ]
+          },
+          "updated_at_micros": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "attempts",
+          "enqueued_at_micros",
+          "updated_at_micros"
+        ],
+        "type": "object"
+      },
+      "ActivityKind": {
+        "enum": [
+          "publish",
+          "compaction",
+          "statistics",
+          "validation",
+          "embeddings",
+          "import",
+          "export",
+          "fork",
+          "index_upgrade"
+        ],
+        "type": "string"
+      },
+      "ActivityProgress": {
+        "description": "How far a job has come. `total` is absent when the job does not know it.",
+        "properties": {
+          "done": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "unit": {
+            "$ref": "#/components/schemas/ActivityUnit"
+          }
+        },
+        "required": [
+          "done",
+          "unit"
+        ],
+        "type": "object"
+      },
+      "ActivityState": {
+        "enum": [
+          "queued",
+          "waiting",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "ActivityUnit": {
+        "enum": [
+          "phases",
+          "partitions",
+          "lines",
+          "bytes",
+          "entities",
+          "commits",
+          "tables"
+        ],
+        "type": "string"
+      },
+      "ActivityWriteLimit": {
+        "description": "The unpublished commits on the graph head against the write path's limits\non them. Past any `soft_*` limit each write waits a little (the wait grows\ntoward the hard limit); at any `max_*` (hard) limit a write is refused with\na retryable `429 ingest_busy` until the index catches up.",
+        "properties": {
+          "max_pending_bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_pending_commits": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_pending_records": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending_bytes": {
+            "description": "What the unpublished commits store for strong reads: their runs'\nbytes, or the decoded text of a commit without runs.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending_commits": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pending_records": {
+            "description": "Statements the unpublished commits assert or retract.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "soft_pending_bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "soft_pending_commits": {
+            "description": "Where writes start to slow down. 0 when the server has no soft limit.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "soft_pending_records": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pending_commits",
+          "max_pending_commits",
+          "pending_bytes",
+          "max_pending_bytes"
+        ],
+        "type": "object"
+      },
       "AddEntityTypeOp": {
         "description": "Declare a new entity type. Idempotent: a no-op if the name already exists.\nPair with `widen_relation` (in the same request, ordered before it) to add\na brand-new type to an existing relation's domain or range.",
         "properties": {
@@ -5294,6 +5599,81 @@
           "v",
           "version",
           "goldens"
+        ],
+        "type": "object"
+      },
+      "GraphActivityResponse": {
+        "description": "The background work on one graph epoch, as `GET /v1/graph/activity`\nreports it.",
+        "properties": {
+          "embeddings": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityEmbedding"
+            },
+            "type": "array"
+          },
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graph_id": {
+            "type": "string"
+          },
+          "head_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "The newest commit written to the graph."
+          },
+          "idle": {
+            "description": "True when no item is queued, waiting or running, `publication` is\n`current`, and every embedding is `ready` with `lag_commits` 0 or\n`failed` (a failed embedding waits for a fix, so no work runs).",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "Queued, waiting and running items first, then finished items. Newest\nfirst in each group. At most 25.",
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "type": "array"
+          },
+          "lag_commits": {
+            "description": "`target_seq - published_seq`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "observed_at_micros": {
+            "description": "Server clock when the route read the state (micros since the Unix\nepoch).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "publication": {
+            "$ref": "#/components/schemas/PublicationState"
+          },
+          "published_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "The newest commit the published RDF generation covers (queries see\nit). 0 before the first generation."
+          },
+          "target_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "The commit the publication works toward."
+          },
+          "write_limit": {
+            "$ref": "#/components/schemas/ActivityWriteLimit",
+            "description": "How close the unpublished commits are to the limit at which the\nserver refuses new writes (retryable `429 ingest_busy`) until the\nindex catches up."
+          }
+        },
+        "required": [
+          "graph_id",
+          "epoch",
+          "observed_at_micros",
+          "idle",
+          "head_seq",
+          "published_seq",
+          "target_seq",
+          "lag_commits",
+          "publication",
+          "write_limit",
+          "embeddings",
+          "items"
         ],
         "type": "object"
       },
@@ -22911,6 +23291,258 @@
         "summary": "Recent eval traces (a request, its query, and the results it got), newest first",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/v1/graph/activity": {
+      "get": {
+        "operationId": "get_v1_graph_activity",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphActivityResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Background work on the graph: publication, compaction, statistics, validation, embeddings, and imports, exports, forks and index upgrades; bounded to 30 object reads per call",
+        "tags": [
+          "graph"
         ]
       }
     },
