@@ -2548,6 +2548,83 @@ class SchemaRelationView(BaseModel):
     stable_id: str
 
 
+class SchemaShapeConstraint(BaseModel):
+    """
+    One constraint parameter of a shape.
+    """
+
+    parameter: Annotated[
+        str,
+        Field(
+            description="The SHACL parameter's local name: `minCount`, `class`, `datatype`,\n`in`, `pattern`, `node`, `property`, `or`, `qualifiedValueShape`,\n`sparql`, and so on."
+        ),
+    ]
+    values: Annotated[
+        list[str] | None,
+        Field(
+            description="The parameter's values. Terms (a class, a datatype, a referenced\nshape, an `sh:in` member) use N-Triples form; counts and lengths are\ndecimal numbers; `pattern` is the regular expression, `nodeKind` the\n`sh:` local name, `languageIn` the tags, and `sparql` the SELECT text."
+        ),
+    ] = None
+
+
+class SchemaShapeTarget(BaseModel):
+    """
+    How a root shape selects its focus nodes.
+    """
+
+    kind: Annotated[
+        str,
+        Field(
+            description='`class` (`sh:targetClass`, or the shape is itself a class), `node`\n(`sh:targetNode`), `subjects_of` (`sh:targetSubjectsOf`), or\n`objects_of` (`sh:targetObjectsOf`).'
+        ),
+    ]
+    term: Annotated[str, Field(description='The class, node, or predicate term.')]
+
+
+class SchemaShapeView(BaseModel):
+    """
+    One parsed SHACL shape: a node shape, or a property shape when `path` is set.
+    """
+
+    closed: Annotated[
+        bool | None,
+        Field(
+            description='`sh:closed true`: a focus node may carry only the declared properties.'
+        ),
+    ] = None
+    constraints: Annotated[
+        list[SchemaShapeConstraint] | None,
+        Field(description='The constraint parameters, in declaration order.'),
+    ] = None
+    deactivated: Annotated[
+        bool | None,
+        Field(description='`sh:deactivated true`: the validator skips the shape.'),
+    ] = None
+    id: Annotated[str, Field(description="The shape's term, `<iri>` or `_:label`.")]
+    ignored_properties: Annotated[
+        list[str] | None,
+        Field(
+            description='`sh:ignoredProperties` of a closed shape, as `<iri>` terms.'
+        ),
+    ] = None
+    message: Annotated[
+        str | None, Field(description="The shape's `sh:message`, when it declares one.")
+    ] = None
+    path: Annotated[
+        str | None,
+        Field(
+            description="The property path in SPARQL path syntax (`<p>`, `^<p>`, `<p>/<q>`),\nthe form of the report's `result_path`. Absent for a node shape."
+        ),
+    ] = None
+    severity: Annotated[str, Field(description='`violation`, `warning`, or `info`.')]
+    targets: Annotated[
+        list[SchemaShapeTarget] | None,
+        Field(
+            description='How the shape selects focus nodes. Only root shapes have targets.'
+        ),
+    ] = None
+
+
 class SchemaSource(BaseModel):
     format: Annotated[
         str | None,
@@ -6143,6 +6220,12 @@ class SchemaBundleView(BaseModel):
             ge=0,
         ),
     ]
+    shapes: Annotated[
+        list[SchemaShapeView] | None,
+        Field(
+            description='Every shape of the active set as the validator parsed it: the root\nshapes that select focus nodes and the property, node, and logical\nshapes they reference. Terms use the N-Triples form the conformance\nreport uses (`<iri>`, `_:label`, `"lexical"^^<datatype>`), so a report\nresult\'s `source_node_shape`, `source_shape`, and `result_path` match a\nshape\'s `id` and `path` exactly. Empty when no shapes are active.'
+        ),
+    ] = None
     shapes_digest: str | None = None
     shapes_version: Annotated[int | None, Field(ge=0)] = None
 
