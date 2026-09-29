@@ -111,7 +111,7 @@
               },
               {
                 "$ref": "#/components/schemas/ActivityError",
-                "description": "The failure of a failed item, or the last failure of an item that\nwaits for a retry (`retryable: true`)."
+                "description": "The failure of a failed item, or the last failure of an item that\nwaits for or runs a retry (`retryable: true`)."
               }
             ]
           },
