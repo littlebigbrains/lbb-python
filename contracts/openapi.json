@@ -7452,6 +7452,36 @@
         ],
         "type": "object"
       },
+      "IdentityMember": {
+        "description": "One record of a [`SuggestedIdentity`], by its import identity.",
+        "properties": {
+          "key": {
+            "description": "Its stable import key (for an integration, `<connection>:<stream>:<id>`).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Its current display name. The `SAME_AS` edge names both endpoints, so\na different name would rename the record.",
+            "type": "string"
+          },
+          "source": {
+            "description": "Display text for the source, for example `hubspot-main contacts`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "description": "The record's class.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "key"
+        ],
+        "type": "object"
+      },
       "IndexLineage": {
         "description": "Typed convergence view over the persisted serving families.",
         "properties": {
@@ -8621,6 +8651,15 @@
       "OntologyChangeSuggestion": {
         "description": "A durable, reviewable ontology change suggestion.",
         "properties": {
+          "accepted_links": {
+            "description": "How many `SAME_AS` edges the accept wrote.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "accepted_ontology_version": {
             "description": "The ontology version the accepted change produced.",
             "format": "int64",
@@ -8634,7 +8673,7 @@
             "$ref": "#/components/schemas/SuggestionAnchor"
           },
           "change": {
-            "description": "The evolve operations that accepting applies, in order.",
+            "description": "The evolve operations that accepting applies, in order. May be empty\nwhen `identities` is not.",
             "items": {
               "$ref": "#/components/schemas/OntologyEvolveOp"
             },
@@ -8690,6 +8729,13 @@
           "graph": {
             "$ref": "#/components/schemas/GraphKey"
           },
+          "identities": {
+            "description": "Records to link as one identity after `change` applies.",
+            "items": {
+              "$ref": "#/components/schemas/SuggestedIdentity"
+            },
+            "type": "array"
+          },
           "impact": {
             "oneOf": [
               {
@@ -8722,6 +8768,16 @@
             "description": "The operations as the producer proposed them, kept when a person edited\n`change` before accepting.",
             "items": {
               "$ref": "#/components/schemas/OntologyEvolveOp"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "proposed_identities": {
+            "description": "The identities as the producer proposed them, kept when a person\nremoved some before accepting.",
+            "items": {
+              "$ref": "#/components/schemas/SuggestedIdentity"
             },
             "type": [
               "array",
@@ -8767,7 +8823,7 @@
         "type": "object"
       },
       "OntologyChangeSuggestionAcceptRequest": {
-        "description": "Accept a suggestion: apply its change to the current ontology.",
+        "description": "Accept a suggestion: apply its change to the current ontology, then link\nits identities.",
         "properties": {
           "author": {
             "type": [
@@ -8804,6 +8860,16 @@
             "description": "Added to the discussion with the acceptance.",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "identities": {
+            "description": "The identities to link, when a person removed some or some members:\neach must be a subset of a proposed identity, with at least two\nmembers. Absent links every proposed identity.",
+            "items": {
+              "$ref": "#/components/schemas/SuggestedIdentity"
+            },
+            "type": [
+              "array",
               "null"
             ]
           }
@@ -8844,7 +8910,7 @@
             ]
           },
           "change": {
-            "description": "1 to 64 evolve operations.",
+            "description": "Up to 64 evolve operations; at least one unless `identities` is set\n(then it may be empty).",
             "items": {
               "$ref": "#/components/schemas/OntologyEvolveOp"
             },
@@ -8860,8 +8926,15 @@
               }
             ]
           },
+          "identities": {
+            "description": "Up to 200 identities to link on accept.",
+            "items": {
+              "$ref": "#/components/schemas/SuggestedIdentity"
+            },
+            "type": "array"
+          },
           "key": {
-            "description": "Idempotency key, at most 255 characters of `[A-Za-z0-9-_.:/]`, for\nexample `hubspot-main/deals`. When absent the server derives one from\n`anchor` and `change`, so the same change is filed once.",
+            "description": "Idempotency key, at most 255 characters of `[A-Za-z0-9-_.:/]`, for\nexample `hubspot-main/deals`. When absent the server derives one from\n`anchor`, `change` and (when set) `identities`, so the same suggestion\nis filed once.",
             "type": [
               "string",
               "null"
@@ -8971,6 +9044,11 @@
           },
           "created_at": {
             "type": "string"
+          },
+          "identity_count": {
+            "description": "How many identities the suggestion links.",
+            "minimum": 0,
+            "type": "integer"
           },
           "key": {
             "type": "string"
@@ -16062,6 +16140,33 @@
         "required": [
           "run",
           "weights"
+        ],
+        "type": "object"
+      },
+      "SuggestedIdentity": {
+        "description": "Records from different sources that describe one real-world thing.\nAccepting links each later member to the first with a `SAME_AS` edge\n(`https://littlebigbrain.com/r/same_as` in SPARQL). Search and SPARQL's\nOWL entailment do not merge linked records yet.",
+        "properties": {
+          "confidence": {
+            "description": "From 0 to 1; 1 for an exact key match.",
+            "format": "float",
+            "type": "number"
+          },
+          "members": {
+            "description": "2 to 10 records; the first is the canonical one.",
+            "items": {
+              "$ref": "#/components/schemas/IdentityMember"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "description": "Why they match, for example `email ada@acme.test`. At most 200\ncharacters.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "members",
+          "reason",
+          "confidence"
         ],
         "type": "object"
       },
