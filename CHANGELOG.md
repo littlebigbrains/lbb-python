@@ -4,6 +4,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Add `ontology.suggestions()`, `suggestion_get()`, `suggestion_create()`,
+  `suggestion_validate()`, `suggestion_accept()`, `suggestion_dismiss()`,
+  `suggestion_supersede()` and `suggestion_comment()` for the
+  `/v1/ontology/suggestions` routes, on `LbbClient` and `AsyncLbbClient`.
 - Remove `ontology.induce()` from `LbbClient` and `AsyncLbbClient`, and the
   induction models. The route answered `429` on every graph and is removed
   from the server.
