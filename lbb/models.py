@@ -4514,6 +4514,26 @@ class WorkflowInstanceCreateRequest(BaseModel):
     workflow_type: str
 
 
+class WorkflowInstanceDeleteRequest(BaseModel):
+    """
+    Delete a message workflow instance, its turns and its history.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    workflow_id: str
+
+
+class WorkflowInstanceDeleteResponse(BaseModel):
+    deleted: Annotated[
+        bool,
+        Field(
+            description='True when this call deleted a live instance. An id with no instance,\na repeated call, or a call that finishes a delete that another call\nbegan answers false.'
+        ),
+    ]
+
+
 class WorkflowInstanceStatus(Enum):
     idle = 'idle'
     queued = 'queued'

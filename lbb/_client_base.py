@@ -1425,6 +1425,22 @@ class _BaseLbbClient:
         """List graphs with a typed ``GraphListResponse``."""
         return self._model_request(models.GraphListResponse, "GET", "/v1/graphs")
 
+    def workflow_delete_instance(
+        self, workflow_id: str
+    ) -> models.WorkflowInstanceDeleteResponse:
+        """Delete a message workflow instance with its turns and history.
+
+        ``deleted`` is false when no instance had the id, or when a retry
+        finished an earlier delete. The id can be created again afterwards.
+        """
+        return self._model_request(
+            models.WorkflowInstanceDeleteResponse,
+            "POST",
+            "/v1/workflows/instances/delete",
+            body={"workflow_id": workflow_id},
+            options={"retry": True},
+        )
+
     def _model_request(
         self,
         model_cls: type[ModelT],

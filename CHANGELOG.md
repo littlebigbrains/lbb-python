@@ -4,6 +4,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Add `workflow_delete_instance(workflow_id)` on `LbbClient` and
+  `AsyncLbbClient` for `POST /v1/workflows/instances/delete`. It deletes a
+  message workflow instance with its turns and history and returns
+  `WorkflowInstanceDeleteResponse`.
 - Add `ontology.suggestions()`, `suggestion_get()`, `suggestion_create()`,
   `suggestion_validate()`, `suggestion_accept()`, `suggestion_dismiss()`,
   `suggestion_supersede()` and `suggestion_comment()` for the
