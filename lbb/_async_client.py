@@ -126,14 +126,6 @@ class _AsyncOntologyNamespace(_OntologyNamespace):
             await super().evolve(body, dry_run=dry_run),
         )
 
-    async def induce(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.OntologyInduceResponse:
-        return cast(
-            models.OntologyInduceResponse,
-            await super().induce(body, options=options),
-        )
-
     async def draft_create(self, body: Body) -> models.OntologyDraft:
         return cast(models.OntologyDraft, await super().draft_create(body))
 

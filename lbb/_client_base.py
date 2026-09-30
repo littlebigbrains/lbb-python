@@ -1807,18 +1807,6 @@ class _OntologyNamespace:
             body=body,
         )
 
-    def induce(
-        self, body: Body, *, options: RequestOptions | None = None
-    ) -> models.OntologyInduceResponse:
-        """Suggest ontology changes from the current graph without mutating it."""
-        return self._client._model_request(
-            models.OntologyInduceResponse,
-            "POST",
-            "/v1/ontology/induce",
-            body=body,
-            options=_read_options(options),
-        )
-
     def draft_create(self, body: Body) -> models.OntologyDraft:
         """Create a durable proposal from samples without ingesting them."""
         return self._client._model_request(
