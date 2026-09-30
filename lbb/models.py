@@ -4285,6 +4285,346 @@ class WidenRelationOp(BaseModel):
     ]
 
 
+class WorkflowCheckpointKind(Enum):
+    step = 'step'
+    sleep = 'sleep'
+    signal = 'signal'
+
+
+class WorkflowClaimRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    activities: list[str]
+    wait_ms: Annotated[
+        int | None, Field(description='Long-poll timeout, capped at ten seconds.', ge=0)
+    ] = None
+    worker: str
+
+
+class WorkflowCompleteRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    claim_next: WorkflowClaimRequest | None = None
+    error: str | None = None
+    output: Any | None = None
+    run_id: str
+    step_id: str
+    token: str
+
+
+class WorkflowHeartbeatRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    run_id: str
+    step_id: str
+    token: str
+
+
+class WorkflowInstanceAction(Enum):
+    pause = 'pause'
+    resume = 'resume'
+    retry = 'retry'
+    skip = 'skip'
+    cancel_turn = 'cancel_turn'
+
+
+class WorkflowInstanceControlRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    action: WorkflowInstanceAction
+    turn: Annotated[
+        int | None,
+        Field(
+            description='Required for retry/skip; prevents a repeated command affecting the next turn.',
+            ge=0,
+        ),
+    ] = None
+    workflow_id: str
+
+
+class WorkflowInstanceCreateRequest(BaseModel):
+    """
+    A stable workflow identity. Each message executes one bounded, version-pinned turn.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: str
+    lease_ms: Annotated[int | None, Field(ge=0)] = None
+    max_attempts: Annotated[int | None, Field(ge=0)] = None
+    state: Any | None = None
+    version: str
+    workflow_type: str
+
+
+class WorkflowInstanceStatus(Enum):
+    idle = 'idle'
+    queued = 'queued'
+    running = 'running'
+    waiting = 'waiting'
+    failed = 'failed'
+    paused = 'paused'
+
+
+class WorkflowMessageRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Caller-assigned idempotency key, retained across history spill and recovery.'
+        ),
+    ]
+    message: Any
+    workflow_id: str
+
+
+class WorkflowOperationKind(Enum):
+    step = 'step'
+    model = 'model'
+    tool = 'tool'
+
+
+class WorkflowSignalRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    name: str
+    run_id: str
+    value: Any
+
+
+class WorkflowState(Enum):
+    running = 'running'
+    succeeded = 'succeeded'
+    failed = 'failed'
+    cancelled = 'cancelled'
+
+
+class WorkflowStatusResponse(BaseModel):
+    active_runs: Annotated[int, Field(ge=0)]
+    archive_error: bool
+    archive_lag_ms: Annotated[int, Field(ge=0)]
+    archived_sequence: Annotated[int, Field(ge=0)]
+    durability: str
+    enabled: bool
+    local_sequence: Annotated[int, Field(ge=0)]
+    pending_archive_bytes: Annotated[int, Field(ge=0)]
+    unarchived_events: Annotated[int, Field(ge=0)]
+
+
+class WorkflowStepCheckpoint(BaseModel):
+    at_ms: int
+    delay_ms: Annotated[int | None, Field(ge=0)] = None
+    key: str
+    kind: WorkflowCheckpointKind
+    output: Any
+    signal_name: str | None = None
+    wake_at_ms: int | None = None
+
+
+class WorkflowStepKind(Enum):
+    activity = 'activity'
+    timer = 'timer'
+    signal = 'signal'
+
+
+class WorkflowStepState(Enum):
+    blocked = 'blocked'
+    ready = 'ready'
+    running = 'running'
+    waiting = 'waiting'
+    succeeded = 'succeeded'
+    failed = 'failed'
+    cancelled = 'cancelled'
+
+
+class WorkflowStepView(BaseModel):
+    attempt: Annotated[int, Field(ge=0)]
+    deadline_ms: int | None = None
+    error: str | None = None
+    id: str
+    output: Any | None = None
+    ready_at_ms: int
+    state: WorkflowStepState
+    worker: str | None = None
+
+
+class WorkflowTask(BaseModel):
+    activity: str
+    attempt: Annotated[int, Field(ge=0)]
+    deadline_ms: int
+    dependency_outputs: dict[str, Any]
+    effect_id: Annotated[
+        str,
+        Field(
+            description='Stable across retries. Pass this to downstream services that support idempotency.'
+        ),
+    ]
+    input: Any
+    run_id: str
+    step_id: str
+    token: str
+    workflow_input: Any
+
+
+class WorkflowTurnCheckpointRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    delay_ms: Annotated[
+        int | None,
+        Field(
+            description='Required for a sleep checkpoint, absent for an ordinary step.',
+            ge=0,
+        ),
+    ] = None
+    key: str
+    kind: WorkflowCheckpointKind
+    output: Any | None = None
+    position: Annotated[int, Field(ge=0)]
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
+class WorkflowTurnContinuation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    message: Any
+
+
+class WorkflowTurnFailRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    error: str
+    non_retryable: bool | None = None
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
+class WorkflowTurnLeaseRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
+class WorkflowTurnOperation(BaseModel):
+    """
+    Worker lease renewal never extends these operation/progress deadlines.
+    """
+
+    attempt: Annotated[int, Field(ge=0)]
+    checkpoint: Any
+    deadline_ms: int
+    details: Any
+    heartbeat_timeout_ms: Annotated[int | None, Field(ge=0)] = None
+    key: str
+    kind: WorkflowOperationKind
+    last_heartbeat_ms: int
+    sequence: Annotated[int, Field(ge=0)]
+    started_at_ms: int
+    timeout_ms: Annotated[int, Field(ge=0)]
+
+
+class WorkflowTurnOperationRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    heartbeat_timeout_ms: Annotated[int | None, Field(ge=0)] = None
+    key: str
+    kind: WorkflowOperationKind
+    position: Annotated[int, Field(ge=0)]
+    timeout_ms: Annotated[int, Field(ge=0)]
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
+class WorkflowTurnProgressRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    checkpoint: Any
+    details: Any
+    key: str
+    sequence: Annotated[
+        int,
+        Field(
+            description='Increasing per operation attempt; exact retries do not extend a deadline.',
+            ge=0,
+        ),
+    ]
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
+class WorkflowTurnSignal(BaseModel):
+    """
+    Signals target one turn, so a delayed approval cannot affect its successor.
+    """
+
+    at_ms: int
+    consumed_by: str | None = None
+    id: str
+    name: str
+    value: Any
+
+
+class WorkflowTurnSignalRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: str
+    name: str
+    turn: Annotated[int, Field(ge=0)]
+    value: Any
+    workflow_id: str
+
+
+class WorkflowTurnStatus(Enum):
+    queued = 'queued'
+    running = 'running'
+    waiting = 'waiting'
+    completed = 'completed'
+    failed = 'failed'
+    cancelled = 'cancelled'
+
+
+class WorkflowTurnWaitSignalRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    key: str
+    name: str
+    position: Annotated[int, Field(ge=0)]
+    timeout_ms: Annotated[int, Field(ge=0)]
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
+class WorkflowWorkerType(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    version: str
+    workflow_type: str
+
+
 class WritePreconditions(BaseModel):
     expected_head_commit_seq: Annotated[int | None, Field(ge=0)] = None
     expected_ontology_version: Annotated[int | None, Field(ge=0)] = None
@@ -6727,6 +7067,92 @@ class VocabularyFilter(BaseModel):
     origins: list[VocabularyOrigin] | None = None
 
 
+class WorkflowClaimResponse(BaseModel):
+    task: WorkflowTask | None = None
+
+
+class WorkflowStep(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    delay_ms: Annotated[int | None, Field(ge=0)] = None
+    depends_on: list[str] | None = None
+    id: str
+    input: Any | None = None
+    kind: WorkflowStepKind
+    max_attempts: Annotated[int | None, Field(ge=0)] = None
+    name: Annotated[
+        str | None,
+        Field(description='Activity name, or signal name for a signal step.'),
+    ] = None
+    retry_delay_ms: Annotated[int | None, Field(ge=0)] = None
+    timeout_ms: Annotated[int | None, Field(ge=0)] = None
+
+
+class WorkflowTurn(BaseModel):
+    attempt: Annotated[int, Field(ge=0)]
+    continued_to: Annotated[int | None, Field(ge=0)] = None
+    created_at_ms: int
+    deadline_ms: int | None = None
+    error: str | None = None
+    finished_at_ms: int | None = None
+    message: Any
+    message_id: str
+    number: Annotated[int, Field(ge=0)]
+    operation: WorkflowTurnOperation | None = None
+    ready_at_ms: int
+    result: Any
+    sequence: Annotated[int, Field(ge=0)]
+    signals: list[WorkflowTurnSignal] | None = None
+    state_after: Any
+    status: WorkflowTurnStatus
+    steps: list[WorkflowStepCheckpoint]
+    updated_at_ms: int
+    version: str
+    worker: str | None = None
+    workflow_id: str
+
+
+class WorkflowTurnClaimRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    wait_ms: Annotated[int | None, Field(ge=0)] = None
+    worker: str
+    workflows: list[WorkflowWorkerType]
+
+
+class WorkflowTurnCompleteRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    continuation: WorkflowTurnContinuation | None = None
+    result: Any | None = None
+    state: Any
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
+class WorkflowTurnHistoryResponse(BaseModel):
+    next_after: Annotated[int | None, Field(ge=0)] = None
+    turns: list[WorkflowTurn]
+
+
+class WorkflowTurnTask(BaseModel):
+    effect_prefix: Annotated[
+        str,
+        Field(
+            description='Stable across attempt retries and recovery; SDK appends the named step key.'
+        ),
+    ]
+    lease_ms: Annotated[int, Field(ge=0)]
+    state: Any
+    token: str
+    turn: WorkflowTurn
+    workflow_type: str
+
+
 class ActivityEmbedding(BaseModel):
     """
     One embedding declared on a class of the graph.
@@ -7520,6 +7946,51 @@ class SparqlFilter1(BaseModel):
     compare: Compare
 
 
+class WorkflowInstance(BaseModel):
+    completed_turns: Annotated[int, Field(ge=0)]
+    created_at_ms: int
+    current_turn: WorkflowTurn | None = None
+    history_through: Annotated[
+        int,
+        Field(
+            description='Completed history safely copied to immutable object storage and evicted locally.',
+            ge=0,
+        ),
+    ]
+    id: str
+    pending_messages: Annotated[int, Field(ge=0)]
+    sequence: Annotated[int, Field(ge=0)]
+    state: Any
+    status: WorkflowInstanceStatus
+    updated_at_ms: int
+    version: str
+    workflow_type: str
+
+
+class WorkflowInstanceListResponse(BaseModel):
+    instances: list[WorkflowInstance]
+    next_after: str | None = None
+
+
+class WorkflowStartRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Stable caller-chosen idempotency key. Reusing it with different input is a conflict.'
+        ),
+    ]
+    input: Any | None = None
+    name: str
+    steps: list[WorkflowStep]
+
+
+class WorkflowTurnClaimResponse(BaseModel):
+    task: WorkflowTurnTask | None = None
+
+
 class CommitResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     conformance: ConformanceReport | None = None
@@ -7705,6 +8176,25 @@ class TripletCommitFile(BaseModel):
             description='The edges to commit. Defaults to empty so a properties-only or\nembeddings-only commit needs no placeholder `"triplets": []`; the commit\nstill requires at least one triplet, embedding, or entity-property overall.'
         ),
     ] = None
+
+
+class WorkflowRun(BaseModel):
+    created_at_ms: int
+    definition: WorkflowStartRequest
+    sequence: Annotated[int, Field(ge=0)]
+    state: WorkflowState
+    steps: list[WorkflowStepView]
+    updated_at_ms: int
+
+
+class WorkflowCompleteResponse(BaseModel):
+    run: WorkflowRun
+    task: WorkflowTask | None = None
+
+
+class WorkflowListResponse(BaseModel):
+    next_after: str | None = None
+    runs: list[WorkflowRun]
 
 
 class EmbeddingSearchRequest(BaseModel):
