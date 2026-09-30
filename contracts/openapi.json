@@ -10089,6 +10089,88 @@
         ],
         "type": "object"
       },
+      "PlannerKeyHistograms": {
+        "description": "The per-(predicate, subject) and per-(predicate, object) count histograms.",
+        "properties": {
+          "bytes": {
+            "description": "Compressed chunk bytes of both artifacts, base and layers.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "layer_bytes": {
+            "description": "Compressed chunk bytes the layers alone occupy.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "layers": {
+            "description": "Delta layers over both artifacts, not yet folded into their bases.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "present": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "present",
+          "layers",
+          "bytes",
+          "layer_bytes"
+        ],
+        "type": "object"
+      },
+      "PlannerPairCounts": {
+        "description": "The pairwise join-count sidecar.",
+        "properties": {
+          "predicates": {
+            "description": "Predicates its count matrix covers.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "present": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "present",
+          "predicates"
+        ],
+        "type": "object"
+      },
+      "PlannerPredicateStats": {
+        "description": "Exact visible counts for one predicate.",
+        "properties": {
+          "distinct_objects": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "distinct_subjects": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "triples": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "iri",
+          "triples",
+          "distinct_subjects",
+          "distinct_objects"
+        ],
+        "type": "object"
+      },
       "PlannerServingDefaults": {
         "description": "Adapter serving default derived from a promoted adapter run (today only\n`extractor`): the LoRA adapter (a path on the model-serving volume) the\nresident model loads per generate call.",
         "properties": {
@@ -10106,6 +10188,113 @@
         "required": [
           "run",
           "adapter"
+        ],
+        "type": "object"
+      },
+      "PlannerStatsResponse": {
+        "description": "The statistics the SPARQL planner reads for the published generation a\nlatest read uses (`GET /v1/graph/planner-stats`). Read from the\ngeneration's manifest and sidecar metadata; never a scan of the graph.",
+        "properties": {
+          "generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "key_histograms": {
+            "$ref": "#/components/schemas/PlannerKeyHistograms"
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` for the next page; `null` on the last page. A cursor\nbelongs to this generation: after a newer one is published it is\nrefused with `400` (`planner-stats cursor expired`), and paging starts\nagain without a cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pair_counts": {
+            "$ref": "#/components/schemas/PlannerPairCounts"
+          },
+          "predicate_count": {
+            "description": "Predicates in the generation, across all pages.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "predicates": {
+            "description": "One page of predicates, by triple count descending, then IRI.",
+            "items": {
+              "$ref": "#/components/schemas/PlannerPredicateStats"
+            },
+            "type": "array"
+          },
+          "published_at": {
+            "description": "When the generation was published (RFC 3339, UTC). `null` while the\npublished manifest records no wall-clock time: its `created_at_micros`\nonly orders generations.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "served_at_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The generation's commit watermark; `null` when the graph has no\npublished generation."
+              }
+            ]
+          },
+          "trigram": {
+            "$ref": "#/components/schemas/PlannerTrigram"
+          },
+          "triple_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "value_order_index": {
+            "$ref": "#/components/schemas/IndexUpgradePlan",
+            "description": "Value-order index coverage: the plan `GET /v1/graph/index-upgrade`\nreports."
+          }
+        },
+        "required": [
+          "triple_count",
+          "predicate_count",
+          "predicates",
+          "key_histograms",
+          "pair_counts",
+          "trigram",
+          "value_order_index"
+        ],
+        "type": "object"
+      },
+      "PlannerTrigram": {
+        "description": "Label-trigram sidecar coverage.",
+        "properties": {
+          "predicates_covered": {
+            "description": "Label predicates in this generation that the sidecar serves. Empty\nunless every PSO table carries a sidecar.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tables": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tables_with_sidecar": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "predicates_covered",
+          "tables",
+          "tables_with_sidecar"
         ],
         "type": "object"
       },
@@ -15483,6 +15672,590 @@
         ],
         "type": "object"
       },
+      "SparqlProfileJoinOrder": {
+        "description": "The order the planner chose for one basic graph pattern (`bgp`) or one\njoin group (`join_group`).",
+        "properties": {
+          "bound_before": {
+            "description": "Variables already bound when the order was chosen (a seeded join).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "evaluations": {
+            "description": "How many times the planner made this same decision in the request,\nfor example once per seed row.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/SparqlProfileJoinStep"
+            },
+            "type": "array"
+          },
+          "steps_total": {
+            "description": "Steps in the decision; `steps` keeps at most 64.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "bound_before",
+          "evaluations",
+          "steps_total",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "SparqlProfileJoinStep": {
+        "description": "One step of a join order, in the order the planner chose.",
+        "properties": {
+          "estimate": {
+            "description": "For `bgp`, the cardinality estimate the planner compared when it chose\nthis pattern, given the variables bound before it. For `join_group`,\nthe child's standalone estimate. Absent when not priced.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pattern": {
+            "description": "The triple pattern (`bgp`) or a short label of the child group\n(`join_group`). Literals are cut at 64 characters and the whole step\nat 512, IRIs included; a cut ends with `…`.",
+            "type": "string"
+          },
+          "rows_after": {
+            "description": "`join_group` only: the rows accumulated after this child folded in.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "pattern"
+        ],
+        "type": "object"
+      },
+      "SparqlProfileJoins": {
+        "description": "Binary-join counters of a profiled request, by strategy.",
+        "properties": {
+          "anchored_intersection_bitmap_steps": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "anchored_intersection_gallop_steps": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "anchored_intersection_merge_steps": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "anchored_intersection_output_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "anchored_intersection_plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "anchored_intersection_posting_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "independent_left_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "independent_output_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "independent_plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "independent_right_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path_frontier_batches": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path_frontier_candidate_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path_frontier_full_scans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path_frontier_probes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "values_batch_candidates": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "values_batch_output_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "values_batch_plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "values_batch_seeds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "independent_plans",
+          "independent_left_rows",
+          "independent_right_rows",
+          "independent_output_rows",
+          "values_batch_plans",
+          "values_batch_seeds",
+          "values_batch_candidates",
+          "values_batch_output_rows",
+          "anchored_intersection_plans",
+          "anchored_intersection_posting_rows",
+          "anchored_intersection_output_rows",
+          "anchored_intersection_merge_steps",
+          "anchored_intersection_gallop_steps",
+          "anchored_intersection_bitmap_steps",
+          "path_frontier_batches",
+          "path_frontier_probes",
+          "path_frontier_full_scans",
+          "path_frontier_candidate_rows"
+        ],
+        "type": "object"
+      },
+      "SparqlProfileOperator": {
+        "description": "One operator kind that ran in a profiled request. Counters an operator\ndoes not keep are zero; its other counters are in `detail`.",
+        "properties": {
+          "detail": {
+            "additionalProperties": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "input_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ms": {
+            "format": "double",
+            "type": "number"
+          },
+          "operator": {
+            "description": "`path_step`, `filter`, `distinct`, `fused_path_result`,\n`result_decode`, `reordered_join`, `scoped_union`, `trigram`,\n`predicate_filter`, `ordered_slice`, `ordered_topk`, `composite_order`,\n`filter_limit`, `encoded_filter`, `filtered_order`,\n`filter_first_topk`, `dynamic_topk`, `filter_block_pruning`,\n`nested_optional`, or `values_fuse`.",
+            "type": "string"
+          },
+          "output_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operator",
+          "plans",
+          "input_rows",
+          "output_rows",
+          "ms"
+        ],
+        "type": "object"
+      },
+      "SparqlProfilePlans": {
+        "description": "Which specialized plans ran, as counts of sub-plans.",
+        "properties": {
+          "histogram_runs": {
+            "description": "Grouped counts answered from the key histograms.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "obj_window": {
+            "description": "Range FILTERs served from an object-value window.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pair_join_stats": {
+            "description": "Two-pattern join counts answered from the pair-count sidecar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "row_reuse": {
+            "description": "Join steps that reused their row buffers.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "small_build": {
+            "description": "Hash joins that built on the smaller pattern side.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "star_merge": {
+            "description": "Star joins evaluated by sort-merge.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "star_prefix": {
+            "description": "BGPs evaluated as a merged star plus the rest.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stats_answered": {
+            "description": "Sub-plans answered from index statistics, reading no data blocks.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "str_byte": {
+            "description": "String tests evaluated on raw dictionary bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "summary_fast_path": {
+            "description": "The published summary answered the query: `hit`, `entailed_hit`, or\n`declined`. Absent on the structured route, which has no fast path.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "typed_adjacency": {
+            "description": "Typed-adjacency grouped counts answered by the batched plan.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stats_answered",
+          "histogram_runs",
+          "typed_adjacency",
+          "pair_join_stats",
+          "obj_window",
+          "star_merge",
+          "star_prefix",
+          "small_build",
+          "str_byte",
+          "row_reuse"
+        ],
+        "type": "object"
+      },
+      "SparqlProfileReads": {
+        "description": "Object reads of a profiled request.",
+        "properties": {
+          "blocks": {
+            "description": "Block and dictionary reads the plan charged.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "budget_trips": {
+            "description": "Times the request read budget stopped the query.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bytes_fetched": {
+            "description": "Stored bytes of the block reads that missed the request block cache.\nSuch a read goes to the node's cache tiers (RAM, NVMe) or to object\nstorage, so a miss is not always an object-storage GET. Zero when the\nrequest block cache is off.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bytes_read": {
+            "description": "Bytes of those reads.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cache_hits": {
+            "description": "Block reads the request block cache served; zero when it is off.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cache_misses": {
+            "description": "Block reads that missed the request block cache; zero when it is off.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "peak_bytes_held": {
+            "description": "The request block cache's largest residency, in bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "blocks",
+          "bytes_read",
+          "bytes_fetched",
+          "cache_hits",
+          "cache_misses",
+          "budget_trips",
+          "peak_bytes_held"
+        ],
+        "type": "object"
+      },
+      "SparqlProfileStage": {
+        "description": "One timed stage of a profiled request.",
+        "properties": {
+          "ms": {
+            "format": "double",
+            "type": "number"
+          },
+          "stage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "ms"
+        ],
+        "type": "object"
+      },
+      "SparqlProfileWcoj": {
+        "description": "Worst-case-optimal join counters of a profiled request.",
+        "properties": {
+          "anti_join_plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "build_ms": {
+            "format": "double",
+            "type": "number"
+          },
+          "candidates": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "emitted": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "factorized_plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "factorized_star_plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "join_ms": {
+            "format": "double",
+            "type": "number"
+          },
+          "membership_checks": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "path_join_plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "plans": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relation_build_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relation_cache_builds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relation_cache_hits": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relation_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plans",
+          "factorized_plans",
+          "factorized_star_plans",
+          "anti_join_plans",
+          "path_join_plans",
+          "relation_rows",
+          "relation_build_rows",
+          "relation_cache_hits",
+          "relation_cache_builds",
+          "candidates",
+          "membership_checks",
+          "emitted",
+          "build_ms",
+          "join_ms"
+        ],
+        "type": "object"
+      },
+      "SparqlQueryProfile": {
+        "description": "What the server measured while it answered one profiled SPARQL request.\nIt describes that request only. Times are milliseconds of wall time.",
+        "properties": {
+          "execution_ms": {
+            "description": "The query executor alone.",
+            "format": "double",
+            "type": "number"
+          },
+          "filter_type_errors": {
+            "description": "FILTER conditions dropped by a type error (for example a comparison\nbetween datatypes with no defined order).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "join_orders": {
+            "description": "The order the planner chose for each basic graph pattern and join\ngroup, with its estimates. At most 64 records of 64 steps each.",
+            "items": {
+              "$ref": "#/components/schemas/SparqlProfileJoinOrder"
+            },
+            "type": "array"
+          },
+          "join_orders_dropped": {
+            "description": "Distinct join orders past the 64-record bound.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "joins": {
+            "$ref": "#/components/schemas/SparqlProfileJoins"
+          },
+          "operators": {
+            "description": "Operators that ran, with the rows they took and produced.",
+            "items": {
+              "$ref": "#/components/schemas/SparqlProfileOperator"
+            },
+            "type": "array"
+          },
+          "plans": {
+            "$ref": "#/components/schemas/SparqlProfilePlans"
+          },
+          "reads": {
+            "$ref": "#/components/schemas/SparqlProfileReads"
+          },
+          "result_cache": {
+            "description": "The result-cache outcome. Always `bypassed`: a profiled request never\nreads or fills the cache.",
+            "type": "string"
+          },
+          "rows": {
+            "description": "Rows in this answer, after `offset`/`limit`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rows_total": {
+            "description": "Rows before `offset`/`limit`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stages": {
+            "description": "Stage timings in order. The text route reports `resolve_snapshot`,\n`parse_rewrite`, `execute` and `serialize`; the structured route\nreports `resolve_snapshot`, `lower`, `execute` and `decode`.",
+            "items": {
+              "$ref": "#/components/schemas/SparqlProfileStage"
+            },
+            "type": "array"
+          },
+          "total_ms": {
+            "description": "The whole request inside the graph store, snapshot resolution included.",
+            "format": "double",
+            "type": "number"
+          },
+          "trigram": {
+            "description": "The label-trigram decision for a string FILTER: `used`, a decline\nreason (`unsupported`, `no_sidecar`, `predicate_not_covered`,\n`short_needle`, `or_chain`, `candidate_cap`, `not_selective`,\n`live_delta`, `read_failed`), or absent when the query had no string\ntest the index could serve.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wcoj": {
+            "$ref": "#/components/schemas/SparqlProfileWcoj"
+          }
+        },
+        "required": [
+          "total_ms",
+          "execution_ms",
+          "rows",
+          "rows_total",
+          "result_cache",
+          "stages",
+          "plans",
+          "reads",
+          "joins",
+          "operators",
+          "wcoj",
+          "filter_type_errors",
+          "join_orders",
+          "join_orders_dropped"
+        ],
+        "type": "object"
+      },
       "SparqlScalar": {
         "description": "A scalar aggregate result value. `null` is an empty AVG/MIN/MAX (no numeric\nrows).",
         "oneOf": [
@@ -15652,6 +16425,10 @@
             },
             "type": "array"
           },
+          "profile": {
+            "description": "Return what the server measured while it answered this request in\n`profile`. A profiled request never reads or fills the result cache,\nso the profile always describes an execution.",
+            "type": "boolean"
+          },
           "reason": {
             "description": "Not available on the published SPARQL surface: a graph's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error.",
             "type": "boolean"
@@ -15688,6 +16465,17 @@
               "$ref": "#/components/schemas/SparqlGroup"
             },
             "type": "array"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SparqlQueryProfile",
+                "description": "What the server measured for this request. Present only when the\nrequest asked for `profile`."
+              }
+            ]
           },
           "row_page": {
             "$ref": "#/components/schemas/RowPage"
@@ -15824,6 +16612,10 @@
               "null"
             ]
           },
+          "profile": {
+            "description": "Return what the server measured while it answered this request in\n`profile`. A profiled request never reads or fills the result cache,\nso the profile always describes an execution.",
+            "type": "boolean"
+          },
           "query": {
             "description": "The SPARQL query text (SELECT or ASK).",
             "type": "string"
@@ -15853,6 +16645,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SparqlQueryProfile",
+                "description": "What the server measured for this request. Present only when the\nrequest asked for `profile`."
+              }
             ]
           },
           "results": {
@@ -30245,6 +31048,276 @@
         ]
       }
     },
+    "/v1/graph/planner-stats": {
+      "get": {
+        "operationId": "get_v1_graph_planner_stats",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Predicates per page, 1 to 500 (default 200)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque cursor from the previous page; refused with 400 once a newer generation is published",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlannerStatsResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "SPARQL planner statistics of the published generation latest reads use: per-predicate counts, histogram, pair-count and trigram sidecars, value-order index coverage; reads manifests and sidecar metadata only",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
     "/v1/graph/publication-status": {
       "get": {
         "operationId": "get_v1_graph_publication_status",
@@ -42101,7 +43174,7 @@
             "bearer": []
           }
         ],
-        "summary": "SPARQL-subset SELECT/ASK query (BGP WHERE, projection, DISTINCT, LIMIT/OFFSET)",
+        "summary": "SPARQL-subset SELECT/ASK query (BGP WHERE, projection, DISTINCT, LIMIT/OFFSET); `profile: true` adds the server's measurements",
         "tags": [
           "query"
         ]
@@ -42372,7 +43445,7 @@
             "bearer": []
           }
         ],
-        "summary": "SPARQL 1.1 query from text (SELECT/ASK) over the live graph -> SPARQL Results JSON",
+        "summary": "SPARQL 1.1 query from text (SELECT/ASK) over the live graph -> SPARQL Results JSON; `profile: true` adds the server's measurements and bypasses the result cache",
         "tags": [
           "query"
         ]

@@ -1854,6 +1854,41 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(results.snapshot, snapshot)
         self.assertEqual(results.rows(), [{"s": "x"}])
 
+    def test_sparql_profile_asks_for_and_exposes_the_measurements(self) -> None:
+        seen: list[httpx.Request] = []
+        profile = {"total_ms": 2.5, "result_cache": "bypassed", "join_orders": []}
+        envelope = {
+            "results": json.dumps({"head": {"vars": []}, "results": {"bindings": []}}),
+            "profile": profile,
+        }
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": envelope})
+        ) as client:
+            profiled = client.sparql("SELECT * WHERE { ?s ?p ?o }", profile=True)
+            client.query.sparql("SELECT * WHERE { ?s ?p ?o }")
+        self.assertEqual(json.loads(seen[0].content)["profile"], True)
+        self.assertNotIn("profile", json.loads(seen[1].content))
+        self.assertEqual(profiled.profile, profile)
+
+    def test_planner_stats_reads_one_page(self) -> None:
+        seen: list[httpx.Request] = []
+        stats = {"served_at_seq": None, "predicates": [], "next_cursor": None}
+        with LbbClient(
+            "http://h", graph="main", transport=capturing_transport(seen, {"json": stats})
+        ) as client:
+            self.assertEqual(client.planner_stats(), stats)
+            client.planner_stats(cursor="3a", limit=50)
+            client.graph("other").planner_stats(limit=1)
+        self.assertEqual(
+            [str(request.url) for request in seen],
+            [
+                "http://h/v1/graph/planner-stats?graph=main",
+                "http://h/v1/graph/planner-stats?graph=main&cursor=3a&limit=50",
+                "http://h/v1/graph/planner-stats?graph=other&limit=1",
+            ],
+        )
+        self.assertEqual({request.method for request in seen}, {"GET"})
+
     def test_sparql_retries_read_your_writes_pending_until_the_floor_is_served(
         self,
     ) -> None:

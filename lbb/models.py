@@ -1972,6 +1972,53 @@ class OntologyTermView(BaseModel):
     name: str
 
 
+class PlannerKeyHistograms(BaseModel):
+    """
+    The per-(predicate, subject) and per-(predicate, object) count histograms.
+    """
+
+    bytes: Annotated[
+        int,
+        Field(
+            description='Compressed chunk bytes of both artifacts, base and layers.',
+            ge=0,
+        ),
+    ]
+    layer_bytes: Annotated[
+        int, Field(description='Compressed chunk bytes the layers alone occupy.', ge=0)
+    ]
+    layers: Annotated[
+        int,
+        Field(
+            description='Delta layers over both artifacts, not yet folded into their bases.',
+            ge=0,
+        ),
+    ]
+    present: bool
+
+
+class PlannerPairCounts(BaseModel):
+    """
+    The pairwise join-count sidecar.
+    """
+
+    predicates: Annotated[
+        int, Field(description='Predicates its count matrix covers.', ge=0)
+    ]
+    present: bool
+
+
+class PlannerPredicateStats(BaseModel):
+    """
+    Exact visible counts for one predicate.
+    """
+
+    distinct_objects: Annotated[int, Field(ge=0)]
+    distinct_subjects: Annotated[int, Field(ge=0)]
+    iri: str
+    triples: Annotated[int, Field(ge=0)]
+
+
 class PlannerServingDefaults(BaseModel):
     """
     Adapter serving default derived from a promoted adapter run (today only
@@ -1989,6 +2036,21 @@ class PlannerServingDefaults(BaseModel):
         int,
         Field(description='The promoted registry run this adapter came from.', ge=0),
     ]
+
+
+class PlannerTrigram(BaseModel):
+    """
+    Label-trigram sidecar coverage.
+    """
+
+    predicates_covered: Annotated[
+        list[str],
+        Field(
+            description='Label predicates in this generation that the sidecar serves. Empty\nunless every PSO table carries a sidecar.'
+        ),
+    ]
+    tables: Annotated[int, Field(ge=0)]
+    tables_with_sidecar: Annotated[int, Field(ge=0)]
 
 
 class PlattCalibration(BaseModel):
@@ -3632,6 +3694,205 @@ class SparqlOrderBy(BaseModel):
     var: str
 
 
+class SparqlProfileJoinStep(BaseModel):
+    """
+    One step of a join order, in the order the planner chose.
+    """
+
+    estimate: Annotated[
+        int | None,
+        Field(
+            description="For `bgp`, the cardinality estimate the planner compared when it chose\nthis pattern, given the variables bound before it. For `join_group`,\nthe child's standalone estimate. Absent when not priced.",
+            ge=0,
+        ),
+    ] = None
+    pattern: Annotated[
+        str,
+        Field(
+            description='The triple pattern (`bgp`) or a short label of the child group\n(`join_group`). Literals are cut at 64 characters and the whole step\nat 512, IRIs included; a cut ends with `…`.'
+        ),
+    ]
+    rows_after: Annotated[
+        int | None,
+        Field(
+            description='`join_group` only: the rows accumulated after this child folded in.',
+            ge=0,
+        ),
+    ] = None
+
+
+class SparqlProfileJoins(BaseModel):
+    """
+    Binary-join counters of a profiled request, by strategy.
+    """
+
+    anchored_intersection_bitmap_steps: Annotated[int, Field(ge=0)]
+    anchored_intersection_gallop_steps: Annotated[int, Field(ge=0)]
+    anchored_intersection_merge_steps: Annotated[int, Field(ge=0)]
+    anchored_intersection_output_rows: Annotated[int, Field(ge=0)]
+    anchored_intersection_plans: Annotated[int, Field(ge=0)]
+    anchored_intersection_posting_rows: Annotated[int, Field(ge=0)]
+    independent_left_rows: Annotated[int, Field(ge=0)]
+    independent_output_rows: Annotated[int, Field(ge=0)]
+    independent_plans: Annotated[int, Field(ge=0)]
+    independent_right_rows: Annotated[int, Field(ge=0)]
+    path_frontier_batches: Annotated[int, Field(ge=0)]
+    path_frontier_candidate_rows: Annotated[int, Field(ge=0)]
+    path_frontier_full_scans: Annotated[int, Field(ge=0)]
+    path_frontier_probes: Annotated[int, Field(ge=0)]
+    values_batch_candidates: Annotated[int, Field(ge=0)]
+    values_batch_output_rows: Annotated[int, Field(ge=0)]
+    values_batch_plans: Annotated[int, Field(ge=0)]
+    values_batch_seeds: Annotated[int, Field(ge=0)]
+
+
+class SparqlProfileOperator(BaseModel):
+    """
+    One operator kind that ran in a profiled request. Counters an operator
+    does not keep are zero; its other counters are in `detail`.
+    """
+
+    detail: dict[str, int] | None = None
+    input_rows: Annotated[int, Field(ge=0)]
+    ms: float
+    operator: Annotated[
+        str,
+        Field(
+            description='`path_step`, `filter`, `distinct`, `fused_path_result`,\n`result_decode`, `reordered_join`, `scoped_union`, `trigram`,\n`predicate_filter`, `ordered_slice`, `ordered_topk`, `composite_order`,\n`filter_limit`, `encoded_filter`, `filtered_order`,\n`filter_first_topk`, `dynamic_topk`, `filter_block_pruning`,\n`nested_optional`, or `values_fuse`.'
+        ),
+    ]
+    output_rows: Annotated[int, Field(ge=0)]
+    plans: Annotated[int, Field(ge=0)]
+
+
+class SparqlProfilePlans(BaseModel):
+    """
+    Which specialized plans ran, as counts of sub-plans.
+    """
+
+    histogram_runs: Annotated[
+        int, Field(description='Grouped counts answered from the key histograms.', ge=0)
+    ]
+    obj_window: Annotated[
+        int,
+        Field(description='Range FILTERs served from an object-value window.', ge=0),
+    ]
+    pair_join_stats: Annotated[
+        int,
+        Field(
+            description='Two-pattern join counts answered from the pair-count sidecar.',
+            ge=0,
+        ),
+    ]
+    row_reuse: Annotated[
+        int, Field(description='Join steps that reused their row buffers.', ge=0)
+    ]
+    small_build: Annotated[
+        int,
+        Field(description='Hash joins that built on the smaller pattern side.', ge=0),
+    ]
+    star_merge: Annotated[
+        int, Field(description='Star joins evaluated by sort-merge.', ge=0)
+    ]
+    star_prefix: Annotated[
+        int, Field(description='BGPs evaluated as a merged star plus the rest.', ge=0)
+    ]
+    stats_answered: Annotated[
+        int,
+        Field(
+            description='Sub-plans answered from index statistics, reading no data blocks.',
+            ge=0,
+        ),
+    ]
+    str_byte: Annotated[
+        int, Field(description='String tests evaluated on raw dictionary bytes.', ge=0)
+    ]
+    summary_fast_path: Annotated[
+        str | None,
+        Field(
+            description='The published summary answered the query: `hit`, `entailed_hit`, or\n`declined`. Absent on the structured route, which has no fast path.'
+        ),
+    ] = None
+    typed_adjacency: Annotated[
+        int,
+        Field(
+            description='Typed-adjacency grouped counts answered by the batched plan.',
+            ge=0,
+        ),
+    ]
+
+
+class SparqlProfileReads(BaseModel):
+    """
+    Object reads of a profiled request.
+    """
+
+    blocks: Annotated[
+        int, Field(description='Block and dictionary reads the plan charged.', ge=0)
+    ]
+    budget_trips: Annotated[
+        int, Field(description='Times the request read budget stopped the query.', ge=0)
+    ]
+    bytes_fetched: Annotated[
+        int,
+        Field(
+            description="Stored bytes of the block reads that missed the request block cache.\nSuch a read goes to the node's cache tiers (RAM, NVMe) or to object\nstorage, so a miss is not always an object-storage GET. Zero when the\nrequest block cache is off.",
+            ge=0,
+        ),
+    ]
+    bytes_read: Annotated[int, Field(description='Bytes of those reads.', ge=0)]
+    cache_hits: Annotated[
+        int,
+        Field(
+            description='Block reads the request block cache served; zero when it is off.',
+            ge=0,
+        ),
+    ]
+    cache_misses: Annotated[
+        int,
+        Field(
+            description='Block reads that missed the request block cache; zero when it is off.',
+            ge=0,
+        ),
+    ]
+    peak_bytes_held: Annotated[
+        int,
+        Field(
+            description="The request block cache's largest residency, in bytes.", ge=0
+        ),
+    ]
+
+
+class SparqlProfileStage(BaseModel):
+    """
+    One timed stage of a profiled request.
+    """
+
+    ms: float
+    stage: str
+
+
+class SparqlProfileWcoj(BaseModel):
+    """
+    Worst-case-optimal join counters of a profiled request.
+    """
+
+    anti_join_plans: Annotated[int, Field(ge=0)]
+    build_ms: float
+    candidates: Annotated[int, Field(ge=0)]
+    emitted: Annotated[int, Field(ge=0)]
+    factorized_plans: Annotated[int, Field(ge=0)]
+    factorized_star_plans: Annotated[int, Field(ge=0)]
+    join_ms: float
+    membership_checks: Annotated[int, Field(ge=0)]
+    path_join_plans: Annotated[int, Field(ge=0)]
+    plans: Annotated[int, Field(ge=0)]
+    relation_build_rows: Annotated[int, Field(ge=0)]
+    relation_cache_builds: Annotated[int, Field(ge=0)]
+    relation_cache_hits: Annotated[int, Field(ge=0)]
+    relation_rows: Annotated[int, Field(ge=0)]
+
+
 class SparqlScalar1(BaseModel):
     """
     A scalar aggregate result value. `null` is an empty AVG/MIN/MAX (no numeric
@@ -3723,6 +3984,12 @@ class SparqlTextRequest(BaseModel):
         int | None,
         Field(description='Skip this many result rows before `limit`.', ge=0),
     ] = None
+    profile: Annotated[
+        bool | None,
+        Field(
+            description='Return what the server measured while it answered this request in\n`profile`. A profiled request never reads or fills the result cache,\nso the profile always describes an execution.'
+        ),
+    ] = None
     query: Annotated[str, Field(description='The SPARQL query text (SELECT or ASK).')]
     reason: Annotated[
         bool | None,
@@ -3734,33 +4001,6 @@ class SparqlTextRequest(BaseModel):
         str | None,
         Field(
             description="The user's words behind this query, when the caller has them. When\npresent the server records an eval trace and returns its `trace_id`,\nso the caller can label the result valid or not (managed evals)."
-        ),
-    ] = None
-
-
-class SparqlTextResponse(BaseModel):
-    """
-    Result of a [`SparqlTextRequest`]: the SPARQL 1.1 Query Results JSON document,
-    carried verbatim as a string (the engine already serializes it to the
-    standard `{ "head": …, "results": … }` / `{ "head": …, "boolean": … }`
-    shape). Clients parse `results` as JSON.
-    """
-
-    next_cursor: Annotated[
-        str | None,
-        Field(
-            description="Continuation for the query's inner ordered window. OPTIONAL enrichment\ncan return more rows than that window. Absent when exhausted or when\ncursor pagination was not requested; a full final page may yield a\ncontinuation whose following page is empty."
-        ),
-    ] = None
-    results: Annotated[
-        str, Field(description='SPARQL 1.1 Query Results JSON, serialized.')
-    ]
-    row_page: RowPage
-    snapshot: SnapshotView | None = None
-    trace_id: Annotated[
-        str | None,
-        Field(
-            description='The eval trace recorded for this query, present only when the request\ncarried `request`. Label it with `POST /v1/evals/label?trace=<id>`.'
         ),
     ] = None
 
@@ -6427,6 +6667,48 @@ class OntologyView(BaseModel):
     ] = None
 
 
+class PlannerStatsResponse(BaseModel):
+    """
+    The statistics the SPARQL planner reads for the published generation a
+    latest read uses (`GET /v1/graph/planner-stats`). Read from the
+    generation's manifest and sidecar metadata; never a scan of the graph.
+    """
+
+    generation: Annotated[int | None, Field(ge=0)] = None
+    key_histograms: PlannerKeyHistograms
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; `null` on the last page. A cursor\nbelongs to this generation: after a newer one is published it is\nrefused with `400` (`planner-stats cursor expired`), and paging starts\nagain without a cursor.'
+        ),
+    ] = None
+    pair_counts: PlannerPairCounts
+    predicate_count: Annotated[
+        int, Field(description='Predicates in the generation, across all pages.', ge=0)
+    ]
+    predicates: Annotated[
+        list[PlannerPredicateStats],
+        Field(
+            description='One page of predicates, by triple count descending, then IRI.'
+        ),
+    ]
+    published_at: Annotated[
+        str | None,
+        Field(
+            description='When the generation was published (RFC 3339, UTC). `null` while the\npublished manifest records no wall-clock time: its `created_at_micros`\nonly orders generations.'
+        ),
+    ] = None
+    served_at_seq: CommitSeq | None = None
+    trigram: PlannerTrigram
+    triple_count: Annotated[int, Field(ge=0)]
+    value_order_index: Annotated[
+        IndexUpgradePlan,
+        Field(
+            description='Value-order index coverage: the plan `GET /v1/graph/index-upgrade`\nreports.'
+        ),
+    ]
+
+
 class PropertyInput(BaseModel):
     """
     One literal property: an ontology field name plus a typed value.
@@ -7132,6 +7414,93 @@ class SparqlGroup(BaseModel):
     ] = None
 
 
+class SparqlProfileJoinOrder(BaseModel):
+    """
+    The order the planner chose for one basic graph pattern (`bgp`) or one
+    join group (`join_group`).
+    """
+
+    bound_before: Annotated[
+        list[str],
+        Field(
+            description='Variables already bound when the order was chosen (a seeded join).'
+        ),
+    ]
+    evaluations: Annotated[
+        int,
+        Field(
+            description='How many times the planner made this same decision in the request,\nfor example once per seed row.',
+            ge=0,
+        ),
+    ]
+    kind: str
+    steps: list[SparqlProfileJoinStep]
+    steps_total: Annotated[
+        int, Field(description='Steps in the decision; `steps` keeps at most 64.', ge=0)
+    ]
+
+
+class SparqlQueryProfile(BaseModel):
+    """
+    What the server measured while it answered one profiled SPARQL request.
+    It describes that request only. Times are milliseconds of wall time.
+    """
+
+    execution_ms: Annotated[float, Field(description='The query executor alone.')]
+    filter_type_errors: Annotated[
+        int,
+        Field(
+            description='FILTER conditions dropped by a type error (for example a comparison\nbetween datatypes with no defined order).',
+            ge=0,
+        ),
+    ]
+    join_orders: Annotated[
+        list[SparqlProfileJoinOrder],
+        Field(
+            description='The order the planner chose for each basic graph pattern and join\ngroup, with its estimates. At most 64 records of 64 steps each.'
+        ),
+    ]
+    join_orders_dropped: Annotated[
+        int, Field(description='Distinct join orders past the 64-record bound.', ge=0)
+    ]
+    joins: SparqlProfileJoins
+    operators: Annotated[
+        list[SparqlProfileOperator],
+        Field(description='Operators that ran, with the rows they took and produced.'),
+    ]
+    plans: SparqlProfilePlans
+    reads: SparqlProfileReads
+    result_cache: Annotated[
+        str,
+        Field(
+            description='The result-cache outcome. Always `bypassed`: a profiled request never\nreads or fills the cache.'
+        ),
+    ]
+    rows: Annotated[
+        int, Field(description='Rows in this answer, after `offset`/`limit`.', ge=0)
+    ]
+    rows_total: Annotated[int, Field(description='Rows before `offset`/`limit`.', ge=0)]
+    stages: Annotated[
+        list[SparqlProfileStage],
+        Field(
+            description='Stage timings in order. The text route reports `resolve_snapshot`,\n`parse_rewrite`, `execute` and `serialize`; the structured route\nreports `resolve_snapshot`, `lower`, `execute` and `decode`.'
+        ),
+    ]
+    total_ms: Annotated[
+        float,
+        Field(
+            description='The whole request inside the graph store, snapshot resolution included.'
+        ),
+    ]
+    trigram: Annotated[
+        str | None,
+        Field(
+            description='The label-trigram decision for a string FILTER: `used`, a decline\nreason (`unsupported`, `no_sidecar`, `predicate_not_covered`,\n`short_needle`, `or_chain`, `candidate_cap`, `not_selective`,\n`live_delta`, `read_failed`), or absent when the query had no string\ntest the index could serve.'
+        ),
+    ] = None
+    wcoj: SparqlProfileWcoj
+
+
 class SparqlSelectResponse(BaseModel):
     """
     Result of a `SparqlSelectRequest`. For SELECT, `vars` is the projected head
@@ -7150,6 +7519,7 @@ class SparqlSelectResponse(BaseModel):
             description='Aggregated/grouped result rows. Empty unless the query aggregates.'
         ),
     ] = None
+    profile: SparqlQueryProfile | None = None
     row_page: RowPage
     snapshot: SnapshotView
     solutions: Annotated[
@@ -7192,6 +7562,34 @@ class SparqlTerm3(BaseModel):
         | SparqlValue6,
         Field(description='A literal constant.'),
     ]
+
+
+class SparqlTextResponse(BaseModel):
+    """
+    Result of a [`SparqlTextRequest`]: the SPARQL 1.1 Query Results JSON document,
+    carried verbatim as a string (the engine already serializes it to the
+    standard `{ "head": …, "results": … }` / `{ "head": …, "boolean": … }`
+    shape). Clients parse `results` as JSON.
+    """
+
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description="Continuation for the query's inner ordered window. OPTIONAL enrichment\ncan return more rows than that window. Absent when exhausted or when\ncursor pagination was not requested; a full final page may yield a\ncontinuation whose following page is empty."
+        ),
+    ] = None
+    profile: SparqlQueryProfile | None = None
+    results: Annotated[
+        str, Field(description='SPARQL 1.1 Query Results JSON, serialized.')
+    ]
+    row_page: RowPage
+    snapshot: SnapshotView | None = None
+    trace_id: Annotated[
+        str | None,
+        Field(
+            description='The eval trace recorded for this query, present only when the request\ncarried `request`. Label it with `POST /v1/evals/label?trace=<id>`.'
+        ),
+    ] = None
 
 
 class StateEntry(BaseModel):
@@ -9274,6 +9672,12 @@ class SparqlSelectRequest(BaseModel):
             description='WHERE: the conjunctive basic graph pattern (shares the analytic engine).'
         ),
     ]
+    profile: Annotated[
+        bool | None,
+        Field(
+            description='Return what the server measured while it answered this request in\n`profile`. A profiled request never reads or fills the result cache,\nso the profile always describes an execution.'
+        ),
+    ] = None
     reason: Annotated[
         bool | None,
         Field(

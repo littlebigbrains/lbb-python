@@ -8,6 +8,12 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   `AsyncLbbClient` for `POST /v1/workflows/instances/delete`. It deletes a
   message workflow instance with its turns and history and returns
   `WorkflowInstanceDeleteResponse`.
+- Add `profile=True` to `sparql()` on `LbbClient`, `AsyncLbbClient` and their
+  `query` namespaces. `SparqlResults.profile` holds the server's measurements:
+  timings, reads, plan counters and the join order with estimates.
+- Add `planner_stats(cursor=None, limit=None)`, `planner_stats_model()` and
+  `graph(name).planner_stats()` for `GET /v1/graph/planner-stats`, and the
+  generated `PlannerStatsResponse` and `SparqlQueryProfile` models.
 - Add `ontology.suggestions()`, `suggestion_get()`, `suggestion_create()`,
   `suggestion_validate()`, `suggestion_accept()`, `suggestion_dismiss()`,
   `suggestion_supersede()` and `suggestion_comment()` for the

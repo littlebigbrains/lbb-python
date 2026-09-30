@@ -256,6 +256,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
+        profile: bool = False,
     ) -> SparqlResults:
         return cast(
             SparqlResults,
@@ -269,6 +270,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
                 consistency=consistency,
                 min_indexed_seq=min_indexed_seq,
                 as_of_commit_seq=as_of_commit_seq,
+                profile=profile,
             ),
         )
 
@@ -797,6 +799,14 @@ class AsyncLbbClient(_BaseLbbClient):
             await super().schema_summary_model(),
         )
 
+    async def planner_stats_model(
+        self, *, cursor: str | None = None, limit: int | None = None
+    ) -> models.PlannerStatsResponse:
+        return cast(
+            models.PlannerStatsResponse,
+            await super().planner_stats_model(cursor=cursor, limit=limit),
+        )
+
     async def list_graphs_model(self) -> models.GraphListResponse:
         return cast(models.GraphListResponse, await super().list_graphs_model())
 
@@ -959,6 +969,7 @@ class AsyncLbbClient(_BaseLbbClient):
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
+        profile: bool = False,
     ) -> SparqlResults:
         """Async :meth:`LbbClient.sparql`: run SPARQL text, return parsed results."""
         envelope = await self._sparql_text_envelope(
@@ -971,6 +982,7 @@ class AsyncLbbClient(_BaseLbbClient):
             consistency=consistency,
             min_indexed_seq=min_indexed_seq,
             as_of_commit_seq=as_of_commit_seq,
+            profile=profile,
         )
         return SparqlResults.from_envelope(envelope)
 

@@ -134,6 +134,7 @@ class _SyncQueryNamespace(_QueryNamespace):
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
+        profile: bool = False,
     ) -> SparqlResults:
         return cast(
             SparqlResults,
@@ -147,6 +148,7 @@ class _SyncQueryNamespace(_QueryNamespace):
                 consistency=consistency,
                 min_indexed_seq=min_indexed_seq,
                 as_of_commit_seq=as_of_commit_seq,
+                profile=profile,
             ),
         )
 
@@ -531,6 +533,7 @@ class LbbClient(_BaseLbbClient):
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
+        profile: bool = False,
     ) -> SparqlResults:
         """Run a SPARQL 1.1 text query (SELECT or ASK) and return parsed results.
 
@@ -564,6 +567,7 @@ class LbbClient(_BaseLbbClient):
             consistency=consistency,
             min_indexed_seq=min_indexed_seq,
             as_of_commit_seq=as_of_commit_seq,
+            profile=profile,
         )
         return SparqlResults.from_envelope(envelope)
 
