@@ -37,6 +37,7 @@ from lbb.models import (
     SparqlSelectResponse,
     TrainModelJobStatusResponse,
     TripletCommitFile,
+    WorkflowInstanceDeleteResponse,
 )
 
 SNAPSHOT = {"commit_seq": 7, "compacted_seq": 7}
@@ -1161,6 +1162,23 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(str(seen[0].url).split("?")[0], "http://h/v1/graph/delete")
         self.assertEqual(dict(seen[0].url.params), {"graph": "main", "confirm": "main"})
 
+    def test_workflow_instance_deletion_is_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="crm",
+            transport=capturing_transport(seen, {"json": {"deleted": True}}),
+        ) as client:
+            deleted = client.workflow_delete_instance("hubspot-1")
+        self.assertIsInstance(deleted, WorkflowInstanceDeleteResponse)
+        self.assertTrue(deleted.deleted)
+        self.assertEqual(seen[0].method, "POST")
+        self.assertEqual(
+            str(seen[0].url).split("?")[0], "http://h/v1/workflows/instances/delete"
+        )
+        self.assertEqual(dict(seen[0].url.params), {"graph": "crm"})
+        self.assertEqual(json.loads(seen[0].content), {"workflow_id": "hubspot-1"})
+
     def test_facts_import_serializes_ndjson_with_params(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -2218,6 +2236,18 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             status = await client.wait_for_published(7, poll_interval=0)
         self.assertEqual(status.state, model_module.PublicationState.current)
         self.assertEqual(status.published_seq, 7)
+
+    async def test_async_workflow_instance_deletion_is_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            transport=capturing_transport(seen, {"json": {"deleted": False}}),
+        ) as client:
+            deleted = await client.workflow_delete_instance("hubspot-1")
+        self.assertIsInstance(deleted, WorkflowInstanceDeleteResponse)
+        self.assertFalse(deleted.deleted)
+        self.assertEqual(seen[0].url.path, "/v1/workflows/instances/delete")
+        self.assertEqual(json.loads(seen[0].content), {"workflow_id": "hubspot-1"})
 
     async def test_async_graph_wait_for_published_keeps_the_graph_scope(
         self,

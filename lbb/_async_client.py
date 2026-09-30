@@ -608,6 +608,14 @@ class AsyncLbbClient(_BaseLbbClient):
             models.GraphDeleteResponse, await super().delete_graph(confirm=confirm)
         )
 
+    async def workflow_delete_instance(
+        self, workflow_id: str
+    ) -> models.WorkflowInstanceDeleteResponse:
+        return cast(
+            models.WorkflowInstanceDeleteResponse,
+            await super().workflow_delete_instance(workflow_id),
+        )
+
     async def fork_graph(self, src: str, dst: str) -> models.GraphForkResponse:
         return cast(models.GraphForkResponse, await super().fork_graph(src, dst))
 
