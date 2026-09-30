@@ -213,6 +213,9 @@ class SparqlResults:
     - :attr:`next_cursor` — pass to ``sparql(query, cursor=...)`` to continue the
       same snapshot; start with ``cursor=""`` and an indexed ordered LIMIT.
     - :attr:`snapshot` — served watermark and current head metadata, when present.
+    - :attr:`profile` — what the server measured for the request (timings,
+      reads, plan counters, the join order with estimates), when the call
+      passed ``profile=True``.
     """
 
     vars: list[str]
@@ -221,6 +224,7 @@ class SparqlResults:
     row_page: dict[str, Any] | None
     next_cursor: str | None = None
     snapshot: dict[str, Any] | None = None
+    profile: dict[str, Any] | None = None
 
     @classmethod
     def from_results_json(
@@ -230,12 +234,14 @@ class SparqlResults:
         *,
         next_cursor: str | None = None,
         snapshot: Mapping[str, Any] | None = None,
+        profile: Mapping[str, Any] | None = None,
     ) -> SparqlResults:
         """Build from a parsed SPARQL Results JSON document."""
         head = doc.get("head") or {}
         variables = list(head.get("vars") or [])
         page = dict(row_page) if row_page is not None else None
         retained = dict(snapshot) if snapshot is not None else None
+        measured = dict(profile) if profile is not None else None
         if "boolean" in doc:
             return cls(
                 vars=variables,
@@ -244,6 +250,7 @@ class SparqlResults:
                 row_page=page,
                 next_cursor=next_cursor,
                 snapshot=retained,
+                profile=measured,
             )
         results = doc.get("results") or {}
         bindings = [dict(binding) for binding in results.get("bindings") or []]
@@ -254,6 +261,7 @@ class SparqlResults:
             row_page=page,
             next_cursor=next_cursor,
             snapshot=retained,
+            profile=measured,
         )
 
     @classmethod
@@ -270,6 +278,7 @@ class SparqlResults:
             row_page=envelope.get("row_page"),
             next_cursor=envelope.get("next_cursor"),
             snapshot=envelope.get("snapshot"),
+            profile=envelope.get("profile"),
         )
 
     def rows(self) -> list[dict[str, Any]]:
@@ -1209,6 +1218,7 @@ class _BaseLbbClient:
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
+        profile: bool = False,
     ) -> Any:
         """POST raw SPARQL text to ``/v1/query/sparql-text``; returns the envelope.
 
@@ -1233,6 +1243,8 @@ class _BaseLbbClient:
             body["limit"] = limit
         if offset is not None:
             body["offset"] = offset
+        if profile:
+            body["profile"] = True
         # A5: the text dialect carries consistency/floor on the URL, not the body.
         params = self._consistency_params(consistency, min_indexed_seq)
         return self._request(
@@ -1387,6 +1399,40 @@ class _BaseLbbClient:
             "/v1/graph/schema-summary",
         )
 
+    def planner_stats(
+        self, *, cursor: str | None = None, limit: int | None = None
+    ) -> Any:
+        """The SPARQL planner's statistics for the published generation latest
+        reads use: per-predicate triple and distinct counts (by triple count,
+        paged by ``cursor``/``limit``, 200 by default and 500 at most),
+        key-histogram, pair-count and trigram sidecars, and value-order index
+        coverage. ``served_at_seq`` is ``None`` when the graph has no published
+        generation."""
+        params: dict[str, Any] = {}
+        if cursor is not None:
+            params["cursor"] = cursor
+        if limit is not None:
+            params["limit"] = limit
+        return self._request(
+            "GET", "/v1/graph/planner-stats", params=params or None
+        )
+
+    def planner_stats_model(
+        self, *, cursor: str | None = None, limit: int | None = None
+    ) -> models.PlannerStatsResponse:
+        """Planner statistics validated as ``PlannerStatsResponse``."""
+        params: dict[str, Any] = {}
+        if cursor is not None:
+            params["cursor"] = cursor
+        if limit is not None:
+            params["limit"] = limit
+        return self._model_request(
+            models.PlannerStatsResponse,
+            "GET",
+            "/v1/graph/planner-stats",
+            params=params or None,
+        )
+
     def publication_status(self) -> Any:
         """Automatic publication lifecycle, including pre-first-generation state."""
         return self._request("GET", "/v1/graph/publication-status")
@@ -1471,6 +1517,7 @@ class _BaseLbbClient:
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
+        profile: bool = False,
     ) -> Any:
         """Run SPARQL text; concrete transports return or await parsed results."""
         raise NotImplementedError
@@ -1524,6 +1571,19 @@ class _GraphNamespace:
             "GET",
             "/v1/graph/activity",
             params={"graph": self._graph},
+        )
+
+    def planner_stats(
+        self, *, cursor: str | None = None, limit: int | None = None
+    ) -> Any:
+        """Read the SPARQL planner's statistics for this graph."""
+        params: dict[str, Any] = {"graph": self._graph}
+        if cursor is not None:
+            params["cursor"] = cursor
+        if limit is not None:
+            params["limit"] = limit
+        return self._client._request(
+            "GET", "/v1/graph/planner-stats", params=params
         )
 
     def wait_for_published(
@@ -2019,6 +2079,7 @@ class _QueryNamespace:
         consistency: str | None = None,
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
+        profile: bool = False,
     ) -> Any:
         return self._client.sparql(
             query,
@@ -2030,6 +2091,7 @@ class _QueryNamespace:
             consistency=consistency,
             min_indexed_seq=min_indexed_seq,
             as_of_commit_seq=as_of_commit_seq,
+            profile=profile,
         )
 
 
