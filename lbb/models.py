@@ -1367,6 +1367,32 @@ class HybridSourceRank(BaseModel):
     weighted_rrf: float
 
 
+class IdentityMember(BaseModel):
+    """
+    One record of a [`SuggestedIdentity`], by its import identity.
+    """
+
+    key: Annotated[
+        str,
+        Field(
+            description='Its stable import key (for an integration, `<connection>:<stream>:<id>`).'
+        ),
+    ]
+    name: Annotated[
+        str,
+        Field(
+            description='Its current display name. The `SAME_AS` edge names both endpoints, so\na different name would rename the record.'
+        ),
+    ]
+    source: Annotated[
+        str | None,
+        Field(
+            description='Display text for the source, for example `hubspot-main contacts`.'
+        ),
+    ] = None
+    type: Annotated[str, Field(description="The record's class.")]
+
+
 class IndexLineage(BaseModel):
     """
     Typed convergence view over the persisted serving families.
@@ -3874,6 +3900,29 @@ class SuggestServingDefaults(BaseModel):
         Field(description='The promoted registry run these weights came from.', ge=0),
     ]
     weights: SuggestRankerWeights
+
+
+class SuggestedIdentity(BaseModel):
+    """
+    Records from different sources that describe one real-world thing.
+    Accepting links each later member to the first with a `SAME_AS` edge
+    (`https://littlebigbrain.com/r/same_as` in SPARQL). Search and SPARQL's
+    OWL entailment do not merge linked records yet.
+    """
+
+    confidence: Annotated[
+        float, Field(description='From 0 to 1; 1 for an exact key match.')
+    ]
+    members: Annotated[
+        list[IdentityMember],
+        Field(description='2 to 10 records; the first is the canonical one.'),
+    ]
+    reason: Annotated[
+        str,
+        Field(
+            description='Why they match, for example `email ada@acme.test`. At most 200\ncharacters.'
+        ),
+    ]
 
 
 class SuggestedQuery(BaseModel):
@@ -7841,6 +7890,10 @@ class OntologyChangeSuggestion(BaseModel):
     A durable, reviewable ontology change suggestion.
     """
 
+    accepted_links: Annotated[
+        int | None,
+        Field(description='How many `SAME_AS` edges the accept wrote.', ge=0),
+    ] = None
     accepted_ontology_version: Annotated[
         int | None,
         Field(description='The ontology version the accepted change produced.', ge=0),
@@ -7865,7 +7918,9 @@ class OntologyChangeSuggestion(BaseModel):
                 Field(discriminator='op'),
             ]
         ],
-        Field(description='The evolve operations that accepting applies, in order.'),
+        Field(
+            description='The evolve operations that accepting applies, in order. May be empty\nwhen `identities` is not.'
+        ),
     ]
     change_sources: Annotated[
         list[ChangeSource | None] | None,
@@ -7883,6 +7938,10 @@ class OntologyChangeSuggestion(BaseModel):
     decision_reason: str | None = None
     evidence: SuggestionEvidence | None = None
     graph: GraphKey
+    identities: Annotated[
+        list[SuggestedIdentity] | None,
+        Field(description='Records to link as one identity after `change` applies.'),
+    ] = None
     impact: OntologyEvolveResponse | None = None
     impact_error: Annotated[
         str | None,
@@ -7927,6 +7986,12 @@ class OntologyChangeSuggestion(BaseModel):
             description='The operations as the producer proposed them, kept when a person edited\n`change` before accepting.'
         ),
     ] = None
+    proposed_identities: Annotated[
+        list[SuggestedIdentity] | None,
+        Field(
+            description='The identities as the producer proposed them, kept when a person\nremoved some before accepting.'
+        ),
+    ] = None
     rationale: str | None = None
     revision: Annotated[
         int,
@@ -7943,7 +8008,8 @@ class OntologyChangeSuggestion(BaseModel):
 
 class OntologyChangeSuggestionAcceptRequest(BaseModel):
     """
-    Accept a suggestion: apply its change to the current ontology.
+    Accept a suggestion: apply its change to the current ontology, then link
+    its identities.
     """
 
     author: str | None = None
@@ -7980,6 +8046,12 @@ class OntologyChangeSuggestionAcceptRequest(BaseModel):
     comment: Annotated[
         str | None, Field(description='Added to the discussion with the acceptance.')
     ] = None
+    identities: Annotated[
+        list[SuggestedIdentity] | None,
+        Field(
+            description='The identities to link, when a person removed some or some members:\neach must be a subset of a proposed identity, with at least two\nmembers. Absent links every proposed identity.'
+        ),
+    ] = None
 
 
 class OntologyChangeSuggestionCreateRequest(BaseModel):
@@ -8012,13 +8084,19 @@ class OntologyChangeSuggestionCreateRequest(BaseModel):
                 Field(discriminator='op'),
             ]
         ],
-        Field(description='1 to 64 evolve operations.'),
+        Field(
+            description='Up to 64 evolve operations; at least one unless `identities` is set\n(then it may be empty).'
+        ),
     ]
     evidence: SuggestionEvidence | None = None
+    identities: Annotated[
+        list[SuggestedIdentity] | None,
+        Field(description='Up to 200 identities to link on accept.'),
+    ] = None
     key: Annotated[
         str | None,
         Field(
-            description='Idempotency key, at most 255 characters of `[A-Za-z0-9-_.:/]`, for\nexample `hubspot-main/deals`. When absent the server derives one from\n`anchor` and `change`, so the same change is filed once.'
+            description='Idempotency key, at most 255 characters of `[A-Za-z0-9-_.:/]`, for\nexample `hubspot-main/deals`. When absent the server derives one from\n`anchor`, `change` and (when set) `identities`, so the same suggestion\nis filed once.'
         ),
     ] = None
     mapping: Annotated[
@@ -8064,6 +8142,9 @@ class OntologyChangeSuggestionSummary(BaseModel):
     ]
     comment_count: Annotated[int, Field(ge=0)]
     created_at: str
+    identity_count: Annotated[
+        int | None, Field(description='How many identities the suggestion links.', ge=0)
+    ] = None
     key: str
     origin: SuggestionOrigin
     publishable: Annotated[
