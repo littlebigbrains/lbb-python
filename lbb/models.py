@@ -1693,6 +1693,39 @@ class ObservationRow(BaseModel):
     text_preview: str | None = None
 
 
+class ChangeSource(RootModel[int | None]):
+    root: Annotated[int | None, Field(ge=0)]
+
+
+class OntologyChangeSuggestionCommentRequest(BaseModel):
+    """
+    Add a comment to a suggestion's discussion.
+    """
+
+    author: str | None = None
+    text: Annotated[str, Field(description='1 to 4,000 characters.')]
+
+
+class OntologyChangeSuggestionDecisionRequest(BaseModel):
+    """
+    Dismiss (a person) or supersede (the producer) a suggestion.
+    """
+
+    author: str | None = None
+    reason: Annotated[str, Field(description='Required, at most 1,000 characters.')]
+
+
+class OntologyChangeSuggestionStatus(Enum):
+    """
+    Where a suggestion is in its review.
+    """
+
+    open = 'open'
+    accepted = 'accepted'
+    dismissed = 'dismissed'
+    superseded = 'superseded'
+
+
 class OntologyCompetencyQuestion(BaseModel):
     id: str
     question: str
@@ -3862,6 +3895,65 @@ class SuggestionAdoptedV1(BaseModel):
     v: Annotated[int, Field(ge=0)]
 
 
+class SuggestionAnchorKind(Enum):
+    """
+    What a suggestion is about.
+    """
+
+    ontology = 'ontology'
+    class_ = 'class'
+    property = 'property'
+    relation = 'relation'
+
+
+class SuggestionCommentKind(Enum):
+    """
+    A discussion entry. `event` entries are written by the server when the
+    suggestion changes state (accepted, dismissed, revised, reopened).
+    """
+
+    comment = 'comment'
+    event = 'event'
+
+
+class SuggestionEvidence(BaseModel):
+    """
+    What the producer saw. Every field is optional; the server bounds the
+    sizes (at most 20 samples of at most 4 KiB each, at most 200 source fields).
+    """
+
+    fill_rate: Annotated[
+        float | None,
+        Field(description='Share of those records that carry a value, from 0 to 1.'),
+    ] = None
+    records: Annotated[
+        int | None,
+        Field(
+            description='How many records the change concerns (for example 311 deals).',
+            ge=0,
+        ),
+    ] = None
+    samples: Annotated[
+        list[Any] | None, Field(description='Representative source records.')
+    ] = None
+    source_fields: Annotated[
+        list[str] | None,
+        Field(
+            description='Source fields the change is about, for example `deals.amount`.'
+        ),
+    ] = None
+
+
+class SuggestionOriginKind(Enum):
+    """
+    Who produced a suggestion.
+    """
+
+    integration = 'integration'
+    agent = 'agent'
+    person = 'person'
+
+
 class SuggestionShownV1(BaseModel):
     candidate_id: str
     prefix: str
@@ -3869,6 +3961,17 @@ class SuggestionShownV1(BaseModel):
     suggestion_id: str
     text: str
     v: Annotated[int, Field(ge=0)]
+
+
+class SuggestionStatusCounts(BaseModel):
+    """
+    Suggestions per status, over the whole graph (not only the listed page).
+    """
+
+    accepted: Annotated[int, Field(ge=0)]
+    dismissed: Annotated[int, Field(ge=0)]
+    open: Annotated[int, Field(ge=0)]
+    superseded: Annotated[int, Field(ge=0)]
 
 
 class SyntheticEvalResponse(BaseModel):
@@ -7009,6 +7112,40 @@ class StateEntry(BaseModel):
     valid_time: ValidTime
 
 
+class SuggestionAnchor(BaseModel):
+    """
+    The ontology element a suggestion is attached to. `name` is the class,
+    property or relation name; it is absent for `ontology`.
+    """
+
+    kind: SuggestionAnchorKind
+    name: str | None = None
+
+
+class SuggestionComment(BaseModel):
+    at: Annotated[str, Field(description='RFC 3339 time.')]
+    author: Annotated[
+        str,
+        Field(
+            description='Declared by the caller; the data plane does not authenticate people.'
+        ),
+    ]
+    kind: SuggestionCommentKind | None = None
+    text: str
+
+
+class SuggestionOrigin(BaseModel):
+    """
+    The producer of a suggestion. `id` names it within its kind: the
+    integration's connection id, the agent's name, or the person. `label` is
+    display text.
+    """
+
+    id: str | None = None
+    kind: SuggestionOriginKind
+    label: str | None = None
+
+
 class TrainModelJobStatusResponse(BaseModel):
     """
     Durable background trainer status. The terminal `result` carries the full
@@ -7699,6 +7836,250 @@ class NeighborResponse(BaseModel):
     snapshot: SnapshotView
 
 
+class OntologyChangeSuggestion(BaseModel):
+    """
+    A durable, reviewable ontology change suggestion.
+    """
+
+    accepted_ontology_version: Annotated[
+        int | None,
+        Field(description='The ontology version the accepted change produced.', ge=0),
+    ] = None
+    anchor: SuggestionAnchor
+    change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ],
+        Field(description='The evolve operations that accepting applies, in order.'),
+    ]
+    change_sources: Annotated[
+        list[ChangeSource | None] | None,
+        Field(
+            description='For an edited change: for each op of `change`, the index of the op in\n`proposed_change` it was edited from, or null for an op the person\nadded. Lets a producer map its proposal onto what was accepted.'
+        ),
+    ] = None
+    comments: list[SuggestionComment] | None = None
+    created_at: Annotated[str, Field(description='RFC 3339 times.')]
+    decided_at: str | None = None
+    decided_by: Annotated[
+        str | None,
+        Field(description='Who accepted, dismissed or superseded it, when, and why.'),
+    ] = None
+    decision_reason: str | None = None
+    evidence: SuggestionEvidence | None = None
+    graph: GraphKey
+    impact: OntologyEvolveResponse | None = None
+    impact_error: Annotated[
+        str | None,
+        Field(
+            description='Why the last dry run failed (for example an unknown class).'
+        ),
+    ] = None
+    key: Annotated[
+        str,
+        Field(
+            description="The producer's idempotency key. Creating again with the same key\nupdates this suggestion instead of adding another one."
+        ),
+    ]
+    mapping: Annotated[
+        Any | None,
+        Field(
+            description='Opaque to the server: how the origin applies the change to its own\nconfiguration once accepted (for an integration, its mapping changes).'
+        ),
+    ] = None
+    origin: SuggestionOrigin
+    proposed_change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ]
+        | None,
+        Field(
+            description='The operations as the producer proposed them, kept when a person edited\n`change` before accepting.'
+        ),
+    ] = None
+    rationale: str | None = None
+    revision: Annotated[
+        int,
+        Field(
+            description='Starts at 1 and grows each time the producer revises the change.',
+            ge=0,
+        ),
+    ]
+    status: OntologyChangeSuggestionStatus
+    suggestion_id: Annotated[str, Field(description='Stable id, derived from `key`.')]
+    title: str
+    updated_at: str
+
+
+class OntologyChangeSuggestionAcceptRequest(BaseModel):
+    """
+    Accept a suggestion: apply its change to the current ontology.
+    """
+
+    author: str | None = None
+    change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ]
+        | None,
+        Field(
+            description='An edited change that replaces the proposed one ("edit, then accept").'
+        ),
+    ] = None
+    change_sources: Annotated[
+        list[ChangeSource | None] | None,
+        Field(
+            description='With `change`: for each of its ops, the index of the proposed op it was\nedited from, or null for an added op. Same length as `change`; each\nindex at most once.'
+        ),
+    ] = None
+    comment: Annotated[
+        str | None, Field(description='Added to the discussion with the acceptance.')
+    ] = None
+
+
+class OntologyChangeSuggestionCreateRequest(BaseModel):
+    """
+    Create a suggestion, or update the one with the same `key`.
+
+    Update rules for an existing key: an `open` suggestion takes the new
+    content (a different `change` raises `revision`); an `accepted` one is
+    returned unchanged; a `dismissed` one stays dismissed unless `change`
+    differs, which reopens it; a `superseded` one reopens.
+    """
+
+    anchor: SuggestionAnchor | None = None
+    change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ],
+        Field(description='1 to 64 evolve operations.'),
+    ]
+    evidence: SuggestionEvidence | None = None
+    key: Annotated[
+        str | None,
+        Field(
+            description='Idempotency key, at most 255 characters of `[A-Za-z0-9-_.:/]`, for\nexample `hubspot-main/deals`. When absent the server derives one from\n`anchor` and `change`, so the same change is filed once.'
+        ),
+    ] = None
+    mapping: Annotated[
+        Any | None, Field(description='Opaque origin data, at most 16 KiB of JSON.')
+    ] = None
+    origin: SuggestionOrigin
+    rationale: Annotated[
+        str | None,
+        Field(description='Why the change is needed. At most 4,000 characters.'),
+    ] = None
+    title: Annotated[
+        str,
+        Field(
+            description='Short imperative text, for example "Add class Deal". At most 200\ncharacters.'
+        ),
+    ]
+
+
+class OntologyChangeSuggestionSummary(BaseModel):
+    """
+    One row of a suggestion list: everything but the evidence samples, the
+    mapping and the discussion text.
+    """
+
+    anchor: SuggestionAnchor
+    change: list[
+        Annotated[
+            WidenRelationOp
+            | AddEntityTypeOp
+            | AddSuperTypesOp
+            | AddRelationOp
+            | AddPropertyOp
+            | SetPropertyConstraintOp
+            | RenameEntityTypeOp
+            | RenameRelationOp
+            | SetRelationInverseOp
+            | SetRelationCardinalityOp
+            | NarrowRelationOp
+            | RemoveEntityTypeOp
+            | RemoveRelationOp,
+            Field(discriminator='op'),
+        ]
+    ]
+    comment_count: Annotated[int, Field(ge=0)]
+    created_at: str
+    key: str
+    origin: SuggestionOrigin
+    publishable: Annotated[
+        bool | None,
+        Field(
+            description='Whether the last dry run can be published; absent before any dry run.'
+        ),
+    ] = None
+    records: Annotated[int | None, Field(ge=0)] = None
+    revision: Annotated[int, Field(ge=0)]
+    status: OntologyChangeSuggestionStatus
+    suggestion_id: str
+    title: str
+    updated_at: str
+
+
 class OntologyDraft(BaseModel):
     """
     Durable, portable ontology review artifact owned by the graph database.
@@ -8145,6 +8526,22 @@ class GraphImportLine(RootModel[TripletInput | EntityPropertiesInput]):
         Field(
             description='One line of an NDJSON bulk-import stream (`POST /v1/graph/import`). Each line\nis a single JSON object that is either a triplet (carries `relation`) or an\nentity-properties record (carries `properties`); the two shapes are disjoint,\nso the importer routes each line by shape. This is the streamable counterpart\nof `TripletCommitFile`: a client streams a large dataset line-by-line instead\nof buffering one giant commit, and the server batches lines into bounded\ninternal commits.'
         ),
+    ]
+
+
+class OntologyChangeSuggestionList(BaseModel):
+    """
+    `GET /v1/ontology/suggestions`: newest update first.
+    """
+
+    counts: SuggestionStatusCounts
+    graph: GraphKey
+    ontology_version: Annotated[
+        int, Field(description="The graph's current ontology version.", ge=0)
+    ]
+    suggestions: list[OntologyChangeSuggestionSummary]
+    truncated: Annotated[
+        bool, Field(description='More suggestions matched than `limit` allowed.')
     ]
 
 

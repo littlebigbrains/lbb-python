@@ -149,6 +149,81 @@ class _AsyncOntologyNamespace(_OntologyNamespace):
             await super().draft_reject(draft_id, reason),
         )
 
+    async def suggestions(
+        self,
+        *,
+        status: str | None = None,
+        origin_kind: str | None = None,
+        origin_id: str | None = None,
+        anchor: str | None = None,
+        key: str | None = None,
+        limit: int | None = None,
+    ) -> models.OntologyChangeSuggestionList:
+        return cast(
+            models.OntologyChangeSuggestionList,
+            await super().suggestions(
+                status=status,
+                origin_kind=origin_kind,
+                origin_id=origin_id,
+                anchor=anchor,
+                key=key,
+                limit=limit,
+            ),
+        )
+
+    async def suggestion_get(
+        self, suggestion_id: str
+    ) -> models.OntologyChangeSuggestion:
+        return cast(
+            models.OntologyChangeSuggestion,
+            await super().suggestion_get(suggestion_id),
+        )
+
+    async def suggestion_create(self, body: Body) -> models.OntologyChangeSuggestion:
+        return cast(
+            models.OntologyChangeSuggestion, await super().suggestion_create(body)
+        )
+
+    async def suggestion_validate(
+        self, suggestion_id: str
+    ) -> models.OntologyChangeSuggestion:
+        return cast(
+            models.OntologyChangeSuggestion,
+            await super().suggestion_validate(suggestion_id),
+        )
+
+    async def suggestion_accept(
+        self, suggestion_id: str, body: Body | None = None
+    ) -> models.OntologyChangeSuggestion:
+        return cast(
+            models.OntologyChangeSuggestion,
+            await super().suggestion_accept(suggestion_id, body),
+        )
+
+    async def suggestion_dismiss(
+        self, suggestion_id: str, reason: str, *, author: str | None = None
+    ) -> models.OntologyChangeSuggestion:
+        return cast(
+            models.OntologyChangeSuggestion,
+            await super().suggestion_dismiss(suggestion_id, reason, author=author),
+        )
+
+    async def suggestion_supersede(
+        self, suggestion_id: str, reason: str, *, author: str | None = None
+    ) -> models.OntologyChangeSuggestion:
+        return cast(
+            models.OntologyChangeSuggestion,
+            await super().suggestion_supersede(suggestion_id, reason, author=author),
+        )
+
+    async def suggestion_comment(
+        self, suggestion_id: str, text: str, *, author: str | None = None
+    ) -> models.OntologyChangeSuggestion:
+        return cast(
+            models.OntologyChangeSuggestion,
+            await super().suggestion_comment(suggestion_id, text, author=author),
+        )
+
 
 class _AsyncQueryNamespace(_QueryNamespace):
     async def structured(

@@ -1723,6 +1723,13 @@ class _FactsNamespace:
         }
 
 
+def _decision(reason: str, author: str | None) -> dict[str, Any]:
+    body: dict[str, Any] = {"reason": reason}
+    if author is not None:
+        body["author"] = author
+    return body
+
+
 class _OntologyNamespace:
     """Typed ontology discovery and lifecycle operations."""
 
@@ -1848,6 +1855,117 @@ class _OntologyNamespace:
             "POST",
             "/v1/ontology/drafts/reject",
             params={"draft_id": draft_id, "reason": reason},
+        )
+
+    def suggestions(
+        self,
+        *,
+        status: str | None = None,
+        origin_kind: str | None = None,
+        origin_id: str | None = None,
+        anchor: str | None = None,
+        key: str | None = None,
+        limit: int | None = None,
+    ) -> models.OntologyChangeSuggestionList:
+        """List ontology change suggestions, newest update first."""
+        return self._client._model_request(
+            models.OntologyChangeSuggestionList,
+            "GET",
+            "/v1/ontology/suggestions",
+            params={
+                "status": status,
+                "origin_kind": origin_kind,
+                "origin_id": origin_id,
+                "anchor": anchor,
+                "key": key,
+                "limit": limit,
+            },
+        )
+
+    def suggestion_get(self, suggestion_id: str) -> models.OntologyChangeSuggestion:
+        """One suggestion with its evidence, impact and discussion."""
+        return self._client._model_request(
+            models.OntologyChangeSuggestion,
+            "GET",
+            "/v1/ontology/suggestions/detail",
+            params={"suggestion_id": suggestion_id},
+        )
+
+    def suggestion_create(self, body: Body) -> models.OntologyChangeSuggestion:
+        """File a suggestion, or revise the one with the same ``key``.
+
+        The server dry-runs the change and never changes the ontology here, so
+        a retry is safe.
+        """
+        return self._client._model_request(
+            models.OntologyChangeSuggestion,
+            "POST",
+            "/v1/ontology/suggestions",
+            body=body,
+            options=_read_options(),
+        )
+
+    def suggestion_validate(
+        self, suggestion_id: str
+    ) -> models.OntologyChangeSuggestion:
+        """Dry-run the change against the current ontology."""
+        return self._client._model_request(
+            models.OntologyChangeSuggestion,
+            "POST",
+            "/v1/ontology/suggestions/validate",
+            params={"suggestion_id": suggestion_id},
+            options=_read_options(),
+        )
+
+    def suggestion_accept(
+        self, suggestion_id: str, body: Body | None = None
+    ) -> models.OntologyChangeSuggestion:
+        """Apply the change (or an edited ``change``) to the current ontology."""
+        return self._client._model_request(
+            models.OntologyChangeSuggestion,
+            "POST",
+            "/v1/ontology/suggestions/accept",
+            params={"suggestion_id": suggestion_id},
+            body=body if body is not None else {},
+            options=_read_options(),
+        )
+
+    def suggestion_dismiss(
+        self, suggestion_id: str, reason: str, *, author: str | None = None
+    ) -> models.OntologyChangeSuggestion:
+        return self._client._model_request(
+            models.OntologyChangeSuggestion,
+            "POST",
+            "/v1/ontology/suggestions/dismiss",
+            params={"suggestion_id": suggestion_id},
+            body=_decision(reason, author),
+            options=_read_options(),
+        )
+
+    def suggestion_supersede(
+        self, suggestion_id: str, reason: str, *, author: str | None = None
+    ) -> models.OntologyChangeSuggestion:
+        return self._client._model_request(
+            models.OntologyChangeSuggestion,
+            "POST",
+            "/v1/ontology/suggestions/supersede",
+            params={"suggestion_id": suggestion_id},
+            body=_decision(reason, author),
+            options=_read_options(),
+        )
+
+    def suggestion_comment(
+        self, suggestion_id: str, text: str, *, author: str | None = None
+    ) -> models.OntologyChangeSuggestion:
+        body: dict[str, Any] = {"text": text}
+        if author is not None:
+            body["author"] = author
+        return self._client._model_request(
+            models.OntologyChangeSuggestion,
+            "POST",
+            "/v1/ontology/suggestions/comment",
+            params={"suggestion_id": suggestion_id},
+            body=body,
         )
 
 

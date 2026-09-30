@@ -27,6 +27,8 @@ from lbb.models import (
     GraphForkResponse,
     GraphReloadResponse,
     GraphSummaryResponse,
+    OntologyChangeSuggestion,
+    OntologyChangeSuggestionList,
     OntologyDraft,
     OntologyEvolveRequest,
     SchemaBundleView,
@@ -1042,6 +1044,73 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(seen[1].url.params["draft_id"], "draft-1")
         self.assertEqual(seen[3].headers["idempotency-key"], "promote-draft-1")
         self.assertEqual(seen[4].url.params["reason"], "not selected")
+
+    def test_ontology_suggestion_lifecycle_is_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        suggestion = {
+            "suggestion_id": "sg_1",
+            "graph": GRAPH,
+            "key": "hubspot-main/deals",
+            "status": "open",
+            "title": "Add class Deal",
+            "anchor": {"kind": "ontology"},
+            "origin": {"kind": "integration", "id": "hubspot-main"},
+            "change": [{"op": "add_entity_type", "name": "Deal"}],
+            "evidence": {"records": 311},
+            "comments": [],
+            "revision": 1,
+            "created_at": "2026-09-29T10:00:00Z",
+            "updated_at": "2026-09-29T10:00:00Z",
+        }
+        listing = {
+            "graph": GRAPH,
+            "ontology_version": 7,
+            "counts": {"open": 1, "accepted": 0, "dismissed": 0, "superseded": 0},
+            "suggestions": [],
+            "truncated": False,
+        }
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen, [{"json": listing}] + [{"json": suggestion}] * 7
+            ),
+        ) as client:
+            listed = client.ontology.suggestions(status="open", limit=10)
+            created = client.ontology.suggestion_create(
+                {
+                    "title": "Add class Deal",
+                    "origin": {"kind": "integration", "id": "hubspot-main"},
+                    "change": [{"op": "add_entity_type", "name": "Deal"}],
+                }
+            )
+            fetched = client.ontology.suggestion_get("sg_1")
+            validated = client.ontology.suggestion_validate("sg_1")
+            accepted = client.ontology.suggestion_accept("sg_1")
+            dismissed = client.ontology.suggestion_dismiss(
+                "sg_1", "not now", author="ana"
+            )
+            superseded = client.ontology.suggestion_supersede("sg_1", "field gone")
+            commented = client.ontology.suggestion_comment("sg_1", "why?")
+        self.assertIsInstance(listed, OntologyChangeSuggestionList)
+        for result in [
+            created,
+            fetched,
+            validated,
+            accepted,
+            dismissed,
+            superseded,
+            commented,
+        ]:
+            self.assertIsInstance(result, OntologyChangeSuggestion)
+        self.assertEqual(seen[0].url.params["status"], "open")
+        self.assertEqual(seen[0].url.params["limit"], "10")
+        self.assertEqual(seen[2].url.path, "/v1/ontology/suggestions/detail")
+        self.assertEqual(seen[4].url.params["suggestion_id"], "sg_1")
+        self.assertEqual(json.loads(seen[4].content), {})
+        self.assertEqual(
+            json.loads(seen[5].content), {"reason": "not now", "author": "ana"}
+        )
+        self.assertEqual(json.loads(seen[7].content), {"text": "why?"})
 
     def test_durable_trainer_submit_and_poll_are_typed(self) -> None:
         seen: list[httpx.Request] = []
