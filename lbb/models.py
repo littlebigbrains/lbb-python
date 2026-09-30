@@ -1806,72 +1806,6 @@ class OntologyEvidenceSample(BaseModel):
     ]
 
 
-class OntologyInduceRequest(BaseModel):
-    """
-    Bounded request for embedding-cluster ontology induction (roadmap item 12):
-    mine tight embedding clusters among generically-typed entities/edges and
-    surface each as a **suggested** ontology patch. Suggestions only — nothing
-    is applied; a human (or the MCP `lbb_configure` `evolve_ontology` action)
-    feeds the returned `suggested_ops` into
-    [`OntologyEvolveRequest`](crate::OntologyEvolveRequest) to accept one.
-    """
-
-    generic_entity_types: Annotated[
-        list[str] | None,
-        Field(
-            description='Entity-type names treated as "under-typed" (candidates for a more\nspecific type). Defaults to `["CONCEPT"]` when omitted/empty.'
-        ),
-    ] = None
-    generic_relations: Annotated[
-        list[str] | None,
-        Field(
-            description='Relation names treated as "under-typed" (candidates for a more specific\nrelation). Defaults to `["RELATED_TO", "MENTIONS"]` when omitted/empty.'
-        ),
-    ] = None
-    max_clusters: Annotated[
-        int | None,
-        Field(
-            description='Cap on IVF clusters built per population (entities, edges). Default 16.',
-            ge=0,
-        ),
-    ] = None
-    max_examples: Annotated[
-        int | None,
-        Field(
-            description='Cap on example member ids attached to a suggestion. Default 5.',
-            ge=0,
-        ),
-    ] = None
-    max_suggestions: Annotated[
-        int | None,
-        Field(
-            description='Cap on the number of suggestions returned (highest cohesion first).\nDefault 10.',
-            ge=0,
-        ),
-    ] = None
-    min_cluster_size: Annotated[
-        int | None,
-        Field(
-            description='Minimum member count for a cluster to be surfaced as a suggestion.\nDefault 3.',
-            ge=0,
-        ),
-    ] = None
-    sample_limit: Annotated[
-        int | None,
-        Field(
-            description='Cap on how many under-typed entities/edges are pulled into the\nclustering pass. Bounded; default 2000, hard max 5000.',
-            ge=0,
-        ),
-    ] = None
-    seed: Annotated[
-        int | None,
-        Field(
-            description='Deterministic clustering seed: orders the sampled population before\ncapping to `sample_limit`, so the same graph + same seed always\nclusters the same slice and produces the same suggestions. Default 0.',
-            ge=0,
-        ),
-    ] = None
-
-
 class OntologyPropertyView(BaseModel):
     """
     A typed property on an entity type, as declared in the active ontology.
@@ -1967,15 +1901,6 @@ class OntologySearchTargets(BaseModel):
     concepts: bool
     relations: bool
     terms: bool
-
-
-class OntologySuggestionKind(Enum):
-    """
-    What kind of ontology structure a suggestion proposes.
-    """
-
-    entity_type = 'entity_type'
-    relation = 'relation'
 
 
 class OntologyTermView(BaseModel):
@@ -5923,86 +5848,6 @@ class OntologySearchRequest(BaseModel):
     top_k: Annotated[int, Field(ge=0)]
 
 
-class OntologySuggestion(BaseModel):
-    """
-    One suggested ontology patch mined from a tight embedding cluster of
-    currently under-typed (generic) entities or edges. Carries a ready-to-apply
-    [`OntologyEvolveOp`](crate::OntologyEvolveOp) list so a human reviewer (or
-    the `lbb_configure` MCP `evolve_ontology` action) can accept it verbatim by
-    passing `suggested_ops` straight into an
-    [`OntologyEvolveRequest`](crate::OntologyEvolveRequest) — this engine never
-    calls `evolve_ontology` itself.
-    """
-
-    cohesion: Annotated[
-        float,
-        Field(
-            description='Cluster tightness: mean intra-cluster cosine similarity to the\ncentroid, normalized to `[0,1]` (1 = maximally tight). Suggestions are\nreturned highest-cohesion first.'
-        ),
-    ]
-    example_member_ids: Annotated[
-        list[str],
-        Field(
-            description='Capped example member ids: `entity:<id>` for an `entity_type`\nsuggestion, `edge:<id>` for a `relation` suggestion.'
-        ),
-    ]
-    inferred_domain: Annotated[
-        list[str] | None,
-        Field(
-            description="For `kind: relation` — inferred domain (source entity-type names) from\nthe cluster's edge endpoints. Empty for `kind: entity_type`."
-        ),
-    ] = None
-    inferred_range: Annotated[
-        list[str] | None,
-        Field(
-            description='For `kind: relation` — inferred range (target entity-type names).\nEmpty for `kind: entity_type`.'
-        ),
-    ] = None
-    kind: OntologySuggestionKind
-    member_count: Annotated[
-        int,
-        Field(
-            description='Total members in the mined cluster (before `max_examples` capping).',
-            ge=0,
-        ),
-    ]
-    proposed_name: Annotated[
-        str,
-        Field(
-            description='Heuristically derived candidate name (e.g. `LIVES_IN`, `WorksAtOrg`),\nfrom the most-frequent meaningful tokens across member labels/evidence.\nPurely local lexical heuristics — no external/LLM calls.'
-        ),
-    ]
-    source_generic_name: Annotated[
-        str,
-        Field(
-            description='The generic type/relation name this cluster was mined from\n(`CONCEPT`, `RELATED_TO`, `MENTIONS`, …).'
-        ),
-    ]
-    suggested_ops: Annotated[
-        list[
-            Annotated[
-                WidenRelationOp
-                | AddEntityTypeOp
-                | AddSuperTypesOp
-                | AddRelationOp
-                | AddPropertyOp
-                | SetPropertyConstraintOp
-                | RenameEntityTypeOp
-                | RenameRelationOp
-                | SetRelationInverseOp
-                | SetRelationCardinalityOp
-                | NarrowRelationOp
-                | RemoveEntityTypeOp
-                | RemoveRelationOp,
-                Field(discriminator='op'),
-            ]
-        ],
-        Field(
-            description='Ready-to-apply ops: pass verbatim as `OntologyEvolveRequest.ops` to\naccept this suggestion. Never applied by this engine.'
-        ),
-    ]
-
-
 class OntologyView(BaseModel):
     concept_count: Annotated[
         int | None,
@@ -7466,26 +7311,6 @@ class OntologyDraft(BaseModel):
     structural_pitfalls: list[str]
     superfluous_element_rate: float
     validation: OntologyEvolveResponse | None = None
-
-
-class OntologyInduceResponse(BaseModel):
-    candidate_population: Annotated[
-        int,
-        Field(
-            description='Entities/edges considered before sampling (population size).',
-            ge=0,
-        ),
-    ]
-    graph: GraphKey
-    messages: list[str]
-    ontology_version: Annotated[int, Field(ge=0)]
-    sampled_population: Annotated[
-        int,
-        Field(
-            description='Entities/edges actually clustered, after `sample_limit`.', ge=0
-        ),
-    ]
-    suggestions: list[OntologySuggestion]
 
 
 class OntologyResolveInput(BaseModel):
