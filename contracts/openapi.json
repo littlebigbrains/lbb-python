@@ -17900,40 +17900,48 @@
       "WorkflowStatusResponse": {
         "properties": {
           "active_runs": {
+            "description": "Running activity-graph runs plus message workflows that are not idle.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "archive_error": {
+            "description": "Always false.",
             "type": "boolean"
           },
           "archive_lag_ms": {
+            "description": "Always 0.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "archived_sequence": {
+            "description": "Equal to `local_sequence`: no change waits outside object storage.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "durability": {
+            "description": "`object_storage` when enabled: an acknowledged request is an object\nwrite. `disabled` when the server has workflows turned off.",
             "type": "string"
           },
           "enabled": {
             "type": "boolean"
           },
           "local_sequence": {
+            "description": "The generation of the scheduling index of this graph.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "pending_archive_bytes": {
+            "description": "Always 0.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "unarchived_events": {
+            "description": "Always 0.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -45266,7 +45274,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: workflows",
+        "summary": "Activity graphs: workflows",
         "tags": [
           "system"
         ]
@@ -45535,7 +45543,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: workflows",
+        "summary": "Activity graphs: workflows",
         "tags": [
           "system"
         ]
@@ -45796,7 +45804,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: archive",
+        "summary": "Activity graphs: archive",
         "tags": [
           "system"
         ]
@@ -46066,7 +46074,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: cancel",
+        "summary": "Activity graphs: cancel",
         "tags": [
           "system"
         ]
@@ -46337,7 +46345,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: claim",
+        "summary": "Activity graphs: claim",
         "tags": [
           "system"
         ]
@@ -46608,7 +46616,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: complete",
+        "summary": "Activity graphs: complete",
         "tags": [
           "system"
         ]
@@ -46879,7 +46887,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: heartbeat",
+        "summary": "Activity graphs: heartbeat",
         "tags": [
           "system"
         ]
@@ -49031,7 +49039,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: run",
+        "summary": "Activity graphs: run",
         "tags": [
           "system"
         ]
@@ -49302,7 +49310,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: signal",
+        "summary": "Activity graphs: signal",
         "tags": [
           "system"
         ]
@@ -49554,7 +49562,7 @@
             "bearer": []
           }
         ],
-        "summary": "Local-durable workflows: status",
+        "summary": "Activity graphs: status",
         "tags": [
           "system"
         ]

@@ -4560,15 +4560,37 @@ class WorkflowState(Enum):
 
 
 class WorkflowStatusResponse(BaseModel):
-    active_runs: Annotated[int, Field(ge=0)]
-    archive_error: bool
-    archive_lag_ms: Annotated[int, Field(ge=0)]
-    archived_sequence: Annotated[int, Field(ge=0)]
-    durability: str
+    active_runs: Annotated[
+        int,
+        Field(
+            description='Running activity-graph runs plus message workflows that are not idle.',
+            ge=0,
+        ),
+    ]
+    archive_error: Annotated[bool, Field(description='Always false.')]
+    archive_lag_ms: Annotated[int, Field(description='Always 0.', ge=0)]
+    archived_sequence: Annotated[
+        int,
+        Field(
+            description='Equal to `local_sequence`: no change waits outside object storage.',
+            ge=0,
+        ),
+    ]
+    durability: Annotated[
+        str,
+        Field(
+            description='`object_storage` when enabled: an acknowledged request is an object\nwrite. `disabled` when the server has workflows turned off.'
+        ),
+    ]
     enabled: bool
-    local_sequence: Annotated[int, Field(ge=0)]
-    pending_archive_bytes: Annotated[int, Field(ge=0)]
-    unarchived_events: Annotated[int, Field(ge=0)]
+    local_sequence: Annotated[
+        int,
+        Field(
+            description='The generation of the scheduling index of this graph.', ge=0
+        ),
+    ]
+    pending_archive_bytes: Annotated[int, Field(description='Always 0.', ge=0)]
+    unarchived_events: Annotated[int, Field(description='Always 0.', ge=0)]
 
 
 class WorkflowStepCheckpoint(BaseModel):
