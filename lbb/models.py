@@ -1512,6 +1512,130 @@ class ManagedModelsSource(Enum):
     defaults = 'defaults'
 
 
+class ModelActivityFeature(Enum):
+    """
+    The feature a model call served.
+    """
+
+    index = 'index'
+    search = 'search'
+    fit = 'fit'
+    judge = 'judge'
+    training = 'training'
+
+
+class ModelActivityGraph(BaseModel):
+    """
+    One feature and model on one graph over the month. `graph` is `*` for
+    the graphs past the ledger's bound ("other graphs").
+    """
+
+    calls: Annotated[int, Field(ge=0)]
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    errors: Annotated[int, Field(ge=0)]
+    feature: ModelActivityFeature
+    gpu_seconds: Annotated[int, Field(ge=0)]
+    graph: str
+    items: Annotated[int, Field(ge=0)]
+    last_at_ms: int
+    model: str
+    provider: str
+    tokens_estimate: Annotated[int, Field(ge=0)]
+
+
+class ModelActivityManaged(BaseModel):
+    """
+    The model a feature uses now, from the managed model catalog.
+    """
+
+    feature: ModelActivityFeature
+    label: Annotated[
+        str,
+        Field(
+            description='A name for people (`OpenAI text-embedding-3-small`, `Jev`).'
+        ),
+    ]
+    model: str
+    provider: str
+
+
+class ModelActivityReportEntry(BaseModel):
+    """
+    One count the SaaS API reports. The counters default to 0.
+    """
+
+    at_ms: Annotated[
+        int,
+        Field(
+            description='When the calls happened, in milliseconds since the Unix epoch: it\nselects the day and the month.'
+        ),
+    ]
+    calls: Annotated[int | None, Field(ge=0)] = None
+    cost_micro_usd: Annotated[int | None, Field(ge=0)] = None
+    errors: Annotated[int | None, Field(ge=0)] = None
+    feature: ModelActivityFeature
+    gpu_seconds: Annotated[int | None, Field(ge=0)] = None
+    graph: str
+    items: Annotated[int | None, Field(ge=0)] = None
+    model: str
+    provider: str
+    tokens_estimate: Annotated[int | None, Field(ge=0)] = None
+
+
+class ModelActivityReportRequest(BaseModel):
+    """
+    `POST /api/admin/model-activity` (database admin token): counts of model
+    calls the SaaS API made for a stack, at most
+    [`MODEL_ACTIVITY_REPORT_MAX_ENTRIES`].
+    """
+
+    entries: list[ModelActivityReportEntry]
+    stack_id: str
+
+
+class ModelActivityReportResponse(BaseModel):
+    accepted: Annotated[
+        int, Field(description="Entries taken into the ledger's next write.", ge=0)
+    ]
+
+
+class ModelActivityTotal(BaseModel):
+    """
+    One feature and model over the month.
+    """
+
+    calls: Annotated[int, Field(description='Requests sent to the provider.', ge=0)]
+    cost_micro_usd: Annotated[
+        int, Field(description='Estimated cost in millionths of a US dollar.', ge=0)
+    ]
+    errors: Annotated[int, Field(description='Calls that failed.', ge=0)]
+    feature: ModelActivityFeature
+    gpu_seconds: Annotated[int, Field(description='Training only.', ge=0)]
+    graphs: Annotated[
+        int,
+        Field(
+            description='Graphs with activity (the `*` row of "other graphs" not counted).',
+            ge=0,
+        ),
+    ]
+    items: Annotated[
+        int,
+        Field(
+            description='Texts embedded, questions asked, results judged, or runs.',
+            ge=0,
+        ),
+    ]
+    last_at_ms: Annotated[
+        int,
+        Field(
+            description='The last activity, in milliseconds since the Unix epoch (0: none).'
+        ),
+    ]
+    model: str
+    provider: str
+    tokens_estimate: Annotated[int, Field(ge=0)]
+
+
 class ModelArtifact(BaseModel):
     blake3: str
     bytes: Annotated[int, Field(ge=0)]
@@ -6374,6 +6498,41 @@ class ManagedModelsResponse(BaseModel):
             description='Whether the caller may write the catalog on this route (single\nmode). In SaaS mode the operator writes it through the ops route.'
         ),
     ] = None
+
+
+class ModelActivityDay(BaseModel):
+    """
+    One feature and model on one day (UTC).
+    """
+
+    calls: Annotated[int, Field(ge=0)]
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    day: Annotated[str, Field(description='`yyyy-mm-dd`.')]
+    errors: Annotated[int, Field(ge=0)]
+    feature: ModelActivityFeature
+    gpu_seconds: Annotated[int, Field(ge=0)]
+    items: Annotated[int, Field(ge=0)]
+    last_at_ms: int
+    model: str
+    provider: str
+    tokens_estimate: Annotated[int, Field(ge=0)]
+
+
+class ModelActivityResponse(BaseModel):
+    """
+    `GET /v1/models/activity?month=<yyyy-mm>`: the stack's model activity in
+    one month, with the model each feature uses now. The answering node adds
+    the calls it has not written to the ledger yet.
+    """
+
+    by_day: list[ModelActivityDay]
+    by_graph: list[ModelActivityGraph]
+    managed: list[ModelActivityManaged]
+    month: Annotated[str, Field(description='`yyyy-mm` (UTC).')]
+    months: Annotated[
+        list[str], Field(description='The months with activity, oldest first.')
+    ]
+    totals: list[ModelActivityTotal]
 
 
 class ModelCheckFile(BaseModel):

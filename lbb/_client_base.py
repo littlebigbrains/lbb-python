@@ -1441,6 +1441,30 @@ class _BaseLbbClient:
         """The managed models the platform uses per role (embedding, judge, rewriter)."""
         return self._request("GET", "/v1/managed-models")
 
+    def model_activity(self, month: str | None = None) -> Any:
+        """What each managed model did for the stack in one month.
+
+        ``month`` is ``yyyy-mm`` (UTC); the current month by default. The
+        answer holds totals, by day and by graph per feature (``index``,
+        ``search``, ``fit``, ``judge``, ``training``) and model, the months
+        with activity, and the model each feature uses now. A stack read:
+        the graph scope is not used.
+        """
+        params = {"month": month} if month is not None else None
+        return self._request("GET", "/v1/models/activity", params=params)
+
+    def model_activity_model(
+        self, month: str | None = None
+    ) -> models.ModelActivityResponse:
+        """Model activity validated as ``ModelActivityResponse``."""
+        params = {"month": month} if month is not None else None
+        return self._model_request(
+            models.ModelActivityResponse,
+            "GET",
+            "/v1/models/activity",
+            params=params,
+        )
+
     def publication_status_model(self) -> models.PublicationStatusResponse:
         """Publication lifecycle validated as ``PublicationStatusResponse``."""
         return self._model_request(

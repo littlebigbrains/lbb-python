@@ -4,6 +4,11 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Add `model_activity(month=None)` and `model_activity_model(month=None)` on
+  `LbbClient` and `AsyncLbbClient` for `GET /v1/models/activity`. They read
+  what each managed model did for the stack in one month (`yyyy-mm`, UTC;
+  the current month by default). Add the generated `ModelActivityResponse`
+  models.
 - `WorkflowInstance` gains `history_pruned_through`: turns up to it were
   removed by the server's history retention. Reading one answers 404, and a
   message id whose turn was removed is admitted again as a new message.

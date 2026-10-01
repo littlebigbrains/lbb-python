@@ -2126,6 +2126,46 @@ class SyncClientTests(unittest.TestCase):
         )
         self.assertEqual(dict(seen[0].url.params), {"graph": "perritos"})
 
+    def test_model_activity_reads_one_month_of_the_stacks_model_use(self) -> None:
+        counters = {
+            "calls": 2,
+            "items": 300,
+            "tokens_estimate": 9000,
+            "cost_micro_usd": 180,
+            "gpu_seconds": 0,
+            "errors": 0,
+            "last_at_ms": 1_790_000_000_000,
+        }
+        model = {
+            "feature": "index",
+            "provider": "openrouter",
+            "model": "openai/text-embedding-3-small",
+        }
+        payload = {
+            "month": "2026-09",
+            "months": ["2026-09", "2026-10"],
+            "managed": [{**model, "label": "OpenAI text-embedding-3-small"}],
+            "totals": [{**model, **counters, "graphs": 1}],
+            "by_day": [{**model, **counters, "day": "2026-09-30"}],
+            "by_graph": [{**model, **counters, "graph": "main"}],
+        }
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = client.model_activity(month="2026-09")
+            typed = client.model_activity_model()
+        self.assertEqual(raw["totals"][0]["items"], 300)
+        self.assertEqual(typed.totals[0].feature, model_module.ModelActivityFeature.index)
+        self.assertEqual(typed.by_graph[0].graph, "main")
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("GET", "/v1/models/activity"), ("GET", "/v1/models/activity")],
+        )
+        self.assertEqual(seen[0].url.params.get("month"), "2026-09")
+        self.assertNotIn("month", seen[1].url.params)
+
 
 class SearchAndEvalsNamespaceTests(unittest.TestCase):
     """The search setup, search, and evals namespaces send the documented requests."""
@@ -2271,6 +2311,29 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             status = await client.wait_for_published(7, poll_interval=0)
         self.assertEqual(status.state, model_module.PublicationState.current)
         self.assertEqual(status.published_seq, 7)
+
+    async def test_async_model_activity_reads_the_month(self) -> None:
+        payload = {
+            "month": "2026-10",
+            "months": [],
+            "managed": [],
+            "totals": [],
+            "by_day": [],
+            "by_graph": [],
+        }
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = await client.model_activity("2026-10")
+            typed = await client.model_activity_model()
+        self.assertEqual(raw["month"], "2026-10")
+        self.assertIsInstance(typed, model_module.ModelActivityResponse)
+        self.assertEqual(typed.month, "2026-10")
+        self.assertEqual(seen[0].url.path, "/v1/models/activity")
+        self.assertEqual(seen[0].url.params.get("month"), "2026-10")
+        self.assertNotIn("month", seen[1].url.params)
 
     async def test_async_workflow_instance_deletion_is_typed(self) -> None:
         seen: list[httpx.Request] = []

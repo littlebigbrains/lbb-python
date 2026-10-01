@@ -7951,6 +7951,389 @@
         ],
         "type": "string"
       },
+      "ModelActivityDay": {
+        "description": "One feature and model on one day (UTC).",
+        "properties": {
+          "calls": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "day": {
+            "description": "`yyyy-mm-dd`.",
+            "type": "string"
+          },
+          "errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "feature": {
+            "$ref": "#/components/schemas/ModelActivityFeature"
+          },
+          "gpu_seconds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "items": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "last_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feature",
+          "provider",
+          "model",
+          "day",
+          "calls",
+          "items",
+          "tokens_estimate",
+          "cost_micro_usd",
+          "gpu_seconds",
+          "errors",
+          "last_at_ms"
+        ],
+        "type": "object"
+      },
+      "ModelActivityFeature": {
+        "description": "The feature a model call served.",
+        "enum": [
+          "index",
+          "search",
+          "fit",
+          "judge",
+          "training"
+        ],
+        "type": "string"
+      },
+      "ModelActivityGraph": {
+        "description": "One feature and model on one graph over the month. `graph` is `*` for\nthe graphs past the ledger's bound (\"other graphs\").",
+        "properties": {
+          "calls": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "feature": {
+            "$ref": "#/components/schemas/ModelActivityFeature"
+          },
+          "gpu_seconds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "items": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "last_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feature",
+          "provider",
+          "model",
+          "graph",
+          "calls",
+          "items",
+          "tokens_estimate",
+          "cost_micro_usd",
+          "gpu_seconds",
+          "errors",
+          "last_at_ms"
+        ],
+        "type": "object"
+      },
+      "ModelActivityManaged": {
+        "description": "The model a feature uses now, from the managed model catalog.",
+        "properties": {
+          "feature": {
+            "$ref": "#/components/schemas/ModelActivityFeature"
+          },
+          "label": {
+            "description": "A name for people (`OpenAI text-embedding-3-small`, `Jev`).",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "feature",
+          "provider",
+          "model",
+          "label"
+        ],
+        "type": "object"
+      },
+      "ModelActivityReportEntry": {
+        "description": "One count the SaaS API reports. The counters default to 0.",
+        "properties": {
+          "at_ms": {
+            "description": "When the calls happened, in milliseconds since the Unix epoch: it\nselects the day and the month.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "calls": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "feature": {
+            "$ref": "#/components/schemas/ModelActivityFeature"
+          },
+          "gpu_seconds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "items": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feature",
+          "provider",
+          "model",
+          "graph",
+          "at_ms"
+        ],
+        "type": "object"
+      },
+      "ModelActivityReportRequest": {
+        "description": "`POST /api/admin/model-activity` (database admin token): counts of model\ncalls the SaaS API made for a stack, at most\n[`MODEL_ACTIVITY_REPORT_MAX_ENTRIES`].",
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/ModelActivityReportEntry"
+            },
+            "type": "array"
+          },
+          "stack_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stack_id",
+          "entries"
+        ],
+        "type": "object"
+      },
+      "ModelActivityReportResponse": {
+        "properties": {
+          "accepted": {
+            "description": "Entries taken into the ledger's next write.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "ModelActivityResponse": {
+        "description": "`GET /v1/models/activity?month=<yyyy-mm>`: the stack's model activity in\none month, with the model each feature uses now. The answering node adds\nthe calls it has not written to the ledger yet.",
+        "properties": {
+          "by_day": {
+            "items": {
+              "$ref": "#/components/schemas/ModelActivityDay"
+            },
+            "type": "array"
+          },
+          "by_graph": {
+            "items": {
+              "$ref": "#/components/schemas/ModelActivityGraph"
+            },
+            "type": "array"
+          },
+          "managed": {
+            "items": {
+              "$ref": "#/components/schemas/ModelActivityManaged"
+            },
+            "type": "array"
+          },
+          "month": {
+            "description": "`yyyy-mm` (UTC).",
+            "type": "string"
+          },
+          "months": {
+            "description": "The months with activity, oldest first.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "items": {
+              "$ref": "#/components/schemas/ModelActivityTotal"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "month",
+          "months",
+          "managed",
+          "totals",
+          "by_day",
+          "by_graph"
+        ],
+        "type": "object"
+      },
+      "ModelActivityTotal": {
+        "description": "One feature and model over the month.",
+        "properties": {
+          "calls": {
+            "description": "Requests sent to the provider.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "description": "Estimated cost in millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errors": {
+            "description": "Calls that failed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "feature": {
+            "$ref": "#/components/schemas/ModelActivityFeature"
+          },
+          "gpu_seconds": {
+            "description": "Training only.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graphs": {
+            "description": "Graphs with activity (the `*` row of \"other graphs\" not counted).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "items": {
+            "description": "Texts embedded, questions asked, results judged, or runs.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "last_at_ms": {
+            "description": "The last activity, in milliseconds since the Unix epoch (0: none).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feature",
+          "provider",
+          "model",
+          "calls",
+          "items",
+          "tokens_estimate",
+          "cost_micro_usd",
+          "gpu_seconds",
+          "errors",
+          "last_at_ms",
+          "graphs"
+        ],
+        "type": "object"
+      },
       "ModelArtifact": {
         "properties": {
           "blake3": {
@@ -33417,6 +33800,267 @@
           }
         ],
         "summary": "The managed models the platform uses per role (embedding, judge, rewriter): the operator's catalog, or the compiled defaults",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/activity": {
+      "get": {
+        "operationId": "get_v1_models_activity",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm (UTC); default: the current month",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelActivityResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What each managed model did for the stack in one month: totals, by day and by graph per feature (index, search, fit, judge, training) and model, the months with activity, and the model each feature uses now. A stack read; the answering node adds the calls it has not written to the ledger yet",
         "tags": [
           "system"
         ]
