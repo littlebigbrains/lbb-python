@@ -1061,14 +1061,6 @@ class GraphCard(BaseModel):
     types: list[CardType]
 
 
-class GraphDeleteResponse(BaseModel):
-    deleted_bytes: Annotated[int, Field(ge=0)]
-    deleted_feedback_objects: Annotated[int, Field(ge=0)]
-    deleted_objects: Annotated[int, Field(ge=0)]
-    graph_id: str
-    ok: bool
-
-
 class GraphExportRequest(BaseModel):
     as_of_commit_seq: Annotated[
         int | None,
@@ -1168,6 +1160,27 @@ class GraphRdfImportPredicate(BaseModel):
     resource_triples: Annotated[int, Field(ge=0)]
     triples: Annotated[int, Field(ge=0)]
     uri: str
+
+
+class GraphReclaimSchedule(BaseModel):
+    """
+    A background pass that reclaims the storage of a deleted graph branch.
+    """
+
+    branch: str
+    job_id: str
+    mode: Annotated[
+        str,
+        Field(
+            description='`apply` deletes; `plan` only counts what a pass would delete.'
+        ),
+    ]
+    not_before: Annotated[
+        str, Field(description='RFC 3339. The pass does not start before this time.')
+    ]
+    retired_epoch: Annotated[
+        int, Field(description='The epoch the delete retired.', ge=0)
+    ]
 
 
 class GraphReloadResponse(BaseModel):
@@ -6032,6 +6045,34 @@ class GraphAnchor(BaseModel):
         str | None,
         Field(
             description='Restrict the neighborhood walk to this relation type (by name). `None`\nfollows every relation.'
+        ),
+    ] = None
+
+
+class GraphDeleteResponse(BaseModel):
+    deleted_bytes: Annotated[
+        int, Field(description='Bytes of `deleted_objects`.', ge=0)
+    ]
+    deleted_feedback_objects: Annotated[
+        int,
+        Field(
+            description='Always 0: search feedback is reclaimed in the background with the\nrest of the graph.',
+            ge=0,
+        ),
+    ]
+    deleted_objects: Annotated[
+        int,
+        Field(
+            description='Objects the request itself removed (the workflow state and history\nof the deleted graph). The rest is reclaimed in the background; see\n`reclaims`.',
+            ge=0,
+        ),
+    ]
+    graph_id: str
+    ok: bool
+    reclaims: Annotated[
+        list[GraphReclaimSchedule] | None,
+        Field(
+            description="The background passes that reclaim the deleted graph's storage, one\nper branch. Empty when reclaim is turned off on the server."
         ),
     ] = None
 
