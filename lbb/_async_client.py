@@ -810,6 +810,16 @@ class AsyncLbbClient(_BaseLbbClient):
     async def list_graphs_model(self) -> models.GraphListResponse:
         return cast(models.GraphListResponse, await super().list_graphs_model())
 
+    async def model_activity(self, month: str | None = None) -> Any:
+        return await super().model_activity(month)
+
+    async def model_activity_model(
+        self, month: str | None = None
+    ) -> models.ModelActivityResponse:
+        return cast(
+            models.ModelActivityResponse, await super().model_activity_model(month)
+        )
+
     async def raw_request(
         self,
         method: str,
