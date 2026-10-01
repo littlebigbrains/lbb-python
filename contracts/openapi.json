@@ -5917,15 +5917,18 @@
       "GraphDeleteResponse": {
         "properties": {
           "deleted_bytes": {
+            "description": "Bytes of `deleted_objects`.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
           "deleted_feedback_objects": {
+            "description": "Always 0: search feedback is reclaimed in the background with the\nrest of the graph.",
             "minimum": 0,
             "type": "integer"
           },
           "deleted_objects": {
+            "description": "Objects the request itself removed (the workflow state and history\nof the deleted graph). The rest is reclaimed in the background; see\n`reclaims`.",
             "minimum": 0,
             "type": "integer"
           },
@@ -5934,6 +5937,13 @@
           },
           "ok": {
             "type": "boolean"
+          },
+          "reclaims": {
+            "description": "The background passes that reclaim the deleted graph's storage, one\nper branch. Empty when reclaim is turned off on the server.",
+            "items": {
+              "$ref": "#/components/schemas/GraphReclaimSchedule"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -6919,6 +6929,39 @@
           "exact",
           "approximate",
           "missing"
+        ],
+        "type": "object"
+      },
+      "GraphReclaimSchedule": {
+        "description": "A background pass that reclaims the storage of a deleted graph branch.",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "mode": {
+            "description": "`apply` deletes; `plan` only counts what a pass would delete.",
+            "type": "string"
+          },
+          "not_before": {
+            "description": "RFC 3339. The pass does not start before this time.",
+            "type": "string"
+          },
+          "retired_epoch": {
+            "description": "The epoch the delete retired.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "branch",
+          "retired_epoch",
+          "job_id",
+          "mode",
+          "not_before"
         ],
         "type": "object"
       },
