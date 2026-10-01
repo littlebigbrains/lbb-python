@@ -4,6 +4,9 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `WorkflowInstance` gains `history_pruned_through`: turns up to it were
+  removed by the server's history retention. Reading one answers 404, and a
+  message id whose turn was removed is admitted again as a new message.
 - Add `workflow_delete_instance(workflow_id)` on `LbbClient` and
   `AsyncLbbClient` for `POST /v1/workflows/instances/delete`. It deletes a
   message workflow instance with its turns and history and returns

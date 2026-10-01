@@ -18416,6 +18416,12 @@
               }
             ]
           },
+          "history_pruned_through": {
+            "description": "Turns `1..=history_pruned_through` were removed by history retention:\nreading one answers 404, and a message id whose turn was removed is\nadmitted again as a new message. Zero when nothing was removed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "history_through": {
             "description": "Completed history safely copied to immutable object storage and evicted locally.",
             "format": "int64",
@@ -18612,7 +18618,7 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "Caller-assigned idempotency key, retained across history spill and recovery.",
+            "description": "Caller-assigned idempotency key. A repeated id answers the turn it\nadmitted while that turn is in the retained history (by default the\nnewest 256 turns, and every turn that finished in the last 24 hours).",
             "type": "string"
           },
           "message": {},

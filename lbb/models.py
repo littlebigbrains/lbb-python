@@ -4790,7 +4790,7 @@ class WorkflowMessageRequest(BaseModel):
     id: Annotated[
         str,
         Field(
-            description='Caller-assigned idempotency key, retained across history spill and recovery.'
+            description='Caller-assigned idempotency key. A repeated id answers the turn it\nadmitted while that turn is in the retained history (by default the\nnewest 256 turns, and every turn that finished in the last 24 hours).'
         ),
     ]
     message: Any
@@ -8852,6 +8852,13 @@ class WorkflowInstance(BaseModel):
     completed_turns: Annotated[int, Field(ge=0)]
     created_at_ms: int
     current_turn: WorkflowTurn | None = None
+    history_pruned_through: Annotated[
+        int | None,
+        Field(
+            description='Turns `1..=history_pruned_through` were removed by history retention:\nreading one answers 404, and a message id whose turn was removed is\nadmitted again as a new message. Zero when nothing was removed.',
+            ge=0,
+        ),
+    ] = None
     history_through: Annotated[
         int,
         Field(
