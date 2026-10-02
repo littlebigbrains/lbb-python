@@ -42,6 +42,7 @@ from ._client_base import (
     _GraphNamespace,
     _jittered_backoff,
     _OntologyNamespace,
+    _OntologyStartersNamespace,
     _parse_model,
     _QueryNamespace,
     _raw_response,
@@ -80,7 +81,40 @@ async def _aiter_import_ndjson(lines: AsyncImportSource) -> AsyncIterator[bytes]
             yield _import_bytes(line)
 
 
+class _AsyncOntologyStartersNamespace(_OntologyStartersNamespace):
+    async def list(self) -> models.OntologyStarterList:
+        return cast(models.OntologyStarterList, await super().list())
+
+    async def get(self, starter: str) -> models.OntologyStarterDetail:
+        return cast(models.OntologyStarterDetail, await super().get(starter))
+
+    async def apply(
+        self,
+        starter: str,
+        *,
+        dry_run: bool = False,
+        expected_ontology_version: int | None = None,
+    ) -> models.OntologyStarterApplyResponse:
+        return cast(
+            models.OntologyStarterApplyResponse,
+            await super().apply(
+                starter,
+                dry_run=dry_run,
+                expected_ontology_version=expected_ontology_version,
+            ),
+        )
+
+    async def update(self, starter: str) -> models.OntologyStarterUpdateResponse:
+        return cast(models.OntologyStarterUpdateResponse, await super().update(starter))
+
+
 class _AsyncOntologyNamespace(_OntologyNamespace):
+    starters: _AsyncOntologyStartersNamespace
+
+    def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
+        super().__init__(client, graph)
+        self.starters = _AsyncOntologyStartersNamespace(client, graph)
+
     async def view(
         self, *, counts: bool = False, options: RequestOptions | None = None
     ) -> models.OntologyView:
@@ -377,10 +411,12 @@ class _AsyncSchemaNamespace(_SchemaNamespace):
 
 class _AsyncGraphNamespace(_GraphNamespace):
     facts: _AsyncFactsNamespace
+    ontology: _AsyncOntologyNamespace
 
     def __init__(self, client: _BaseLbbClient, graph: str) -> None:
         super().__init__(client, graph)
         self.facts = _AsyncFactsNamespace(client, graph)
+        self.ontology = _AsyncOntologyNamespace(client, graph)
 
     async def delete(self, *, confirm: str) -> models.GraphDeleteResponse:
         return cast(models.GraphDeleteResponse, await super().delete(confirm=confirm))

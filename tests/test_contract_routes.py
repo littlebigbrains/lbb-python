@@ -138,6 +138,7 @@ class ContractRouteCoverage(unittest.TestCase):
             "_GraphNamespace": "_AsyncGraphNamespace",
             "_FactsNamespace": "_AsyncFactsNamespace",
             "_OntologyNamespace": "_AsyncOntologyNamespace",
+            "_OntologyStartersNamespace": "_AsyncOntologyStartersNamespace",
             "_QueryNamespace": "_AsyncQueryNamespace",
             "_SchemaNamespace": "_AsyncSchemaNamespace",
             "_EntityNamespace": "_AsyncEntityNamespace",

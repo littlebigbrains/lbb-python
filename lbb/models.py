@@ -2099,6 +2099,211 @@ class OntologySearchTargets(BaseModel):
     terms: bool
 
 
+class OntologyStarterAdds(BaseModel):
+    """
+    What applying a starter would change now.
+    """
+
+    classes: Annotated[int, Field(description='Classes to add.', ge=0)]
+    properties: Annotated[int, Field(description='Properties to add.', ge=0)]
+    relations: Annotated[int, Field(description='Relations to add.', ge=0)]
+    super_types: Annotated[
+        int, Field(description='Direct parent links to add (`rdfs:subClassOf`).', ge=0)
+    ]
+    widened_relations: Annotated[
+        int,
+        Field(
+            description="Relations the graph has that lack some of the starter's domain or\nrange classes.",
+            ge=0,
+        ),
+    ]
+
+
+class OntologyStarterApplyRequest(BaseModel):
+    """
+    Apply a starter to the scoped graph.
+    """
+
+    dry_run: Annotated[
+        bool | None,
+        Field(description='Answer what applying would do without writing anything.'),
+    ] = None
+    expected_ontology_version: Annotated[
+        int | None,
+        Field(
+            description="Refuse with `409 conflict` when the graph's ontology version differs.",
+            ge=0,
+        ),
+    ] = None
+    starter: Annotated[str, Field(description='The starter id, for example `crm`.')]
+
+
+class OntologyStarterClass(BaseModel):
+    """
+    A class of a starter. LBB does not scope properties to classes:
+    `properties` is a hint for the fit and the docs.
+    """
+
+    description: str
+    equivalents: Annotated[
+        list[str] | None,
+        Field(
+            description='Equivalent or closest terms in public vocabularies, as CURIEs.'
+        ),
+    ] = None
+    keys: Annotated[
+        list[str] | None,
+        Field(
+            description='Properties whose value identifies one real thing across sources. No\nontology operation holds them yet.'
+        ),
+    ] = None
+    name: Annotated[str, Field(description='PascalCase.')]
+    properties: Annotated[
+        list[str],
+        Field(
+            description="The properties records of this class carry, beyond its parents' and\nthe shared ones."
+        ),
+    ]
+    superTypes: Annotated[
+        list[str] | None,
+        Field(description='Direct parents, declared earlier in the starter.'),
+    ] = None
+
+
+class OntologyStarterConflictKind(Enum):
+    """
+    The kind of term a conflict is about.
+    """
+
+    class_ = 'class'
+    property = 'property'
+    relation = 'relation'
+
+
+class OntologyStarterCounts(BaseModel):
+    """
+    The size of a starter.
+    """
+
+    classes: Annotated[int, Field(ge=0)]
+    properties: Annotated[int, Field(ge=0)]
+    questions: Annotated[int, Field(ge=0)]
+    relations: Annotated[int, Field(ge=0)]
+
+
+class OntologyStarterPresent(BaseModel):
+    """
+    How many of a starter's terms the graph holds.
+    """
+
+    classes: Annotated[int, Field(ge=0)]
+    properties: Annotated[int, Field(ge=0)]
+    relations: Annotated[int, Field(ge=0)]
+
+
+class OntologyStarterProperty(BaseModel):
+    """
+    A property of a starter. Properties are global: one name, one value type.
+    """
+
+    description: str
+    equivalent: Annotated[
+        str | None,
+        Field(
+            description='The schema.org (or other) term it corresponds to, as a CURIE.'
+        ),
+    ] = None
+    name: Annotated[str, Field(description='snake_case.')]
+    type: Annotated[
+        str,
+        Field(
+            description='`bool` | `i64` | `f64` | `date_time` | `keyword` | `text` |\n`keyword_set` | `i64_set`.'
+        ),
+    ]
+
+
+class OntologyStarterQuestion(BaseModel):
+    """
+    A question the starter's ontology must answer, with the terms an answer
+    needs.
+    """
+
+    classes: list[str]
+    id: Annotated[str, Field(description='For example `crm-01`.')]
+    properties: list[str]
+    relations: list[str]
+    sparql: Annotated[
+        str | None, Field(description='The SPARQL that answers it, when one exists.')
+    ] = None
+    text: str
+
+
+class OntologyStarterRelation(BaseModel):
+    """
+    A relation of a starter.
+    """
+
+    cardinality: Annotated[
+        str,
+        Field(
+            description='`one_to_one` | `one_to_many` | `many_to_one` | `many_to_many`.'
+        ),
+    ]
+    description: str
+    domain: Annotated[
+        list[str], Field(description='Class names the relation goes from.')
+    ]
+    equivalent: str | None = None
+    inverse: Annotated[
+        str | None, Field(description='The name of the reverse direction.')
+    ] = None
+    name: Annotated[str, Field(description='UPPER_SNAKE_CASE.')]
+    range: Annotated[list[str], Field(description='Class names the relation goes to.')]
+    reducer: Annotated[
+        str | None, Field(description='`append_only` (when absent) or `latest_wins`.')
+    ] = None
+    symmetric: bool | None = None
+    transitive: bool | None = None
+
+
+class OntologyStarterState(Enum):
+    """
+    How much of a starter a graph holds.
+    """
+
+    absent = 'absent'
+    partial = 'partial'
+    applied = 'applied'
+
+
+class OntologyStarterUpdateRequest(BaseModel):
+    """
+    File the operations a graph lacks of a starter as one ontology change
+    suggestion.
+    """
+
+    starter: Annotated[str, Field(description='The starter id, for example `crm`.')]
+
+
+class OntologyStarterUpdateResponse(BaseModel):
+    """
+    The suggestion a starter update filed.
+    """
+
+    created: Annotated[
+        bool,
+        Field(
+            description='True when this call filed the suggestion; false when it existed\nalready (it may have been revised) or nothing was needed.'
+        ),
+    ]
+    suggestion_id: Annotated[
+        str | None,
+        Field(
+            description="The suggestion's id; null when the graph already holds the starter."
+        ),
+    ] = None
+
+
 class OntologyTermView(BaseModel):
     """
     A named entity type or relation in the graph's active ontology. Returned by
@@ -6822,6 +7027,104 @@ class OntologySearchRequest(BaseModel):
     top_k: Annotated[int, Field(ge=0)]
 
 
+class OntologyStarterConflict(BaseModel):
+    """
+    A term the graph holds differently from the starter. Applying would keep
+    the graph's version silently, so `apply` refuses while one exists.
+    """
+
+    graph: Annotated[str, Field(description='What the graph holds.')]
+    kind: OntologyStarterConflictKind
+    message: str
+    name: Annotated[str, Field(description="The term's name in the starter.")]
+    starter: Annotated[
+        str,
+        Field(
+            description='What the starter declares, for example `keyword` or\n`many_to_one, inverse EMPLOYS`.'
+        ),
+    ]
+
+
+class OntologyStarterDocument(BaseModel):
+    """
+    A starter as the JSON document the data plane embeds
+    (`database/crates/lbb-ontology/starters/<id>.json`).
+    """
+
+    classes: Annotated[list[OntologyStarterClass], Field(description='Parents first.')]
+    description: str
+    format: Annotated[int, Field(description='The document format, 1.', ge=0)]
+    id: Annotated[str, Field(description='Stable id, for example `crm`.')]
+    label: str
+    ops: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ],
+        Field(
+            description='The evolve operations that create the starter on an empty graph.'
+        ),
+    ]
+    properties: list[OntologyStarterProperty]
+    questions: list[OntologyStarterQuestion]
+    relations: list[OntologyStarterRelation]
+    shared: Annotated[
+        list[str],
+        Field(
+            description='Properties every record of every class may carry (provenance).'
+        ),
+    ]
+    sources: Annotated[
+        list[str],
+        Field(
+            description='The connector kinds that map to this starter, for example `hubspot`.'
+        ),
+    ]
+    version: Annotated[
+        str,
+        Field(description='Semantic version. A major change renames or removes terms.'),
+    ]
+
+
+class OntologyStarterStatus(BaseModel):
+    """
+    A starter compared with a graph's ontology.
+    """
+
+    adds: OntologyStarterAdds
+    conflicts: list[OntologyStarterConflict] | None = None
+    present: OntologyStarterPresent
+    state: OntologyStarterState
+
+
+class OntologyStarterSummary(BaseModel):
+    """
+    One row of `GET /v1/ontology/starters`.
+    """
+
+    counts: OntologyStarterCounts
+    description: str
+    id: str
+    label: str
+    sources: list[str]
+    status: OntologyStarterStatus
+    version: str
+
+
 class OntologyView(BaseModel):
     concept_count: Annotated[
         int | None,
@@ -8725,7 +9028,7 @@ class OntologyChangeSuggestionCreateRequest(BaseModel):
             ]
         ],
         Field(
-            description='Up to 64 evolve operations; at least one unless `identities` is set\n(then it may be empty).'
+            description='Up to 128 evolve operations; at least one unless `identities` is set\n(then it may be empty).'
         ),
     ]
     evidence: SuggestionEvidence | None = None
@@ -8862,6 +9165,112 @@ class OntologySearchResponse(BaseModel):
     concepts: list[ConceptSearchResult]
     explain: OntologySearchExplain | None = None
     relations: list[RelationSearchResult]
+
+
+class OntologyStarterApplyResponse(BaseModel):
+    """
+    The result of applying a starter.
+    """
+
+    applied_ops: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ],
+        Field(
+            description='The evolve operations this call ran, or would run in a dry run.'
+        ),
+    ]
+    dry_run: bool
+    graph: GraphKey
+    no_op: Annotated[
+        bool,
+        Field(
+            description='True when the graph already held the whole starter: nothing was (or,\nin a dry run, would be) written.'
+        ),
+    ]
+    ontology_version: Annotated[
+        int,
+        Field(
+            description='The ontology version after the call, or the predicted one in a dry run.',
+            ge=0,
+        ),
+    ]
+    starter: Annotated[str, Field(description='The starter id.')]
+    status: Annotated[
+        OntologyStarterStatus,
+        Field(
+            description="The starter's status after the call, or the predicted one in a dry run."
+        ),
+    ]
+    version: Annotated[str, Field(description='The starter version.')]
+
+
+class OntologyStarterDetail(BaseModel):
+    """
+    `GET /v1/ontology/starters/detail`: one starter's document, its status and
+    the operations applying it would run now.
+    """
+
+    graph: GraphKey
+    missing_ops: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ],
+        Field(
+            description='The evolve operations applying the starter would run now: what the\ngraph lacks, with a relation the graph has widened instead of added.'
+        ),
+    ]
+    ontology_version: Annotated[
+        int | None, Field(description='Null when the graph does not exist yet.', ge=0)
+    ] = None
+    starter: OntologyStarterDocument
+    status: OntologyStarterStatus
+
+
+class OntologyStarterList(BaseModel):
+    """
+    `GET /v1/ontology/starters`: every starter with its status on the graph.
+    """
+
+    graph: GraphKey
+    ontology_version: Annotated[
+        int | None,
+        Field(
+            description="The graph's ontology version; null when the graph does not exist yet\n(every starter is then `absent`).",
+            ge=0,
+        ),
+    ] = None
+    starters: list[OntologyStarterSummary]
 
 
 class ResolveTermRequest(BaseModel):

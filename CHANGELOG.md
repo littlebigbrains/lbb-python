@@ -2,6 +2,23 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- Add `ontology.starters` with `list()`, `get(starter)`,
+  `apply(starter, dry_run=False, expected_ontology_version=None)` and
+  `update(starter)` for the `/v1/ontology/starters` routes, on `LbbClient` and
+  `AsyncLbbClient`. A starter is a versioned base ontology (`crm`,
+  `documents`, `work`); `list` and `get` answer for a graph that does not
+  exist yet. Add the generated `OntologyStarter*` models.
+- `graph(name).ontology` is the ontology namespace scoped to that graph:
+  `lbb.graph("main").ontology.starters.apply("crm")`.
+- Add `lbb.starters`: the starters' classes, properties, relations and
+  competency questions as typed constants with their SPARQL IRIs, for example
+  `crm.classes.Organization.iri` and `crm.relations.WORKS_AT.inverse_iri`.
+- A suggestion's `change` holds up to 128 operations (was 64).
+- `LbbError.details` holds the per-item reasons of a refusal, for example
+  the `conflicts` of `409 starter_conflict`.
+
 ## 0.16.0 (2026-10-02)
 
 Breaking removal of `ontology.induce()`, whose route is removed from the
