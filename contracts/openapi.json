@@ -9336,7 +9336,7 @@
             ]
           },
           "change": {
-            "description": "Up to 64 evolve operations; at least one unless `identities` is set\n(then it may be empty).",
+            "description": "Up to 128 evolve operations; at least one unless `identities` is set\n(then it may be empty).",
             "items": {
               "$ref": "#/components/schemas/OntologyEvolveOp"
             },
@@ -10431,6 +10431,660 @@
           "concepts",
           "terms",
           "relations"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterAdds": {
+        "description": "What applying a starter would change now.",
+        "properties": {
+          "classes": {
+            "description": "Classes to add.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "properties": {
+            "description": "Properties to add.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relations": {
+            "description": "Relations to add.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "super_types": {
+            "description": "Direct parent links to add (`rdfs:subClassOf`).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "widened_relations": {
+            "description": "Relations the graph has that lack some of the starter's domain or\nrange classes.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classes",
+          "super_types",
+          "properties",
+          "relations",
+          "widened_relations"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterApplyRequest": {
+        "description": "Apply a starter to the scoped graph.",
+        "properties": {
+          "dry_run": {
+            "description": "Answer what applying would do without writing anything.",
+            "type": "boolean"
+          },
+          "expected_ontology_version": {
+            "description": "Refuse with `409 conflict` when the graph's ontology version differs.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "starter": {
+            "description": "The starter id, for example `crm`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "starter"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterApplyResponse": {
+        "description": "The result of applying a starter.",
+        "properties": {
+          "applied_ops": {
+            "description": "The evolve operations this call ran, or would run in a dry run.",
+            "items": {
+              "$ref": "#/components/schemas/OntologyEvolveOp"
+            },
+            "type": "array"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "no_op": {
+            "description": "True when the graph already held the whole starter: nothing was (or,\nin a dry run, would be) written.",
+            "type": "boolean"
+          },
+          "ontology_version": {
+            "description": "The ontology version after the call, or the predicted one in a dry run.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "starter": {
+            "description": "The starter id.",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OntologyStarterStatus",
+            "description": "The starter's status after the call, or the predicted one in a dry run."
+          },
+          "version": {
+            "description": "The starter version.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "graph",
+          "starter",
+          "version",
+          "dry_run",
+          "no_op",
+          "applied_ops",
+          "ontology_version",
+          "status"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterClass": {
+        "description": "A class of a starter. LBB does not scope properties to classes:\n`properties` is a hint for the fit and the docs.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "equivalents": {
+            "description": "Equivalent or closest terms in public vocabularies, as CURIEs.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "keys": {
+            "description": "Properties whose value identifies one real thing across sources. No\nontology operation holds them yet.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "PascalCase.",
+            "type": "string"
+          },
+          "properties": {
+            "description": "The properties records of this class carry, beyond its parents' and\nthe shared ones.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "superTypes": {
+            "description": "Direct parents, declared earlier in the starter.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "properties"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterConflict": {
+        "description": "A term the graph holds differently from the starter. Applying would keep\nthe graph's version silently, so `apply` refuses while one exists.",
+        "properties": {
+          "graph": {
+            "description": "What the graph holds.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OntologyStarterConflictKind"
+          },
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "description": "The term's name in the starter.",
+            "type": "string"
+          },
+          "starter": {
+            "description": "What the starter declares, for example `keyword` or\n`many_to_one, inverse EMPLOYS`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "starter",
+          "graph",
+          "message"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterConflictKind": {
+        "description": "The kind of term a conflict is about.",
+        "enum": [
+          "class",
+          "property",
+          "relation"
+        ],
+        "type": "string"
+      },
+      "OntologyStarterCounts": {
+        "description": "The size of a starter.",
+        "properties": {
+          "classes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "properties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "questions": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relations": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classes",
+          "properties",
+          "relations",
+          "questions"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterDetail": {
+        "description": "`GET /v1/ontology/starters/detail`: one starter's document, its status and\nthe operations applying it would run now.",
+        "properties": {
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "missing_ops": {
+            "description": "The evolve operations applying the starter would run now: what the\ngraph lacks, with a relation the graph has widened instead of added.",
+            "items": {
+              "$ref": "#/components/schemas/OntologyEvolveOp"
+            },
+            "type": "array"
+          },
+          "ontology_version": {
+            "description": "Null when the graph does not exist yet.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "starter": {
+            "$ref": "#/components/schemas/OntologyStarterDocument"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OntologyStarterStatus"
+          }
+        },
+        "required": [
+          "graph",
+          "starter",
+          "status",
+          "missing_ops"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterDocument": {
+        "description": "A starter as the JSON document the data plane embeds\n(`database/crates/lbb-ontology/starters/<id>.json`).",
+        "properties": {
+          "classes": {
+            "description": "Parents first.",
+            "items": {
+              "$ref": "#/components/schemas/OntologyStarterClass"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "format": {
+            "description": "The document format, 1.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "description": "Stable id, for example `crm`.",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "ops": {
+            "description": "The evolve operations that create the starter on an empty graph.",
+            "items": {
+              "$ref": "#/components/schemas/OntologyEvolveOp"
+            },
+            "type": "array"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyStarterProperty"
+            },
+            "type": "array"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyStarterQuestion"
+            },
+            "type": "array"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyStarterRelation"
+            },
+            "type": "array"
+          },
+          "shared": {
+            "description": "Properties every record of every class may carry (provenance).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sources": {
+            "description": "The connector kinds that map to this starter, for example `hubspot`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "version": {
+            "description": "Semantic version. A major change renames or removes terms.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "id",
+          "version",
+          "label",
+          "description",
+          "sources",
+          "classes",
+          "properties",
+          "relations",
+          "shared",
+          "questions",
+          "ops"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterList": {
+        "description": "`GET /v1/ontology/starters`: every starter with its status on the graph.",
+        "properties": {
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "ontology_version": {
+            "description": "The graph's ontology version; null when the graph does not exist yet\n(every starter is then `absent`).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "starters": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyStarterSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "graph",
+          "starters"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterPresent": {
+        "description": "How many of a starter's terms the graph holds.",
+        "properties": {
+          "classes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "properties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relations": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classes",
+          "properties",
+          "relations"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterProperty": {
+        "description": "A property of a starter. Properties are global: one name, one value type.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "equivalent": {
+            "description": "The schema.org (or other) term it corresponds to, as a CURIE.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "snake_case.",
+            "type": "string"
+          },
+          "type": {
+            "description": "`bool` | `i64` | `f64` | `date_time` | `keyword` | `text` |\n`keyword_set` | `i64_set`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "description"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterQuestion": {
+        "description": "A question the starter's ontology must answer, with the terms an answer\nneeds.",
+        "properties": {
+          "classes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "For example `crm-01`.",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "relations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sparql": {
+            "description": "The SPARQL that answers it, when one exists.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "classes",
+          "properties",
+          "relations"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterRelation": {
+        "description": "A relation of a starter.",
+        "properties": {
+          "cardinality": {
+            "description": "`one_to_one` | `one_to_many` | `many_to_one` | `many_to_many`.",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "domain": {
+            "description": "Class names the relation goes from.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "equivalent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "inverse": {
+            "description": "The name of the reverse direction.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "UPPER_SNAKE_CASE.",
+            "type": "string"
+          },
+          "range": {
+            "description": "Class names the relation goes to.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reducer": {
+            "description": "`append_only` (when absent) or `latest_wins`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symmetric": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "transitive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "domain",
+          "range",
+          "cardinality"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterState": {
+        "description": "How much of a starter a graph holds.",
+        "enum": [
+          "absent",
+          "partial",
+          "applied"
+        ],
+        "type": "string"
+      },
+      "OntologyStarterStatus": {
+        "description": "A starter compared with a graph's ontology.",
+        "properties": {
+          "adds": {
+            "$ref": "#/components/schemas/OntologyStarterAdds"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/OntologyStarterConflict"
+            },
+            "type": "array"
+          },
+          "present": {
+            "$ref": "#/components/schemas/OntologyStarterPresent"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OntologyStarterState"
+          }
+        },
+        "required": [
+          "state",
+          "adds",
+          "present"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterSummary": {
+        "description": "One row of `GET /v1/ontology/starters`.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/OntologyStarterCounts"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OntologyStarterStatus"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "label",
+          "description",
+          "sources",
+          "counts",
+          "status"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterUpdateRequest": {
+        "description": "File the operations a graph lacks of a starter as one ontology change\nsuggestion.",
+        "properties": {
+          "starter": {
+            "description": "The starter id, for example `crm`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "starter"
+        ],
+        "type": "object"
+      },
+      "OntologyStarterUpdateResponse": {
+        "description": "The suggestion a starter update filed.",
+        "properties": {
+          "created": {
+            "description": "True when this call filed the suggestion; false when it existed\nalready (it may have been revised) or nothing was needed.",
+            "type": "boolean"
+          },
+          "suggestion_id": {
+            "description": "The suggestion's id; null when the graph already holds the starter.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "created"
         ],
         "type": "object"
       },
@@ -41371,6 +42025,1061 @@
           }
         ],
         "summary": "Discover ontology concepts, terms, and relations",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/starters": {
+      "get": {
+        "operationId": "get_v1_ontology_starters",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyStarterList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the ontology starters (CRM, Documents, Work management) with each one's status on the scoped graph; answers for a graph that does not exist yet",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/starters/apply": {
+      "post": {
+        "operationId": "post_v1_ontology_starters_apply",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OntologyStarterApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyStarterApplyResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Apply a starter to the scoped graph through the evolve path (a relation the graph has is widened); idempotent; refuses a conflicting term with 409 starter_conflict; dry_run writes nothing",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/starters/detail": {
+      "get": {
+        "operationId": "get_v1_ontology_starters_detail",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Starter id, for example crm",
+            "in": "query",
+            "name": "starter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyStarterDetail"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read one starter's document, its status on the scoped graph and the evolve operations applying it would run now",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/starters/update": {
+      "post": {
+        "operationId": "post_v1_ontology_starters_update",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OntologyStarterUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OntologyStarterUpdateResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "File what a graph holding part of a starter lacks as one ontology change suggestion, keyed starter:<id>/<version>; asking again returns the same suggestion",
         "tags": [
           "ontology"
         ]

@@ -93,6 +93,8 @@ class LbbError(RuntimeError):
         self.retryable = self.error.get("retryable")
         self.retry_after_seconds = self.error.get("retry_after_seconds")
         self.endpoint_hint = _endpoint_migration_hint(self.code)
+        # Per-item reasons for a refusal, e.g. ``conflicts`` of ``starter_conflict``.
+        self.details = self.error.get("details")
         super().__init__(
             self.error.get("message") or f"Little Big Brain {status_code}: {body}"
         )
@@ -1589,6 +1591,7 @@ class _GraphNamespace:
         self._client = client
         self._graph = graph
         self.facts = _FactsNamespace(client, graph)
+        self.ontology = _OntologyNamespace(client, graph)
 
     def delete(self, *, confirm: str) -> models.GraphDeleteResponse:
         """Delete and deregister this whole graph."""
@@ -1867,11 +1870,99 @@ def _decision(reason: str, author: str | None) -> dict[str, Any]:
     return body
 
 
+def _graph_scoped(graph: str | None, params: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Query parameters with ``graph`` set when a namespace is graph-scoped.
+
+    The client adds its own default graph first, so this one wins."""
+    scoped = dict(params or {})
+    if graph is not None:
+        scoped["graph"] = graph
+    return scoped
+
+
+class _OntologyStartersNamespace:
+    """Ontology starters: versioned base ontologies a graph starts from.
+
+    ``list`` and ``get`` answer for a graph that does not exist yet. The status
+    compares a starter's terms with the graph's ontology.
+    """
+
+    def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
+        self._client = client
+        self._graph = graph
+
+    def list(self) -> models.OntologyStarterList:
+        """Every starter with its status on the graph."""
+        return self._client._model_request(
+            models.OntologyStarterList,
+            "GET",
+            "/v1/ontology/starters",
+            params=_graph_scoped(self._graph, None),
+        )
+
+    def get(self, starter: str) -> models.OntologyStarterDetail:
+        """One starter's document, status and ``missing_ops``."""
+        return self._client._model_request(
+            models.OntologyStarterDetail,
+            "GET",
+            "/v1/ontology/starters/detail",
+            params=_graph_scoped(self._graph, {"starter": starter}),
+        )
+
+    def apply(
+        self,
+        starter: str,
+        *,
+        dry_run: bool = False,
+        expected_ontology_version: int | None = None,
+    ) -> models.OntologyStarterApplyResponse:
+        """Add what the graph lacks of a starter in one ontology version.
+
+        A relation the graph has is widened. Applying again answers
+        ``no_op: True``, so a retry is safe. A term the graph holds differently
+        fails with ``409 starter_conflict`` and writes nothing.
+        """
+        body: dict[str, Any] = {"starter": starter}
+        if dry_run:
+            body["dry_run"] = True
+        if expected_ontology_version is not None:
+            body["expected_ontology_version"] = expected_ontology_version
+        return self._client._model_request(
+            models.OntologyStarterApplyResponse,
+            "POST",
+            "/v1/ontology/starters/apply",
+            params=_graph_scoped(self._graph, None),
+            body=body,
+            options={"retry": True},
+        )
+
+    def update(self, starter: str) -> models.OntologyStarterUpdateResponse:
+        """File what the graph lacks of a starter as one change suggestion.
+
+        The suggestion is keyed ``starter:<id>/<version>``: asking again
+        returns the same one.
+        """
+        return self._client._model_request(
+            models.OntologyStarterUpdateResponse,
+            "POST",
+            "/v1/ontology/starters/update",
+            params=_graph_scoped(self._graph, None),
+            body={"starter": starter},
+            options={"retry": True},
+        )
+
+
 class _OntologyNamespace:
     """Typed ontology discovery and lifecycle operations."""
 
-    def __init__(self, client: _BaseLbbClient) -> None:
+    def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
         self._client = client
+        self._graph = graph
+        self.starters = _OntologyStartersNamespace(client, graph)
+
+    def _scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Query parameters, with this namespace's graph when it has one."""
+        return _graph_scoped(self._graph, params)
 
     def view(
         self, *, counts: bool = False, options: RequestOptions | None = None
@@ -1880,7 +1971,7 @@ class _OntologyNamespace:
             models.OntologyView,
             "GET",
             "/v1/ontology",
-            params={"counts": True if counts else None},
+            params=self._scope({"counts": True if counts else None}),
             options=options,
         )
 
@@ -1894,9 +1985,9 @@ class _OntologyNamespace:
             models.SchemaAuditReport,
             "GET",
             "/v1/ontology/conformance",
-            params={
-                "consistency": self._client._resolve_consistency(consistency),
-            },
+            params=self._scope(
+                {"consistency": self._client._resolve_consistency(consistency)}
+            ),
             options=options,
         )
 
@@ -1909,6 +2000,7 @@ class _OntologyNamespace:
             "/v1/ontology/search",
             body=body,
             options=_read_options(options),
+            params=self._scope(),
         )
 
     def resolve(
@@ -1920,6 +2012,7 @@ class _OntologyNamespace:
             "/v1/ontology/resolve",
             body=body,
             options=_read_options(options),
+            params=self._scope(),
         )
 
     def define(self, body: Body) -> models.OntologyDefineResponse:
@@ -1936,7 +2029,11 @@ class _OntologyNamespace:
         ``ontology_unsupported_change``, and writes nothing.
         """
         return self._client._model_request(
-            models.OntologyDefineResponse, "POST", "/v1/ontology/define", body=body
+            models.OntologyDefineResponse,
+            "POST",
+            "/v1/ontology/define",
+            body=body,
+            params=self._scope(),
         )
 
     def evolve(
@@ -1947,14 +2044,18 @@ class _OntologyNamespace:
             models.OntologyEvolveResponse,
             "POST",
             "/v1/ontology/evolve",
-            params={"dry_run": "true" if dry_run else None},
+            params=self._scope({"dry_run": "true" if dry_run else None}),
             body=body,
         )
 
     def draft_create(self, body: Body) -> models.OntologyDraft:
         """Create a durable proposal from samples without ingesting them."""
         return self._client._model_request(
-            models.OntologyDraft, "POST", "/v1/ontology/drafts", body=body
+            models.OntologyDraft,
+            "POST",
+            "/v1/ontology/drafts",
+            body=body,
+            params=self._scope(),
         )
 
     def draft_get(self, draft_id: str) -> models.OntologyDraft:
@@ -1962,7 +2063,7 @@ class _OntologyNamespace:
             models.OntologyDraft,
             "GET",
             "/v1/ontology/drafts",
-            params={"draft_id": draft_id},
+            params=self._scope({"draft_id": draft_id}),
         )
 
     def draft_validate(self, draft_id: str) -> models.OntologyDraft:
@@ -1970,7 +2071,7 @@ class _OntologyNamespace:
             models.OntologyDraft,
             "POST",
             "/v1/ontology/drafts/validate",
-            params={"draft_id": draft_id},
+            params=self._scope({"draft_id": draft_id}),
             options=_read_options(),
         )
 
@@ -1981,7 +2082,7 @@ class _OntologyNamespace:
             models.OntologyDraft,
             "POST",
             "/v1/ontology/drafts/promote",
-            params={"draft_id": draft_id},
+            params=self._scope({"draft_id": draft_id}),
             idempotency_key=idempotency_key
             or self._client.idempotency_key("ontology-draft-promote"),
         )
@@ -1991,7 +2092,7 @@ class _OntologyNamespace:
             models.OntologyDraft,
             "POST",
             "/v1/ontology/drafts/reject",
-            params={"draft_id": draft_id, "reason": reason},
+            params=self._scope({"draft_id": draft_id, "reason": reason}),
         )
 
     def suggestions(
@@ -2009,14 +2110,16 @@ class _OntologyNamespace:
             models.OntologyChangeSuggestionList,
             "GET",
             "/v1/ontology/suggestions",
-            params={
-                "status": status,
-                "origin_kind": origin_kind,
-                "origin_id": origin_id,
-                "anchor": anchor,
-                "key": key,
-                "limit": limit,
-            },
+            params=self._scope(
+                {
+                    "status": status,
+                    "origin_kind": origin_kind,
+                    "origin_id": origin_id,
+                    "anchor": anchor,
+                    "key": key,
+                    "limit": limit,
+                }
+            ),
         )
 
     def suggestion_get(self, suggestion_id: str) -> models.OntologyChangeSuggestion:
@@ -2025,7 +2128,7 @@ class _OntologyNamespace:
             models.OntologyChangeSuggestion,
             "GET",
             "/v1/ontology/suggestions/detail",
-            params={"suggestion_id": suggestion_id},
+            params=self._scope({"suggestion_id": suggestion_id}),
         )
 
     def suggestion_create(self, body: Body) -> models.OntologyChangeSuggestion:
@@ -2040,6 +2143,7 @@ class _OntologyNamespace:
             "/v1/ontology/suggestions",
             body=body,
             options=_read_options(),
+            params=self._scope(),
         )
 
     def suggestion_validate(
@@ -2050,7 +2154,7 @@ class _OntologyNamespace:
             models.OntologyChangeSuggestion,
             "POST",
             "/v1/ontology/suggestions/validate",
-            params={"suggestion_id": suggestion_id},
+            params=self._scope({"suggestion_id": suggestion_id}),
             options=_read_options(),
         )
 
@@ -2062,7 +2166,7 @@ class _OntologyNamespace:
             models.OntologyChangeSuggestion,
             "POST",
             "/v1/ontology/suggestions/accept",
-            params={"suggestion_id": suggestion_id},
+            params=self._scope({"suggestion_id": suggestion_id}),
             body=body if body is not None else {},
             options=_read_options(),
         )
@@ -2074,7 +2178,7 @@ class _OntologyNamespace:
             models.OntologyChangeSuggestion,
             "POST",
             "/v1/ontology/suggestions/dismiss",
-            params={"suggestion_id": suggestion_id},
+            params=self._scope({"suggestion_id": suggestion_id}),
             body=_decision(reason, author),
             options=_read_options(),
         )
@@ -2086,7 +2190,7 @@ class _OntologyNamespace:
             models.OntologyChangeSuggestion,
             "POST",
             "/v1/ontology/suggestions/supersede",
-            params={"suggestion_id": suggestion_id},
+            params=self._scope({"suggestion_id": suggestion_id}),
             body=_decision(reason, author),
             options=_read_options(),
         )
@@ -2101,7 +2205,7 @@ class _OntologyNamespace:
             models.OntologyChangeSuggestion,
             "POST",
             "/v1/ontology/suggestions/comment",
-            params={"suggestion_id": suggestion_id},
+            params=self._scope({"suggestion_id": suggestion_id}),
             body=body,
         )
 
