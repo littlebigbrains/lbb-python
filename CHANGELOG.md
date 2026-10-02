@@ -2,8 +2,17 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.16.0 (2026-10-02)
 
+Breaking removal of `ontology.induce()`, whose route is removed from the
+server. Model request bodies no longer send `null` for unset optional fields.
+
+- Fix: a Pydantic model request body no longer sends `null` for an optional
+  field that is not set. The server rejected `null` for list and boolean
+  fields with HTTP 400, for example `WidenRelationOp.add_range` and
+  `OntologyEvolveRequest.allow_data_conflicts` on `POST /v1/ontology/evolve`.
+  A required field set to `None` still sends `null`, for example
+  `WorkflowSignalRequest.value`. Plain `dict` bodies are sent as given.
 - Add `model_activity(month=None)` and `model_activity_model(month=None)` on
   `LbbClient` and `AsyncLbbClient` for `GET /v1/models/activity`. They read
   what each managed model did for the stack in one month (`yyyy-mm`, UTC;

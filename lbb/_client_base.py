@@ -28,7 +28,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Generic, Literal, TypedDict, TypeVar
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
 
 from . import models
 from ._version import __version__
@@ -298,10 +298,47 @@ class SparqlResults:
 def _coerce_body(body: Body | None) -> Any:
     if body is None:
         return None
+    if isinstance(body, BaseModel):
+        return body.model_dump(
+            mode="json", exclude=_unset_optional_fields(body) or None
+        )
     dump = getattr(body, "model_dump", None)
     if callable(dump):
         return dump(mode="json")
     return body
+
+
+def _unset_optional_fields(value: Any) -> dict[Any, Any]:
+    """The ``model_dump`` exclude spec for every ``None`` optional field in ``value``.
+
+    The generated models declare an omitted field as ``X | None = None``, but
+    the server decodes many of them as ``#[serde(default)] Vec<_>`` or
+    ``bool``, which reject an explicit ``null`` (HTTP 400). No server field
+    gives ``null`` a meaning apart from absence, so these fields are left off
+    the wire. A required field keeps an explicit ``None``: a required JSON value
+    such as ``WorkflowSignalRequest.value`` accepts ``null`` and rejects absence.
+    """
+    if isinstance(value, RootModel):
+        return _unset_optional_fields(value.root)
+    if isinstance(value, BaseModel):
+        spec: dict[Any, Any] = {}
+        for name, field in type(value).model_fields.items():
+            item = getattr(value, name)
+            if item is None:
+                if not field.is_required():
+                    spec[name] = True
+            elif nested := _unset_optional_fields(item):
+                spec[name] = nested
+        return spec
+    if isinstance(value, (list, tuple)):
+        return {
+            i: s for i, item in enumerate(value) if (s := _unset_optional_fields(item))
+        }
+    if isinstance(value, Mapping):
+        return {
+            k: s for k, item in value.items() if (s := _unset_optional_fields(item))
+        }
+    return {}
 
 
 def _parse_model(model_cls: type[ModelT], data: Any) -> ModelT:
