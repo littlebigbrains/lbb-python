@@ -2,7 +2,9 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.17.0 (2026-10-02)
+
+Adds the ontology starters (`crm`, `documents`, `work`).
 
 - Add `ontology.starters` with `list()`, `get(starter)`,
   `apply(starter, dry_run=False, expected_ontology_version=None)` and
