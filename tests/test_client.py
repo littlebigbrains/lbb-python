@@ -37,7 +37,9 @@ from lbb.models import (
     SparqlSelectResponse,
     TrainModelJobStatusResponse,
     TripletCommitFile,
+    WidenRelationOp,
     WorkflowInstanceDeleteResponse,
+    WorkflowSignalRequest,
 )
 
 SNAPSHOT = {"commit_seq": 7, "compacted_seq": 7}
@@ -1005,6 +1007,74 @@ class SyncClientTests(unittest.TestCase):
         self.assertTrue(result.publishable)
         self.assertFalse(result.no_op)
         self.assertEqual(dict(seen[0].url.params)["dry_run"], "true")
+
+    def test_model_body_leaves_unset_optional_fields_off_the_wire(self) -> None:
+        # The server decodes `add_range` and `allow_data_conflicts` as
+        # `#[serde(default)]` Vec / bool and answers 400 to an explicit null.
+        seen: list[httpx.Request] = []
+        payload = {
+            "graph": GRAPH,
+            "base_ontology_version": 1,
+            "ontology_version": 2,
+            "dry_run": False,
+            "publishable": True,
+            "no_op": False,
+            "applied": [],
+            "messages": [],
+        }
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": payload})
+        ) as client:
+            client.ontology.evolve(
+                OntologyEvolveRequest(
+                    ops=[
+                        WidenRelationOp(
+                            op="widen_relation", relation="R", add_domain=["T"]
+                        )
+                    ]
+                )
+            )
+        body = json.loads(seen[0].content)
+        self.assertEqual(
+            body,
+            {"ops": [{"op": "widen_relation", "relation": "R", "add_domain": ["T"]}]},
+        )
+
+        def null_keys(value: Any, path: str = "$") -> list[str]:
+            if isinstance(value, dict):
+                return [
+                    found
+                    for key, item in value.items()
+                    for found in (
+                        [f"{path}.{key}"]
+                        if item is None
+                        else null_keys(item, f"{path}.{key}")
+                    )
+                ]
+            if isinstance(value, list):
+                return [
+                    found
+                    for index, item in enumerate(value)
+                    for found in null_keys(item, f"{path}[{index}]")
+                ]
+            return []
+
+        self.assertEqual(null_keys(body), [])
+
+    def test_model_body_keeps_null_in_a_required_json_value(self) -> None:
+        # `value` is a required `serde_json::Value`: null is a valid signal
+        # value, and an absent field answers 400 `missing field`.
+        seen: list[httpx.Request] = []
+        with LbbClient("http://h", transport=capturing_transport(seen)) as client:
+            client.raw_request(
+                "POST",
+                "/v1/workflows/signal",
+                body=WorkflowSignalRequest(run_id="run-1", name="approve", value=None),
+            )
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"name": "approve", "run_id": "run-1", "value": None},
+        )
 
     def test_ontology_draft_lifecycle_is_typed_and_retry_safe(self) -> None:
         seen: list[httpx.Request] = []
