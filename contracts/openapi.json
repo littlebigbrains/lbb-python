@@ -9940,7 +9940,7 @@
         "type": "object"
       },
       "OntologyEvolveOp": {
-        "description": "One additive ontology change for [`OntologyEvolveRequest`]. Additive by\nconstruction — it widens a relation's domain/range or declares a new entity\ntype, but never narrows or removes — so every record written under an earlier\nversion stays valid (its positional type/relation ids are preserved). This is\nthe supported \"ontology evolution\" path; identity-breaking changes (removals,\nnarrowing) still require an explicit expand→migrate→contract plan.",
+        "description": "One additive ontology change for [`OntologyEvolveRequest`]. Additive by\nconstruction — it widens a relation's domain/range or declares a new entity\ntype, but never narrows or removes — so every record written under an earlier\nversion stays valid (its positional type/relation ids are preserved). This is\nthe supported \"ontology evolution\" path; identity-breaking changes (removals,\nnarrowing) still require an explicit expand→migrate→contract plan.\n\nEvery variant rejects unknown fields: a misspelled field fails the request\nwith `400 invalid_request` instead of reading as an empty change.",
         "discriminator": {
           "mapping": {
             "add_entity_type": "#/components/schemas/AddEntityTypeOp",
