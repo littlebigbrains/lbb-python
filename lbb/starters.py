@@ -109,6 +109,7 @@ class _CrmProperties:
     lead_status = StarterProperty(name="lead_status", iri="https://littlebigbrain.com/p/lead_status", value_type="keyword")
     lead_source = StarterProperty(name="lead_source", iri="https://littlebigbrain.com/p/lead_source", value_type="keyword")
     is_active = StarterProperty(name="is_active", iri="https://littlebigbrain.com/p/is_active", value_type="bool")
+    source_user_id = StarterProperty(name="source_user_id", iri="https://littlebigbrain.com/p/source_user_id", value_type="keyword")
     amount = StarterProperty(name="amount", iri="https://littlebigbrain.com/p/amount", value_type="f64")
     currency = StarterProperty(name="currency", iri="https://littlebigbrain.com/p/currency", value_type="keyword")
     unit_price = StarterProperty(name="unit_price", iri="https://littlebigbrain.com/p/unit_price", value_type="f64")
@@ -121,6 +122,7 @@ class _CrmProperties:
     forecast_category = StarterProperty(name="forecast_category", iri="https://littlebigbrain.com/p/forecast_category", value_type="keyword")
     is_closed = StarterProperty(name="is_closed", iri="https://littlebigbrain.com/p/is_closed", value_type="bool")
     is_won = StarterProperty(name="is_won", iri="https://littlebigbrain.com/p/is_won", value_type="bool")
+    won_reason = StarterProperty(name="won_reason", iri="https://littlebigbrain.com/p/won_reason", value_type="text")
     lost_reason = StarterProperty(name="lost_reason", iri="https://littlebigbrain.com/p/lost_reason", value_type="text")
     next_step = StarterProperty(name="next_step", iri="https://littlebigbrain.com/p/next_step", value_type="text")
     object_type = StarterProperty(name="object_type", iri="https://littlebigbrain.com/p/object_type", value_type="keyword")
@@ -167,10 +169,10 @@ class _CrmRelations:
 
 
 class _Crm:
-    """The CRM starter 1.0.0."""
+    """The CRM starter 1.1.0."""
 
     id = "crm"
-    version = "1.0.0"
+    version = "1.1.0"
     label = "CRM"
     classes = _CrmClasses
     properties = _CrmProperties
@@ -252,6 +254,7 @@ class _DocumentsProperties:
     company_name = StarterProperty(name="company_name", iri="https://littlebigbrain.com/p/company_name", value_type="keyword")
     lead_status = StarterProperty(name="lead_status", iri="https://littlebigbrain.com/p/lead_status", value_type="keyword")
     is_active = StarterProperty(name="is_active", iri="https://littlebigbrain.com/p/is_active", value_type="bool")
+    source_user_id = StarterProperty(name="source_user_id", iri="https://littlebigbrain.com/p/source_user_id", value_type="keyword")
     file_extension = StarterProperty(name="file_extension", iri="https://littlebigbrain.com/p/file_extension", value_type="keyword")
     mime_type = StarterProperty(name="mime_type", iri="https://littlebigbrain.com/p/mime_type", value_type="keyword")
     size_bytes = StarterProperty(name="size_bytes", iri="https://littlebigbrain.com/p/size_bytes", value_type="i64")
@@ -277,10 +280,10 @@ class _DocumentsRelations:
 
 
 class _Documents:
-    """The Documents starter 1.0.0."""
+    """The Documents starter 1.1.0."""
 
     id = "documents"
-    version = "1.0.0"
+    version = "1.1.0"
     label = "Documents"
     classes = _DocumentsClasses
     properties = _DocumentsProperties
@@ -358,6 +361,7 @@ class _WorkProperties:
     company_name = StarterProperty(name="company_name", iri="https://littlebigbrain.com/p/company_name", value_type="keyword")
     lead_status = StarterProperty(name="lead_status", iri="https://littlebigbrain.com/p/lead_status", value_type="keyword")
     is_active = StarterProperty(name="is_active", iri="https://littlebigbrain.com/p/is_active", value_type="bool")
+    source_user_id = StarterProperty(name="source_user_id", iri="https://littlebigbrain.com/p/source_user_id", value_type="keyword")
     probability = StarterProperty(name="probability", iri="https://littlebigbrain.com/p/probability", value_type="f64")
     is_closed = StarterProperty(name="is_closed", iri="https://littlebigbrain.com/p/is_closed", value_type="bool")
     is_won = StarterProperty(name="is_won", iri="https://littlebigbrain.com/p/is_won", value_type="bool")
@@ -404,10 +408,10 @@ class _WorkRelations:
 
 
 class _Work:
-    """The Work management starter 1.0.0."""
+    """The Work management starter 1.1.0."""
 
     id = "work"
-    version = "1.0.0"
+    version = "1.1.0"
     label = "Work management"
     classes = _WorkClasses
     properties = _WorkProperties
