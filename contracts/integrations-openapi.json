@@ -1,0 +1,1682 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Little Big Brain integrations API",
+    "version": "1",
+    "description": "Hosted integrations for a developer's end customers: one graph per end customer in a developer stack, called from the developer's backend with a stack API key. Generated from apps/saas-api/src/developerContract.ts; see docs/reference/integrations.md, Developer routes."
+  },
+  "servers": [
+    {
+      "url": "https://api.littlebigbrain.com"
+    }
+  ],
+  "security": [
+    {
+      "stackApiKey": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "integrations"
+    }
+  ],
+  "paths": {
+    "/v1/integrations/connectors": {
+      "get": {
+        "operationId": "connectors.list",
+        "summary": "List the connectors",
+        "description": "The connector catalog: each kind with its credential fields, its settings and its starter ontology. It holds no secret value.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorsAnswer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections": {
+      "post": {
+        "operationId": "connections.create",
+        "summary": "Create a connection",
+        "description": "Seals the credentials, applies the connector's starter (`starter`: `apply` by default), registers the graph with the integration host, creates the connection and asks for its fit, then sends the first sync under the message id `initial-sync` (`start`: true by default). The same request again answers success and queues one first sync. `409 starter_conflict` (with `details.conflicts`) and `409 integration_exists` create nothing. `429 rate_limited` past 20 connections created per stack per hour; `409 integration_limit_reached` past the stack's graph limit (50 by default). Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateConnectionAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectionRequest"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "connections.list",
+        "summary": "List the connections of a graph",
+        "description": "Every connection of the graph with its status, its last run, its totals and its fit. A graph that does not exist has none.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionListAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "graph",
+            "in": "query",
+            "required": true,
+            "description": "The end customer's graph.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/integrations/connections/{id}": {
+      "get": {
+        "operationId": "connections.get",
+        "summary": "Read a connection",
+        "description": "One connection: its status, its settings without the credentials, its current turn and that turn's error, and its fit with the count of open suggestions.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": true,
+            "description": "The end customer's graph.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "connections.delete",
+        "summary": "Delete a connection",
+        "description": "Deletes the connection's state, sealed credentials and turn history. The records it wrote stay in the graph. The graph's host registration goes with its last connection. Deleting again answers `deleted: false`.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": true,
+            "description": "The end customer's graph.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/integrations/connections/{id}/credentials": {
+      "put": {
+        "operationId": "connections.credentials",
+        "summary": "Replace the credentials",
+        "description": "Seals the new credentials under the connection's current settings, cancels a failed current turn, then sends `configure` and `check`. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionRefAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/settings": {
+      "put": {
+        "operationId": "connections.settings",
+        "summary": "Replace the settings",
+        "description": "Replaces the connector settings and seals the stored credentials again under them. `409 credentials_required` when the stored credentials do not open under the current settings: replace the credentials first. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionRefAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/sync": {
+      "post": {
+        "operationId": "connections.sync",
+        "summary": "Sync now",
+        "description": "Sends the connection a sync. A request with the same `Idempotency-Key` answers the same turn and sends nothing new. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "1 to 100 letters, digits, `_`, `-` or `.`. Without it, every request sends a sync.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,100}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/pause": {
+      "post": {
+        "operationId": "connections.pause",
+        "summary": "Pause a connection",
+        "description": "Scheduled syncs and queued work wait until the connection resumes. A paused connection answers as it is.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStatusAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/resume": {
+      "post": {
+        "operationId": "connections.resume",
+        "summary": "Resume a connection",
+        "description": "Queued work and the schedule continue. A connection that is not paused answers as it is. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStatusAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/graphs/{graph}/erase": {
+      "post": {
+        "operationId": "graphs.erase",
+        "summary": "Erase an end customer's graph",
+        "description": "Deletes every connection of the graph, removes the graph's host registration, then deletes the graph (`POST /v1/graph/delete`) and answers its reclaim passes. Erasing again answers zero counts.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EraseAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "graph",
+            "in": "path",
+            "required": true,
+            "description": "The end customer's graph.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": true,
+            "description": "The graph id again.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "stackApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A stack API key, `lbb_sk_…`. The routes ignore cookies and need no CSRF header."
+      }
+    },
+    "responses": {
+      "Error400": {
+        "description": "The request is invalid.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error401": {
+        "description": "No stack API key, or an unknown, revoked or inactive one (`invalid_api_key`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error402": {
+        "description": "The account has no active subscription.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error403": {
+        "description": "The stack is not enabled for developer access (`integrations_api_disabled`), or it is being deleted (`stack_deletion_pending`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error404": {
+        "description": "No such connection in this graph of the key's stack.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "The request conflicts with what exists.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error429": {
+        "description": "Past a rate limit (`rate_limited`): the stack's requests, the stack's connection creations, or keys that failed to authenticate from the client address. `Retry-After` says when to retry.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Error503": {
+        "description": "Briefly unavailable (`data_plane_busy`, `stack_endpoint_not_ready`); retry.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": false
+          },
+          "error": {
+            "type": "string",
+            "description": "`internal error` for a fault of the service."
+          },
+          "code": {
+            "type": "string",
+            "description": "For example `invalid_api_key`, `integrations_api_disabled`, `stack_deletion_pending`, `rate_limited`, `subscription_required`, `integration_exists`, `integration_limit_reached`, `starter_conflict`, `credentials_required`, `settings_version_conflict`, `stack_endpoint_not_ready`, `data_plane_busy`."
+          },
+          "details": {
+            "type": "object",
+            "description": "`conflicts` of `starter_conflict`."
+          }
+        },
+        "required": [
+          "ok",
+          "error"
+        ]
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "syncing",
+              "working",
+              "starting",
+              "delayed",
+              "retrying",
+              "attention",
+              "review",
+              "paused",
+              "new",
+              "current"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "One or two sentences for a person."
+          }
+        },
+        "required": [
+          "kind",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "running",
+              "blocked"
+            ]
+          },
+          "started_at_ms": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finished_at_ms": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "records": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deleted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "started_at_ms",
+          "finished_at_ms",
+          "records",
+          "deleted",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "Totals": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deleted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "runs": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "records",
+          "deleted",
+          "runs"
+        ],
+        "additionalProperties": false
+      },
+      "Fit": {
+        "type": "object",
+        "properties": {
+          "checked_at_ms": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "streams": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "mapped": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "waiting": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ignored": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "total",
+              "mapped",
+              "waiting",
+              "ignored"
+            ],
+            "additionalProperties": false
+          },
+          "open_suggestions": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "checked_at_ms",
+          "streams",
+          "open_suggestions"
+        ],
+        "additionalProperties": false
+      },
+      "Turn": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "type": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ready_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "number",
+          "type",
+          "status",
+          "attempt",
+          "error",
+          "ready_at_ms"
+        ],
+        "additionalProperties": false
+      },
+      "Connection": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          },
+          "fit": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Fit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "status",
+          "run",
+          "totals",
+          "fit"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectionDetail": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "account": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ontology_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "review"
+            ]
+          },
+          "every_ms": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "config": {
+            "type": "object",
+            "description": "Connector settings: strings, numbers, booleans, lists of strings or null. `sealedCredentials` is reserved.",
+            "maxProperties": 64,
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "run": {
+            "$ref": "#/components/schemas/Run"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          },
+          "fit": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Fit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "turn": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Turn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "graph",
+          "kind",
+          "label",
+          "account",
+          "ontology_mode",
+          "every_ms",
+          "config",
+          "paused",
+          "status",
+          "run",
+          "totals",
+          "fit",
+          "turn"
+        ],
+        "additionalProperties": false
+      },
+      "Reclaim": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "description": "`apply` deletes; `plan` only counts."
+          },
+          "not_before": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "retired_epoch": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "branch",
+          "job_id",
+          "mode",
+          "not_before",
+          "retired_epoch"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectorsAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "credentialFields": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "settings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "starter": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "kind",
+                "label",
+                "description",
+                "credentialFields",
+                "settings",
+                "starter"
+              ]
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "connectors"
+        ],
+        "additionalProperties": false
+      },
+      "CreateConnectionRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "kind": {
+            "type": "string",
+            "description": "A connector kind, for example `hubspot`."
+          },
+          "credentials": {
+            "type": "object",
+            "description": "The connector's credential fields by name (for example `HUBSPOT_TOKEN`), as non-empty strings: every field that is not optional, and no other.",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            },
+            "minProperties": 1,
+            "maxProperties": 32
+          },
+          "config": {
+            "type": "object",
+            "description": "Connector settings: strings, numbers, booleans, lists of strings or null. `sealedCredentials` is reserved.",
+            "maxProperties": 64,
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "everyMs": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 60000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sync interval. Default one hour; null syncs only on request."
+          },
+          "ontologyMode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "review"
+            ],
+            "description": "Default: the stack setting `integrations-api.ontology_mode`, else `auto`."
+          },
+          "starter": {
+            "type": "string",
+            "enum": [
+              "apply",
+              "skip"
+            ],
+            "description": "Default `apply`."
+          },
+          "start": {
+            "type": "boolean",
+            "description": "Send the first sync. Default true."
+          }
+        },
+        "required": [
+          "graph",
+          "id",
+          "kind",
+          "credentials"
+        ],
+        "additionalProperties": false
+      },
+      "CreateConnectionAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "kind",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectionListAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Connection"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "graph",
+          "connections"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectionAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "connection": {
+            "$ref": "#/components/schemas/ConnectionDetail"
+          }
+        },
+        "required": [
+          "ok",
+          "connection"
+        ],
+        "additionalProperties": false
+      },
+      "CredentialsRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "credentials": {
+            "type": "object",
+            "description": "The connector's credential fields by name (for example `HUBSPOT_TOKEN`), as non-empty strings: every field that is not optional, and no other.",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            },
+            "minProperties": 1,
+            "maxProperties": 32
+          }
+        },
+        "required": [
+          "graph",
+          "credentials"
+        ],
+        "additionalProperties": false
+      },
+      "SettingsRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "config": {
+            "type": "object",
+            "description": "Connector settings: strings, numbers, booleans, lists of strings or null. `sealedCredentials` is reserved.",
+            "maxProperties": 64,
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "graph",
+          "config"
+        ],
+        "additionalProperties": false
+      },
+      "GraphRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          }
+        },
+        "required": [
+          "graph"
+        ],
+        "additionalProperties": false
+      },
+      "SyncRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "full": {
+            "type": "boolean",
+            "description": "Read every stream in full."
+          }
+        },
+        "required": [
+          "graph"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectionRefAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph"
+        ],
+        "additionalProperties": false
+      },
+      "SyncAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "turn": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "status": {
+                "type": "string"
+              },
+              "message_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "number",
+              "status",
+              "message_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "turn"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectionStatusAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "DeleteAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "target_removed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "deleted",
+          "target_removed"
+        ],
+        "additionalProperties": false
+      },
+      "EraseAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "connections_deleted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "graph_deleted": {
+            "type": "boolean"
+          },
+          "reclaims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Reclaim"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "graph",
+          "connections_deleted",
+          "graph_deleted",
+          "reclaims"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

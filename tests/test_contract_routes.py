@@ -40,6 +40,7 @@ _CLIENT_MODULES = (
     _CLIENT_PACKAGE / "_client_base.py",
     _CLIENT_PACKAGE / "_sync_client.py",
     _CLIENT_PACKAGE / "_async_client.py",
+    _CLIENT_PACKAGE / "integrations.py",
 )
 
 # Matches `self._request("POST", "/v1/graph/commit"` and the awaited async form;

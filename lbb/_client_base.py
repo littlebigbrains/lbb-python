@@ -34,6 +34,8 @@ from . import models
 from ._version import __version__
 
 DEFAULT_BASE_URL = "http://127.0.0.1:7400"
+# The integrations API that ``client.integrations`` calls with the same key.
+DEFAULT_INTEGRATIONS_URL = "https://api.littlebigbrain.com"
 # Generous default: commits over a large corpus and long administration calls
 # can run well past a few seconds.
 DEFAULT_TIMEOUT = 120.0
@@ -394,26 +396,65 @@ def _attribute_filter(where: Mapping[str, Any], default_var: str) -> dict[str, A
     }
 
 
-def _parse_error(status_code: int, body: str, request_id: str | None) -> LbbError:
+def _retry_after_header_seconds(value: str | None) -> int | float | None:
+    """A ``Retry-After`` header in seconds, uncapped, or ``None`` when it is
+    absent or unparseable. An HTTP date counts from now."""
+    if not value:
+        return None
+    seconds = _parse_retry_after_header(value, None)
+    if seconds is None:
+        return None
+    seconds = max(0.0, seconds)
+    return int(seconds) if seconds.is_integer() else seconds
+
+
+def _parse_error(
+    status_code: int,
+    body: str,
+    request_id: str | None,
+    retry_after: str | None = None,
+) -> LbbError:
+    """The :class:`LbbError` for a failed response.
+
+    It reads the data plane's envelope ``{"error": {"code", "message", …}}``
+    and the integrations API's ``{"ok": false, "error", "code", "details"}``.
+    ``retry_after_seconds`` comes from the body's hint, else from the
+    ``Retry-After`` header.
+    """
+    header_seconds = _retry_after_header_seconds(retry_after)
     try:
         parsed = json.loads(body)
     except json.JSONDecodeError:
         parsed = {}
     error = parsed.get("error") if isinstance(parsed, dict) else None
+    if isinstance(error, str) and isinstance(parsed, dict):
+        details = parsed.get("details")
+        return LbbError(
+            status_code,
+            body,
+            {
+                "code": parsed.get("code") if isinstance(parsed.get("code"), str) else None,
+                "message": error,
+                "request_id": request_id,
+                "retry_after_seconds": header_seconds,
+                "details": details if isinstance(details, dict) else None,
+            },
+        )
     if isinstance(error, dict):
         if error.get("request_id") is None:
             error = {**error, "request_id": request_id}
+        if error.get("retry_after_seconds") is None and header_seconds is not None:
+            error = {**error, "retry_after_seconds": header_seconds}
         return LbbError(status_code, body, error)
-    return LbbError(
-        status_code,
-        body,
-        {
-            "type": "api_error",
-            "code": "unstructured_error",
-            "message": body or f"Little Big Brain {status_code}",
-            "request_id": request_id,
-        },
-    )
+    fallback: dict[str, Any] = {
+        "type": "api_error",
+        "code": "unstructured_error",
+        "message": body or f"Little Big Brain {status_code}",
+        "request_id": request_id,
+    }
+    if header_seconds is not None:
+        fallback["retry_after_seconds"] = header_seconds
+    return LbbError(status_code, body, fallback)
 
 
 def _decode_response_data(response: httpx.Response) -> Any:
@@ -460,7 +501,9 @@ def _retries_status(retry: bool | str, status_code: int) -> bool:
 
 def _error_body_field(response: httpx.Response, name: str) -> Any:
     """Read ``error.<name>`` from a JSON error body, or ``None`` when the body is
-    absent, naked (a bare LB 5xx), or not the standard error envelope."""
+    absent, naked (a bare LB 5xx), or not an error envelope. The integrations
+    API's ``{"ok": false, "error": "…", "code": …}`` holds its fields at the
+    top level."""
     try:
         parsed = json.loads(response.text)
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -468,6 +511,8 @@ def _error_body_field(response: httpx.Response, name: str) -> Any:
     error = parsed.get("error") if isinstance(parsed, dict) else None
     if isinstance(error, dict):
         return error.get(name)
+    if isinstance(error, str) and isinstance(parsed, dict):
+        return parsed.get(name)
     return None
 
 
@@ -539,7 +584,12 @@ def _raw_response(
 ) -> RawLbbResponse:
     request_id = response.headers.get("x-request-id")
     if response.status_code // 100 != 2:
-        raise _parse_error(response.status_code, response.text.strip(), request_id)
+        raise _parse_error(
+            response.status_code,
+            response.text.strip(),
+            request_id,
+            response.headers.get("retry-after"),
+        )
     try:
         data = _decode_response_data(response)
     except ValueError as error:
@@ -578,8 +628,12 @@ class _BaseLbbClient:
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
         on_retry: Callable[[RetryEvent], None] | None = None,
         default_consistency: str | None = None,
+        integrations_url: str = DEFAULT_INTEGRATIONS_URL,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._integrations_url = (
+            integrations_url.strip() or DEFAULT_INTEGRATIONS_URL
+        ).rstrip("/")
         self._api_key = api_key
         self._graph = graph
         self._api_version = api_version
@@ -607,9 +661,16 @@ class _BaseLbbClient:
             headers["idempotency-key"] = idempotency_key
         return headers
 
-    def _params(self, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    @property
+    def integrations_url(self) -> str:
+        """The integrations API, ``https://api.littlebigbrain.com`` by default."""
+        return self._integrations_url
+
+    def _params(
+        self, extra: Mapping[str, Any] | None = None, *, scoped: bool = True
+    ) -> dict[str, Any]:
         params: dict[str, Any] = {}
-        if self._graph is not None:
+        if scoped and self._graph is not None:
             params["graph"] = self._graph
         if extra:
             for key, value in extra.items():
@@ -660,12 +721,16 @@ class _BaseLbbClient:
         content_type: str | None,
         idempotency_key: str | None,
         headers: Mapping[str, str] | None = None,
+        scoped: bool = True,
     ) -> dict[str, Any]:
-        """Build identical request options for the sync and async transports."""
+        """Build identical request options for the sync and async transports.
+
+        ``scoped=False`` leaves out the client's graph: the integrations routes
+        name their graph themselves."""
         request_headers = self._headers(idempotency_key)
         request_headers.update(headers or {})
         kwargs: dict[str, Any] = {
-            "params": self._params(params),
+            "params": self._params(params, scoped=scoped),
             "headers": request_headers,
         }
         if content is not None:
@@ -734,6 +799,20 @@ class _BaseLbbClient:
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
     ) -> Any:  # noqa: D401
+        raise NotImplementedError
+
+    def _integrations_call(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        body: Body | None = None,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """A request to the integrations API (``integrations_url``) with the
+        same key, retries and errors; the client's graph is not added."""
         raise NotImplementedError
 
     # --- writes ---

@@ -2,6 +2,28 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+Adds `client.integrations`: hosted integrations for a developer's end
+customers, one graph per customer.
+
+- Add the `integrations_url` argument, `https://api.littlebigbrain.com` by
+  default, on `LbbClient` and `AsyncLbbClient`. The integrations routes take
+  the client's `api_key`.
+- Add `integrations.connectors()`, `create()`, `list()`, `get()`,
+  `set_credentials()`, `set_settings()`, `sync()`, `pause()`, `resume()`,
+  `delete()` and `erase()` for the `/v1/integrations/*` routes of
+  `contracts/integrations-openapi.json`. Answers are typed dicts from
+  `lbb.integrations`. `sync()` sends an `Idempotency-Key`; without
+  `idempotency_key` it makes one per call, so its retries queue one sync.
+- Add `integrations.suggestions()`, `accept()` and `dismiss()` for a
+  connection's ontology suggestions on the stack endpoint. `accept()` with
+  `sync=True` then sends the connection a sync under the message id
+  `sync-after-<suggestion id>`, and returns an `IntegrationAcceptResult`.
+- `LbbError` reads the integrations API's error body: `code`, the message and
+  `details`. `retry_after_seconds` comes from the `Retry-After` header when
+  the body gives no wait.
+
 ## 0.17.0 (2026-10-02)
 
 Adds the ontology starters (`crm`, `documents`, `work`).
