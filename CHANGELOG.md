@@ -2,10 +2,10 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.18.0 (2026-10-03)
 
 Adds `client.integrations`: hosted integrations for a developer's end
-customers, one graph per customer.
+customers, one graph per customer, with Google Drive among the connectors.
 
 - Add the `integrations_url` argument, `https://api.littlebigbrain.com` by
   default, on `LbbClient` and `AsyncLbbClient`. The integrations routes take
@@ -23,6 +23,12 @@ customers, one graph per customer.
 - `LbbError` reads the integrations API's error body: `code`, the message and
   `details`. `retry_after_seconds` comes from the `Retry-After` header when
   the body gives no wait.
+- Add `lbb.google_drive` with `authorize_url()`, `exchange_code()` and
+  `exchange_code_async()`: the Google consent URL and the code exchange a
+  developer's server runs before it creates a `google_drive` connection. The
+  exchange returns a `Grant` whose `credentials` hold `GOOGLE_CLIENT_ID`,
+  `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN`, and raises
+  `GoogleOAuthError`.
 
 ## 0.17.0 (2026-10-02)
 
