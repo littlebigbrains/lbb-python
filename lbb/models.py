@@ -4262,6 +4262,88 @@ class SparqlScalar3(Enum):
     null = 'null'
 
 
+class SparqlSearchEstimate(BaseModel):
+    """
+    The costs the planner compared when the entities that satisfy the rest
+    of the query fit under its limit, counted from cluster metadata. The
+    search-first plan runs when `search_first_entries` is below
+    `filter_first_scored`.
+    """
+
+    filter_first_entries: Annotated[
+        int,
+        Field(
+            description='Entries of the clusters that hold an allowed entity: what the\nfilter-first plan reads.',
+            ge=0,
+        ),
+    ]
+    filter_first_scored: Annotated[
+        int,
+        Field(
+            description='Allowed entities with a vector: what the filter-first plan scores.',
+            ge=0,
+        ),
+    ]
+    search_first_allowed: Annotated[
+        int | None,
+        Field(
+            description='Allowed entities inside those nearest clusters: what the search-first\nplan scores.',
+            ge=0,
+        ),
+    ] = None
+    search_first_entries: Annotated[
+        int | None,
+        Field(
+            description='Entries of the nearest clusters the planner compared: the smallest\nprobe that holds enough allowed entities for the exact rerank, or the\nfirst probe with at least `filter_first_scored` entries. What the\nsearch-first plan reads.',
+            ge=0,
+        ),
+    ] = None
+
+
+class SparqlSearchPlan(Enum):
+    """
+    How the planner answered the search of one query.
+    """
+
+    nearest = 'nearest'
+    filter_first = 'filter_first'
+    search_first = 'search_first'
+
+
+class SparqlSearchTimings(BaseModel):
+    """
+    The phases of one search inside a SPARQL query, in milliseconds.
+    """
+
+    check_ms: Annotated[
+        int, Field(description='The graph checks of the candidates.', ge=0)
+    ]
+    embed_ms: Annotated[
+        int,
+        Field(
+            description='The query vector (0 when cached, given, or read from an entity).',
+            ge=0,
+        ),
+    ]
+    filter_ms: Annotated[
+        int,
+        Field(
+            description='The read of the entities that satisfy the rest of the query.',
+            ge=0,
+        ),
+    ]
+    index_ms: Annotated[
+        int, Field(description='Cluster probes over the 4-bit codes.', ge=0)
+    ]
+    rerank_ms: Annotated[
+        int, Field(description='The exact rescoring of the candidates.', ge=0)
+    ]
+    resolve_ms: Annotated[
+        int, Field(description='Embedding documents, manifests and class lists.', ge=0)
+    ]
+    total_ms: Annotated[int, Field(ge=0)]
+
+
 class SparqlTerm1(BaseModel):
     """
     The entity bound to a query variable.
@@ -8004,6 +8086,62 @@ class SparqlQueryProfile(BaseModel):
     wcoj: SparqlProfileWcoj
 
 
+class SparqlSearchReport(BaseModel):
+    """
+    What the search inside a SPARQL query did. Its hits are bound into the
+    query as a `VALUES` block, so the rest of the query sees them as rows.
+    """
+
+    allowed: Annotated[
+        int | None,
+        Field(
+            description='Entities that satisfy the rest of the query, when the planner read\nthem; capped at 20,001.',
+            ge=0,
+        ),
+    ] = None
+    candidates: Annotated[int, Field(description='Candidates scored exactly.', ge=0)]
+    clusters_probed: Annotated[int, Field(ge=0)]
+    complete: Annotated[
+        bool,
+        Field(
+            description='False when fewer than `top` entities satisfy the query within the\ncandidates the search may score.'
+        ),
+    ]
+    embedded_through_seq: CommitSeq | None = None
+    embeddings: Annotated[list[str], Field(description='The embeddings searched.')]
+    entries_considered: Annotated[int, Field(ge=0)]
+    estimate: SparqlSearchEstimate | None = None
+    hits: Annotated[int, Field(description='The entities it found and bound.', ge=0)]
+    lag_commits: Annotated[
+        int,
+        Field(
+            description='Commits between the snapshot the query read and `embedded_through_seq`.',
+            ge=0,
+        ),
+    ]
+    model_id: str
+    plan: SparqlSearchPlan
+    rounds: Annotated[
+        int,
+        Field(
+            description='Search rounds (a search-first plan widens until it has `top`).',
+            ge=0,
+        ),
+    ]
+    timings: SparqlSearchTimings
+    top: Annotated[
+        int,
+        Field(
+            description="The entities the search was asked for: `search:top`, else the query's\n`LIMIT` plus `OFFSET`, else 10.",
+            ge=0,
+        ),
+    ]
+    usage: Annotated[
+        EmbeddingUsage,
+        Field(description='The model call for the query text, if one ran.'),
+    ]
+
+
 class SparqlSelectResponse(BaseModel):
     """
     Result of a `SparqlSelectRequest`. For SELECT, `vars` is the projected head
@@ -8086,6 +8224,7 @@ class SparqlTextResponse(BaseModel):
         str, Field(description='SPARQL 1.1 Query Results JSON, serialized.')
     ]
     row_page: RowPage
+    search: SparqlSearchReport | None = None
     snapshot: SnapshotView | None = None
     trace_id: Annotated[
         str | None,

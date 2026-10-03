@@ -17371,6 +17371,227 @@
           }
         ]
       },
+      "SparqlSearchEstimate": {
+        "description": "The costs the planner compared when the entities that satisfy the rest\nof the query fit under its limit, counted from cluster metadata. The\nsearch-first plan runs when `search_first_entries` is below\n`filter_first_scored`.",
+        "properties": {
+          "filter_first_entries": {
+            "description": "Entries of the clusters that hold an allowed entity: what the\nfilter-first plan reads.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "filter_first_scored": {
+            "description": "Allowed entities with a vector: what the filter-first plan scores.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "search_first_allowed": {
+            "description": "Allowed entities inside those nearest clusters: what the search-first\nplan scores.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "search_first_entries": {
+            "description": "Entries of the nearest clusters the planner compared: the smallest\nprobe that holds enough allowed entities for the exact rerank, or the\nfirst probe with at least `filter_first_scored` entries. What the\nsearch-first plan reads.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "filter_first_entries",
+          "filter_first_scored"
+        ],
+        "type": "object"
+      },
+      "SparqlSearchPlan": {
+        "description": "How the planner answered the search of one query.",
+        "enum": [
+          "nearest",
+          "filter_first",
+          "search_first"
+        ],
+        "type": "string"
+      },
+      "SparqlSearchReport": {
+        "description": "What the search inside a SPARQL query did. Its hits are bound into the\nquery as a `VALUES` block, so the rest of the query sees them as rows.",
+        "properties": {
+          "allowed": {
+            "description": "Entities that satisfy the rest of the query, when the planner read\nthem; capped at 20,001.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "candidates": {
+            "description": "Candidates scored exactly.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "clusters_probed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "complete": {
+            "description": "False when fewer than `top` entities satisfy the query within the\ncandidates the search may score.",
+            "type": "boolean"
+          },
+          "embedded_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The oldest commit every searched embedding covers. Text changed after\nit is searched with its earlier vector."
+              }
+            ]
+          },
+          "embeddings": {
+            "description": "The embeddings searched.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "entries_considered": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "estimate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SparqlSearchEstimate",
+                "description": "The costs behind the choice of plan, when `allowed` fit under the\nplanner's limit."
+              }
+            ]
+          },
+          "hits": {
+            "description": "The entities it found and bound.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lag_commits": {
+            "description": "Commits between the snapshot the query read and `embedded_through_seq`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/SparqlSearchPlan"
+          },
+          "rounds": {
+            "description": "Search rounds (a search-first plan widens until it has `top`).",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "timings": {
+            "$ref": "#/components/schemas/SparqlSearchTimings"
+          },
+          "top": {
+            "description": "The entities the search was asked for: `search:top`, else the query's\n`LIMIT` plus `OFFSET`, else 10.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/EmbeddingUsage",
+            "description": "The model call for the query text, if one ran."
+          }
+        },
+        "required": [
+          "plan",
+          "top",
+          "hits",
+          "complete",
+          "candidates",
+          "rounds",
+          "clusters_probed",
+          "entries_considered",
+          "embeddings",
+          "model_id",
+          "lag_commits",
+          "timings",
+          "usage"
+        ],
+        "type": "object"
+      },
+      "SparqlSearchTimings": {
+        "description": "The phases of one search inside a SPARQL query, in milliseconds.",
+        "properties": {
+          "check_ms": {
+            "description": "The graph checks of the candidates.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "embed_ms": {
+            "description": "The query vector (0 when cached, given, or read from an entity).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "filter_ms": {
+            "description": "The read of the entities that satisfy the rest of the query.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "index_ms": {
+            "description": "Cluster probes over the 4-bit codes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rerank_ms": {
+            "description": "The exact rescoring of the candidates.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolve_ms": {
+            "description": "Embedding documents, manifests and class lists.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resolve_ms",
+          "embed_ms",
+          "filter_ms",
+          "index_ms",
+          "rerank_ms",
+          "check_ms",
+          "total_ms"
+        ],
+        "type": "object"
+      },
       "SparqlSelectRequest": {
         "additionalProperties": false,
         "description": "A SPARQL-subset SELECT/ASK query: a conjunctive basic graph pattern (the\nWHERE) evaluated over the conformant published RDF dataset, with variable\nprojection, DISTINCT, and LIMIT/OFFSET. Structured-request-first — the SPARQL\ntext syntax is a later addition behind a dialect field, and FILTER plus\naggregation arrive in later milestones.",
@@ -17744,6 +17965,17 @@
           },
           "row_page": {
             "$ref": "#/components/schemas/RowPage"
+          },
+          "search": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SparqlSearchReport",
+                "description": "How the search by meaning in the query ran (`?x search:similarTo …`).\nPresent only when the query holds a search."
+              }
+            ]
           },
           "snapshot": {
             "oneOf": [
