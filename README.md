@@ -131,9 +131,10 @@ a graph; a graph first written through RDF import does not accept
 
 ## Integrations for your customers
 
-`client.integrations` connects each of your customers' HubSpot, Linear or
-SharePoint to a graph of their own. Its routes are on the integrations API,
-`https://api.littlebigbrain.com` by default (`integrations_url`). They take the
+`client.integrations` connects each of your customers' HubSpot, Linear,
+SharePoint or Google Drive to a graph of their own. Its routes are on the
+integrations API, `https://api.littlebigbrain.com` by default
+(`integrations_url`). They take the
 same stack API key. An operator turns on developer access per stack; ask us
 first. `AsyncLbbClient` has the same methods, with `await`.
 
@@ -147,6 +148,23 @@ connections = lbb.integrations.list(graph=graph)["connections"]
 open_ = lbb.integrations.suggestions("hubspot", graph=graph, status="open")
 lbb.integrations.accept(open_.suggestions[0].suggestion_id, graph=graph, sync=True)
 lbb.integrations.erase(graph, confirm=graph)
+```
+
+Google Drive connects through your own Google app. `lbb.google_drive` builds
+the consent URL and turns the callback's code into the connection's
+credentials (`exchange_code_async` for async code):
+
+```python
+from lbb import google_drive
+
+url = google_drive.authorize_url(client_id=client_id, redirect_uri=redirect_uri, state=state)
+# On the callback, after `state` matches:
+grant = google_drive.exchange_code(
+    client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, code=code
+)
+lbb.integrations.create(
+    graph=graph, id="google-drive", kind="google_drive", credentials=grant.credentials
+)
 ```
 
 See [Integrations for your customers](https://docs.littlebigbrain.com/guides/integrations-for-your-customers/).
