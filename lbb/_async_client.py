@@ -13,13 +13,14 @@ from collections.abc import (
     Mapping,
     Sequence,
 )
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 
 from . import models
 from ._client_base import (
     DEFAULT_BASE_URL,
+    DEFAULT_INTEGRATIONS_URL,
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_BUDGET_MS,
     DEFAULT_TIMEOUT,
@@ -52,6 +53,24 @@ from ._client_base import (
     _retry_delay_seconds,
     _retryable,
     _SchemaNamespace,
+)
+from .integrations import (
+    _DEFAULT,
+    IntegrationAcceptResult,
+    IntegrationConnectionAnswer,
+    IntegrationConnectorsAnswer,
+    IntegrationCreateAnswer,
+    IntegrationDeleteAnswer,
+    IntegrationEraseAnswer,
+    IntegrationListAnswer,
+    IntegrationRefAnswer,
+    IntegrationsNamespace,
+    IntegrationStatusAnswer,
+    IntegrationSyncAnswer,
+    _accept_request,
+    _Default,
+    _queues_sync,
+    _sync_after_request,
 )
 
 AsyncImportItem = Mapping[str, Any] | str | bytes
@@ -492,11 +511,149 @@ class _AsyncEntityNamespace(_EntityNamespace):
         )
 
 
+class _AsyncIntegrationsNamespace(IntegrationsNamespace):
+    """Async :class:`lbb.integrations.IntegrationsNamespace`: the same methods,
+    as coroutines."""
+
+    async def connectors(self) -> IntegrationConnectorsAnswer:
+        return cast(IntegrationConnectorsAnswer, await super().connectors())
+
+    async def create(
+        self,
+        *,
+        graph: str,
+        id: str,
+        kind: str,
+        credentials: Mapping[str, str],
+        config: Mapping[str, Any] | None = None,
+        every_ms: int | None | _Default = _DEFAULT,
+        ontology_mode: Literal["auto", "review"] | None = None,
+        starter: Literal["apply", "skip"] | None = None,
+        start: bool | None = None,
+    ) -> IntegrationCreateAnswer:
+        return cast(
+            IntegrationCreateAnswer,
+            await super().create(
+                graph=graph,
+                id=id,
+                kind=kind,
+                credentials=credentials,
+                config=config,
+                every_ms=every_ms,
+                ontology_mode=ontology_mode,
+                starter=starter,
+                start=start,
+            ),
+        )
+
+    async def list(self, *, graph: str) -> IntegrationListAnswer:
+        return cast(IntegrationListAnswer, await super().list(graph=graph))
+
+    async def get(self, id: str, *, graph: str) -> IntegrationConnectionAnswer:
+        return cast(IntegrationConnectionAnswer, await super().get(id, graph=graph))
+
+    async def set_credentials(
+        self, id: str, *, graph: str, credentials: Mapping[str, str]
+    ) -> IntegrationRefAnswer:
+        return cast(
+            IntegrationRefAnswer,
+            await super().set_credentials(id, graph=graph, credentials=credentials),
+        )
+
+    async def set_settings(
+        self, id: str, *, graph: str, config: Mapping[str, Any]
+    ) -> IntegrationRefAnswer:
+        return cast(
+            IntegrationRefAnswer,
+            await super().set_settings(id, graph=graph, config=config),
+        )
+
+    async def sync(
+        self,
+        id: str,
+        *,
+        graph: str,
+        full: bool | None = None,
+        idempotency_key: str | None = None,
+    ) -> IntegrationSyncAnswer:
+        return cast(
+            IntegrationSyncAnswer,
+            await super().sync(
+                id, graph=graph, full=full, idempotency_key=idempotency_key
+            ),
+        )
+
+    async def pause(self, id: str, *, graph: str) -> IntegrationStatusAnswer:
+        return cast(IntegrationStatusAnswer, await super().pause(id, graph=graph))
+
+    async def resume(self, id: str, *, graph: str) -> IntegrationStatusAnswer:
+        return cast(IntegrationStatusAnswer, await super().resume(id, graph=graph))
+
+    async def delete(self, id: str, *, graph: str) -> IntegrationDeleteAnswer:
+        return cast(IntegrationDeleteAnswer, await super().delete(id, graph=graph))
+
+    async def erase(self, graph: str, *, confirm: str) -> IntegrationEraseAnswer:
+        return cast(IntegrationEraseAnswer, await super().erase(graph, confirm=confirm))
+
+    async def suggestions(
+        self,
+        connection_id: str,
+        *,
+        graph: str,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> models.OntologyChangeSuggestionList:
+        return cast(
+            models.OntologyChangeSuggestionList,
+            await super().suggestions(
+                connection_id, graph=graph, status=status, limit=limit
+            ),
+        )
+
+    async def accept(
+        self,
+        suggestion_id: str,
+        *,
+        graph: str,
+        change: Sequence[Body] | None = None,
+        comment: str | None = None,
+        author: str | None = None,
+        sync: bool = False,
+    ) -> IntegrationAcceptResult:
+        suggestion = await self._client._model_request(
+            models.OntologyChangeSuggestion,
+            **_accept_request(suggestion_id, graph, change, comment, author),
+        )
+        connection = _queues_sync(suggestion) if sync else None
+        if connection is None:
+            return IntegrationAcceptResult(suggestion=suggestion, sync=None)
+        turn = await self._client._model_request(
+            models.WorkflowTurn, **_sync_after_request(suggestion, connection, graph)
+        )
+        return IntegrationAcceptResult(suggestion=suggestion, sync=turn)
+
+    async def dismiss(
+        self,
+        suggestion_id: str,
+        *,
+        graph: str,
+        reason: str,
+        author: str | None = None,
+    ) -> models.OntologyChangeSuggestion:
+        return cast(
+            models.OntologyChangeSuggestion,
+            await super().dismiss(
+                suggestion_id, graph=graph, reason=reason, author=author
+            ),
+        )
+
+
 class AsyncLbbClient(_BaseLbbClient):
     """Asynchronous client. Usable as an async context manager."""
 
     entities: _AsyncEntityNamespace
     ontology: _AsyncOntologyNamespace
+    integrations: _AsyncIntegrationsNamespace
     query: _AsyncQueryNamespace
     schema: _AsyncSchemaNamespace
 
@@ -515,6 +672,7 @@ class AsyncLbbClient(_BaseLbbClient):
         transport: httpx.AsyncBaseTransport | None = None,
         event_hooks: Mapping[str, list[Callable[[Any], Any]]] | None = None,
         default_consistency: str | None = None,
+        integrations_url: str = DEFAULT_INTEGRATIONS_URL,
     ) -> None:
         super().__init__(
             base_url,
@@ -526,6 +684,7 @@ class AsyncLbbClient(_BaseLbbClient):
             retry_budget_ms=retry_budget_ms,
             on_retry=on_retry,
             default_consistency=default_consistency,
+            integrations_url=integrations_url,
         )
         self.entities = _AsyncEntityNamespace(self)
         self.ontology = _AsyncOntologyNamespace(self)
@@ -533,6 +692,8 @@ class AsyncLbbClient(_BaseLbbClient):
         self.schema = _AsyncSchemaNamespace(self)
         self.evals = _EvalsNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
+        # Hosted integrations for your end customers, at ``integrations_url``.
+        self.integrations = _AsyncIntegrationsNamespace(self)
         self._http = httpx.AsyncClient(
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )
@@ -868,6 +1029,54 @@ class AsyncLbbClient(_BaseLbbClient):
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
     ) -> RawLbbResponse:
+        return await self._send(
+            method,
+            path,
+            f"{self._base_url}{path}",
+            params=params,
+            body=body,
+            content=content,
+            content_type=content_type,
+            idempotency_key=idempotency_key,
+            options=options,
+        )
+
+    async def _integrations_call(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        body: Body | None = None,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        response = await self._send(
+            method,
+            path,
+            f"{self._integrations_url}{path}",
+            params=params,
+            body=body,
+            idempotency_key=idempotency_key,
+            options=options,
+            scoped=False,
+        )
+        return response.data
+
+    async def _send(
+        self,
+        method: str,
+        path: str,
+        url: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        body: Body | None = None,
+        content: Any | None = None,
+        content_type: str | None = None,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+        scoped: bool = True,
+    ) -> RawLbbResponse:
         request_options = options or {}
         kwargs = self._request_kwargs(
             params=params,
@@ -876,6 +1085,7 @@ class AsyncLbbClient(_BaseLbbClient):
             content_type=content_type,
             idempotency_key=idempotency_key,
             headers=request_options.get("headers"),
+            scoped=scoped,
         )
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]
@@ -893,9 +1103,7 @@ class AsyncLbbClient(_BaseLbbClient):
         for attempt in range(max_retries + 1):
             attempts = attempt + 1
             try:
-                response = await self._http.request(
-                    method, f"{self._base_url}{path}", **kwargs
-                )
+                response = await self._http.request(method, url, **kwargs)
             except httpx.RequestError:
                 if not (_retries_transport_error(retry) and attempt < max_retries):
                     raise

@@ -13,6 +13,7 @@ import httpx
 from . import models
 from ._client_base import (
     DEFAULT_BASE_URL,
+    DEFAULT_INTEGRATIONS_URL,
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_BUDGET_MS,
     DEFAULT_TIMEOUT,
@@ -43,6 +44,7 @@ from ._client_base import (
     _retryable,
     _SchemaNamespace,
 )
+from .integrations import IntegrationsNamespace
 
 ImportItem = Mapping[str, Any] | str | bytes
 ImportSource = Iterable[ImportItem] | str | bytes
@@ -162,6 +164,7 @@ class LbbClient(_BaseLbbClient):
     schema: _SchemaNamespace
     evals: _EvalsNamespace
     embeddings: _EmbeddingsNamespace
+    integrations: IntegrationsNamespace
 
     def __init__(
         self,
@@ -178,6 +181,7 @@ class LbbClient(_BaseLbbClient):
         transport: httpx.BaseTransport | None = None,
         event_hooks: Mapping[str, list[Callable[[Any], Any]]] | None = None,
         default_consistency: str | None = None,
+        integrations_url: str = DEFAULT_INTEGRATIONS_URL,
     ) -> None:
         super().__init__(
             base_url,
@@ -189,6 +193,7 @@ class LbbClient(_BaseLbbClient):
             retry_budget_ms=retry_budget_ms,
             on_retry=on_retry,
             default_consistency=default_consistency,
+            integrations_url=integrations_url,
         )
         self.entities = _EntityNamespace(self)
         self.ontology = _SyncOntologyNamespace(self)
@@ -196,6 +201,8 @@ class LbbClient(_BaseLbbClient):
         self.schema = _SchemaNamespace(self)
         self.evals = _EvalsNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
+        # Hosted integrations for your end customers, at ``integrations_url``.
+        self.integrations = IntegrationsNamespace(self)
         self._http = httpx.Client(
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )
@@ -306,6 +313,53 @@ class LbbClient(_BaseLbbClient):
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
     ) -> RawLbbResponse:
+        return self._send(
+            method,
+            path,
+            f"{self._base_url}{path}",
+            params=params,
+            body=body,
+            content=content,
+            content_type=content_type,
+            idempotency_key=idempotency_key,
+            options=options,
+        )
+
+    def _integrations_call(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        body: Body | None = None,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        return self._send(
+            method,
+            path,
+            f"{self._integrations_url}{path}",
+            params=params,
+            body=body,
+            idempotency_key=idempotency_key,
+            options=options,
+            scoped=False,
+        ).data
+
+    def _send(
+        self,
+        method: str,
+        path: str,
+        url: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        body: Body | None = None,
+        content: Any | None = None,
+        content_type: str | None = None,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+        scoped: bool = True,
+    ) -> RawLbbResponse:
         request_options = options or {}
         kwargs = self._request_kwargs(
             params=params,
@@ -314,6 +368,7 @@ class LbbClient(_BaseLbbClient):
             content_type=content_type,
             idempotency_key=idempotency_key,
             headers=request_options.get("headers"),
+            scoped=scoped,
         )
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]
@@ -330,9 +385,7 @@ class LbbClient(_BaseLbbClient):
         for attempt in range(max_retries + 1):
             attempts = attempt + 1
             try:
-                response = self._http.request(
-                    method, f"{self._base_url}{path}", **kwargs
-                )
+                response = self._http.request(method, url, **kwargs)
             except httpx.RequestError:
                 if not (_retries_transport_error(retry) and attempt < max_retries):
                     raise

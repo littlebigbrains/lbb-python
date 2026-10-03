@@ -129,6 +129,28 @@ The RDF and JSON guides use different write workflows. Choose one when creating
 a graph; a graph first written through RDF import does not accept
 `facts.create` or JSON record imports.
 
+## Integrations for your customers
+
+`client.integrations` connects each of your customers' HubSpot, Linear or
+SharePoint to a graph of their own. Its routes are on the integrations API,
+`https://api.littlebigbrain.com` by default (`integrations_url`). They take the
+same stack API key. An operator turns on developer access per stack; ask us
+first. `AsyncLbbClient` has the same methods, with `await`.
+
+```python
+graph = "c-5f1c9a0e3b7d2c4a8e6f1b0d"  # one opaque graph per customer
+
+lbb.integrations.create(
+    graph=graph, id="hubspot", kind="hubspot", credentials={"HUBSPOT_TOKEN": token}
+)
+connections = lbb.integrations.list(graph=graph)["connections"]
+open_ = lbb.integrations.suggestions("hubspot", graph=graph, status="open")
+lbb.integrations.accept(open_.suggestions[0].suggestion_id, graph=graph, sync=True)
+lbb.integrations.erase(graph, confirm=graph)
+```
+
+See [Integrations for your customers](https://docs.littlebigbrain.com/guides/integrations-for-your-customers/).
+
 ## Errors and retries
 
 Failed HTTP requests raise `LbbError`, with a status, error code, message, and
