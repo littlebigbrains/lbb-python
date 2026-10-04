@@ -28,6 +28,7 @@ from ._client_base import (
     LbbCapabilityError,
     ListPage,
     ModelT,
+    QueryAskResult,
     RawLbbResponse,
     RequestOptions,
     RetryEvent,
@@ -35,6 +36,7 @@ from ._client_base import (
     SparqlResults,
     _BaseLbbClient,
     _body_marks_terminal,
+    _ChecksNamespace,
     _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
@@ -310,6 +312,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
         profile: bool = False,
+        request: str | None = None,
     ) -> SparqlResults:
         return cast(
             SparqlResults,
@@ -324,7 +327,79 @@ class _AsyncQueryNamespace(_QueryNamespace):
                 min_indexed_seq=min_indexed_seq,
                 as_of_commit_seq=as_of_commit_seq,
                 profile=profile,
+                request=request,
             ),
+        )
+
+    async def rewrite(
+        self,
+        question: str,
+        *,
+        context: str | None = None,
+        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
+        route: str | models.QueryRoute | None = None,
+        mode: str | models.QueryRewriteMode | None = None,
+        run: bool | None = None,
+        limit: int | None = None,
+        as_of_commit_seq: int | None = None,
+        today: str | None = None,
+        include_grounding: bool | None = None,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        return await super().rewrite(
+            question,
+            context=context,
+            previous=previous,
+            route=route,
+            mode=mode,
+            run=run,
+            limit=limit,
+            as_of_commit_seq=as_of_commit_seq,
+            today=today,
+            include_grounding=include_grounding,
+            consistency=consistency,
+            options=options,
+        )
+
+    async def ask(
+        self,
+        question: str,
+        *,
+        context: str | None = None,
+        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
+        route: str | models.QueryRoute | None = None,
+        limit: int | None = None,
+        as_of_commit_seq: int | None = None,
+        today: str | None = None,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> QueryAskResult:
+        """Async :meth:`LbbClient.query.ask`: rewrite the question, run the
+        query, and return its rows."""
+        response = await self.rewrite(
+            question,
+            context=context,
+            previous=previous,
+            route=route,
+            run=True,
+            limit=limit,
+            as_of_commit_seq=as_of_commit_seq,
+            today=today,
+            consistency=consistency,
+            options=options,
+        )
+        return QueryAskResult.from_response(response)
+
+    async def update(
+        self,
+        update: str,
+        *,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> None:
+        await super().update(
+            update, idempotency_key=idempotency_key, options=options
         )
 
 
@@ -502,6 +577,30 @@ class _AsyncGraphNamespace(_GraphNamespace):
 
 
 class _AsyncEntityNamespace(_EntityNamespace):
+    async def detail_model(
+        self,
+        *,
+        id: str | None = None,
+        type: str | None = None,
+        name: str | None = None,
+        key: str | None = None,
+        consistency: str | None = None,
+        edges: int | None = None,
+        as_of_commit_seq: int | None = None,
+    ) -> models.EntityDetailResponse:
+        return cast(
+            models.EntityDetailResponse,
+            await super().detail_model(
+                id=id,
+                type=type,
+                name=name,
+                key=key,
+                consistency=consistency,
+                edges=edges,
+                as_of_commit_seq=as_of_commit_seq,
+            ),
+        )
+
     async def filter_by_attributes_model(
         self, **kwargs: Any
     ) -> models.SparqlSelectResponse:
@@ -691,6 +790,9 @@ class AsyncLbbClient(_BaseLbbClient):
         self.query = _AsyncQueryNamespace(self)
         self.schema = _AsyncSchemaNamespace(self)
         self.evals = _EvalsNamespace(self)
+        # Model checks: the call log, the judge's checks, and reviews. Each
+        # method returns an awaitable here.
+        self.checks = _ChecksNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
         self.integrations = _AsyncIntegrationsNamespace(self)
@@ -1224,6 +1326,7 @@ class AsyncLbbClient(_BaseLbbClient):
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
         profile: bool = False,
+        request: str | None = None,
     ) -> SparqlResults:
         """Async :meth:`LbbClient.sparql`: run SPARQL text, return parsed results."""
         envelope = await self._sparql_text_envelope(
@@ -1237,6 +1340,7 @@ class AsyncLbbClient(_BaseLbbClient):
             min_indexed_seq=min_indexed_seq,
             as_of_commit_seq=as_of_commit_seq,
             profile=profile,
+            request=request,
         )
         return SparqlResults.from_envelope(envelope)
 

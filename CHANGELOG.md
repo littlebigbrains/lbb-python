@@ -2,6 +2,65 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.19.0 (2026-10-04)
+
+Adds the server features the SDK did not cover yet, on `LbbClient` and
+`AsyncLbbClient`, questions in plain words (the server turns a question into
+a SPARQL query), and the search rerank.
+
+- `sparql()` and `query.sparql()` take `request`, the user's words behind the
+  query. The server records an eval trace, and `SparqlResults.trace_id` names
+  it.
+- `SparqlResults.search` reports how a `search:similarTo` pattern in the query
+  ran: the plan, the hits asked for and bound, `complete` and the lag of the
+  vectors. It is `None` for a query without a search.
+- Add `query.update(text, idempotency_key=None)` for SPARQL Update on the
+  `/update` endpoint. The server accepts `INSERT DATA`. The client sends an
+  idempotency key, so a retry replays the write.
+- Add `entities.detail()` and `entities.detail_model()` for
+  `GET /v1/graph/entity`: one record's typed attributes and current links, by
+  `id`, by `type` and `name`, or by `type` and `key`. `as_of_commit_seq`
+  reads the record at a retained commit.
+- `embeddings.search()` takes `rerank`: `True` orders the best hits by the
+  managed rerank model (TypeSafe's Jev), and each hit carries its
+  `relevance`; `False` keeps the similarity order. Without it the graph's
+  search setting decides. The response has a `rerank` report.
+- Add `embeddings.search_settings()` and `set_search_settings(rerank=…)` for
+  `GET` and `PUT /v1/search/settings`: rerank every search of the graph, or
+  none.
+- Add `query.rewrite(question, ...)` for `POST /v1/query/rewrite`, on
+  `LbbClient` and `AsyncLbbClient`. A router model selects the kind of query,
+  and a rewriter model writes it from a description of the graph. With
+  `run=True` the server also runs the query and returns the rows in `result`.
+  Each call uses model tokens, so the client does not retry a failed call
+  unless `options={"retry": True}`. Arguments left at `None` stay off the
+  wire.
+- Add `query.ask(question, ...)`. It calls `rewrite` with `run=True` and
+  returns a `QueryAskResult`: the route, the query, the rationale, the parsed
+  `rows` and `vars`, the `boolean` of an `ASK` query, the `snapshot`, the
+  `error`, the eval `trace_id`, and the whole `rewrite` response.
+- Add `checks` for the model checks of a graph, on `LbbClient` and
+  `AsyncLbbClient`: `calls()` and `call(call_id)` read the log of the model
+  calls LBB makes for its own work, `check_call(call_id)` asks the judge to
+  check one call now, `list()` reads a month of checks,
+  `review(call_id, agree=…)` agrees with the judge or corrects it,
+  `summary()` sums a month per job and model, and `export()` returns a month
+  of checks as a list of parsed JSON lines. `check_call` spends the
+  platform's judge budget, so the client does not retry a failed call unless
+  `options={"retry": True}`. Arguments left at `None` stay off the wire.
+- A response of type `application/x-ndjson` decodes to a list of the lines'
+  values.
+- `embeddings.set_search_settings()` takes `rerank_depth`, `blend` and
+  `probe_factor` next to `rerank`, and every argument is optional. A setting
+  left at `None` stays off the wire and keeps its value. Pass the new
+  `lbb.RESET` to set one back to its default: the client sends JSON `null`.
+- Add `embeddings.search_tuning` with `start()`, `list()`, `get(session_id)`
+  and `apply(session_id)` for the `/v1/search/tuning` routes. A session runs
+  the graph's own searches with other settings and proposes the best.
+  `start()` spends the judge budget and is not retried unless
+  `options={"retry": True}`; `apply()` sets the same settings again on a
+  retry.
+
 ## 0.18.0 (2026-10-03)
 
 Adds `client.integrations`: hosted integrations for a developer's end

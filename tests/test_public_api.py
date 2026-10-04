@@ -19,13 +19,15 @@ def test_public_exports_are_explicit_and_stable() -> None:
         "RequestOptions",
         "RetryEvent",
         "SparqlResults",
+        "QueryAskResult",
+        "RESET",
         "LbbLocalClient",
         "LbbCommandError",
     ]
 
 
 def test_package_version_and_primary_clients_are_available() -> None:
-    assert lbb.__version__ == "0.18.0"
+    assert lbb.__version__ == "0.19.0"
     try:
         distribution_version = version("littlebigbrain")
     except PackageNotFoundError:
@@ -47,3 +49,6 @@ def test_client_module_keeps_the_documented_import_surface() -> None:
     assert lbb.client.RawLbbResponse is lbb.RawLbbResponse
     assert lbb.client.RequestOptions is lbb.RequestOptions
     assert lbb.client.SparqlResults is lbb.SparqlResults
+    assert lbb.client.QueryAskResult is lbb.QueryAskResult
+    assert lbb.client.RESET is lbb.RESET
+    assert repr(lbb.RESET) == "RESET"

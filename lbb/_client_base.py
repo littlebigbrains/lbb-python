@@ -17,6 +17,7 @@ For the local ``lbb-testctl`` shell-out wrapper (tests, notebooks), see
 
 from __future__ import annotations
 
+import enum
 import json
 import random
 import time
@@ -25,7 +26,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Any, Generic, Literal, TypedDict, TypeVar
+from typing import Any, Final, Generic, Literal, TypedDict, TypeVar
 
 import httpx
 from pydantic import BaseModel, RootModel
@@ -54,6 +55,21 @@ _RETRY_DELAY_CAP_SECONDS = 60.0
 
 # A request body: a plain mapping, or anything with a Pydantic ``model_dump``.
 Body = Mapping[str, Any] | Any
+
+
+class _Reset(enum.Enum):
+    """The type of :data:`RESET`."""
+
+    RESET = "RESET"
+
+    def __repr__(self) -> str:
+        return "RESET"
+
+
+#: Pass as a setting to set it back to its default. The client sends it as
+#: JSON ``null``; a setting left at ``None`` stays off the wire and keeps its
+#: value. Example: ``client.embeddings.set_search_settings(blend=RESET)``.
+RESET: Final = _Reset.RESET
 ModelT = TypeVar("ModelT", bound=BaseModel)
 RowT = TypeVar("RowT", bound=BaseModel)
 
@@ -220,6 +236,11 @@ class SparqlResults:
     - :attr:`profile` — what the server measured for the request (timings,
       reads, plan counters, the join order with estimates), when the call
       passed ``profile=True``.
+    - :attr:`search` — how the search by meaning in the query ran (the plan,
+      the hits asked for and bound, ``complete``, the lag of the vectors),
+      when the query holds a ``search:similarTo`` triple.
+    - :attr:`trace_id` — the eval trace the server recorded, when the call
+      passed ``request``. Label the rows with ``evals.label(trace_id, …)``.
     """
 
     vars: list[str]
@@ -229,6 +250,8 @@ class SparqlResults:
     next_cursor: str | None = None
     snapshot: dict[str, Any] | None = None
     profile: dict[str, Any] | None = None
+    search: dict[str, Any] | None = None
+    trace_id: str | None = None
 
     @classmethod
     def from_results_json(
@@ -239,6 +262,8 @@ class SparqlResults:
         next_cursor: str | None = None,
         snapshot: Mapping[str, Any] | None = None,
         profile: Mapping[str, Any] | None = None,
+        search: Mapping[str, Any] | None = None,
+        trace_id: str | None = None,
     ) -> SparqlResults:
         """Build from a parsed SPARQL Results JSON document."""
         head = doc.get("head") or {}
@@ -246,6 +271,7 @@ class SparqlResults:
         page = dict(row_page) if row_page is not None else None
         retained = dict(snapshot) if snapshot is not None else None
         measured = dict(profile) if profile is not None else None
+        searched = dict(search) if search is not None else None
         if "boolean" in doc:
             return cls(
                 vars=variables,
@@ -255,6 +281,8 @@ class SparqlResults:
                 next_cursor=next_cursor,
                 snapshot=retained,
                 profile=measured,
+                search=searched,
+                trace_id=trace_id,
             )
         results = doc.get("results") or {}
         bindings = [dict(binding) for binding in results.get("bindings") or []]
@@ -266,6 +294,8 @@ class SparqlResults:
             next_cursor=next_cursor,
             snapshot=retained,
             profile=measured,
+            search=searched,
+            trace_id=trace_id,
         )
 
     @classmethod
@@ -283,6 +313,8 @@ class SparqlResults:
             next_cursor=envelope.get("next_cursor"),
             snapshot=envelope.get("snapshot"),
             profile=envelope.get("profile"),
+            search=envelope.get("search"),
+            trace_id=envelope.get("trace_id"),
         )
 
     def rows(self) -> list[dict[str, Any]]:
@@ -297,6 +329,61 @@ class SparqlResults:
 
     def __len__(self) -> int:
         return len(self.bindings)
+
+
+@dataclass(frozen=True)
+class QueryAskResult:
+    """What ``query.ask`` returns: the query a question became, and its rows.
+
+    - :attr:`route` — the kind of query (``kind``), who chose it (``by``), and
+      how sure the choice is (``confidence``).
+    - :attr:`query` — the checked query (``sparql``, ``entailment``), or
+      ``None`` when the graph does not hold the answer.
+    - :attr:`rationale` — one or two sentences: why this route and this query.
+    - :attr:`rows` — the rows as ``{variable: lexical_value}`` dicts; empty
+      when the query did not run.
+    - :attr:`vars` — the projected variables.
+    - :attr:`boolean` — the answer of an ``ASK`` query, ``None`` for a ``SELECT``.
+    - :attr:`snapshot` — the snapshot the rows were read from, when the server
+      names it.
+    - :attr:`error` — why the last attempt failed, when the query did not
+      parse or run.
+    - :attr:`trace_id` — the eval trace of the run; label its rows with
+      ``evals.label``.
+    - :attr:`rewrite` — the whole ``POST /v1/query/rewrite`` response.
+    """
+
+    route: dict[str, Any]
+    query: dict[str, Any] | None
+    rationale: str
+    rows: list[dict[str, Any]]
+    vars: list[str]
+    boolean: bool | None
+    snapshot: dict[str, Any] | None
+    error: str | None
+    trace_id: str | None
+    rewrite: dict[str, Any]
+
+    @classmethod
+    def from_response(cls, response: Mapping[str, Any]) -> QueryAskResult:
+        """Build from a ``POST /v1/query/rewrite`` response."""
+        result = response.get("result")
+        parsed = (
+            SparqlResults.from_envelope(result) if isinstance(result, Mapping) else None
+        )
+        query = response.get("query")
+        return cls(
+            route=dict(response.get("route") or {}),
+            query=dict(query) if isinstance(query, Mapping) else None,
+            rationale=str(response.get("rationale") or ""),
+            rows=parsed.rows() if parsed is not None else [],
+            vars=list(parsed.vars) if parsed is not None else [],
+            boolean=parsed.boolean if parsed is not None else None,
+            snapshot=parsed.snapshot if parsed is not None else None,
+            error=response.get("error"),
+            trace_id=result.get("trace_id") if isinstance(result, Mapping) else None,
+            rewrite=dict(response),
+        )
 
 
 def _coerce_body(body: Body | None) -> Any:
@@ -458,9 +545,12 @@ def _parse_error(
 
 
 def _decode_response_data(response: httpx.Response) -> Any:
+    content_type = response.headers.get("content-type", "").lower()
+    if "application/x-ndjson" in content_type:
+        # JSON lines: a list of the lines' values; an empty body is an empty list.
+        return [json.loads(line) for line in response.text.splitlines() if line.strip()]
     if not response.content:
         return None
-    content_type = response.headers.get("content-type", "").lower()
     if any(
         rdf_type in content_type
         for rdf_type in (
@@ -1337,6 +1427,7 @@ class _BaseLbbClient:
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
         profile: bool = False,
+        request: str | None = None,
     ) -> Any:
         """POST raw SPARQL text to ``/v1/query/sparql-text``; returns the envelope.
 
@@ -1363,6 +1454,8 @@ class _BaseLbbClient:
             body["offset"] = offset
         if profile:
             body["profile"] = True
+        if request is not None:
+            body["request"] = request
         # A5: the text dialect carries consistency/floor on the URL, not the body.
         params = self._consistency_params(consistency, min_indexed_seq)
         return self._request(
@@ -1660,6 +1753,7 @@ class _BaseLbbClient:
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
         profile: bool = False,
+        request: str | None = None,
     ) -> Any:
         """Run SPARQL text; concrete transports return or await parsed results."""
         raise NotImplementedError
@@ -2324,6 +2418,7 @@ class _QueryNamespace:
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
         profile: bool = False,
+        request: str | None = None,
     ) -> Any:
         return self._client.sparql(
             query,
@@ -2336,8 +2431,128 @@ class _QueryNamespace:
             min_indexed_seq=min_indexed_seq,
             as_of_commit_seq=as_of_commit_seq,
             profile=profile,
+            request=request,
         )
 
+    def update(
+        self,
+        update: str,
+        *,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """Run a SPARQL 1.1 Update on the native ``/update`` endpoint.
+
+        The server accepts ``INSERT DATA`` and answers every other form with
+        400; one request is one commit. A graph whose first write comes
+        through this route is RDF-native, and an RDF-native graph refuses the
+        JSON write routes with ``400 rdf_native_graph``. Under ``reject``-mode
+        SHACL shapes, a write that breaks them fails with 400 and writes
+        nothing.
+
+        The client sends an idempotency key (a new one per call unless you
+        pass ``idempotency_key``), so a retry replays the write. The answer
+        has no body: read the write back with a ``strong`` read.
+        """
+        return self._client._request(
+            "POST",
+            "/update",
+            content=update.encode(),
+            content_type="application/sparql-update",
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("sparql-update"),
+            options=options,
+        )
+
+    def rewrite(
+        self,
+        question: str,
+        *,
+        context: str | None = None,
+        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
+        route: str | models.QueryRoute | None = None,
+        mode: str | models.QueryRewriteMode | None = None,
+        run: bool | None = None,
+        limit: int | None = None,
+        as_of_commit_seq: int | None = None,
+        today: str | None = None,
+        include_grounding: bool | None = None,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """Turn a question into a SPARQL query (``POST /v1/query/rewrite``).
+
+        A router model selects the kind of query (the route), and a rewriter
+        model writes the query from a description of the graph. The server
+        checks the query. With ``run=True`` the server also runs it, returns
+        the rows in ``result``, and corrects a query that fails once.
+        ``mode="route"`` returns only the route. ``include_grounding=True``
+        returns the graph description the models read in ``grounding.text``.
+
+        Each call uses model tokens, so a failed call is not retried unless
+        ``options={"retry": True}``. A ``429 rewrite_limit`` means the stack
+        used its rewrites of the day.
+        """
+        body = _rewrite_body(
+            question,
+            context=context,
+            previous=previous,
+            route=route,
+            mode=mode,
+            run=run,
+            limit=limit,
+            as_of_commit_seq=as_of_commit_seq,
+            today=today,
+            include_grounding=include_grounding,
+        )
+        params = self._client._consistency_params(consistency, None)
+        return self._client._request(
+            "POST",
+            "/v1/query/rewrite",
+            body=body,
+            params=params or None,
+            options={"retry": False, **(options or {})},
+        )
+
+
+def _rewrite_body(
+    question: str,
+    *,
+    context: str | None,
+    previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None,
+    route: str | models.QueryRoute | None,
+    mode: str | models.QueryRewriteMode | None,
+    run: bool | None,
+    limit: int | None,
+    as_of_commit_seq: int | None,
+    today: str | None,
+    include_grounding: bool | None = None,
+) -> dict[str, Any]:
+    """The ``QueryRewriteRequest`` body: every field the caller left at
+    ``None`` stays off the wire, since each one has a server default."""
+    body: dict[str, Any] = {"question": question}
+    if context is not None:
+        body["context"] = context
+    if previous is not None:
+        body["previous"] = [
+            dict(step) if isinstance(step, Mapping) else _coerce_body(step)
+            for step in previous
+        ]
+    if route is not None:
+        body["route"] = getattr(route, "value", route)
+    if mode is not None:
+        body["mode"] = getattr(mode, "value", mode)
+    if run is not None:
+        body["run"] = run
+    if limit is not None:
+        body["limit"] = limit
+    if as_of_commit_seq is not None:
+        body["as_of_commit_seq"] = as_of_commit_seq
+    if today is not None:
+        body["today"] = today
+    if include_grounding is not None:
+        body["include_grounding"] = include_grounding
+    return body
 
 
 class _SchemaNamespace:
@@ -2484,6 +2699,231 @@ class _EvalsNamespace:
         return self._client._request("PUT", "/v1/evals/settings", body=body)
 
 
+def _enum_value(value: Any) -> Any:
+    """The wire value of a generated enum member, or the value itself."""
+    return getattr(value, "value", value)
+
+
+class _ChecksNamespace:
+    """Model checks: the log of the model calls LBB makes for its own work on
+    the graph (rerank, route, rewrite, fit, propose, label, embed), the checks
+    a judge model makes of a sample of them, and the reviews people make of
+    the checks. A review is the call's ground truth.
+
+    Reading calls and checks and reviewing a check use no model.
+    :meth:`check_call` spends the platform's judge budget.
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def summary(self, *, month: str | None = None) -> Any:
+        """One month of checks (``yyyy-mm``, UTC; the current month by
+        default): per job and model the checks, the mean score, right,
+        partly and wrong, the reviews and corrections; the judge's agreement
+        with people; today's budget; whether the server has a checker; the
+        month's model calls."""
+        return self._client._request(
+            "GET", "/v1/models/checks/summary", params={"month": month}
+        )
+
+    def list(
+        self,
+        *,
+        job: str | models.ModelJob | None = None,
+        month: str | None = None,
+        verdict: str | models.CheckVerdict | None = None,
+        reviewed: bool | None = None,
+        after: str | None = None,
+        limit: int | None = None,
+    ) -> Any:
+        """The checks of a month, newest first (``GET /v1/models/checks``).
+
+        ``verdict`` (``right``, ``partly`` or ``wrong``) filters the ground
+        truth; ``reviewed=True`` keeps the checks a person reviewed,
+        ``False`` the others. ``after`` is the ``next_after`` of the previous
+        page; ``limit`` is 1 to 100 (default 50).
+        """
+        return self._client._request(
+            "GET",
+            "/v1/models/checks",
+            params={
+                "job": _enum_value(job),
+                "month": month,
+                "verdict": _enum_value(verdict),
+                "reviewed": reviewed,
+                "after": after,
+                "limit": limit,
+            },
+        )
+
+    def review(
+        self,
+        call_id: str,
+        *,
+        agree: bool,
+        verdict: str | models.CheckVerdict | None = None,
+        score: float | None = None,
+        reference: Any | None = None,
+        note: str | None = None,
+    ) -> Any:
+        """Agree with the judge, or correct it (``POST /v1/models/checks/review``).
+
+        ``agree=True`` keeps the judge's verdict (with an optional ``note``).
+        ``agree=False`` corrects it: ``verdict`` is required, ``score`` is 0
+        to 1, ``reference`` is the right answer (for a rerank or label check
+        ``{"grades": {"<hit id>": 0..3}}``), and ``note`` is at most 2,000
+        characters. The review becomes the call's ground truth and replaces
+        an earlier review, which moves to ``history``. Arguments left at
+        ``None`` stay off the wire. Returns the check.
+        """
+        body: dict[str, Any] = {"agree": agree}
+        if verdict is not None:
+            body["verdict"] = _enum_value(verdict)
+        if score is not None:
+            body["score"] = score
+        if reference is not None:
+            body["reference"] = reference
+        if note is not None:
+            body["note"] = note
+        return self._client._request(
+            "POST", "/v1/models/checks/review", params={"id": call_id}, body=body
+        )
+
+    def export(
+        self,
+        *,
+        job: str | models.ModelJob | None = None,
+        month: str | None = None,
+    ) -> Any:
+        """The checks of a month as a list of parsed JSON lines, oldest first
+        (``GET /v1/models/checks/export``): ``{"call": ..., "check": ...}``,
+        ``call`` ``None`` when the log no longer holds it. At most 10,000
+        lines."""
+        return self._client._request(
+            "GET",
+            "/v1/models/checks/export",
+            params={"job": _enum_value(job), "month": month},
+        )
+
+    def calls(
+        self,
+        *,
+        job: str | models.ModelJob | None = None,
+        day: str | None = None,
+        checked: bool | None = None,
+        after: str | None = None,
+        limit: int | None = None,
+    ) -> Any:
+        """The call log, newest first (``GET /v1/models/calls``).
+
+        ``day`` (``yyyy-mm-dd``, UTC) is the newest day of the page (default
+        today, or the day of ``after``); a page reads back at most 31 days.
+        ``checked=True`` keeps the calls that have a check, ``False`` those
+        without one. ``after`` is the ``next_after`` of the previous page;
+        ``limit`` is 1 to 100 (default 50).
+        """
+        return self._client._request(
+            "GET",
+            "/v1/models/calls",
+            params={
+                "job": _enum_value(job),
+                "day": day,
+                "checked": checked,
+                "after": after,
+                "limit": limit,
+            },
+        )
+
+    def call(self, call_id: str) -> Any:
+        """One call: its input and output, its groundings as text, and its check."""
+        return self._client._request(
+            "GET", "/v1/models/calls/get", params={"id": call_id}
+        )
+
+    def check_call(self, call_id: str, *, options: RequestOptions | None = None) -> Any:
+        """Ask the judge to check one call now (``POST /v1/models/calls/check``).
+
+        The call goes to the graph's checks workflow; a call that has a check
+        is checked again, and its review stays. Returns ``{"queued": True}``.
+        ``400 model_call_not_checkable`` for an ``embed`` call or a failed
+        call; ``503`` without a checker. A check spends the platform's judge
+        budget, so a failed call is not retried unless
+        ``options={"retry": True}``.
+        """
+        return self._client._request(
+            "POST",
+            "/v1/models/calls/check",
+            params={"id": call_id},
+            options={"retry": False, **(options or {})},
+        )
+
+
+class _SearchTuningNamespace:
+    """Search tuning: a session runs the graph's own searches with other
+    search settings, grades the hits with the platform's judge, and proposes
+    the settings that rank best. A person applies the proposal; a session
+    never changes a setting by itself.
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def start(
+        self,
+        *,
+        queries: int | None = None,
+        rounds: int | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """Start a session (``POST /v1/search/tuning``).
+
+        ``queries`` is 6 to 40 (default 40) and ``rounds`` 1 to 3 (default 3);
+        an argument left at ``None`` stays off the wire. Returns the session,
+        ``queued``: read it with :meth:`get` until its ``status`` is ``done``
+        or ``failed``. One session per graph runs at a time
+        (``409 tuning_running``). A session spends the platform's judge
+        budget, so a failed call is not retried unless
+        ``options={"retry": True}``.
+        """
+        body: dict[str, Any] = {}
+        if queries is not None:
+            body["queries"] = queries
+        if rounds is not None:
+            body["rounds"] = rounds
+        return self._client._request(
+            "POST",
+            "/v1/search/tuning",
+            body=body,
+            options={"retry": False, **(options or {})},
+        )
+
+    def list(self, *, limit: int | None = None) -> Any:
+        """The graph's sessions, newest first (``limit`` 1 to 50, default 10)."""
+        return self._client._request("GET", "/v1/search/tuning", params={"limit": limit})
+
+    def get(self, session_id: str) -> Any:
+        """One session: its step, the baseline, the variants with their
+        scores, the rounds with the judge's notes, and the proposal."""
+        return self._client._request(
+            "GET", "/v1/search/tuning/get", params={"id": session_id}
+        )
+
+    def apply(self, session_id: str) -> Any:
+        """Set the graph's search settings to the session's proposal
+        (``POST /v1/search/tuning/apply``): exactly the settings the session
+        tested. A setting the proposal leaves unset goes back to its default.
+        Returns the session with ``applied_at_ms`` and ``applied_by``;
+        ``409 tuning_no_proposal`` when it has none. A retry sets the same
+        settings, so it is safe."""
+        return self._client._request(
+            "POST",
+            "/v1/search/tuning/apply",
+            params={"id": session_id},
+            options={"retry": True},
+        )
+
+
 class _EmbeddingsNamespace:
     """Search: embeddings declared on classes of the graph.
 
@@ -2493,6 +2933,8 @@ class _EmbeddingsNamespace:
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
+        # Sessions that test search settings on the graph's own searches.
+        self.search_tuning = _SearchTuningNamespace(client)
 
     def list(self) -> Any:
         """Every embedding of the graph with its status."""
@@ -2607,6 +3049,7 @@ class _EmbeddingsNamespace:
         probe: int | None = None,
         request: str | None = None,
         explain: bool = False,
+        rerank: bool | None = None,
     ) -> Any:
         """Search by meaning (``POST /v1/search``).
 
@@ -2619,7 +3062,10 @@ class _EmbeddingsNamespace:
         and is checked against one graph snapshot; the response's ``filter``
         shows how each condition resolved. ``include=["text"]`` returns the
         embedded text of each hit; ``probe`` sets how many clusters are read;
-        ``explain=True`` returns the plan without a model call.
+        ``explain=True`` returns the plan without a model call. ``rerank=True``
+        orders the best hits by the managed rerank model (each hit then
+        carries its ``relevance``), ``rerank=False`` keeps the similarity
+        order; without it the graph's search setting decides.
         """
         body: dict[str, Any] = {"text": text}
         if embedding is not None:
@@ -2636,12 +3082,124 @@ class _EmbeddingsNamespace:
             body["request"] = request
         if explain:
             body["explain"] = True
+        if rerank is not None:
+            body["rerank"] = rerank
         return self._client._request("POST", "/v1/search", body=body)
+
+    def search_settings(self) -> Any:
+        """The graph's search settings (``GET /v1/search/settings``): whether
+        every search reranks its best hits, ``rerank_depth``, ``blend`` and
+        ``probe_factor`` when they are set, and the rerank model the server
+        has (``rerank_available``)."""
+        return self._client._request("GET", "/v1/search/settings")
+
+    def set_search_settings(
+        self,
+        *,
+        rerank: bool | None = None,
+        rerank_depth: int | _Reset | None = None,
+        blend: float | _Reset | None = None,
+        probe_factor: float | _Reset | None = None,
+    ) -> Any:
+        """Change the graph's search settings (``PUT /v1/search/settings``).
+
+        ``rerank`` turns the rerank on or off for every search; a search's
+        own ``rerank`` still decides for itself. ``rerank_depth`` (20 to 80)
+        is the hits the rerank model reads; ``blend`` (0 to 1) mixes the
+        rerank order and the similarity order; ``probe_factor`` (1 to 4)
+        widens the vector search over big runs. A setting left at ``None``
+        stays off the wire and keeps its value. Pass :data:`RESET` to set one
+        back to its default (sent as JSON ``null``). Returns the settings
+        after the change.
+        """
+        body: dict[str, Any] = {}
+        if rerank is not None:
+            body["rerank"] = rerank
+        for name, value in (
+            ("rerank_depth", rerank_depth),
+            ("blend", blend),
+            ("probe_factor", probe_factor),
+        ):
+            if value is RESET:
+                body[name] = None
+            elif value is not None:
+                body[name] = value
+        return self._client._request("PUT", "/v1/search/settings", body=body)
 
 
 class _EntityNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
+
+    def detail(
+        self,
+        *,
+        id: str | None = None,
+        type: str | None = None,
+        name: str | None = None,
+        key: str | None = None,
+        consistency: str | None = None,
+        edges: int | None = None,
+        as_of_commit_seq: int | None = None,
+    ) -> Any:
+        """One record's typed attributes and current links (``GET /v1/graph/entity``).
+
+        Name the record by ``id``, by ``type`` and ``name``, or by ``type``
+        and ``key``. ``edges`` caps the links read per direction (1 to
+        10,000, default 1,000). ``consistency="strong"`` reads your own
+        write at once; ``as_of_commit_seq`` reads the record at a retained
+        commit. ``unavailable_sections`` names the sections this read
+        does not fill.
+        """
+        return self._client._request(
+            "GET",
+            "/v1/graph/entity",
+            params=self._detail_params(
+                id, type, name, key, consistency, edges, as_of_commit_seq
+            ),
+        )
+
+    def detail_model(
+        self,
+        *,
+        id: str | None = None,
+        type: str | None = None,
+        name: str | None = None,
+        key: str | None = None,
+        consistency: str | None = None,
+        edges: int | None = None,
+        as_of_commit_seq: int | None = None,
+    ) -> models.EntityDetailResponse:
+        """One record validated as ``EntityDetailResponse``."""
+        return self._client._model_request(
+            models.EntityDetailResponse,
+            "GET",
+            "/v1/graph/entity",
+            params=self._detail_params(
+                id, type, name, key, consistency, edges, as_of_commit_seq
+            ),
+        )
+
+    def _detail_params(
+        self,
+        id: str | None,
+        type: str | None,
+        name: str | None,
+        key: str | None,
+        consistency: str | None,
+        edges: int | None,
+        as_of_commit_seq: int | None,
+    ) -> dict[str, Any]:
+        params = {
+            "id": id,
+            "type": type,
+            "name": name,
+            "key": key,
+            "consistency": self._client._resolve_consistency(consistency),
+            "edges": edges,
+            "as_of_commit_seq": as_of_commit_seq,
+        }
+        return {field: value for field, value in params.items() if value is not None}
 
     def filter_by_attributes(
         self,

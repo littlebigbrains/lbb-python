@@ -12,10 +12,12 @@ from pydantic import ValidationError
 
 import lbb.models as model_module
 from lbb import (
+    RESET,
     AsyncLbbClient,
     LbbCapabilityError,
     LbbClient,
     LbbError,
+    QueryAskResult,
     RetryEvent,
     __version__,
 )
@@ -219,6 +221,46 @@ def sparql_text_envelope(snapshot: dict[str, Any] | None = None) -> dict[str, An
     if snapshot is not None:
         envelope["snapshot"] = snapshot
     return envelope
+
+
+def search_sparql_envelope() -> dict[str, Any]:
+    """A ``/v1/query/sparql-text`` envelope of a query with a search triple."""
+    envelope = sparql_text_envelope()
+    envelope["search"] = {
+        "plan": "filter_first",
+        "top": 3,
+        "hits": 1,
+        "complete": True,
+        "allowed": 25,
+        "candidates": 25,
+        "rounds": 1,
+        "clusters_probed": 4,
+        "entries_considered": 25,
+        "embeddings": ["product"],
+        "model_id": "openai/text-embedding-3-small",
+        "lag_commits": 0,
+        "timings": {"total_ms": 17},
+        "usage": {"texts": 1, "tokens_estimate": 4, "cost_usd_estimate": 0},
+    }
+    envelope["trace_id"] = "tr_1"
+    return envelope
+
+
+def entity_detail_payload() -> dict[str, Any]:
+    entity = {"id": "e1", "type": "Ticket", "name": "Login fails"}
+    return {
+        "snapshot": SNAPSHOT,
+        "entity": entity,
+        "attributes": {"priority": "high"},
+        "metadata": {"entity": entity, "snapshot": SNAPSHOT, "object_kind": "unavailable"},
+        "current_state": [],
+        "outgoing": [],
+        "incoming": [],
+        "history": [],
+        "observations": [],
+        "rdf_relations": {"outgoing": [], "incoming": []},
+        "unavailable_sections": ["history"],
+    }
 
 
 def capturing_transport(
@@ -1940,6 +1982,82 @@ class SyncClientTests(unittest.TestCase):
         self.assertNotIn("profile", json.loads(seen[1].content))
         self.assertEqual(profiled.profile, profile)
 
+    def test_sparql_request_records_a_trace_and_search_reports_its_plan(self) -> None:
+        seen: list[httpx.Request] = []
+        query = (
+            "PREFIX search: <https://littlebigbrain.com/search#> "
+            'SELECT ?s WHERE { ?s search:similarTo "card payments" } LIMIT 3'
+        )
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen, [{"json": search_sparql_envelope()}, {"json": sparql_text_envelope()}]
+            ),
+        ) as client:
+            found = client.sparql(query, request="card payments")
+            plain = client.query.sparql(query)
+        self.assertEqual(json.loads(seen[0].content)["request"], "card payments")
+        self.assertNotIn("request", json.loads(seen[1].content))
+        self.assertEqual(found.rows(), [{"s": "x"}])
+        self.assertEqual(found.trace_id, "tr_1")
+        assert found.search is not None
+        self.assertEqual(found.search["plan"], "filter_first")
+        self.assertTrue(found.search["complete"])
+        self.assertIsNone(plain.search)
+        self.assertIsNone(plain.trace_id)
+
+    def test_query_update_posts_sparql_update_with_an_idempotency_key(self) -> None:
+        seen: list[httpx.Request] = []
+        update = (
+            "INSERT DATA { <https://example.com/sku/2> "
+            '<http://www.w3.org/2000/01/rdf-schema#label> "Road shoe" }'
+        )
+        with LbbClient(
+            "http://h",
+            graph="catalog",
+            transport=capturing_transport(
+                seen, [{"status": 204, "text": ""}, {"status": 204, "text": ""}]
+            ),
+        ) as client:
+            answer = client.query.update(update)
+            client.query.update(update, idempotency_key="catalog-2026-10-03")
+        self.assertIsNone(answer)
+        self.assertEqual(seen[0].method, "POST")
+        self.assertEqual(str(seen[0].url), "http://h/update?graph=catalog")
+        self.assertEqual(seen[0].headers["content-type"], "application/sparql-update")
+        self.assertEqual(seen[0].content.decode(), update)
+        self.assertTrue(seen[0].headers["idempotency-key"].startswith("sparql-update:"))
+        self.assertEqual(seen[1].headers["idempotency-key"], "catalog-2026-10-03")
+
+    def test_entities_detail_reads_one_record_at_a_commit(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="support",
+            default_consistency="strong",
+            transport=capturing_transport(
+                seen, [{"json": entity_detail_payload()}, {"json": entity_detail_payload()}]
+            ),
+        ) as client:
+            raw = client.entities.detail(type="Ticket", key="4821", edges=50)
+            typed = client.entities.detail_model(id="e1", as_of_commit_seq=7)
+        self.assertEqual(raw["attributes"], {"priority": "high"})
+        self.assertIsInstance(typed, model_module.EntityDetailResponse)
+        self.assertEqual(typed.entity.name, "Login fails")
+        self.assertEqual(seen[0].url.path, "/v1/graph/entity")
+        self.assertEqual(
+            dict(seen[0].url.params),
+            {
+                "graph": "support",
+                "type": "Ticket",
+                "key": "4821",
+                "consistency": "strong",
+                "edges": "50",
+            },
+        )
+        self.assertEqual(seen[1].url.params["as_of_commit_seq"], "7")
+        self.assertNotIn("as_of", seen[1].url.params)
+
     def test_planner_stats_reads_one_page(self) -> None:
         seen: list[httpx.Request] = []
         stats = {"served_at_seq": None, "predicates": [], "next_cursor": None}
@@ -2281,7 +2399,10 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
                 probe=12,
                 request="which services check fraud?",
                 explain=True,
+                rerank=True,
             )
+            client.embeddings.search_settings()
+            client.embeddings.set_search_settings(rerank=False)
         routes = [(request.method, request.url.path) for request in seen]
         self.assertEqual(
             routes,
@@ -2294,6 +2415,8 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
                 ("POST", "/v1/embeddings/refresh"),
                 ("DELETE", "/v1/embeddings"),
                 ("POST", "/v1/search"),
+                ("GET", "/v1/search/settings"),
+                ("PUT", "/v1/search/settings"),
             ],
         )
         self.assertEqual(seen[1].url.params["name"], "service")
@@ -2325,6 +2448,8 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
         self.assertEqual(search["probe"], 12)
         self.assertEqual(search["include"], ["text"])
         self.assertEqual(search["request"], "which services check fraud?")
+        self.assertIs(search["rerank"], True)
+        self.assertEqual(self._body(seen[9]), {"rerank": False})
 
     def test_a_plain_search_sends_only_the_text(self) -> None:
         seen: list[httpx.Request] = []
@@ -2352,6 +2477,609 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
         self.assertIn(("GET", "/v1/evals/goldens"), routes)
         self.assertEqual(seen[1].url.params["limit"], "5")
         self.assertEqual(len(seen), 11)
+
+
+CALL_ID = "00000001790000000000-n1-0000000001-0"
+
+
+def model_check_payload(**overrides: Any) -> dict[str, Any]:
+    """One check of a rerank call, as ``GET /v1/models/checks`` lists it."""
+    usage = {
+        "tokens_in": 8000,
+        "tokens_out": 3000,
+        "cache_read": 0,
+        "cache_write": 0,
+        "cost_micro_usd": 92000,
+        "ms": 41000,
+    }
+    payload: dict[str, Any] = {
+        "v": 1,
+        "call": CALL_ID,
+        "job": "rerank",
+        "provider": "typesafe",
+        "model": "jev-latest",
+        "graph": "main",
+        "call_at_ms": 1_790_000_000_000,
+        "summary": "refund policy",
+        "judge": {
+            "provider": "anthropic",
+            "model": "claude-opus-5-5",
+            "effort": "xhigh",
+            "rubric": "relevance/1",
+            "verdict": "partly",
+            "score": 0.62,
+            "reason": "two of four hits answer the text",
+            "usage": usage,
+            "at_ms": 1_790_000_050_000,
+        },
+        "history": [],
+        "truth": {"verdict": "partly", "score": 0.62, "by": "judge"},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def tuning_session_payload(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": "t1",
+        "status": "queued",
+        "created_at_ms": 1_790_000_000_000,
+        "queries_choose": 0,
+        "queries_test": 0,
+        "graded_pairs": 0,
+        "judge_cost_micro_usd": 0,
+    }
+    payload.update(overrides)
+    return payload
+
+
+NDJSON = {"content-type": "application/x-ndjson"}
+BUSY = {"status": 503, "json": {"error": {"message": "busy", "code": "api_error"}}}
+
+
+class ModelChecksAndTuningTests(unittest.TestCase):
+    """The model checks, search tuning and search settings send the documented requests."""
+
+    def test_set_search_settings_sends_the_named_fields_and_reset_as_null(self) -> None:
+        seen: list[httpx.Request] = []
+        settings = {"rerank": True, "rerank_depth": 60, "rerank_available": True}
+        with LbbClient(
+            "http://h", graph="main", transport=capturing_transport(seen, {"json": settings})
+        ) as client:
+            written = client.embeddings.set_search_settings(
+                rerank=True, rerank_depth=60, blend=RESET, probe_factor=2.0
+            )
+            client.embeddings.set_search_settings(probe_factor=RESET)
+            client.embeddings.set_search_settings()
+        self.assertEqual(written["rerank_depth"], 60)
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("PUT", "/v1/search/settings")] * 3,
+        )
+        self.assertEqual(seen[0].url.params["graph"], "main")
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"rerank": True, "rerank_depth": 60, "blend": None, "probe_factor": 2.0},
+        )
+        self.assertEqual(json.loads(seen[1].content), {"probe_factor": None})
+        self.assertEqual(json.loads(seen[2].content), {})
+
+    def test_search_tuning_starts_lists_reads_and_applies_sessions(self) -> None:
+        seen: list[httpx.Request] = []
+        done = tuning_session_payload(
+            status="done",
+            proposal={
+                "variant": "r1v1",
+                "settings": {"rerank": True, "rerank_depth": 60},
+                "test": {
+                    "baseline_ndcg_at_10": 0.7,
+                    "ndcg_at_10": 0.8,
+                    "delta": 0.1,
+                    "ci_low": 0.02,
+                    "ci_high": 0.18,
+                    "queries": 14,
+                },
+                "latency_delta_ms": 40,
+                "cost_delta_micro_usd_per_search": 0,
+            },
+        )
+        responses = [
+            {"json": tuning_session_payload()},
+            {"json": tuning_session_payload(id="t2")},
+            {"json": {"sessions": [done]}},
+            {"json": done},
+            {"json": {**done, "applied_at_ms": 1_790_000_100_000, "applied_by": "key:k1"}},
+        ]
+        with LbbClient(
+            "http://h", graph="main", transport=capturing_transport(seen, responses)
+        ) as client:
+            queued = client.embeddings.search_tuning.start()
+            client.embeddings.search_tuning.start(queries=12, rounds=1)
+            listed = client.embeddings.search_tuning.list(limit=5)
+            session = client.embeddings.search_tuning.get("t1")
+            applied = client.embeddings.search_tuning.apply("t1")
+        self.assertEqual(queued["status"], "queued")
+        self.assertEqual(listed["sessions"][0]["id"], "t1")
+        self.assertEqual(session["proposal"]["settings"]["rerank_depth"], 60)
+        self.assertEqual(applied["applied_by"], "key:k1")
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [
+                ("POST", "/v1/search/tuning"),
+                ("POST", "/v1/search/tuning"),
+                ("GET", "/v1/search/tuning"),
+                ("GET", "/v1/search/tuning/get"),
+                ("POST", "/v1/search/tuning/apply"),
+            ],
+        )
+        self.assertEqual(json.loads(seen[0].content), {})
+        self.assertEqual(json.loads(seen[1].content), {"queries": 12, "rounds": 1})
+        self.assertEqual(dict(seen[2].url.params), {"graph": "main", "limit": "5"})
+        self.assertEqual(dict(seen[3].url.params), {"graph": "main", "id": "t1"})
+        self.assertEqual(dict(seen[4].url.params), {"graph": "main", "id": "t1"})
+        self.assertEqual(seen[4].content, b"")
+
+    def test_judge_budget_posts_are_not_retried_unless_asked(self) -> None:
+        seen: list[httpx.Request] = []
+        responses = [
+            BUSY,
+            BUSY,
+            BUSY,
+            {"json": {"queued": True}},
+            BUSY,
+            {"json": tuning_session_payload(status="done")},
+        ]
+        with LbbClient(
+            "http://h",
+            max_retries=1,
+            retry_delay=0,
+            transport=capturing_transport(seen, responses),
+        ) as client:
+            with self.assertRaises(LbbError):
+                client.embeddings.search_tuning.start(queries=12)
+            self.assertEqual(len(seen), 1, "a session spends the judge budget")
+            with self.assertRaises(LbbError):
+                client.checks.check_call(CALL_ID)
+            self.assertEqual(len(seen), 2, "a check spends the judge budget")
+            queued = client.checks.check_call(CALL_ID, options={"retry": True})
+            self.assertEqual(queued, {"queued": True})
+            self.assertEqual(len(seen), 4)
+            applied = client.embeddings.search_tuning.apply("t1")
+        self.assertEqual(applied["status"], "done")
+        self.assertEqual(len(seen), 6, "apply sets the same settings again")
+
+    def test_checks_read_the_call_log_and_check_a_call_now(self) -> None:
+        seen: list[httpx.Request] = []
+        row = {
+            "id": CALL_ID,
+            "at_ms": 1_790_000_000_000,
+            "job": "rerank",
+            "provider": "typesafe",
+            "model": "jev-latest",
+            "ok": True,
+            "sampled": True,
+            "summary": "refund policy",
+            "check": {"verdict": "right", "score": 0.9, "by": "judge", "reviewed": False},
+        }
+        responses = [
+            {"json": {"calls": [row], "next_after": CALL_ID}},
+            {"json": {"calls": []}},
+            {"json": {"call": {"id": CALL_ID}, "check": model_check_payload()}},
+            {"json": {"queued": True}},
+        ]
+        with LbbClient("http://h", transport=capturing_transport(seen, responses)) as client:
+            page = client.checks.calls(
+                job=model_module.ModelJob.rerank, day="2026-10-04", checked=False, limit=20
+            )
+            client.checks.calls(after=CALL_ID, checked=True)
+            detail = client.checks.call(CALL_ID)
+            queued = client.checks.check_call(CALL_ID)
+        self.assertEqual(page["calls"][0]["check"]["verdict"], "right")
+        self.assertEqual(detail["check"]["judge"]["rubric"], "relevance/1")
+        self.assertEqual(queued, {"queued": True})
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [
+                ("GET", "/v1/models/calls"),
+                ("GET", "/v1/models/calls"),
+                ("GET", "/v1/models/calls/get"),
+                ("POST", "/v1/models/calls/check"),
+            ],
+        )
+        self.assertEqual(
+            dict(seen[0].url.params),
+            {"job": "rerank", "day": "2026-10-04", "checked": "false", "limit": "20"},
+        )
+        self.assertEqual(dict(seen[1].url.params), {"after": CALL_ID, "checked": "true"})
+        self.assertEqual(dict(seen[2].url.params), {"id": CALL_ID})
+        self.assertEqual(dict(seen[3].url.params), {"id": CALL_ID})
+        self.assertEqual(seen[3].content, b"")
+
+    def test_checks_list_review_summarize_and_export_a_month(self) -> None:
+        seen: list[httpx.Request] = []
+        corrected = model_check_payload(
+            review={
+                "by": "key:k1",
+                "at_ms": 1_790_000_100_000,
+                "agree": False,
+                "verdict": "wrong",
+                "note": "the hits are about returns",
+            },
+            truth={"verdict": "wrong", "score": 0.0, "by": "person"},
+        )
+        lines = [{"call": None, "check": model_check_payload()}, {"call": None, "check": corrected}]
+        responses = [
+            {"json": {"checks": [corrected], "next_after": "c0"}},
+            {"json": model_check_payload(review={"by": "key:k1", "at_ms": 1, "agree": True})},
+            {"json": corrected},
+            {"json": {"month": "2026-10", "jobs": [], "judge": {"agreement": 0.5}}},
+            {"text": "".join(json.dumps(line) + "\n" for line in lines), "headers": NDJSON},
+            {"text": "", "headers": NDJSON},
+        ]
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, responses)
+        ) as client:
+            listed = client.checks.list(
+                job="rerank",
+                month="2026-10",
+                verdict=model_module.CheckVerdict.wrong,
+                reviewed=True,
+                limit=10,
+            )
+            agreed = client.checks.review(CALL_ID, agree=True)
+            reviewed = client.checks.review(
+                CALL_ID,
+                agree=False,
+                verdict="wrong",
+                reference={"grades": {"https://x.test/e/a": 0}},
+                note="the hits are about returns",
+            )
+            summary = client.checks.summary(month="2026-10")
+            exported = client.checks.export(job="rerank", month="2026-10")
+            empty = client.checks.export()
+        self.assertEqual(listed["checks"][0]["truth"]["by"], "person")
+        self.assertIs(agreed["review"]["agree"], True)
+        self.assertEqual(reviewed["truth"]["verdict"], "wrong")
+        self.assertEqual(summary["judge"]["agreement"], 0.5)
+        self.assertEqual(exported, lines)
+        self.assertEqual(empty, [])
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [
+                ("GET", "/v1/models/checks"),
+                ("POST", "/v1/models/checks/review"),
+                ("POST", "/v1/models/checks/review"),
+                ("GET", "/v1/models/checks/summary"),
+                ("GET", "/v1/models/checks/export"),
+                ("GET", "/v1/models/checks/export"),
+            ],
+        )
+        self.assertEqual(
+            dict(seen[0].url.params),
+            {
+                "graph": "crm",
+                "job": "rerank",
+                "month": "2026-10",
+                "verdict": "wrong",
+                "reviewed": "true",
+                "limit": "10",
+            },
+        )
+        self.assertEqual(dict(seen[1].url.params), {"graph": "crm", "id": CALL_ID})
+        self.assertEqual(json.loads(seen[1].content), {"agree": True})
+        self.assertEqual(
+            json.loads(seen[2].content),
+            {
+                "agree": False,
+                "verdict": "wrong",
+                "reference": {"grades": {"https://x.test/e/a": 0}},
+                "note": "the hits are about returns",
+            },
+        )
+        self.assertEqual(seen[3].url.params["month"], "2026-10")
+        self.assertEqual(
+            dict(seen[4].url.params), {"graph": "crm", "job": "rerank", "month": "2026-10"}
+        )
+        self.assertEqual(dict(seen[5].url.params), {"graph": "crm"})
+
+
+class AsyncModelChecksAndTuningTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_checks_tuning_and_settings(self) -> None:
+        seen: list[httpx.Request] = []
+        line = {"call": None, "check": model_check_payload()}
+        responses = [
+            {"json": {"month": "2026-10", "jobs": []}},
+            {"text": json.dumps(line) + "\n", "headers": NDJSON},
+            {"json": model_check_payload(review={"by": "token", "at_ms": 1, "agree": True})},
+            BUSY,
+            {"json": tuning_session_payload()},
+            {"json": {"rerank": False, "rerank_available": True}},
+        ]
+        async with AsyncLbbClient(
+            "http://h",
+            max_retries=1,
+            retry_delay=0,
+            transport=capturing_transport(seen, responses),
+        ) as client:
+            summary = await client.checks.summary()
+            exported = await client.checks.export(month="2026-10")
+            agreed = await client.checks.review(CALL_ID, agree=True, note="right order")
+            with self.assertRaises(LbbError):
+                await client.checks.check_call(CALL_ID)
+            session = await client.embeddings.search_tuning.start(rounds=2)
+            settings = await client.embeddings.set_search_settings(rerank=False, blend=RESET)
+        self.assertEqual(summary["month"], "2026-10")
+        self.assertEqual(exported, [line])
+        self.assertIs(agreed["review"]["agree"], True)
+        self.assertEqual(session["id"], "t1")
+        self.assertIs(settings["rerank"], False)
+        self.assertEqual(len(seen), 6, "the check that failed was sent once")
+        self.assertEqual(json.loads(seen[2].content), {"agree": True, "note": "right order"})
+        self.assertEqual(json.loads(seen[4].content), {"rounds": 2})
+        self.assertEqual(json.loads(seen[5].content), {"rerank": False, "blend": None})
+
+
+def rewrite_payload(**overrides: Any) -> dict[str, Any]:
+    """A ``POST /v1/query/rewrite`` response without a run."""
+    payload: dict[str, Any] = {
+        "route": {
+            "kind": "lookup",
+            "confidence": 0.92,
+            "by": "router",
+            "probabilities": {"lookup": 0.92, "search": 0.08},
+        },
+        "query": {
+            "sparql": "SELECT ?s WHERE { ?s ?p ?o }",
+            "entailment": "none",
+        },
+        "rationale": "The question names services by a condition.",
+        "attempts": 1,
+        "grounding": {
+            "commit_seq": 7,
+            "classes": 3,
+            "properties": 5,
+            "embeddings": 0,
+            "age_ms": 10,
+        },
+        "models": [],
+        "timings": {
+            "ground_ms": 1,
+            "route_ms": 2,
+            "rewrite_ms": 3,
+            "run_ms": 4,
+            "total_ms": 10,
+        },
+    }
+    payload.update(overrides)
+    return payload
+
+
+def rewrite_run_payload() -> dict[str, Any]:
+    """A rewrite response whose run returned one row and an eval trace."""
+    result = sparql_text_envelope({"commit_seq": 7, "compacted_seq": 7, "served_at_seq": 7})
+    result["trace_id"] = "tr_1"
+    return rewrite_payload(result=result)
+
+
+class QueryRewriteTests(unittest.TestCase):
+    """``query.rewrite`` and ``query.ask`` send the documented request."""
+
+    def test_rewrite_sends_only_the_given_fields_and_consistency_on_the_url(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(seen, {"json": rewrite_payload()}),
+        ) as client:
+            response = client.query.rewrite(
+                "Which services exist?",
+                mode="route",
+                consistency="strong",
+            )
+        self.assertEqual(response["route"]["kind"], "lookup")
+        self.assertEqual(seen[0].method, "POST")
+        self.assertEqual(seen[0].url.path, "/v1/query/rewrite")
+        self.assertEqual(seen[0].url.params["graph"], "main")
+        self.assertEqual(seen[0].url.params["consistency"], "strong")
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"question": "Which services exist?", "mode": "route"},
+        )
+
+    def test_rewrite_can_ask_for_the_graph_description(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="main",
+            transport=capturing_transport(seen, {"json": rewrite_payload()}),
+        ) as client:
+            client.query.rewrite("Which services exist?", mode="route", include_grounding=True)
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"question": "Which services exist?", "mode": "route", "include_grounding": True},
+        )
+
+    def test_rewrite_is_not_retried_unless_the_caller_asks(self) -> None:
+        failure = {
+            "status": 503,
+            "json": {"error": {"message": "try again", "code": "rewrite_model_unavailable"}},
+        }
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            max_retries=1,
+            retry_delay=0,
+            transport=capturing_transport(seen, [failure, {"json": rewrite_payload()}]),
+        ) as client:
+            with self.assertRaises(LbbError) as raised:
+                client.query.rewrite("Which services exist?")
+        self.assertEqual(raised.exception.code, "rewrite_model_unavailable")
+        self.assertEqual(len(seen), 1)
+
+        seen.clear()
+        with LbbClient(
+            "http://h",
+            max_retries=1,
+            retry_delay=0,
+            transport=capturing_transport(seen, [failure, {"json": rewrite_payload()}]),
+        ) as client:
+            client.query.rewrite("Which services exist?", options={"retry": True})
+        self.assertEqual(len(seen), 2)
+
+    def test_rewrite_serializes_steps_and_enums(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": rewrite_payload()})
+        ) as client:
+            client.query.rewrite(
+                "Which services exist?",
+                context="Services of the platform team.",
+                previous=[
+                    model_module.QueryRewriteStep(sparql="SELECT * WHERE { ?s ?p ?o }", rows=0),
+                    {"sparql": "ASK {}", "error": "no rows"},
+                ],
+                route=model_module.QueryRoute.lookup,
+                mode=model_module.QueryRewriteMode.rewrite,
+                run=False,
+                limit=10,
+                as_of_commit_seq=0,
+                today="2026-10-04",
+            )
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {
+                "question": "Which services exist?",
+                "context": "Services of the platform team.",
+                "previous": [
+                    {"sparql": "SELECT * WHERE { ?s ?p ?o }", "rows": 0},
+                    {"sparql": "ASK {}", "error": "no rows"},
+                ],
+                "route": "lookup",
+                "mode": "rewrite",
+                "run": False,
+                "limit": 10,
+                "as_of_commit_seq": 0,
+                "today": "2026-10-04",
+            },
+        )
+        self.assertNotIn("consistency", seen[0].url.params)
+
+    def test_ask_runs_the_rewrite_and_parses_its_rows(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            default_consistency="eventual",
+            transport=capturing_transport(seen, {"json": rewrite_run_payload()}),
+        ) as client:
+            answer = client.query.ask(
+                "Which services exist?", route="lookup", limit=50, as_of_commit_seq=7
+            )
+        self.assertIsInstance(answer, QueryAskResult)
+        self.assertEqual(seen[0].url.params["consistency"], "eventual")
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {
+                "question": "Which services exist?",
+                "route": "lookup",
+                "run": True,
+                "limit": 50,
+                "as_of_commit_seq": 7,
+            },
+        )
+        self.assertEqual(answer.route["kind"], "lookup")
+        self.assertEqual(answer.query, {"sparql": "SELECT ?s WHERE { ?s ?p ?o }", "entailment": "none"})
+        self.assertEqual(answer.rationale, "The question names services by a condition.")
+        self.assertEqual(answer.rows, [{"s": "x"}])
+        self.assertEqual(answer.vars, ["s"])
+        self.assertIsNone(answer.boolean)
+        self.assertEqual(answer.snapshot, {"commit_seq": 7, "compacted_seq": 7, "served_at_seq": 7})
+        self.assertIsNone(answer.error)
+        self.assertEqual(answer.trace_id, "tr_1")
+        self.assertEqual(answer.rewrite["attempts"], 1)
+
+    def test_ask_without_a_run_keeps_the_route_rationale_and_error(self) -> None:
+        unanswerable = rewrite_payload(
+            route={"kind": "unanswerable", "confidence": 0.8, "by": "rewriter"},
+            query=None,
+            rationale="The graph holds no salaries.",
+        )
+        failed = rewrite_payload(attempts=2, error="unknown prefix ex")
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": unanswerable}, {"json": failed}]),
+        ) as client:
+            none = client.query.ask("What does Ada earn?")
+            broken = client.query.ask("Which services exist?")
+        self.assertEqual(json.loads(seen[0].content), {"question": "What does Ada earn?", "run": True})
+        self.assertEqual(none.route["kind"], "unanswerable")
+        self.assertIsNone(none.query)
+        self.assertEqual(none.rows, [])
+        self.assertEqual(none.vars, [])
+        self.assertIsNone(none.trace_id)
+        self.assertEqual(broken.error, "unknown prefix ex")
+        self.assertEqual(broken.rewrite["attempts"], 2)
+
+    def test_ask_returns_the_answer_of_an_ask_query(self) -> None:
+        payload = rewrite_payload(
+            result={
+                "results": json.dumps({"head": {}, "boolean": True}),
+                "row_page": {
+                    "returned": 0,
+                    "total": 0,
+                    "offset": 0,
+                    "limit": 100,
+                    "has_more": False,
+                },
+            }
+        )
+        with LbbClient(
+            "http://h", transport=capturing_transport([], {"json": payload})
+        ) as client:
+            answer = client.query.ask("Is there any fact?")
+        self.assertTrue(answer.boolean)
+        self.assertEqual(answer.rows, [])
+
+
+class AsyncQueryRewriteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_rewrite_and_ask(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen, [{"json": rewrite_payload()}, {"json": rewrite_run_payload()}]
+            ),
+        ) as client:
+            response = await client.query.rewrite("Which services exist?", consistency="strong")
+            answer = await client.query.ask("Which services exist?", context="team notes")
+        self.assertEqual(response["query"]["entailment"], "none")
+        self.assertEqual(seen[0].url.params["consistency"], "strong")
+        self.assertEqual(json.loads(seen[0].content), {"question": "Which services exist?"})
+        self.assertEqual(
+            json.loads(seen[1].content),
+            {"question": "Which services exist?", "context": "team notes", "run": True},
+        )
+        self.assertIsInstance(answer, QueryAskResult)
+        self.assertEqual(answer.rows, [{"s": "x"}])
+        self.assertEqual(answer.trace_id, "tr_1")
+
+    async def test_async_rewrite_is_not_retried(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            max_retries=1,
+            retry_delay=0,
+            transport=capturing_transport(
+                seen,
+                [
+                    {"status": 503, "json": {"error": {"code": "rewrite_model_unavailable"}}},
+                    {"json": rewrite_payload()},
+                ],
+            ),
+        ) as client:
+            with self.assertRaises(LbbError):
+                await client.query.ask("Which services exist?")
+        self.assertEqual(len(seen), 1)
 
 
 class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
@@ -2404,6 +3132,33 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen[0].url.path, "/v1/models/activity")
         self.assertEqual(seen[0].url.params.get("month"), "2026-10")
         self.assertNotIn("month", seen[1].url.params)
+
+    async def test_async_sparql_search_update_and_entity_detail(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            graph="g",
+            transport=capturing_transport(
+                seen,
+                [
+                    {"json": search_sparql_envelope()},
+                    {"status": 204, "text": ""},
+                    {"json": entity_detail_payload()},
+                ],
+            ),
+        ) as client:
+            found = await client.query.sparql("SELECT ?s WHERE { ?s ?p ?o }", request="q")
+            updated = await client.query.update("INSERT DATA { <a:b> <a:c> <a:d> }")
+            record = await client.entities.detail_model(id="e1")
+        self.assertEqual(found.trace_id, "tr_1")
+        assert found.search is not None
+        self.assertEqual(found.search["plan"], "filter_first")
+        self.assertEqual(json.loads(seen[0].content)["request"], "q")
+        self.assertIsNone(updated)
+        self.assertEqual(seen[1].url.path, "/update")
+        self.assertTrue(seen[1].headers["idempotency-key"].startswith("sparql-update:"))
+        self.assertIsInstance(record, model_module.EntityDetailResponse)
+        self.assertEqual(seen[2].url.params["id"], "e1")
 
     async def test_async_workflow_instance_deletion_is_typed(self) -> None:
         seen: list[httpx.Request] = []
