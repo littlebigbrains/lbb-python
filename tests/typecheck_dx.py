@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from lbb import AsyncLbbClient, LbbClient
+from lbb import AsyncLbbClient, LbbClient, QueryAskResult
 from lbb.models import OntologyView, SparqlSelectResponse
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
             client.query.structured({"patterns": [], "select": []}),
             SparqlSelectResponse,
         )
+        assert_type(client.query.ask("Which services exist?"), QueryAskResult)
 
     async def async_dx_types(client: AsyncLbbClient) -> None:
         assert_type(await client.ontology.view(counts=True), OntologyView)
@@ -23,3 +24,4 @@ if TYPE_CHECKING:
             await client.query.structured({"patterns": [], "select": []}),
             SparqlSelectResponse,
         )
+        assert_type(await client.query.ask("Which services exist?"), QueryAskResult)

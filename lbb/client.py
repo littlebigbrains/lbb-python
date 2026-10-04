@@ -6,9 +6,11 @@ stable ``from lbb.client import LbbClient`` import path.
 
 from ._async_client import AsyncLbbClient
 from ._client_base import (
+    RESET,
     LbbCapabilityError,
     LbbError,
     ListPage,
+    QueryAskResult,
     RawLbbResponse,
     RequestOptions,
     RetryEvent,
@@ -26,4 +28,6 @@ __all__ = [
     "RequestOptions",
     "RetryEvent",
     "SparqlResults",
+    "QueryAskResult",
+    "RESET",
 ]

@@ -1207,6 +1207,15 @@
         ],
         "type": "object"
       },
+      "CheckVerdict": {
+        "description": "The verdict of a check.",
+        "enum": [
+          "right",
+          "partly",
+          "wrong"
+        ],
+        "type": "string"
+      },
       "CommitResponse": {
         "properties": {
           "commit_seq": {
@@ -7788,6 +7797,13 @@
               "null"
             ]
           },
+          "effort": {
+            "description": "The reasoning effort sent with each call (`low`, `medium`, `high`,\n`xhigh`, `max`), for a model that takes one. Absent: the server's\ndefault for the role.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "description": "The provider's model id (`openai/text-embedding-3-small`,\n`anthropic/claude-sonnet-5`, …).",
             "type": "string"
@@ -7923,7 +7939,8 @@
           "openrouter",
           "modal",
           "typesafe",
-          "mock"
+          "mock",
+          "anthropic"
         ],
         "type": "string"
       },
@@ -7932,7 +7949,10 @@
         "enum": [
           "embedding",
           "judge",
-          "rewriter"
+          "rewriter",
+          "reranker",
+          "router",
+          "checker"
         ],
         "type": "string"
       },
@@ -8002,6 +8022,12 @@
             "minimum": 0,
             "type": "integer"
           },
+          "checks": {
+            "description": "Calls of this model a judge checked (`docs/architecture/model-checks.md`).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "cost_micro_usd": {
             "format": "int64",
             "minimum": 0,
@@ -8036,10 +8062,34 @@
           "model": {
             "type": "string"
           },
+          "overruled": {
+            "description": "The judge's row: reviews that corrected the judge.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "provider": {
             "type": "string"
           },
+          "reviewed": {
+            "description": "The judge's row: checks of this judge people reviewed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score_milli": {
+            "description": "The sum of the checked calls' ground-truth scores, in thousandths.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "wrong": {
+            "description": "Checked calls whose ground truth is `wrong`.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -8067,7 +8117,9 @@
           "search",
           "fit",
           "judge",
-          "training"
+          "training",
+          "rerank",
+          "rewrite"
         ],
         "type": "string"
       },
@@ -8075,6 +8127,12 @@
         "description": "One feature and model on one graph over the month. `graph` is `*` for\nthe graphs past the ledger's bound (\"other graphs\").",
         "properties": {
           "calls": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "checks": {
+            "description": "Calls of this model a judge checked (`docs/architecture/model-checks.md`).",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -8112,10 +8170,34 @@
           "model": {
             "type": "string"
           },
+          "overruled": {
+            "description": "The judge's row: reviews that corrected the judge.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "provider": {
             "type": "string"
           },
+          "reviewed": {
+            "description": "The judge's row: checks of this judge people reviewed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score_milli": {
+            "description": "The sum of the checked calls' ground-truth scores, in thousandths.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "wrong": {
+            "description": "Checked calls whose ground truth is `wrong`.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -8312,6 +8394,12 @@
             "minimum": 0,
             "type": "integer"
           },
+          "checks": {
+            "description": "Calls of this model a judge checked (`docs/architecture/model-checks.md`).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "cost_micro_usd": {
             "description": "Estimated cost in millionths of a US dollar.",
             "format": "int64",
@@ -8353,10 +8441,34 @@
           "model": {
             "type": "string"
           },
+          "overruled": {
+            "description": "The judge's row: reviews that corrected the judge.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "provider": {
             "type": "string"
           },
+          "reviewed": {
+            "description": "The judge's row: checks of this judge people reviewed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score_milli": {
+            "description": "The sum of the checked calls' ground-truth scores, in thousandths.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "wrong": {
+            "description": "Checked calls whose ground truth is `wrong`.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -8443,6 +8555,505 @@
         ],
         "type": "object"
       },
+      "ModelCall": {
+        "description": "One logged model call.",
+        "properties": {
+          "at_ms": {
+            "description": "When the call was made, in milliseconds since the Unix epoch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "graph": {
+            "type": "string"
+          },
+          "id": {
+            "description": "`<at_ms:020>-<node>-<seq:010>-<n>`: the batch and the index in it.",
+            "type": "string"
+          },
+          "input": {
+            "description": "The provider-neutral request, at most 64 KiB of JSON. A long system\ntext is stored once and named by its hash (`{\"grounding\": \"<hash>\"}`)."
+          },
+          "job": {
+            "$ref": "#/components/schemas/ModelJob"
+          },
+          "model": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/ModelCallOrigin"
+          },
+          "output": {
+            "description": "The model's answer, at most 64 KiB of JSON."
+          },
+          "provider": {
+            "type": "string"
+          },
+          "sampled": {
+            "description": "The sampler picked the call for a check.",
+            "type": "boolean"
+          },
+          "truncated": {
+            "description": "A text or a list was cut to fit the bounds.",
+            "type": "boolean"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ModelCallUsage"
+          }
+        },
+        "required": [
+          "id",
+          "at_ms",
+          "job",
+          "provider",
+          "model",
+          "graph",
+          "origin",
+          "input",
+          "output",
+          "usage",
+          "ok",
+          "sampled"
+        ],
+        "type": "object"
+      },
+      "ModelCallCheckResponse": {
+        "description": "`POST /v1/models/calls/check`: the call is queued for a check by the\ngraph's checks workflow.",
+        "properties": {
+          "queued": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "queued"
+        ],
+        "type": "object"
+      },
+      "ModelCallDetailResponse": {
+        "description": "`GET /v1/models/calls/get`: one call with its groundings as text, and its\ncheck.",
+        "properties": {
+          "call": {
+            "$ref": "#/components/schemas/ModelCall"
+          },
+          "check": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelCheck"
+              }
+            ]
+          }
+        },
+        "required": [
+          "call"
+        ],
+        "type": "object"
+      },
+      "ModelCallListResponse": {
+        "description": "`GET /v1/models/calls`: the call log, newest first.",
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCallRow"
+            },
+            "type": "array"
+          },
+          "next_after": {
+            "description": "Pass as `after` for the next page; absent on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "calls"
+        ],
+        "type": "object"
+      },
+      "ModelCallOrigin": {
+        "description": "Where a call came from.",
+        "properties": {
+          "request_id": {
+            "description": "The HTTP request that made the call.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "route": {
+            "description": "The route that made the call (`/v1/search`, `integrations/fit`).",
+            "type": "string"
+          },
+          "trace_id": {
+            "description": "The eval trace of the request, when it has one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "route"
+        ],
+        "type": "object"
+      },
+      "ModelCallReport": {
+        "additionalProperties": false,
+        "description": "One call the SaaS API reports.",
+        "properties": {
+          "at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "confidence": {
+            "description": "The top decision probability: a call below 0.6 is sampled four times\nas often.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "graph": {
+            "type": "string"
+          },
+          "input": {},
+          "job": {
+            "$ref": "#/components/schemas/ModelJob"
+          },
+          "model": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "origin": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelCallOrigin"
+              }
+            ]
+          },
+          "output": {},
+          "provider": {
+            "type": "string"
+          },
+          "truncated": {
+            "description": "The sender cut a text or a list to fit its bounds.",
+            "type": "boolean"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ModelCallUsage"
+          }
+        },
+        "required": [
+          "job",
+          "provider",
+          "model",
+          "graph",
+          "at_ms",
+          "input",
+          "output",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "ModelCallReportRequest": {
+        "additionalProperties": false,
+        "description": "`POST /api/admin/model-calls` (database admin token): the calls the SaaS\nAPI made for a stack, at most [`MODEL_CALL_REPORT_MAX_CALLS`].",
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCallReport"
+            },
+            "type": "array"
+          },
+          "stack_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stack_id",
+          "calls"
+        ],
+        "type": "object"
+      },
+      "ModelCallReportResponse": {
+        "properties": {
+          "accepted": {
+            "description": "Calls taken into the log's next write; 0 for a stack that is gone or\nbeing deleted.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "ModelCallRow": {
+        "description": "One row of `GET /v1/models/calls`.",
+        "properties": {
+          "at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "check": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelCheckBrief"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/ModelJob"
+          },
+          "model": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "sampled": {
+            "type": "boolean"
+          },
+          "skipped": {
+            "description": "`budget`, `refused` or `failed`: sampled but not checked.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "description": "At most 160 characters: the search text, the question, the stream\nname.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at_ms",
+          "job",
+          "provider",
+          "model",
+          "ok",
+          "sampled",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "ModelCallShape": {
+        "description": "The shape of a job's input and output, and so of its check.",
+        "enum": [
+          "relevance",
+          "choice",
+          "generation",
+          "none"
+        ],
+        "type": "string"
+      },
+      "ModelCallUsage": {
+        "description": "What one call used.",
+        "properties": {
+          "cache_read": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cache_write": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "description": "In millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tokens_in": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tokens_out": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ModelCheck": {
+        "description": "One check of one call.",
+        "properties": {
+          "call": {
+            "description": "The call id.",
+            "type": "string"
+          },
+          "call_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "history": {
+            "description": "Earlier reviews, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/ModelCheckReview"
+            },
+            "type": "array"
+          },
+          "job": {
+            "$ref": "#/components/schemas/ModelJob"
+          },
+          "judge": {
+            "$ref": "#/components/schemas/ModelCheckJudge"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "review": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelCheckReview"
+              }
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "truth": {
+            "$ref": "#/components/schemas/ModelCheckTruth"
+          },
+          "v": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "call",
+          "job",
+          "provider",
+          "model",
+          "graph",
+          "call_at_ms",
+          "summary",
+          "judge",
+          "truth"
+        ],
+        "type": "object"
+      },
+      "ModelCheckBrief": {
+        "description": "The check of a call, in a list row.",
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/TruthSource"
+          },
+          "reviewed": {
+            "type": "boolean"
+          },
+          "score": {
+            "format": "float",
+            "type": "number"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/CheckVerdict"
+          }
+        },
+        "required": [
+          "verdict",
+          "score",
+          "by",
+          "reviewed"
+        ],
+        "type": "object"
+      },
+      "ModelCheckBudget": {
+        "description": "The stack's check budget of one day (UTC).",
+        "properties": {
+          "checks": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "day": {
+            "description": "`yyyy-mm-dd`.",
+            "type": "string"
+          },
+          "limit_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "cost_micro_usd",
+          "limit_micro_usd",
+          "checks"
+        ],
+        "type": "object"
+      },
       "ModelCheckFile": {
         "properties": {
           "checks": {
@@ -8450,6 +9061,80 @@
               "$ref": "#/components/schemas/ModelCheckSpec"
             },
             "type": "array"
+          }
+        },
+        "required": [
+          "checks"
+        ],
+        "type": "object"
+      },
+      "ModelCheckJudge": {
+        "description": "What the judge said about a call.",
+        "properties": {
+          "at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reference": {
+            "description": "The judge's own answer: the grades, its pick, a corrected query."
+          },
+          "rubric": {
+            "description": "The rubric and its version (`relevance/1`).",
+            "type": "string"
+          },
+          "score": {
+            "description": "0 to 1.",
+            "format": "float",
+            "type": "number"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ModelCallUsage"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/CheckVerdict"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "rubric",
+          "verdict",
+          "score",
+          "reason",
+          "usage",
+          "at_ms"
+        ],
+        "type": "object"
+      },
+      "ModelCheckListResponse": {
+        "description": "`GET /v1/models/checks`: the checks of a month, newest first.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCheck"
+            },
+            "type": "array"
+          },
+          "next_after": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -8491,6 +9176,94 @@
           "kind",
           "passed",
           "details"
+        ],
+        "type": "object"
+      },
+      "ModelCheckReview": {
+        "description": "What a person said about a check.",
+        "properties": {
+          "agree": {
+            "description": "Agrees with the judge.",
+            "type": "boolean"
+          },
+          "at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "by": {
+            "description": "Who reviewed: `account:<id>`, `key:<key id>`, `token`.",
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "description": "The person's answer (for a relevance check `{grades: {<id>: 0..3}}`)."
+          },
+          "score": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "verdict": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CheckVerdict",
+                "description": "The right verdict, when the review corrects the judge."
+              }
+            ]
+          }
+        },
+        "required": [
+          "by",
+          "at_ms",
+          "agree"
+        ],
+        "type": "object"
+      },
+      "ModelCheckReviewRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/models/checks/review?graph&id`: agree with the check, or\ncorrect it. With `agree: true` no verdict, score or reference; with\n`agree: false` the verdict is required.",
+        "properties": {
+          "agree": {
+            "type": "boolean"
+          },
+          "note": {
+            "description": "At most 2,000 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {},
+          "score": {
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "verdict": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CheckVerdict"
+              }
+            ]
+          }
+        },
+        "required": [
+          "agree"
         ],
         "type": "object"
       },
@@ -8561,6 +9334,86 @@
           }
         ]
       },
+      "ModelCheckTruth": {
+        "description": "The ground truth of a call: the review when there is one, the judge's\nverdict otherwise.",
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/TruthSource"
+          },
+          "score": {
+            "format": "float",
+            "type": "number"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/CheckVerdict"
+          }
+        },
+        "required": [
+          "verdict",
+          "score",
+          "by"
+        ],
+        "type": "object"
+      },
+      "ModelChecksSummary": {
+        "description": "`GET /v1/models/checks/summary`: the graph's checks in one month.",
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/ModelCheckBudget",
+            "description": "Today's budget."
+          },
+          "calls": {
+            "description": "Model calls logged this month for the graph.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "checker_available": {
+            "description": "The node can check calls (the checker model is configured).",
+            "type": "boolean"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/ModelJobQuality"
+            },
+            "type": "array"
+          },
+          "judge": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelJudgeQuality"
+              }
+            ]
+          },
+          "month": {
+            "description": "`yyyy-mm` (UTC).",
+            "type": "string"
+          },
+          "months": {
+            "description": "The months with a summary, oldest first.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "month",
+          "months",
+          "graph",
+          "jobs",
+          "budget",
+          "checker_available",
+          "calls"
+        ],
+        "type": "object"
+      },
       "ModelDataLineage": {
         "properties": {
           "example_count": {
@@ -8614,6 +9467,131 @@
         "required": [
           "ledger_ref",
           "metrics"
+        ],
+        "type": "object"
+      },
+      "ModelJob": {
+        "description": "What LBB used a model for. Every call has one job.",
+        "enum": [
+          "rerank",
+          "route",
+          "rewrite",
+          "fit",
+          "propose",
+          "label",
+          "embed"
+        ],
+        "type": "string"
+      },
+      "ModelJobQuality": {
+        "description": "One job and model over a month of checks.",
+        "properties": {
+          "checks": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "corrected": {
+            "description": "Reviews that corrected the judge.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job": {
+            "$ref": "#/components/schemas/ModelJob"
+          },
+          "last_at_ms": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "partly": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "reviewed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "right": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score": {
+            "description": "The mean ground-truth score; 0 when no checks.",
+            "format": "double",
+            "type": "number"
+          },
+          "wrong": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job",
+          "provider",
+          "model",
+          "checks",
+          "score",
+          "right",
+          "partly",
+          "wrong",
+          "reviewed",
+          "corrected"
+        ],
+        "type": "object"
+      },
+      "ModelJudgeQuality": {
+        "description": "The judge over a month of checks.",
+        "properties": {
+          "agreement": {
+            "description": "`(reviewed - overruled) / reviewed`; absent before any review.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "overruled": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "reviewed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "reviewed",
+          "overruled"
         ],
         "type": "object"
       },
@@ -11814,6 +12792,421 @@
         ],
         "type": "object"
       },
+      "QueryRewriteGrounding": {
+        "description": "The graph description the models read.",
+        "properties": {
+          "age_ms": {
+            "description": "Milliseconds since the server built it (it keeps one per graph for 10\nminutes).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "classes": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "commit_seq": {
+            "description": "The commit of the published generation the description was read from.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "embeddings": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "properties": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "text": {
+            "description": "The description itself, when the request asked for it\n(`include_grounding`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "commit_seq",
+          "classes",
+          "properties",
+          "embeddings",
+          "age_ms"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteHistory": {
+        "description": "What a `history` question asks for beyond the query.",
+        "properties": {
+          "as_of_date": {
+            "description": "The date the question names (`YYYY-MM-DD`). The caller resolves it to\na commit and passes it as `as_of_commit_seq`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "compare": {
+            "description": "Run the query at that point and now, and compare the rows.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "compare"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteMode": {
+        "description": "What the call returns.",
+        "enum": [
+          "rewrite",
+          "route"
+        ],
+        "type": "string"
+      },
+      "QueryRewriteModelCall": {
+        "description": "One model call of a rewrite.",
+        "properties": {
+          "cost_micro_usd": {
+            "description": "Estimate, in millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/QueryRewriteModelRole"
+          },
+          "tokens": {
+            "description": "Input plus output tokens, cache reads and writes included.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "role",
+          "provider",
+          "model",
+          "ok",
+          "ms",
+          "tokens",
+          "cost_micro_usd"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteModelRole": {
+        "description": "Which model a call used.",
+        "enum": [
+          "router",
+          "rewriter"
+        ],
+        "type": "string"
+      },
+      "QueryRewriteRequest": {
+        "additionalProperties": false,
+        "description": "Turn a question into the query to run (`POST /v1/query/rewrite`).",
+        "properties": {
+          "as_of_commit_seq": {
+            "description": "Read the graph at this commit.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "context": {
+            "description": "The app's notes for the model: what the data means, units, names to\nprefer. At most 8,000 characters. Keep it the same across questions,\nso the model provider's prompt cache reads it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "include_grounding": {
+            "description": "Return the graph description the models read in `grounding.text`:\nto see why a query came out as it did, or to reuse the description\nin an app's own prompt. With `mode: \"route\"` no rewriter call is made.",
+            "type": "boolean"
+          },
+          "limit": {
+            "description": "Rows a run returns: 1 to 1,000, default 100.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/QueryRewriteMode"
+          },
+          "previous": {
+            "description": "Earlier steps of the same question, oldest first; at most 6.",
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteStep"
+            },
+            "type": "array"
+          },
+          "question": {
+            "description": "The question, 1 to 4,000 characters.",
+            "type": "string"
+          },
+          "route": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryRoute",
+                "description": "Fix the route: the router model is not asked."
+              }
+            ]
+          },
+          "run": {
+            "description": "Run the query and return its rows in `result`. A query that fails\nwith a client error is corrected once.",
+            "type": "boolean"
+          },
+          "today": {
+            "description": "Today's date for relative questions (\"last 14 days\"), `YYYY-MM-DD`.\nDefault: the server's UTC date.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteResponse": {
+        "properties": {
+          "attempts": {
+            "description": "Queries the rewriter wrote: 2 when it corrected one.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "description": "Why the last attempt failed, when the query did not parse or run.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grounding": {
+            "$ref": "#/components/schemas/QueryRewriteGrounding"
+          },
+          "history": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryRewriteHistory"
+              }
+            ]
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteModelCall"
+            },
+            "type": "array"
+          },
+          "query": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RewrittenQuery",
+                "description": "Absent for `unanswerable`, and for `mode: \"route\"` when the router\nanswered."
+              }
+            ]
+          },
+          "rationale": {
+            "description": "One or two sentences: why this route and this query.",
+            "type": "string"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SparqlTextResponse",
+                "description": "The run's answer (`run: true`): the rows, the search report, and the\neval `trace_id` (the question is the trace's request)."
+              }
+            ]
+          },
+          "route": {
+            "$ref": "#/components/schemas/QueryRouteDecision"
+          },
+          "timings": {
+            "$ref": "#/components/schemas/QueryRewriteTimings"
+          }
+        },
+        "required": [
+          "route",
+          "rationale",
+          "attempts",
+          "grounding",
+          "models",
+          "timings"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteStep": {
+        "additionalProperties": false,
+        "description": "One earlier step of the same question: a query the caller ran, and what\ncame of it.",
+        "properties": {
+          "error": {
+            "description": "The error the query got, when it failed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "description": "What the caller concluded (\"the amounts are missing\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rows": {
+            "description": "Rows it returned.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sample": {
+            "description": "The first rows as text, for the model to read.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sparql": {
+            "description": "The SPARQL query of the step.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sparql"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteTimings": {
+        "description": "Where the time of a rewrite went, in milliseconds.",
+        "properties": {
+          "ground_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rewrite_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "route_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "run_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ground_ms",
+          "route_ms",
+          "rewrite_ms",
+          "run_ms",
+          "total_ms"
+        ],
+        "type": "object"
+      },
+      "QueryRoute": {
+        "description": "The kind of query a question needs.",
+        "enum": [
+          "lookup",
+          "aggregate",
+          "search",
+          "history",
+          "schema",
+          "unanswerable"
+        ],
+        "type": "string"
+      },
+      "QueryRouteDecision": {
+        "description": "The route of a question and how sure the choice is.",
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/QueryRouteSource"
+          },
+          "confidence": {
+            "description": "0 to 1: the router's probability of `kind`, 1 for a route the caller\nfixed, the rewriter's own estimate otherwise.",
+            "format": "float",
+            "type": "number"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/QueryRoute"
+          },
+          "probabilities": {
+            "additionalProperties": {
+              "format": "float",
+              "type": "number"
+            },
+            "description": "The router's probability of each route, when the router answered.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "confidence",
+          "by"
+        ],
+        "type": "object"
+      },
+      "QueryRouteSource": {
+        "description": "Who chose the route.",
+        "enum": [
+          "caller",
+          "router",
+          "rewriter"
+        ],
+        "type": "string"
+      },
       "RangedReadStats": {
         "description": "Read accounting for ranged (block-level) persisted index runs. Reported\nwhen search served from a ranged layout instead of coarse whole objects.",
         "properties": {
@@ -12481,6 +13874,33 @@
           "ndcg_v1"
         ],
         "type": "string"
+      },
+      "RewrittenQuery": {
+        "description": "The query the rewriter wrote.",
+        "properties": {
+          "as_of_commit_seq": {
+            "description": "The commit to read, when the question or the request names one.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "entailment": {
+            "$ref": "#/components/schemas/SparqlEntailment",
+            "description": "The entailment the query needs; pass it to `POST /v1/query/sparql-text`."
+          },
+          "sparql": {
+            "description": "A SPARQL `SELECT` or `ASK` query, with its `PREFIX` declarations.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sparql",
+          "entailment"
+        ],
+        "type": "object"
       },
       "RowPage": {
         "description": "Final-result row page metadata. `total` is the number of rows after filters,\nprojection/deduplication, grouping, and ordering but before the requested\nresponse page is sliced. `returned` is the number of rows actually present in\nthis response page.",
@@ -14695,6 +16115,14 @@
           "label": {
             "type": "string"
           },
+          "relevance": {
+            "description": "With a rerank: the model's probability (0 to 1) that the hit answers\nthe search text. The hits are ordered by it; `score` stays the\nsimilarity.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "score": {
             "format": "float",
             "type": "number"
@@ -14891,6 +16319,13 @@
               "null"
             ]
           },
+          "rerank": {
+            "description": "Order the best hits by how well each answers `text`, with the\nmanaged rerank model (`true`), or keep the similarity order\n(`false`). Without it the graph's search setting decides\n(`GET /v1/search/settings`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "text": {
             "description": "The query text; embedded with the serving version's model.",
             "type": [
@@ -14907,6 +16342,97 @@
           }
         },
         "type": "object"
+      },
+      "SearchRerankModel": {
+        "description": "A rerank model: who serves it and its id.",
+        "properties": {
+          "id": {
+            "description": "`jev-latest`.",
+            "type": "string"
+          },
+          "label": {
+            "description": "A name for people (`Jev`).",
+            "type": "string"
+          },
+          "provider": {
+            "description": "`typesafe`, `mock`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "id",
+          "label"
+        ],
+        "type": "object"
+      },
+      "SearchRerankReport": {
+        "description": "The rerank of one search. Absent when the search did not rerank.",
+        "properties": {
+          "cached": {
+            "description": "Answers kept from an earlier search of the same text (no model call).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "candidates": {
+            "description": "Hits the model read: the best `2·top_k` that passed the graph check,\nat least 20 and at most 40, or the graph's `rerank_depth`.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "description": "Why the rerank failed, in short.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchRerankModel"
+              }
+            ]
+          },
+          "moved": {
+            "description": "Hits that moved from their similarity rank.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SearchRerankSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SearchRerankStatus"
+          }
+        },
+        "required": [
+          "status",
+          "source",
+          "candidates"
+        ],
+        "type": "object"
+      },
+      "SearchRerankSource": {
+        "description": "Why a search reranked: the graph's setting or the request's `rerank`.",
+        "enum": [
+          "graph",
+          "request"
+        ],
+        "type": "string"
+      },
+      "SearchRerankStatus": {
+        "description": "What became of the rerank of one search.",
+        "enum": [
+          "applied",
+          "failed",
+          "unavailable",
+          "limited",
+          "planned"
+        ],
+        "type": "string"
       },
       "SearchResponse": {
         "properties": {
@@ -14981,6 +16507,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "rerank": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchRerankReport",
+                "description": "The rerank, when the search reranked (the request or the graph's\nsetting asked for it)."
+              }
+            ]
+          },
           "served_at_seq": {
             "oneOf": [
               {
@@ -15014,6 +16551,99 @@
           "usage",
           "query_ms"
         ],
+        "type": "object"
+      },
+      "SearchSettings": {
+        "description": "The search settings of a graph (`GET /v1/search/settings`).",
+        "properties": {
+          "blend": {
+            "description": "How a reranked search orders its candidates, 0 to 1: by\n`blend·relevance + (1 − blend)·similarity`, the similarity scaled to 0\nto 1 over the reranked candidates (min–max). Absent or 1: the rerank\nmodel's order; 0: the similarity order.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "probe_factor": {
+            "description": "Clusters a search reads across the big runs, as a factor of the\ndefault (`4·√clusters`, at least 8), 1 to 4. A request's `probe`\nwins. Absent: the default.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rerank": {
+            "description": "Every search of the graph orders its best hits with the rerank model,\nunless a request sets `rerank`.",
+            "type": "boolean"
+          },
+          "rerank_available": {
+            "description": "The server has a rerank model. Without one a search keeps the\nsimilarity order and reports `rerank.status: unavailable`.",
+            "type": "boolean"
+          },
+          "rerank_depth": {
+            "description": "Candidates the rerank model reads, 20 to 80. Absent: `2·top_k`, at\nleast 20 and at most 40.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rerank_model": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchRerankModel",
+                "description": "The managed rerank model (the catalog's `reranker` role)."
+              }
+            ]
+          }
+        },
+        "required": [
+          "rerank",
+          "rerank_available"
+        ],
+        "type": "object"
+      },
+      "SearchSettingsRequest": {
+        "additionalProperties": false,
+        "description": "`PUT /v1/search/settings`: change some of the graph's search settings.\nA field left out keeps its value; `null` sets it back to its default.\nUnknown fields are refused.",
+        "properties": {
+          "blend": {
+            "description": "`blend·relevance + (1 − blend)·similarity`, 0 to 1; `null`: the\ndefault (the rerank order).",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "probe_factor": {
+            "description": "Clusters read, as a factor of the default, 1 to 4; `null`: the\ndefault.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rerank": {
+            "description": "Turn the rerank on or off for every search of the graph.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "rerank_depth": {
+            "description": "Candidates the rerank model reads, 20 to 80; `null`: the default.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "SearchSignalWeights": {
@@ -15357,6 +16987,12 @@
             "minimum": 0,
             "type": "integer"
           },
+          "relevance_ms": {
+            "description": "Asking the rerank model how well each candidate answers the text.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "rerank_ms": {
             "description": "Reading the exact vectors of the best candidates and scoring them.",
             "format": "int64",
@@ -15375,6 +17011,386 @@
           "embed_ms",
           "index_ms",
           "check_ms"
+        ],
+        "type": "object"
+      },
+      "SearchTuningListResponse": {
+        "description": "`GET /v1/search/tuning?graph`: the sessions, newest first.",
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SearchTuningSession"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "type": "object"
+      },
+      "SearchTuningMetrics": {
+        "description": "The scores of one variant.",
+        "properties": {
+          "cost_micro_usd_per_search": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "latency_p50_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mrr_at_10": {
+            "format": "double",
+            "type": "number"
+          },
+          "ndcg_at_10": {
+            "format": "double",
+            "type": "number"
+          },
+          "queries": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "recall_at_10": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ndcg_at_10",
+          "mrr_at_10",
+          "recall_at_10",
+          "latency_p50_ms",
+          "cost_micro_usd_per_search",
+          "queries"
+        ],
+        "type": "object"
+      },
+      "SearchTuningProposal": {
+        "description": "The settings a session proposes.",
+        "properties": {
+          "cost_delta_micro_usd_per_search": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "latency_delta_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SearchTuningSettings"
+          },
+          "test": {
+            "$ref": "#/components/schemas/SearchTuningTest"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant",
+          "settings",
+          "test",
+          "latency_delta_ms",
+          "cost_delta_micro_usd_per_search"
+        ],
+        "type": "object"
+      },
+      "SearchTuningRound": {
+        "description": "The judge's notes of one round.",
+        "properties": {
+          "notes": {
+            "type": "string"
+          },
+          "round": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "round",
+          "notes"
+        ],
+        "type": "object"
+      },
+      "SearchTuningSession": {
+        "description": "One tuning session.",
+        "properties": {
+          "applied_at_ms": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "applied_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "baseline": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTuningVariant"
+              }
+            ]
+          },
+          "created_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at_ms": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "graded_pairs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "judge_cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proposal": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTuningProposal"
+              }
+            ]
+          },
+          "queries_choose": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "queries_test": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/SearchTuningRound"
+            },
+            "type": "array"
+          },
+          "started_at_ms": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/SearchTuningStatus"
+          },
+          "step": {
+            "description": "`queries`, `baseline`, `propose`, `run`, `grade`, `score` or `test`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/SearchTuningVariant"
+            },
+            "type": "array"
+          },
+          "workflow_turn": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "created_at_ms",
+          "queries_choose",
+          "queries_test",
+          "graded_pairs",
+          "judge_cost_micro_usd"
+        ],
+        "type": "object"
+      },
+      "SearchTuningSettings": {
+        "description": "The search settings a tuning session changes.",
+        "properties": {
+          "blend": {
+            "description": "`blend·relevance + (1 - blend)·similarity`, 0 to 1.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "probe_factor": {
+            "description": "Clusters read, as a factor of the default, 1 to 4.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rerank": {
+            "type": "boolean"
+          },
+          "rerank_depth": {
+            "description": "Candidates the rerank model reads, 20 to 80.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "rerank"
+        ],
+        "type": "object"
+      },
+      "SearchTuningStartRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/search/tuning?graph`: start a session.",
+        "properties": {
+          "queries": {
+            "description": "At most 40.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rounds": {
+            "description": "At most 3.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "SearchTuningStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "SearchTuningTest": {
+        "description": "The best variant against the baseline on the test queries.",
+        "properties": {
+          "baseline_ndcg_at_10": {
+            "format": "double",
+            "type": "number"
+          },
+          "ci_high": {
+            "format": "double",
+            "type": "number"
+          },
+          "ci_low": {
+            "description": "The bootstrap 95% interval of `delta`.",
+            "format": "double",
+            "type": "number"
+          },
+          "delta": {
+            "format": "double",
+            "type": "number"
+          },
+          "ndcg_at_10": {
+            "format": "double",
+            "type": "number"
+          },
+          "queries": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "baseline_ndcg_at_10",
+          "ndcg_at_10",
+          "delta",
+          "ci_low",
+          "ci_high",
+          "queries"
+        ],
+        "type": "object"
+      },
+      "SearchTuningVariant": {
+        "description": "One set of settings a session ran.",
+        "properties": {
+          "hypothesis": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metrics": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchTuningMetrics"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "round": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SearchTuningSettings"
+          }
+        },
+        "required": [
+          "id",
+          "round",
+          "name",
+          "hypothesis",
+          "settings"
         ],
         "type": "object"
       },
@@ -19154,6 +21170,14 @@
           "total_observed"
         ],
         "type": "object"
+      },
+      "TruthSource": {
+        "description": "Who set a call's ground truth.",
+        "enum": [
+          "judge",
+          "person"
+        ],
+        "type": "string"
       },
       "TypedAskFeedbackV1": {
         "properties": {
@@ -34728,7 +36752,7 @@
             "bearer": []
           }
         ],
-        "summary": "The managed models the platform uses per role (embedding, judge, rewriter): the operator's catalog, or the compiled defaults",
+        "summary": "The managed models the platform uses per role (embedding, judge, router, rewriter): the operator's catalog, or the compiled defaults",
         "tags": [
           "system"
         ]
@@ -34989,7 +37013,7 @@
             "bearer": []
           }
         ],
-        "summary": "What each managed model did for the stack in one month: totals, by day and by graph per feature (index, search, fit, judge, training) and model, the months with activity, and the model each feature uses now. A stack read; the answering node adds the calls it has not written to the ledger yet",
+        "summary": "What each managed model did for the stack in one month: totals, by day and by graph per feature (index, search, fit, judge, training, rewrite) and model, the months with activity, and the model each feature uses now. A stack read; the answering node adds the calls it has not written to the ledger yet",
         "tags": [
           "system"
         ]
@@ -35251,6 +37275,1952 @@
           }
         ],
         "summary": "Doubling retrain policy for a model kind: retrain_due when the graph doubled since the promoted run trained",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/calls": {
+      "get": {
+        "operationId": "get_v1_models_calls",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "rerank, route, rewrite, fit, propose, label or embed",
+            "in": "query",
+            "name": "job",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm-dd (UTC) to start from; default: today",
+            "in": "query",
+            "name": "day",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "true: only calls that have a check; false: only calls that have none",
+            "in": "query",
+            "name": "checked",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next_after` of the previous page",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "rows, 1 to 100; default 50",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCallListResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The graph's model call log, newest first: every call LBB made for its own work (rerank, route, rewrite, fit, propose, label, embed) with its model, whether it was sampled for a check, and the brief of its check. Walks back day by day from `day` (or the day of `after`), up to 31 days, until the page fills",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/calls/check": {
+      "post": {
+        "operationId": "post_v1_models_calls_check",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the call id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCallCheckResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Check one logged call now: the call goes to the graph's checks workflow (`lbb.model-checks`, instance `model-checks`) as message `check-<id>`, and the judge checks it again when it has a check (the review stays). A repeated request answers the turn already queued. 400 `model_call_not_checkable` for an embedding or a failed call; 503 when workflows are off or the catalog has no checker",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/calls/get": {
+      "get": {
+        "operationId": "get_v1_models_calls_get",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the call id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCallDetailResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One logged model call: its provider-neutral input (long system texts as text), its output, usage and check",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/checks": {
+      "get": {
+        "operationId": "get_v1_models_checks",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "rerank, route, rewrite, fit, propose, label or embed",
+            "in": "query",
+            "name": "job",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm (UTC); default: the current month",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the ground truth: right, partly or wrong",
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "true: only reviewed checks; false: only checks no person reviewed",
+            "in": "query",
+            "name": "reviewed",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next_after` of the previous page",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "checks, 1 to 100; default 50",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCheckListResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The checks of the graph's model calls in one month, newest first: the judge's verdict, score and reason, the review of a person, and the ground truth",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/checks/export": {
+      "get": {
+        "operationId": "get_v1_models_checks_export",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "rerank, route, rewrite, fit, propose, label or embed",
+            "in": "query",
+            "name": "job",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm (UTC); default: the current month",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "description": "One JSON object `{call, check}` per line",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The checks of one month as JSON lines (`application/x-ndjson`), oldest first: one `{call, check}` per line, at most 10,000 lines",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/checks/review": {
+      "post": {
+        "operationId": "post_v1_models_checks_review",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the call id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelCheckReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCheck"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Agree with a check (`agree: true`) or correct it (`agree: false` with the right verdict, a score, a reference and a note). The review replaces the earlier one, which moves to `history`; the person's verdict becomes the ground truth. A relevance correction's `reference.grades` (item id: 0 to 3) go to the graph's relevance grades",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/checks/summary": {
+      "get": {
+        "operationId": "get_v1_models_checks_summary",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm (UTC); default: the current month",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelChecksSummary"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The graph's checks in one month by job and model (checks, mean score, right, partly, wrong, reviewed, corrected), the judge and its agreement with people, the months with checks, today's check budget of the stack, and whether this node can check calls",
         "tags": [
           "system"
         ]
@@ -45543,6 +49513,286 @@
         ]
       }
     },
+    "/v1/query/rewrite": {
+      "post": {
+        "operationId": "post_v1_query_rewrite",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "eventual (default) reads the last published commit; strong reads the head",
+            "in": "query",
+            "name": "consistency",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRewriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryRewriteResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Turn a question into the SPARQL query to run: the router model picks the kind of query (lookup, aggregate, search, history, schema, unanswerable), the rewriter model writes it from a description of the graph, and the server checks it. `run: true` also runs it (the question becomes the eval trace's request) and corrects a query that fails once",
+        "tags": [
+          "query"
+        ]
+      }
+    },
     "/v1/query/sparql": {
       "post": {
         "operationId": "post_v1_query_sparql",
@@ -46882,7 +51132,7 @@
             "bearer": []
           }
         ],
-        "summary": "Search by meaning over every searchable class of the graph, or one `embedding`; `filter` lists the conditions every hit must meet (a class, its subclasses included; relationships to entities by IRI or name); every hit is checked against one RDF snapshot and carries its class; `explain` plans without running; `include: [\"text\"]` returns the embedded text",
+        "summary": "Search by meaning over every searchable class of the graph, or one `embedding`; `filter` lists the conditions every hit must meet (a class, its subclasses included; relationships to entities by IRI or name); every hit is checked against one RDF snapshot and carries its class; `explain` plans without running; `include: [\"text\"]` returns the embedded text; `rerank` orders the best hits by the managed rerank model (the graph's search setting when absent), each with its `relevance`",
         "tags": [
           "search"
         ]
@@ -47658,6 +51908,1579 @@
           }
         ],
         "summary": "Read constant-size feedback counts and promoted-model status",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/v1/search/settings": {
+      "get": {
+        "operationId": "get_v1_search_settings",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchSettings"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the graph's search settings: whether every search reranks its best hits, the rerank depth, the blend of relevance and similarity, the probe factor, and the rerank model the server has",
+        "tags": [
+          "search"
+        ]
+      },
+      "put": {
+        "operationId": "put_v1_search_settings",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchSettings"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change the graph's search settings: `rerank` on or off, `rerank_depth` (20 to 80 candidates the model reads), `blend` (0 to 1: the final order is blend·relevance + (1 − blend)·similarity) and `probe_factor` (1 to 4 times the default probe). A setting left out keeps its value and `null` sets it back to its default; a value out of bounds answers 400 `invalid_search_settings`. A request's `rerank` and `probe` still decide for themselves",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/v1/search/tuning": {
+      "get": {
+        "operationId": "get_v1_search_tuning",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "sessions, 1 to 50; default 10",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTuningListResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The graph's search tuning sessions, newest first",
+        "tags": [
+          "search"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_search_tuning",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchTuningStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTuningSession"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start a search tuning session: the graph's recent search texts and search goldens (6 to 40, split by hash into queries that choose and queries that test), the current settings and up to 3 rounds of up to 3 variants the judge proposes, run on one snapshot, the pooled hits graded 0 to 3, scored by nDCG@10, MRR@10 and recall@10, and the best variant tested against the current settings with a bootstrap 95% interval. Answers the queued session; 409 `tuning_running` while another session of the graph is queued or running, 409 `tuning_unavailable` without a searchable embedding",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/v1/search/tuning/apply": {
+      "post": {
+        "operationId": "post_v1_search_tuning_apply",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the session id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTuningSession"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Apply a done session's proposal: the graph's search settings become exactly the settings the session tested (a setting the proposal leaves unset goes back to its default), and the session records who applied it. 409 `tuning_no_proposal` when the session has none",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/v1/search/tuning/get": {
+      "get": {
+        "operationId": "get_v1_search_tuning_get",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the session id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTuningSession"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One search tuning session: its step, rounds with the judge's notes, the variants with their scores, and the proposal",
         "tags": [
           "search"
         ]

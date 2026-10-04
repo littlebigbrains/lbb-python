@@ -117,9 +117,31 @@ async def main():
 asyncio.run(main())
 ```
 
+## Ask a question in plain words
+
+`query.ask` turns a question into a SPARQL query, runs it, and returns the rows.
+A router model selects the kind of query. A rewriter model writes the query from
+a description of the graph. The server checks the query before it runs it.
+
+```python
+answer = lbb.query.ask(
+    "Which services write to the user database?",
+    context="Services and databases of the platform team.",
+)
+
+print(answer.route["kind"], answer.query and answer.query["sparql"])
+for row in answer.rows:
+    print(row)
+```
+
+`answer.error` holds the error when the query did not run. `answer.trace_id`
+names the eval trace of the run, so you can label its rows. `query.rewrite`
+returns the query without a run, and `mode="route"` returns only the kind of
+query. Each call uses model tokens, so the client does not retry a failed call.
+
 ## Next steps
 
-- [Search by meaning](https://docs.littlebigbrain.com/guides/search-by-meaning/): choose which facts to embed and find records from a text description.
+- [Search by meaning](https://docs.littlebigbrain.com/guides/search-by-meaning/): choose which facts to embed, find records from a text description, and search inside a SPARQL query with `search:similarTo`.
 - [Load your own RDF](https://docs.littlebigbrain.com/guides/load-rdf/): import Turtle, N-Triples, N-Quads, or TriG.
 - [Work with JSON records](https://docs.littlebigbrain.com/guides/without-rdf/): define a schema and write records without writing RDF.
 - [Validate writes](https://docs.littlebigbrain.com/guides/sparql-and-shacl/): define constraints with the Shapes Constraint Language (SHACL).

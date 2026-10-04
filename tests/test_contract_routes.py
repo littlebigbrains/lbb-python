@@ -51,6 +51,12 @@ _REQUEST_CALL = re.compile(r'_request\(\s*"([A-Z]+)"\s*,\s*"([^"]+)"')
 
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 
+# The SPARQL 1.1 Protocol endpoints the server serves outside the JSON contract
+# (docs/reference/server.md, "SPARQL Update and Graph Store Protocol"). Their
+# bodies and answers are SPARQL media types, so contracts/openapi.json does not
+# describe them.
+_NATIVE_PROTOCOL_ROUTES = {("POST", "/update")}
+
 
 def _spec_operations() -> set[tuple[str, str]]:
     spec = json.loads(_OPENAPI.read_text())
@@ -78,7 +84,7 @@ class ContractRouteCoverage(unittest.TestCase):
         self.assertTrue(_client_routes(), "no _request routes parsed from the client package")
 
     def test_every_client_route_exists_in_contract(self) -> None:
-        spec = _spec_operations()
+        spec = _spec_operations() | _NATIVE_PROTOCOL_ROUTES
         missing = sorted(route for route in _client_routes() if route not in spec)
         self.assertEqual(
             missing,

@@ -390,6 +390,16 @@ class CardType(BaseModel):
     name: str
 
 
+class CheckVerdict(Enum):
+    """
+    The verdict of a check.
+    """
+
+    right = 'right'
+    partly = 'partly'
+    wrong = 'wrong'
+
+
 class CommitSeq(RootModel[int]):
     root: Annotated[int, Field(ge=0)]
 
@@ -1504,6 +1514,7 @@ class ManagedModelProvider(Enum):
     modal = 'modal'
     typesafe = 'typesafe'
     mock = 'mock'
+    anthropic = 'anthropic'
 
 
 class ManagedModelRole(Enum):
@@ -1514,6 +1525,9 @@ class ManagedModelRole(Enum):
     embedding = 'embedding'
     judge = 'judge'
     rewriter = 'rewriter'
+    reranker = 'reranker'
+    router = 'router'
+    checker = 'checker'
 
 
 class ManagedModelsSource(Enum):
@@ -1535,6 +1549,8 @@ class ModelActivityFeature(Enum):
     fit = 'fit'
     judge = 'judge'
     training = 'training'
+    rerank = 'rerank'
+    rewrite = 'rewrite'
 
 
 class ModelActivityGraph(BaseModel):
@@ -1544,6 +1560,13 @@ class ModelActivityGraph(BaseModel):
     """
 
     calls: Annotated[int, Field(ge=0)]
+    checks: Annotated[
+        int | None,
+        Field(
+            description='Calls of this model a judge checked (`docs/architecture/model-checks.md`).',
+            ge=0,
+        ),
+    ] = None
     cost_micro_usd: Annotated[int, Field(ge=0)]
     errors: Annotated[int, Field(ge=0)]
     feature: ModelActivityFeature
@@ -1552,8 +1575,29 @@ class ModelActivityGraph(BaseModel):
     items: Annotated[int, Field(ge=0)]
     last_at_ms: int
     model: str
+    overruled: Annotated[
+        int | None,
+        Field(description="The judge's row: reviews that corrected the judge.", ge=0),
+    ] = None
     provider: str
+    reviewed: Annotated[
+        int | None,
+        Field(
+            description="The judge's row: checks of this judge people reviewed.", ge=0
+        ),
+    ] = None
+    score_milli: Annotated[
+        int | None,
+        Field(
+            description="The sum of the checked calls' ground-truth scores, in thousandths.",
+            ge=0,
+        ),
+    ] = None
     tokens_estimate: Annotated[int, Field(ge=0)]
+    wrong: Annotated[
+        int | None,
+        Field(description='Checked calls whose ground truth is `wrong`.', ge=0),
+    ] = None
 
 
 class ModelActivityManaged(BaseModel):
@@ -1618,6 +1662,13 @@ class ModelActivityTotal(BaseModel):
     """
 
     calls: Annotated[int, Field(description='Requests sent to the provider.', ge=0)]
+    checks: Annotated[
+        int | None,
+        Field(
+            description='Calls of this model a judge checked (`docs/architecture/model-checks.md`).',
+            ge=0,
+        ),
+    ] = None
     cost_micro_usd: Annotated[
         int, Field(description='Estimated cost in millionths of a US dollar.', ge=0)
     ]
@@ -1645,8 +1696,29 @@ class ModelActivityTotal(BaseModel):
         ),
     ]
     model: str
+    overruled: Annotated[
+        int | None,
+        Field(description="The judge's row: reviews that corrected the judge.", ge=0),
+    ] = None
     provider: str
+    reviewed: Annotated[
+        int | None,
+        Field(
+            description="The judge's row: checks of this judge people reviewed.", ge=0
+        ),
+    ] = None
+    score_milli: Annotated[
+        int | None,
+        Field(
+            description="The sum of the checked calls' ground-truth scores, in thousandths.",
+            ge=0,
+        ),
+    ] = None
     tokens_estimate: Annotated[int, Field(ge=0)]
+    wrong: Annotated[
+        int | None,
+        Field(description='Checked calls whose ground truth is `wrong`.', ge=0),
+    ] = None
 
 
 class ModelArtifact(BaseModel):
@@ -1675,10 +1747,147 @@ class ModelCadenceResponse(BaseModel):
     trained_at_commit_seq: Annotated[int | None, Field(ge=0)] = None
 
 
+class ModelCallCheckResponse(BaseModel):
+    """
+    `POST /v1/models/calls/check`: the call is queued for a check by the
+    graph's checks workflow.
+    """
+
+    queued: bool
+
+
+class ModelCallOrigin(BaseModel):
+    """
+    Where a call came from.
+    """
+
+    request_id: Annotated[
+        str | None, Field(description='The HTTP request that made the call.')
+    ] = None
+    route: Annotated[
+        str,
+        Field(
+            description='The route that made the call (`/v1/search`, `integrations/fit`).'
+        ),
+    ]
+    trace_id: Annotated[
+        str | None, Field(description='The eval trace of the request, when it has one.')
+    ] = None
+
+
+class ModelCallReportResponse(BaseModel):
+    accepted: Annotated[
+        int,
+        Field(
+            description="Calls taken into the log's next write; 0 for a stack that is gone or\nbeing deleted.",
+            ge=0,
+        ),
+    ]
+
+
+class ModelCallShape(Enum):
+    """
+    The shape of a job's input and output, and so of its check.
+    """
+
+    relevance = 'relevance'
+    choice = 'choice'
+    generation = 'generation'
+    none = 'none'
+
+
+class ModelCallUsage(BaseModel):
+    """
+    What one call used.
+    """
+
+    cache_read: Annotated[int | None, Field(ge=0)] = None
+    cache_write: Annotated[int | None, Field(ge=0)] = None
+    cost_micro_usd: Annotated[
+        int | None, Field(description='In millionths of a US dollar.', ge=0)
+    ] = None
+    ms: Annotated[int | None, Field(ge=0)] = None
+    tokens_in: Annotated[int | None, Field(ge=0)] = None
+    tokens_out: Annotated[int | None, Field(ge=0)] = None
+
+
+class ModelCheckBudget(BaseModel):
+    """
+    The stack's check budget of one day (UTC).
+    """
+
+    checks: Annotated[int, Field(ge=0)]
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    day: Annotated[str, Field(description='`yyyy-mm-dd`.')]
+    limit_micro_usd: Annotated[int, Field(ge=0)]
+
+
+class ModelCheckJudge(BaseModel):
+    """
+    What the judge said about a call.
+    """
+
+    at_ms: int
+    effort: str | None = None
+    model: str
+    provider: str
+    reason: str
+    reference: Annotated[
+        Any | None,
+        Field(
+            description="The judge's own answer: the grades, its pick, a corrected query."
+        ),
+    ] = None
+    rubric: Annotated[
+        str, Field(description='The rubric and its version (`relevance/1`).')
+    ]
+    score: Annotated[float, Field(description='0 to 1.')]
+    usage: ModelCallUsage
+    verdict: CheckVerdict
+
+
 class ModelCheckResult(BaseModel):
     details: str
     kind: str
     passed: bool
+
+
+class ModelCheckReview(BaseModel):
+    """
+    What a person said about a check.
+    """
+
+    agree: Annotated[bool, Field(description='Agrees with the judge.')]
+    at_ms: int
+    by: Annotated[
+        str, Field(description='Who reviewed: `account:<id>`, `key:<key id>`, `token`.')
+    ]
+    note: str | None = None
+    reference: Annotated[
+        Any | None,
+        Field(
+            description="The person's answer (for a relevance check `{grades: {<id>: 0..3}}`)."
+        ),
+    ] = None
+    score: float | None = None
+    verdict: CheckVerdict | None = None
+
+
+class ModelCheckReviewRequest(BaseModel):
+    """
+    `POST /v1/models/checks/review?graph&id`: agree with the check, or
+    correct it. With `agree: true` no verdict, score or reference; with
+    `agree: false` the verdict is required.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    agree: bool
+    note: Annotated[str | None, Field(description='At most 2,000 characters.')] = None
+    reference: Any | None = None
+    score: float | None = None
+    verdict: CheckVerdict | None = None
 
 
 class Kind3(Enum):
@@ -1732,6 +1941,60 @@ class ModelEval(BaseModel):
     metrics: Annotated[
         dict[str, float], Field(description='Metric name → value (e.g. `ndcg10`).')
     ]
+
+
+class ModelJob(Enum):
+    """
+    What LBB used a model for. Every call has one job.
+    """
+
+    rerank = 'rerank'
+    route = 'route'
+    rewrite = 'rewrite'
+    fit = 'fit'
+    propose = 'propose'
+    label = 'label'
+    embed = 'embed'
+
+
+class ModelJobQuality(BaseModel):
+    """
+    One job and model over a month of checks.
+    """
+
+    checks: Annotated[int, Field(ge=0)]
+    corrected: Annotated[
+        int, Field(description='Reviews that corrected the judge.', ge=0)
+    ]
+    job: ModelJob
+    last_at_ms: int | None = None
+    model: str
+    partly: Annotated[int, Field(ge=0)]
+    provider: str
+    reviewed: Annotated[int, Field(ge=0)]
+    right: Annotated[int, Field(ge=0)]
+    score: Annotated[
+        float, Field(description='The mean ground-truth score; 0 when no checks.')
+    ]
+    wrong: Annotated[int, Field(ge=0)]
+
+
+class ModelJudgeQuality(BaseModel):
+    """
+    The judge over a month of checks.
+    """
+
+    agreement: Annotated[
+        float | None,
+        Field(
+            description='`(reviewed - overruled) / reviewed`; absent before any review.'
+        ),
+    ] = None
+    effort: str | None = None
+    model: str
+    overruled: Annotated[int, Field(ge=0)]
+    provider: str
+    reviewed: Annotated[int, Field(ge=0)]
 
 
 class ModelSignature(BaseModel):
@@ -2575,6 +2838,129 @@ class PublishedReadFamilyView(BaseModel):
     target_hash: str | None = None
 
 
+class QueryRewriteGrounding(BaseModel):
+    """
+    The graph description the models read.
+    """
+
+    age_ms: Annotated[
+        int,
+        Field(
+            description='Milliseconds since the server built it (it keeps one per graph for 10\nminutes).',
+            ge=0,
+        ),
+    ]
+    classes: Annotated[int, Field(ge=0)]
+    commit_seq: Annotated[
+        int,
+        Field(
+            description='The commit of the published generation the description was read from.',
+            ge=0,
+        ),
+    ]
+    embeddings: Annotated[int, Field(ge=0)]
+    properties: Annotated[int, Field(ge=0)]
+    text: Annotated[
+        str | None,
+        Field(
+            description='The description itself, when the request asked for it\n(`include_grounding`).'
+        ),
+    ] = None
+
+
+class QueryRewriteHistory(BaseModel):
+    """
+    What a `history` question asks for beyond the query.
+    """
+
+    as_of_date: Annotated[
+        str | None,
+        Field(
+            description='The date the question names (`YYYY-MM-DD`). The caller resolves it to\na commit and passes it as `as_of_commit_seq`.'
+        ),
+    ] = None
+    compare: Annotated[
+        bool,
+        Field(description='Run the query at that point and now, and compare the rows.'),
+    ]
+
+
+class QueryRewriteMode(Enum):
+    """
+    What the call returns.
+    """
+
+    rewrite = 'rewrite'
+    route = 'route'
+
+
+class QueryRewriteModelRole(Enum):
+    """
+    Which model a call used.
+    """
+
+    router = 'router'
+    rewriter = 'rewriter'
+
+
+class QueryRewriteStep(BaseModel):
+    """
+    One earlier step of the same question: a query the caller ran, and what
+    came of it.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    error: Annotated[
+        str | None, Field(description='The error the query got, when it failed.')
+    ] = None
+    note: Annotated[
+        str | None,
+        Field(description='What the caller concluded ("the amounts are missing").'),
+    ] = None
+    rows: Annotated[int | None, Field(description='Rows it returned.', ge=0)] = None
+    sample: Annotated[
+        str | None, Field(description='The first rows as text, for the model to read.')
+    ] = None
+    sparql: Annotated[str, Field(description='The SPARQL query of the step.')]
+
+
+class QueryRewriteTimings(BaseModel):
+    """
+    Where the time of a rewrite went, in milliseconds.
+    """
+
+    ground_ms: Annotated[int, Field(ge=0)]
+    rewrite_ms: Annotated[int, Field(ge=0)]
+    route_ms: Annotated[int, Field(ge=0)]
+    run_ms: Annotated[int, Field(ge=0)]
+    total_ms: Annotated[int, Field(ge=0)]
+
+
+class QueryRoute(Enum):
+    """
+    The kind of query a question needs.
+    """
+
+    lookup = 'lookup'
+    aggregate = 'aggregate'
+    search = 'search'
+    history = 'history'
+    schema = 'schema'
+    unanswerable = 'unanswerable'
+
+
+class QueryRouteSource(Enum):
+    """
+    Who chose the route.
+    """
+
+    caller = 'caller'
+    router = 'router'
+    rewriter = 'rewriter'
+
+
 class RangedReadStats(BaseModel):
     """
     Read accounting for ranged (block-level) persisted index runs. Reported
@@ -3354,6 +3740,12 @@ class SearchHit(BaseModel):
     id: Annotated[str, Field(description='The RDF term id of the IRI (hex).')]
     iri: str
     label: str
+    relevance: Annotated[
+        float | None,
+        Field(
+            description="With a rerank: the model's probability (0 to 1) that the hit answers\nthe search text. The hits are ordered by it; `score` stays the\nsimilarity."
+        ),
+    ] = None
     score: float
     text: str | None = None
 
@@ -3416,6 +3808,111 @@ class SearchOrderBy2(BaseModel):
 
     by: By1
     field: str
+
+
+class SearchRerankModel(BaseModel):
+    """
+    A rerank model: who serves it and its id.
+    """
+
+    id: Annotated[str, Field(description='`jev-latest`.')]
+    label: Annotated[str, Field(description='A name for people (`Jev`).')]
+    provider: Annotated[str, Field(description='`typesafe`, `mock`.')]
+
+
+class SearchRerankSource(Enum):
+    """
+    Why a search reranked: the graph's setting or the request's `rerank`.
+    """
+
+    graph = 'graph'
+    request = 'request'
+
+
+class SearchRerankStatus(Enum):
+    """
+    What became of the rerank of one search.
+    """
+
+    applied = 'applied'
+    failed = 'failed'
+    unavailable = 'unavailable'
+    limited = 'limited'
+    planned = 'planned'
+
+
+class SearchSettings(BaseModel):
+    """
+    The search settings of a graph (`GET /v1/search/settings`).
+    """
+
+    blend: Annotated[
+        float | None,
+        Field(
+            description="How a reranked search orders its candidates, 0 to 1: by\n`blend·relevance + (1 − blend)·similarity`, the similarity scaled to 0\nto 1 over the reranked candidates (min–max). Absent or 1: the rerank\nmodel's order; 0: the similarity order."
+        ),
+    ] = None
+    probe_factor: Annotated[
+        float | None,
+        Field(
+            description="Clusters a search reads across the big runs, as a factor of the\ndefault (`4·√clusters`, at least 8), 1 to 4. A request's `probe`\nwins. Absent: the default."
+        ),
+    ] = None
+    rerank: Annotated[
+        bool,
+        Field(
+            description='Every search of the graph orders its best hits with the rerank model,\nunless a request sets `rerank`.'
+        ),
+    ]
+    rerank_available: Annotated[
+        bool,
+        Field(
+            description='The server has a rerank model. Without one a search keeps the\nsimilarity order and reports `rerank.status: unavailable`.'
+        ),
+    ]
+    rerank_depth: Annotated[
+        int | None,
+        Field(
+            description='Candidates the rerank model reads, 20 to 80. Absent: `2·top_k`, at\nleast 20 and at most 40.',
+            ge=0,
+        ),
+    ] = None
+    rerank_model: SearchRerankModel | None = None
+
+
+class SearchSettingsRequest(BaseModel):
+    """
+    `PUT /v1/search/settings`: change some of the graph's search settings.
+    A field left out keeps its value; `null` sets it back to its default.
+    Unknown fields are refused.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    blend: Annotated[
+        float | None,
+        Field(
+            description='`blend·relevance + (1 − blend)·similarity`, 0 to 1; `null`: the\ndefault (the rerank order).'
+        ),
+    ] = None
+    probe_factor: Annotated[
+        float | None,
+        Field(
+            description='Clusters read, as a factor of the default, 1 to 4; `null`: the\ndefault.'
+        ),
+    ] = None
+    rerank: Annotated[
+        bool | None,
+        Field(description='Turn the rerank on or off for every search of the graph.'),
+    ] = None
+    rerank_depth: Annotated[
+        int | None,
+        Field(
+            description='Candidates the rerank model reads, 20 to 80; `null`: the default.',
+            ge=0,
+        ),
+    ] = None
 
 
 class SearchSignalWeights(BaseModel):
@@ -3494,6 +3991,13 @@ class SearchTimings(BaseModel):
     index_ms: Annotated[
         int, Field(description='Probing the runs and scoring their codes.', ge=0)
     ]
+    relevance_ms: Annotated[
+        int | None,
+        Field(
+            description='Asking the rerank model how well each candidate answers the text.',
+            ge=0,
+        ),
+    ] = None
     rerank_ms: Annotated[
         int | None,
         Field(
@@ -3505,6 +4009,95 @@ class SearchTimings(BaseModel):
         int,
         Field(description='Reading the embedding, its manifest, and its runs.', ge=0),
     ]
+
+
+class SearchTuningMetrics(BaseModel):
+    """
+    The scores of one variant.
+    """
+
+    cost_micro_usd_per_search: Annotated[int, Field(ge=0)]
+    latency_p50_ms: Annotated[int, Field(ge=0)]
+    mrr_at_10: float
+    ndcg_at_10: float
+    queries: Annotated[int, Field(ge=0)]
+    recall_at_10: float
+
+
+class SearchTuningRound(BaseModel):
+    """
+    The judge's notes of one round.
+    """
+
+    notes: str
+    round: Annotated[int, Field(ge=0)]
+
+
+class SearchTuningSettings(BaseModel):
+    """
+    The search settings a tuning session changes.
+    """
+
+    blend: Annotated[
+        float | None,
+        Field(description='`blend·relevance + (1 - blend)·similarity`, 0 to 1.'),
+    ] = None
+    probe_factor: Annotated[
+        float | None,
+        Field(description='Clusters read, as a factor of the default, 1 to 4.'),
+    ] = None
+    rerank: bool
+    rerank_depth: Annotated[
+        int | None,
+        Field(description='Candidates the rerank model reads, 20 to 80.', ge=0),
+    ] = None
+
+
+class SearchTuningStartRequest(BaseModel):
+    """
+    `POST /v1/search/tuning?graph`: start a session.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    queries: Annotated[int | None, Field(description='At most 40.', ge=0)] = None
+    rounds: Annotated[int | None, Field(description='At most 3.', ge=0)] = None
+
+
+class SearchTuningStatus(Enum):
+    queued = 'queued'
+    running = 'running'
+    done = 'done'
+    failed = 'failed'
+
+
+class SearchTuningTest(BaseModel):
+    """
+    The best variant against the baseline on the test queries.
+    """
+
+    baseline_ndcg_at_10: float
+    ci_high: float
+    ci_low: Annotated[
+        float, Field(description='The bootstrap 95% interval of `delta`.')
+    ]
+    delta: float
+    ndcg_at_10: float
+    queries: Annotated[int, Field(ge=0)]
+
+
+class SearchTuningVariant(BaseModel):
+    """
+    One set of settings a session ran.
+    """
+
+    hypothesis: str
+    id: str
+    metrics: SearchTuningMetrics | None = None
+    name: str
+    round: Annotated[int, Field(ge=0)]
+    settings: SearchTuningSettings
 
 
 class SearchedEmbedding(BaseModel):
@@ -4901,6 +5494,15 @@ class TruncatedCollection(BaseModel):
             ge=0,
         ),
     ]
+
+
+class TruthSource(Enum):
+    """
+    Who set a call's ground truth.
+    """
+
+    judge = 'judge'
+    person = 'person'
 
 
 class ValidTime(BaseModel):
@@ -6734,6 +7336,12 @@ class ManagedModel(BaseModel):
         int | None,
         Field(description='The vector dimension, for an embedding model.', ge=0),
     ] = None
+    effort: Annotated[
+        str | None,
+        Field(
+            description="The reasoning effort sent with each call (`low`, `medium`, `high`,\n`xhigh`, `max`), for a model that takes one. Absent: the server's\ndefault for the role."
+        ),
+    ] = None
     id: Annotated[
         str,
         Field(
@@ -6834,6 +7442,13 @@ class ModelActivityDay(BaseModel):
     """
 
     calls: Annotated[int, Field(ge=0)]
+    checks: Annotated[
+        int | None,
+        Field(
+            description='Calls of this model a judge checked (`docs/architecture/model-checks.md`).',
+            ge=0,
+        ),
+    ] = None
     cost_micro_usd: Annotated[int, Field(ge=0)]
     day: Annotated[str, Field(description='`yyyy-mm-dd`.')]
     errors: Annotated[int, Field(ge=0)]
@@ -6842,8 +7457,29 @@ class ModelActivityDay(BaseModel):
     items: Annotated[int, Field(ge=0)]
     last_at_ms: int
     model: str
+    overruled: Annotated[
+        int | None,
+        Field(description="The judge's row: reviews that corrected the judge.", ge=0),
+    ] = None
     provider: str
+    reviewed: Annotated[
+        int | None,
+        Field(
+            description="The judge's row: checks of this judge people reviewed.", ge=0
+        ),
+    ] = None
+    score_milli: Annotated[
+        int | None,
+        Field(
+            description="The sum of the checked calls' ground-truth scores, in thousandths.",
+            ge=0,
+        ),
+    ] = None
     tokens_estimate: Annotated[int, Field(ge=0)]
+    wrong: Annotated[
+        int | None,
+        Field(description='Checked calls whose ground truth is `wrong`.', ge=0),
+    ] = None
 
 
 class ModelActivityResponse(BaseModel):
@@ -6863,6 +7499,105 @@ class ModelActivityResponse(BaseModel):
     totals: list[ModelActivityTotal]
 
 
+class ModelCall(BaseModel):
+    """
+    One logged model call.
+    """
+
+    at_ms: Annotated[
+        int,
+        Field(
+            description='When the call was made, in milliseconds since the Unix epoch.'
+        ),
+    ]
+    effort: str | None = None
+    error: str | None = None
+    graph: str
+    id: Annotated[
+        str,
+        Field(
+            description='`<at_ms:020>-<node>-<seq:010>-<n>`: the batch and the index in it.'
+        ),
+    ]
+    input: Annotated[
+        Any,
+        Field(
+            description='The provider-neutral request, at most 64 KiB of JSON. A long system\ntext is stored once and named by its hash (`{"grounding": "<hash>"}`).'
+        ),
+    ]
+    job: ModelJob
+    model: str
+    ok: bool
+    origin: ModelCallOrigin
+    output: Annotated[
+        Any, Field(description="The model's answer, at most 64 KiB of JSON.")
+    ]
+    provider: str
+    sampled: Annotated[
+        bool, Field(description='The sampler picked the call for a check.')
+    ]
+    truncated: Annotated[
+        bool | None, Field(description='A text or a list was cut to fit the bounds.')
+    ] = None
+    usage: ModelCallUsage
+
+
+class ModelCallReport(BaseModel):
+    """
+    One call the SaaS API reports.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    at_ms: int
+    confidence: Annotated[
+        float | None,
+        Field(
+            description='The top decision probability: a call below 0.6 is sampled four times\nas often.'
+        ),
+    ] = None
+    effort: str | None = None
+    error: str | None = None
+    graph: str
+    input: Any
+    job: ModelJob
+    model: str
+    ok: bool
+    origin: ModelCallOrigin | None = None
+    output: Any
+    provider: str
+    truncated: Annotated[
+        bool | None,
+        Field(description='The sender cut a text or a list to fit its bounds.'),
+    ] = None
+    usage: ModelCallUsage | None = None
+
+
+class ModelCallReportRequest(BaseModel):
+    """
+    `POST /api/admin/model-calls` (database admin token): the calls the SaaS
+    API made for a stack, at most [`MODEL_CALL_REPORT_MAX_CALLS`].
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    calls: list[ModelCallReport]
+    stack_id: str
+
+
+class ModelCheckBrief(BaseModel):
+    """
+    The check of a call, in a list row.
+    """
+
+    by: TruthSource
+    reviewed: bool
+    score: float
+    verdict: CheckVerdict
+
+
 class ModelCheckFile(BaseModel):
     checks: list[ModelCheckSpec1 | ModelCheckSpec2]
 
@@ -6870,6 +7605,41 @@ class ModelCheckFile(BaseModel):
 class ModelCheckResponse(BaseModel):
     checks: list[ModelCheckResult]
     passed: bool
+
+
+class ModelCheckTruth(BaseModel):
+    """
+    The ground truth of a call: the review when there is one, the judge's
+    verdict otherwise.
+    """
+
+    by: TruthSource
+    score: float
+    verdict: CheckVerdict
+
+
+class ModelChecksSummary(BaseModel):
+    """
+    `GET /v1/models/checks/summary`: the graph's checks in one month.
+    """
+
+    budget: Annotated[ModelCheckBudget, Field(description="Today's budget.")]
+    calls: Annotated[
+        int, Field(description='Model calls logged this month for the graph.', ge=0)
+    ]
+    checker_available: Annotated[
+        bool,
+        Field(
+            description='The node can check calls (the checker model is configured).'
+        ),
+    ]
+    graph: str
+    jobs: list[ModelJobQuality]
+    judge: ModelJudgeQuality | None = None
+    month: Annotated[str, Field(description='`yyyy-mm` (UTC).')]
+    months: Annotated[
+        list[str], Field(description='The months with a summary, oldest first.')
+    ]
 
 
 class ModelRunManifest(BaseModel):
@@ -7351,6 +8121,99 @@ class PublishedReadStatusResponse(BaseModel):
     snapshot: PublishedReadSnapshotView
 
 
+class QueryRewriteModelCall(BaseModel):
+    """
+    One model call of a rewrite.
+    """
+
+    cost_micro_usd: Annotated[
+        int, Field(description='Estimate, in millionths of a US dollar.', ge=0)
+    ]
+    model: str
+    ms: Annotated[int, Field(ge=0)]
+    ok: bool
+    provider: str
+    role: QueryRewriteModelRole
+    tokens: Annotated[
+        int,
+        Field(
+            description='Input plus output tokens, cache reads and writes included.',
+            ge=0,
+        ),
+    ]
+
+
+class QueryRewriteRequest(BaseModel):
+    """
+    Turn a question into the query to run (`POST /v1/query/rewrite`).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    as_of_commit_seq: Annotated[
+        int | None, Field(description='Read the graph at this commit.', ge=0)
+    ] = None
+    context: Annotated[
+        str | None,
+        Field(
+            description="The app's notes for the model: what the data means, units, names to\nprefer. At most 8,000 characters. Keep it the same across questions,\nso the model provider's prompt cache reads it."
+        ),
+    ] = None
+    include_grounding: Annotated[
+        bool | None,
+        Field(
+            description='Return the graph description the models read in `grounding.text`:\nto see why a query came out as it did, or to reuse the description\nin an app\'s own prompt. With `mode: "route"` no rewriter call is made.'
+        ),
+    ] = None
+    limit: Annotated[
+        int | None,
+        Field(description='Rows a run returns: 1 to 1,000, default 100.', ge=0),
+    ] = None
+    mode: QueryRewriteMode | None = None
+    previous: Annotated[
+        list[QueryRewriteStep] | None,
+        Field(
+            description='Earlier steps of the same question, oldest first; at most 6.'
+        ),
+    ] = None
+    question: Annotated[str, Field(description='The question, 1 to 4,000 characters.')]
+    route: QueryRoute | None = None
+    run: Annotated[
+        bool | None,
+        Field(
+            description='Run the query and return its rows in `result`. A query that fails\nwith a client error is corrected once.'
+        ),
+    ] = None
+    today: Annotated[
+        str | None,
+        Field(
+            description='Today\'s date for relative questions ("last 14 days"), `YYYY-MM-DD`.\nDefault: the server\'s UTC date.'
+        ),
+    ] = None
+
+
+class QueryRouteDecision(BaseModel):
+    """
+    The route of a question and how sure the choice is.
+    """
+
+    by: QueryRouteSource
+    confidence: Annotated[
+        float,
+        Field(
+            description="0 to 1: the router's probability of `kind`, 1 for a route the caller\nfixed, the rewriter's own estimate otherwise."
+        ),
+    ]
+    kind: QueryRoute
+    probabilities: Annotated[
+        dict[str, float] | None,
+        Field(
+            description="The router's probability of each route, when the router answered."
+        ),
+    ] = None
+
+
 class RdfEntityRelation(BaseModel):
     entity: EntityView
     relation: RelationView
@@ -7420,6 +8283,32 @@ class ResolvedTerm(BaseModel):
     ]
     text: str
     type_signature: VocabularyTypeSignature | None = None
+
+
+class RewrittenQuery(BaseModel):
+    """
+    The query the rewriter wrote.
+    """
+
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(
+            description='The commit to read, when the question or the request names one.',
+            ge=0,
+        ),
+    ] = None
+    entailment: Annotated[
+        SparqlEntailment,
+        Field(
+            description='The entailment the query needs; pass it to `POST /v1/query/sparql-text`.'
+        ),
+    ]
+    sparql: Annotated[
+        str,
+        Field(
+            description='A SPARQL `SELECT` or `ASK` query, with its `PREFIX` declarations.'
+        ),
+    ]
 
 
 class SchemaAuditReport(BaseModel):
@@ -7824,11 +8713,48 @@ class SearchRequest(BaseModel):
             description="The user's words behind this search. When present the server records\nan eval trace and returns its `trace_id`."
         ),
     ] = None
+    rerank: Annotated[
+        bool | None,
+        Field(
+            description="Order the best hits by how well each answers `text`, with the\nmanaged rerank model (`true`), or keep the similarity order\n(`false`). Without it the graph's search setting decides\n(`GET /v1/search/settings`)."
+        ),
+    ] = None
     text: Annotated[
         str | None,
         Field(description="The query text; embedded with the serving version's model."),
     ] = None
     top_k: Annotated[int | None, Field(ge=0)] = None
+
+
+class SearchRerankReport(BaseModel):
+    """
+    The rerank of one search. Absent when the search did not rerank.
+    """
+
+    cached: Annotated[
+        int | None,
+        Field(
+            description='Answers kept from an earlier search of the same text (no model call).',
+            ge=0,
+        ),
+    ] = None
+    candidates: Annotated[
+        int,
+        Field(
+            description="Hits the model read: the best `2·top_k` that passed the graph check,\nat least 20 and at most 40, or the graph's `rerank_depth`.",
+            ge=0,
+        ),
+    ]
+    error: Annotated[
+        str | None, Field(description='Why the rerank failed, in short.')
+    ] = None
+    model: SearchRerankModel | None = None
+    moved: Annotated[
+        int | None,
+        Field(description='Hits that moved from their similarity rank.', ge=0),
+    ] = None
+    source: SearchRerankSource
+    status: SearchRerankStatus
 
 
 class SearchResponse(BaseModel):
@@ -7871,6 +8797,7 @@ class SearchResponse(BaseModel):
         ),
     ] = None
     query_ms: Annotated[int, Field(ge=0)]
+    rerank: SearchRerankReport | None = None
     served_at_seq: CommitSeq | None = None
     timings: SearchTimings | None = None
     trace_id: str | None = None
@@ -7898,6 +8825,48 @@ class SearchSuggestion(BaseModel):
         ),
     ] = None
     text: str
+
+
+class SearchTuningProposal(BaseModel):
+    """
+    The settings a session proposes.
+    """
+
+    cost_delta_micro_usd_per_search: int
+    latency_delta_ms: int
+    settings: SearchTuningSettings
+    test: SearchTuningTest
+    variant: str
+
+
+class SearchTuningSession(BaseModel):
+    """
+    One tuning session.
+    """
+
+    applied_at_ms: int | None = None
+    applied_by: str | None = None
+    baseline: SearchTuningVariant | None = None
+    created_at_ms: int
+    error: str | None = None
+    finished_at_ms: int | None = None
+    graded_pairs: Annotated[int, Field(ge=0)]
+    id: str
+    judge_cost_micro_usd: Annotated[int, Field(ge=0)]
+    proposal: SearchTuningProposal | None = None
+    queries_choose: Annotated[int, Field(ge=0)]
+    queries_test: Annotated[int, Field(ge=0)]
+    rounds: list[SearchTuningRound] | None = None
+    started_at_ms: int | None = None
+    status: SearchTuningStatus
+    step: Annotated[
+        str | None,
+        Field(
+            description='`queries`, `baseline`, `propose`, `run`, `grade`, `score` or `test`.'
+        ),
+    ] = None
+    variants: list[SearchTuningVariant] | None = None
+    workflow_turn: Annotated[int | None, Field(ge=0)] = None
 
 
 class SemanticGraphSearchResponse(BaseModel):
@@ -8945,6 +9914,62 @@ class HybridMultiSearchResponse(BaseModel):
     snapshot: SnapshotView
 
 
+class ModelCallRow(BaseModel):
+    """
+    One row of `GET /v1/models/calls`.
+    """
+
+    at_ms: int
+    check: ModelCheckBrief | None = None
+    id: str
+    job: ModelJob
+    model: str
+    ok: bool
+    provider: str
+    sampled: bool
+    skipped: Annotated[
+        str | None,
+        Field(description='`budget`, `refused` or `failed`: sampled but not checked.'),
+    ] = None
+    summary: Annotated[
+        str,
+        Field(
+            description='At most 160 characters: the search text, the question, the stream\nname.'
+        ),
+    ]
+
+
+class ModelCheck(BaseModel):
+    """
+    One check of one call.
+    """
+
+    call: Annotated[str, Field(description='The call id.')]
+    call_at_ms: int
+    graph: str
+    history: Annotated[
+        list[ModelCheckReview] | None,
+        Field(description='Earlier reviews, oldest first.'),
+    ] = None
+    job: ModelJob
+    judge: ModelCheckJudge
+    model: str
+    provider: str
+    review: ModelCheckReview | None = None
+    summary: str
+    truth: ModelCheckTruth
+    v: Annotated[int, Field(ge=0)]
+
+
+class ModelCheckListResponse(BaseModel):
+    """
+    `GET /v1/models/checks`: the checks of a month, newest first.
+    """
+
+    checks: list[ModelCheck]
+    next_after: str | None = None
+
+
 class ModelRegistryResponse(BaseModel):
     """
     `GET /v1/models/registry` — the runs of one kind, newest first.
@@ -9412,6 +10437,29 @@ class OntologyStarterList(BaseModel):
     starters: list[OntologyStarterSummary]
 
 
+class QueryRewriteResponse(BaseModel):
+    attempts: Annotated[
+        int,
+        Field(description='Queries the rewriter wrote: 2 when it corrected one.', ge=0),
+    ]
+    error: Annotated[
+        str | None,
+        Field(
+            description='Why the last attempt failed, when the query did not parse or run.'
+        ),
+    ] = None
+    grounding: QueryRewriteGrounding
+    history: QueryRewriteHistory | None = None
+    models: list[QueryRewriteModelCall]
+    query: RewrittenQuery | None = None
+    rationale: Annotated[
+        str, Field(description='One or two sentences: why this route and this query.')
+    ]
+    result: SparqlTextResponse | None = None
+    route: QueryRouteDecision
+    timings: QueryRewriteTimings
+
+
 class ResolveTermRequest(BaseModel):
     """
     WS11 — snap-back resolve: map a piece of free text (a model's guess at a
@@ -9535,6 +10583,14 @@ class SearchSuggestResponse(BaseModel):
         bool,
         Field(description='True when more candidates matched than `limit` returned.'),
     ]
+
+
+class SearchTuningListResponse(BaseModel):
+    """
+    `GET /v1/search/tuning?graph`: the sessions, newest first.
+    """
+
+    sessions: list[SearchTuningSession]
 
 
 class SignalIngestRequest(BaseModel):
@@ -9803,6 +10859,30 @@ class GraphImportLine(RootModel[TripletInput | EntityPropertiesInput]):
             description='One line of an NDJSON bulk-import stream (`POST /v1/graph/import`). Each line\nis a single JSON object that is either a triplet (carries `relation`) or an\nentity-properties record (carries `properties`); the two shapes are disjoint,\nso the importer routes each line by shape. This is the streamable counterpart\nof `TripletCommitFile`: a client streams a large dataset line-by-line instead\nof buffering one giant commit, and the server batches lines into bounded\ninternal commits.'
         ),
     ]
+
+
+class ModelCallDetailResponse(BaseModel):
+    """
+    `GET /v1/models/calls/get`: one call with its groundings as text, and its
+    check.
+    """
+
+    call: ModelCall
+    check: ModelCheck | None = None
+
+
+class ModelCallListResponse(BaseModel):
+    """
+    `GET /v1/models/calls`: the call log, newest first.
+    """
+
+    calls: list[ModelCallRow]
+    next_after: Annotated[
+        str | None,
+        Field(
+            description='Pass as `after` for the next page; absent on the last page.'
+        ),
+    ] = None
 
 
 class OntologyChangeSuggestionList(BaseModel):

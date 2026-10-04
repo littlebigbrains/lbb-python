@@ -10,11 +10,13 @@ responses.
 
 from ._version import __version__ as __version__
 from .client import (
+    RESET,
     AsyncLbbClient,
     LbbCapabilityError,
     LbbClient,
     LbbError,
     ListPage,
+    QueryAskResult,
     RawLbbResponse,
     RequestOptions,
     RetryEvent,
@@ -32,6 +34,8 @@ __all__ = [
     "RequestOptions",
     "RetryEvent",
     "SparqlResults",
+    "QueryAskResult",
+    "RESET",
     "LbbLocalClient",
     "LbbCommandError",
 ]

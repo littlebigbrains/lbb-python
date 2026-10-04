@@ -21,6 +21,7 @@ from ._client_base import (
     LbbCapabilityError,
     ListPage,
     ModelT,
+    QueryAskResult,
     RawLbbResponse,
     RequestOptions,
     RetryEvent,
@@ -28,6 +29,7 @@ from ._client_base import (
     SparqlResults,
     _BaseLbbClient,
     _body_marks_terminal,
+    _ChecksNamespace,
     _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
@@ -137,6 +139,7 @@ class _SyncQueryNamespace(_QueryNamespace):
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
         profile: bool = False,
+        request: str | None = None,
     ) -> SparqlResults:
         return cast(
             SparqlResults,
@@ -151,8 +154,47 @@ class _SyncQueryNamespace(_QueryNamespace):
                 min_indexed_seq=min_indexed_seq,
                 as_of_commit_seq=as_of_commit_seq,
                 profile=profile,
+                request=request,
             ),
         )
+
+    def ask(
+        self,
+        question: str,
+        *,
+        context: str | None = None,
+        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
+        route: str | models.QueryRoute | None = None,
+        limit: int | None = None,
+        as_of_commit_seq: int | None = None,
+        today: str | None = None,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> QueryAskResult:
+        """Answer a question in plain words: :meth:`rewrite` with ``run=True``,
+        and the rows of the run parsed as :meth:`sparql` parses them."""
+        response = self.rewrite(
+            question,
+            context=context,
+            previous=previous,
+            route=route,
+            run=True,
+            limit=limit,
+            as_of_commit_seq=as_of_commit_seq,
+            today=today,
+            consistency=consistency,
+            options=options,
+        )
+        return QueryAskResult.from_response(response)
+
+    def update(
+        self,
+        update: str,
+        *,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> None:
+        super().update(update, idempotency_key=idempotency_key, options=options)
 
 
 class LbbClient(_BaseLbbClient):
@@ -163,6 +205,7 @@ class LbbClient(_BaseLbbClient):
     query: _SyncQueryNamespace
     schema: _SchemaNamespace
     evals: _EvalsNamespace
+    checks: _ChecksNamespace
     embeddings: _EmbeddingsNamespace
     integrations: IntegrationsNamespace
 
@@ -200,6 +243,8 @@ class LbbClient(_BaseLbbClient):
         self.query = _SyncQueryNamespace(self)
         self.schema = _SchemaNamespace(self)
         self.evals = _EvalsNamespace(self)
+        # Model checks: the call log, the judge's checks, and reviews.
+        self.checks = _ChecksNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
         self.integrations = IntegrationsNamespace(self)
@@ -587,6 +632,7 @@ class LbbClient(_BaseLbbClient):
         min_indexed_seq: int | None = None,
         as_of_commit_seq: int | None = None,
         profile: bool = False,
+        request: str | None = None,
     ) -> SparqlResults:
         """Run a SPARQL 1.1 text query (SELECT or ASK) and return parsed results.
 
@@ -605,6 +651,11 @@ class LbbClient(_BaseLbbClient):
         ``read_your_writes_pending`` under a ``min_indexed_seq`` floor, is
         retried within the retry budget.
 
+        ``request`` is the user's words behind the query: the server records
+        an eval trace and the result's ``trace_id`` names it. A query with a
+        ``search:similarTo`` triple searches by meaning inside the query, and
+        the result's ``search`` reports how that search ran.
+
         Note: this uses ``/v1/query/sparql-text``. A standalone stack also serves
         the native SPARQL 1.1 *Protocol* at ``/sparql`` for off-the-shelf SPARQL
         clients (YASGUI, Protégé, RDFLib) with ``Accept``-negotiated
@@ -621,6 +672,7 @@ class LbbClient(_BaseLbbClient):
             min_indexed_seq=min_indexed_seq,
             as_of_commit_seq=as_of_commit_seq,
             profile=profile,
+            request=request,
         )
         return SparqlResults.from_envelope(envelope)
 
