@@ -3020,6 +3020,44 @@ class QueryRewriteTests(unittest.TestCase):
         self.assertEqual(broken.error, "unknown prefix ex")
         self.assertEqual(broken.rewrite["attempts"], 2)
 
+    def test_ask_sends_the_anchors_and_returns_the_links(self) -> None:
+        link = {
+            "text": "Quelmann",
+            "iri": "https://x.test/e/quellmann",
+            "label": "Quellmann Fenstertechnik GmbH",
+            "class": "https://x.test/class/firm",
+            "score": 0.82,
+            "by": "fuzzy",
+        }
+        anchor = {
+            "iri": "https://x.test/e/nope",
+            "found": False,
+            "note": "not in the graph at the latest commit",
+        }
+        payload = rewrite_payload(linked=[link], anchors=[anchor])
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": payload})
+        ) as client:
+            answer = client.query.ask(
+                "Show me everything about Quelmann.", anchor=["https://x.test/e/nope"]
+            )
+            client.query.rewrite("Which services exist?", anchor=[])
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {
+                "question": "Show me everything about Quelmann.",
+                "run": True,
+                "anchor": ["https://x.test/e/nope"],
+            },
+        )
+        self.assertEqual(json.loads(seen[1].content), {"question": "Which services exist?"})
+        self.assertEqual(answer.linked, [link])
+        self.assertEqual(answer.anchors, [anchor])
+        bare = QueryAskResult.from_response(rewrite_payload())
+        self.assertEqual(bare.linked, [])
+        self.assertEqual(bare.anchors, [])
+
     def test_ask_returns_the_answer_of_an_ask_query(self) -> None:
         payload = rewrite_payload(
             result={

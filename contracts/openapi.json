@@ -12799,6 +12799,242 @@
         ],
         "type": "object"
       },
+      "QueryLinkMethod": {
+        "description": "How a name of the question matched the name of an entity.",
+        "enum": [
+          "exact",
+          "partial",
+          "fuzzy",
+          "acronym"
+        ],
+        "type": "string"
+      },
+      "QueryRewriteAnchor": {
+        "description": "What the server read about one anchored IRI.",
+        "properties": {
+          "found": {
+            "description": "The IRI has statements at the read commit.",
+            "type": "boolean"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "description": "Why the IRI did not reach the rewriter as an entity: it is not in\nthe graph, or its read failed or ran out of time.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "iri",
+          "found"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteEvent": {
+        "description": "One event of a streamed rewrite: `POST /v1/query/rewrite` with\n`Accept: text/event-stream`. On the wire each event is\n`event: <event>\\ndata: <data as JSON>\\n\\n`. The order: `grounding`,\n`route`, then per attempt `query`, `run` and `rows`, with `repair` before\na second attempt; `done` or `error` ends the stream. A second `route`\ncomes when the rewriter chose another route. Clients ignore an event name\nthey do not know: later versions add events.",
+        "discriminator": {
+          "mapping": {
+            "done": "#/components/schemas/QueryRewriteEventDone",
+            "error": "#/components/schemas/QueryRewriteEventError",
+            "grounding": "#/components/schemas/QueryRewriteEventGrounding",
+            "query": "#/components/schemas/QueryRewriteEventQuery",
+            "repair": "#/components/schemas/QueryRewriteEventRepair",
+            "route": "#/components/schemas/QueryRewriteEventRoute",
+            "rows": "#/components/schemas/QueryRewriteEventRows",
+            "run": "#/components/schemas/QueryRewriteEventRun"
+          },
+          "propertyName": "event"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/QueryRewriteEventGrounding"
+          },
+          {
+            "$ref": "#/components/schemas/QueryRewriteEventRoute"
+          },
+          {
+            "$ref": "#/components/schemas/QueryRewriteEventQuery"
+          },
+          {
+            "$ref": "#/components/schemas/QueryRewriteEventRun"
+          },
+          {
+            "$ref": "#/components/schemas/QueryRewriteEventRows"
+          },
+          {
+            "$ref": "#/components/schemas/QueryRewriteEventRepair"
+          },
+          {
+            "$ref": "#/components/schemas/QueryRewriteEventDone"
+          },
+          {
+            "$ref": "#/components/schemas/QueryRewriteEventError"
+          }
+        ]
+      },
+      "QueryRewriteEventDone": {
+        "description": "The whole response: the same JSON as the response without a stream.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueryRewriteResponse",
+            "description": "The whole response: the same JSON as the response without a stream."
+          },
+          "event": {
+            "enum": [
+              "done"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "event"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteEventError": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StreamErrorEvent"
+          },
+          "event": {
+            "enum": [
+              "error"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "event"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteEventGrounding": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueryRewriteGroundingEvent"
+          },
+          "event": {
+            "enum": [
+              "grounding"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "event"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteEventQuery": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueryRewriteQueryEvent"
+          },
+          "event": {
+            "enum": [
+              "query"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "event"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteEventRepair": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueryRewriteRepairEvent"
+          },
+          "event": {
+            "enum": [
+              "repair"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "event"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteEventRoute": {
+        "description": "The router's route as soon as it answers, the caller's route at once,\nor the rewriter's route when it decides.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueryRouteDecision",
+            "description": "The router's route as soon as it answers, the caller's route at once,\nor the rewriter's route when it decides."
+          },
+          "event": {
+            "enum": [
+              "route"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "event"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteEventRows": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueryRewriteRowsEvent"
+          },
+          "event": {
+            "enum": [
+              "rows"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "event"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteEventRun": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueryRewriteRunEvent"
+          },
+          "event": {
+            "enum": [
+              "run"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "event"
+        ],
+        "type": "object"
+      },
       "QueryRewriteGrounding": {
         "description": "The graph description the models read.",
         "properties": {
@@ -12824,6 +13060,15 @@
             "minimum": 0,
             "type": "integer"
           },
+          "names": {
+            "description": "Names in the name index the linking read; absent when no index was\nready (the linking was skipped).",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "properties": {
             "format": "int32",
             "minimum": 0,
@@ -12846,6 +13091,33 @@
         ],
         "type": "object"
       },
+      "QueryRewriteGroundingEvent": {
+        "description": "The graph description is ready (the first event of a streamed rewrite).",
+        "properties": {
+          "age_ms": {
+            "description": "Milliseconds since the server built the description.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cached": {
+            "description": "The node had the description in its cache.",
+            "type": "boolean"
+          },
+          "classes": {
+            "description": "Classes the description names.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cached",
+          "age_ms",
+          "classes"
+        ],
+        "type": "object"
+      },
       "QueryRewriteHistory": {
         "description": "What a `history` question asks for beyond the query.",
         "properties": {
@@ -12863,6 +13135,45 @@
         },
         "required": [
           "compare"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteLink": {
+        "description": "One name of the question that the server linked to an entity of the\ngraph. A name with several close candidates has up to three entries with\nthe same `text`, the best first; an app can show \"Did you mean …?\".",
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/QueryLinkMethod"
+          },
+          "class": {
+            "description": "The class the entity's name was read under.",
+            "type": "string"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "description": "The entity's label or name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "description": "0 to 1: how well the words match the name.",
+            "format": "float",
+            "type": "number"
+          },
+          "text": {
+            "description": "The words of the question, as written.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "iri",
+          "class",
+          "score",
+          "by"
         ],
         "type": "object"
       },
@@ -12926,10 +13237,61 @@
         ],
         "type": "string"
       },
+      "QueryRewriteQueryEvent": {
+        "description": "The rewriter wrote a query (one per attempt).",
+        "properties": {
+          "attempt": {
+            "description": "1 for the first query, 2 for the correction.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entailment": {
+            "$ref": "#/components/schemas/SparqlEntailment"
+          },
+          "sparql": {
+            "description": "The query: the checked text with its `PREFIX` lines, or the model's\ntext when it did not pass the check.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sparql",
+          "entailment",
+          "attempt"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteRepairEvent": {
+        "description": "The query failed with a client error, and the rewriter corrects it.",
+        "properties": {
+          "attempt": {
+            "description": "The attempt that comes next (2).",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "description": "The error the rewriter reads.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "attempt"
+        ],
+        "type": "object"
+      },
       "QueryRewriteRequest": {
         "additionalProperties": false,
         "description": "Turn a question into the query to run (`POST /v1/query/rewrite`).",
         "properties": {
+          "anchor": {
+            "description": "Entity IRIs the user picked in the app, at most 10. The server reads\neach one at the read commit (its types, its label, and a summary of\nits links) and tells the rewriter to use these IRIs directly instead\nof matching their names. An IRI that is not in the graph gets a note\nin `anchors`, not an error.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "as_of_commit_seq": {
             "description": "Read the graph at this commit.",
             "format": "int64",
@@ -13003,6 +13365,13 @@
       },
       "QueryRewriteResponse": {
         "properties": {
+          "anchors": {
+            "description": "What the server read about each anchored IRI (`anchor`), in the\nrequest's order.",
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteAnchor"
+            },
+            "type": "array"
+          },
           "attempts": {
             "description": "Queries the rewriter wrote: 2 when it corrected one.",
             "format": "int32",
@@ -13028,6 +13397,13 @@
                 "$ref": "#/components/schemas/QueryRewriteHistory"
               }
             ]
+          },
+          "linked": {
+            "description": "Names of the question linked to entities of the graph before the\nrewriter wrote the query; the rewriter uses their IRIs directly.",
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteLink"
+            },
+            "type": "array"
           },
           "models": {
             "items": {
@@ -13078,6 +13454,43 @@
         ],
         "type": "object"
       },
+      "QueryRewriteRowsEvent": {
+        "description": "The run of the query ended with rows.",
+        "properties": {
+          "count": {
+            "description": "Rows the run returned.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ms": {
+            "description": "Milliseconds the run took.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "ms"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteRunEvent": {
+        "description": "The run of the query started.",
+        "properties": {
+          "as_of_commit_seq": {
+            "description": "The commit the run reads; `null` for the latest.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "QueryRewriteStep": {
         "additionalProperties": false,
         "description": "One earlier step of the same question: a query the caller ran, and what\ncame of it.",
@@ -13125,7 +13538,19 @@
       "QueryRewriteTimings": {
         "description": "Where the time of a rewrite went, in milliseconds.",
         "properties": {
+          "anchor_ms": {
+            "description": "The reads of the anchored IRIs, beside the route.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "ground_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "link_ms": {
+            "description": "The name linking, beside the route (the wait for a name index that\nis not built yet included).",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -20150,6 +20575,29 @@
           "valid_time",
           "derived_from",
           "previous"
+        ],
+        "type": "object"
+      },
+      "StreamErrorEvent": {
+        "description": "A streamed response ended with an error: the status, code and message of\nthe JSON error that the same request without a stream gets. The text of a\n`5xx` is redacted the same way.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "description": "The HTTP status of the same error without a stream.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "code",
+          "message"
         ],
         "type": "object"
       },
@@ -49595,6 +50043,13 @@
                 "schema": {
                   "$ref": "#/components/schemas/QueryRewriteResponse"
                 }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "description": "Server-sent events, sent when the request has `Accept: text/event-stream`. Each event is `event: <name>` and `data: <JSON>` lines and a blank line; `: keep-alive` comment lines come every 5 seconds. `done` or `error` is the last event. Clients ignore an event name they do not know. Errors found before the stream starts (a bad request, a limit, authentication) keep their JSON status and body.",
+                  "type": "string"
+                },
+                "x-lbb-event": "#/components/schemas/QueryRewriteEvent"
               }
             },
             "description": "OK",
@@ -49811,7 +50266,7 @@
             "bearer": []
           }
         ],
-        "summary": "Turn a question into the SPARQL query to run: the router model picks the kind of query (lookup, aggregate, search, history, schema, unanswerable), the rewriter model writes it from a description of the graph, and the server checks it. `run: true` also runs it (the question becomes the eval trace's request) and corrects a query that fails once",
+        "summary": "Turn a question into the SPARQL query to run: the router model picks the kind of query (lookup, aggregate, search, history, schema, unanswerable), the rewriter model writes it from a description of the graph, and the server checks it. `run: true` also runs it (the question becomes the eval trace's request) and corrects a query that fails once. With `Accept: text/event-stream` the answer is a stream of progress events (`QueryRewriteEvent`) that ends with `done` (the same response) or `error`",
         "tags": [
           "query"
         ]

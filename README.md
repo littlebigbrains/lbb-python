@@ -139,6 +139,36 @@ names the eval trace of the run, so you can label its rows. `query.rewrite`
 returns the query without a run, and `mode="route"` returns only the kind of
 query. Each call uses model tokens, so the client does not retry a failed call.
 
+The server finds the names in the question ("Quelmann", "TU Dresden") in the
+graph, and the query uses the IRIs it found. `answer.linked` lists them, so you
+can show "Did you mean …?". When the user has a record open, pass its IRI in
+`anchor` (`anchor=[iri]`, at most 10).
+
+### Show progress
+
+`query.rewrite_stream` sends the same request and yields an event for each step.
+The last event, `done`, holds the same response as `query.rewrite`.
+
+```python
+from lbb import QueryAskResult
+
+for event in lbb.query.rewrite_stream(
+    "Which services write to the user database?", run=True
+):
+    if event.event == "route":
+        print("route", event.data["kind"])
+    elif event.event == "rows":
+        print(event.data["count"], "rows")
+    elif event.event == "done":
+        answer = QueryAskResult.from_response(event.data)
+```
+
+The steps are `grounding`, `route`, `query`, `run`, `rows` and `repair`. An
+error event raises the same `LbbError` as `query.rewrite`. Leave the loop, or
+call `close()`, to close the response and stop the server's work. On
+`AsyncLbbClient`, use `async for` and `aclose()`. The client skips event names
+it does not know.
+
 ## Next steps
 
 - [Search by meaning](https://docs.littlebigbrain.com/guides/search-by-meaning/): choose which facts to embed, find records from a text description, and search inside a SPARQL query with `search:similarTo`.

@@ -20,6 +20,7 @@ def test_public_exports_are_explicit_and_stable() -> None:
         "RetryEvent",
         "SparqlResults",
         "QueryAskResult",
+        "QueryRewriteStreamEvent",
         "RESET",
         "LbbLocalClient",
         "LbbCommandError",
@@ -50,5 +51,6 @@ def test_client_module_keeps_the_documented_import_surface() -> None:
     assert lbb.client.RequestOptions is lbb.RequestOptions
     assert lbb.client.SparqlResults is lbb.SparqlResults
     assert lbb.client.QueryAskResult is lbb.QueryAskResult
+    assert lbb.client.QueryRewriteStreamEvent is lbb.QueryRewriteStreamEvent
     assert lbb.client.RESET is lbb.RESET
     assert repr(lbb.RESET) == "RESET"
