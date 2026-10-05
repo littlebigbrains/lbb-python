@@ -2525,6 +2525,142 @@ class _QueryNamespace:
             options=options,
         )
 
+    def names(
+        self,
+        text: str,
+        *,
+        limit: int | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """The entities a question or a list of names names
+        (``POST /v1/query/names``).
+
+        Each name gets up to ``limit`` candidates (default 5) in
+        ``candidates``, with its ``class``, ``label``, ``score`` and ``by``
+        (how it matched); the candidates of one name share its ``text``, the
+        one to prefer first. Use it in your own agent before you write a
+        query: put the IRI in the query instead of matching the name.
+        ``index_ready`` is ``False`` while the name index builds; ask again in
+        a few seconds. No model call.
+        """
+        body: dict[str, Any] = {"text": text}
+        if limit is not None:
+            body["limit"] = limit
+        return self._client._request(
+            "POST",
+            "/v1/query/names",
+            body=body,
+            options={"retry": True, **(options or {})},
+        )
+
+    def describe(
+        self,
+        *,
+        question: str | None = None,
+        classes: Sequence[str] | None = None,
+        properties: Sequence[str] | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """The classes and properties a question needs, or the ones named by
+        IRI (``POST /v1/query/describe``).
+
+        Each class lists how many of its sampled instances hold each
+        property (``instances`` of ``of``): a filter on a property that few
+        instances hold returns few rows. A small class (at most 30
+        instances: stages, statuses) lists its instances with their values.
+        ``text`` holds the same description for a model's prompt.
+        ``partial`` is ``True`` while the server still samples. No model
+        call.
+        """
+        body: dict[str, Any] = {}
+        if question is not None:
+            body["question"] = question
+        if classes:
+            body["classes"] = list(classes)
+        if properties:
+            body["properties"] = list(properties)
+        return self._client._request(
+            "POST",
+            "/v1/query/describe",
+            body=body,
+            options={"retry": True, **(options or {})},
+        )
+
+    def commit_at(
+        self,
+        *,
+        date: str | None = None,
+        moment: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """The commit of a date or a moment (``GET /v1/graph/commit-at``).
+
+        Pass exactly one: ``date`` (``YYYY-MM-DD``) finds the last commit
+        written by the end of that day, UTC; ``moment`` (RFC 3339) the last
+        commit written at or before it. Read the graph as it was with
+        ``query.sparql(..., as_of_commit_seq=...)``. ``as_of_commit_seq`` is
+        absent, with a ``note``, when the moment is before the first commit
+        or the commits record no time.
+        """
+        if (date is None) == (moment is None):
+            raise ValueError("pass exactly one of date and moment")
+        params = {"date": date} if date is not None else {"moment": moment}
+        return self._client._request(
+            "GET", "/v1/graph/commit-at", params=params, options=options
+        )
+
+    def compare(
+        self,
+        query: str,
+        *,
+        before: Mapping[str, Any] | models.QueryComparePoint,
+        after: Mapping[str, Any] | models.QueryComparePoint | None = None,
+        key: Sequence[str] | None = None,
+        entailment: str | None = None,
+        max_rows: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """Run one ``SELECT`` at two points and pair the rows
+        (``POST /v1/query/compare``).
+
+        ``before`` and ``after`` are each ``{"as_of_commit_seq": n}``,
+        ``{"date": "YYYY-MM-DD"}`` or ``{"moment": "<RFC 3339>"}``; ``after``
+        defaults to the latest commit. With ``key`` (for example
+        ``["contact"]``) the rows are paired by those variables into
+        ``added``, ``removed`` and ``changed``; without it whole rows are
+        compared. ``totals`` counts each list. The server reads up to
+        ``max_rows`` rows per point (default 20,000) and pages the lists by
+        ``limit`` (default 100): pass ``next_cursor`` back as ``cursor`` with
+        the same arguments. ``truncated`` means a point was not read whole.
+        """
+        def point(value: Mapping[str, Any] | models.QueryComparePoint) -> Any:
+            return dict(value) if isinstance(value, Mapping) else _coerce_body(value)
+
+        body: dict[str, Any] = {"query": query, "before": point(before)}
+        if after is not None:
+            body["after"] = point(after)
+        if key:
+            body["key"] = list(key)
+        for name, value in (
+            ("entailment", entailment),
+            ("max_rows", max_rows),
+            ("limit", limit),
+            ("cursor", cursor),
+        ):
+            if value is not None:
+                body[name] = value
+        params = self._client._consistency_params(consistency, None)
+        return self._client._request(
+            "POST",
+            "/v1/query/compare",
+            body=body,
+            params=params or None,
+            options={"retry": True, **(options or {})},
+        )
+
     def rewrite_profile(self, *, options: RequestOptions | None = None) -> Any:
         """The graph's rewrite profile (``GET /v1/query/rewrite/profile``):
         the notes and worked examples the rewriter reads for every question

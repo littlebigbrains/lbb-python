@@ -2,6 +2,24 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- Add four tools for an app's own agent, none of which calls a model:
+  `query.names(text, limit=...)` (`POST /v1/query/names`) finds the entities
+  a text names, with the candidates of each name, the one to prefer first;
+  `query.describe(question=..., classes=..., properties=...)`
+  (`POST /v1/query/describe`) describes the classes and properties a
+  question needs, with how many sampled instances hold each property and the
+  values of small classes; `query.commit_at(date=...)` or
+  `query.commit_at(moment=...)` (`GET /v1/graph/commit-at`) finds the commit
+  of a date; and `query.compare(query, before=..., after=..., key=...)`
+  (`POST /v1/query/compare`) runs one `SELECT` at two points and pairs the
+  rows into `added`, `removed` and `changed`, with `totals` and a `cursor`
+  for the next page. The models gain the request and response types.
+- `QueryRewriteHistory` gains `key`, `changed` and `totals`. A comparison of
+  the rewriter reads every row of both points; `limit` only cuts the rows it
+  shows. When the first variable holds entities, the rows are paired by it.
+
 ## 0.20.0 (2026-10-05)
 
 - `SparqlResults.search` gains `rerank` and `timings.relevance_ms`, for a

@@ -1071,6 +1071,15 @@ class GraphCard(BaseModel):
     types: list[CardType]
 
 
+class GraphCommitResolution(Enum):
+    """
+    How `GET /v1/graph/commit-at` placed the moment.
+    """
+
+    commit_time = 'commit_time'
+    head_write = 'head_write'
+
+
 class GraphExportRequest(BaseModel):
     as_of_commit_seq: Annotated[
         int | None,
@@ -2838,6 +2847,159 @@ class PublishedReadFamilyView(BaseModel):
     target_hash: str | None = None
 
 
+class QueryComparePoint(BaseModel):
+    """
+    One point of a comparison: exactly one of a commit, a date, or a moment.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    as_of_commit_seq: Annotated[int | None, Field(description='This commit.', ge=0)] = (
+        None
+    )
+    date: Annotated[
+        str | None,
+        Field(
+            description='`YYYY-MM-DD`: the last commit written by the end of that day, UTC.'
+        ),
+    ] = None
+    moment: Annotated[
+        str | None,
+        Field(description='RFC 3339: the last commit written at or before it.'),
+    ] = None
+
+
+class QueryCompareResolution(Enum):
+    """
+    How a point of a comparison was found.
+    """
+
+    request = 'request'
+    commit_time = 'commit_time'
+    head_write = 'head_write'
+    latest = 'latest'
+
+
+class QueryCompareTotals(BaseModel):
+    """
+    The size of each list of a comparison, over all pages.
+    """
+
+    added: Annotated[
+        int,
+        Field(
+            description='Rows of the later point that the earlier one has not (of keys only at\nthe later point, with a key).',
+            ge=0,
+        ),
+    ]
+    changed: Annotated[
+        int, Field(description='Keys whose rows differ; 0 without a key.', ge=0)
+    ]
+    removed: Annotated[
+        int,
+        Field(
+            description='Rows of the earlier point that the later one has not.', ge=0
+        ),
+    ]
+    unchanged: Annotated[
+        int,
+        Field(
+            description='Keys (or rows, without a key) that are the same at both points.',
+            ge=0,
+        ),
+    ]
+
+
+class QueryDescribeCoverage(BaseModel):
+    """
+    How many sampled instances of a class hold one property.
+    """
+
+    example: Annotated[
+        str | None,
+        Field(description='A short example value (a literal, with its datatype).'),
+    ] = None
+    instances: Annotated[
+        int, Field(description='Sampled instances that have the property.', ge=0)
+    ]
+    name: Annotated[str, Field(description='`prefix:local`, as `text` writes it.')]
+    of: Annotated[
+        int,
+        Field(
+            description="Instances sampled: the class's instances, at most 100. A filter on a\nproperty that few instances hold returns few rows.",
+            ge=0,
+        ),
+    ]
+    property: str
+    target: Annotated[
+        str | None,
+        Field(
+            description='The class of the linked entities, when the values are entities.'
+        ),
+    ] = None
+
+
+class QueryDescribeInstance(BaseModel):
+    """
+    One instance of a small class, with its label and literal values.
+    """
+
+    iri: str
+    label: str | None = None
+    values: Annotated[
+        dict[str, str] | None,
+        Field(
+            description='Property IRI → its literal value (the first one), as written.'
+        ),
+    ] = None
+
+
+class QueryDescribeRequest(BaseModel):
+    """
+    Describe the parts of the graph a question needs
+    (`POST /v1/query/describe`). With neither `question`, `classes` nor
+    `properties`, the largest described classes.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    classes: Annotated[
+        list[str] | None, Field(description='Class IRIs to describe, at most 20.')
+    ] = None
+    properties: Annotated[
+        list[str] | None, Field(description='Property IRIs to describe, at most 50.')
+    ] = None
+    question: Annotated[
+        str | None,
+        Field(
+            description='A question: the classes and properties whose names, labels or\ncomments match its words. At most 4,000 characters.'
+        ),
+    ] = None
+
+
+class QueryDescribeStatement(BaseModel):
+    """
+    One OWL or RDFS statement about a described class or property.
+    """
+
+    object: Annotated[str, Field(description="An IRI, or a literal's text.")]
+    predicate: str
+    subject: str
+
+
+class QueryDescribeUse(BaseModel):
+    """
+    One class that uses a property, and how many of its sampled instances
+    hold it.
+    """
+
+    class_: Annotated[str, Field(alias='class')]
+    instances: Annotated[int, Field(ge=0)]
+    of: Annotated[int, Field(ge=0)]
+
+
 class QueryHistoryResolution(Enum):
     """
     How the server found the commit of a `history` question.
@@ -2857,6 +3019,23 @@ class QueryLinkMethod(Enum):
     partial = 'partial'
     fuzzy = 'fuzzy'
     acronym = 'acronym'
+
+
+class QueryNamesRequest(BaseModel):
+    """
+    Find the entities a question or a list of names names
+    (`POST /v1/query/names`).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    limit: Annotated[
+        int | None, Field(description='Candidates per name: 1 to 10, default 5.', ge=0)
+    ] = None
+    text: Annotated[
+        str, Field(description='A question, or names: 1 to 4,000 characters.')
+    ]
 
 
 class QueryRewriteAnchor(BaseModel):
@@ -7244,6 +7423,45 @@ class GraphAnchor(BaseModel):
     ] = None
 
 
+class GraphCommitAtResponse(BaseModel):
+    """
+    The commit of a moment (`GET /v1/graph/commit-at`).
+    """
+
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(
+            description='The last commit written at or before the moment. Absent when the\nserver cannot place it: `note` says why.',
+            ge=0,
+        ),
+    ] = None
+    committed_at: Annotated[
+        str | None,
+        Field(
+            description='When that commit was written, RFC 3339; absent when it records no\ntime.'
+        ),
+    ] = None
+    first_commit_at: Annotated[
+        str | None,
+        Field(
+            description="The moment is before the graph's first commit: when that commit was\nwritten (or the graph created), RFC 3339."
+        ),
+    ] = None
+    moment: Annotated[
+        str,
+        Field(
+            description='The moment asked about, RFC 3339 UTC: the end of `date`, or `moment`.'
+        ),
+    ]
+    note: Annotated[
+        str | None,
+        Field(
+            description='Why there is no commit, or what to know about the one found.'
+        ),
+    ] = None
+    resolved_by: GraphCommitResolution | None = None
+
+
 class GraphDeleteResponse(BaseModel):
     deleted_bytes: Annotated[
         int, Field(description='Bytes of `deleted_objects`.', ge=0)
@@ -8425,6 +8643,271 @@ class PublishedReadStatusResponse(BaseModel):
     head_seq: Annotated[int, Field(ge=0)]
     query_lag_commits: Annotated[int, Field(ge=0)]
     snapshot: PublishedReadSnapshotView
+
+
+class QueryCompareChange(BaseModel):
+    """
+    One key whose rows differ between the two points.
+    """
+
+    after: Annotated[
+        list[dict[str, QueryRewriteTerm]],
+        Field(description='Its rows at the later point, without the key; at most 20.'),
+    ]
+    before: Annotated[
+        list[dict[str, QueryRewriteTerm]],
+        Field(
+            description='Its rows at the earlier point, without the key; at most 20.'
+        ),
+    ]
+    key: Annotated[dict[str, QueryRewriteTerm], Field(description="The key's values.")]
+
+
+class QueryComparePointResult(BaseModel):
+    """
+    Where one point of a comparison read, and how much.
+    """
+
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(
+            description='The commit read; absent only when the latest read named none.',
+            ge=0,
+        ),
+    ] = None
+    committed_at: Annotated[
+        str | None,
+        Field(
+            description='When the commit was written, RFC 3339, when the server knows it.'
+        ),
+    ] = None
+    complete: Annotated[bool, Field(description='Every row was read.')]
+    ms: Annotated[int, Field(ge=0)]
+    pages: Annotated[int, Field(description='Pages the server read.', ge=0)]
+    resolved_by: QueryCompareResolution
+    rows: Annotated[int, Field(description='Rows the server read.', ge=0)]
+    total: Annotated[int, Field(description='Rows the query has at this point.', ge=0)]
+
+
+class QueryCompareRequest(BaseModel):
+    """
+    Run one `SELECT` at two points and pair the rows
+    (`POST /v1/query/compare`).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    after: QueryComparePoint | None = None
+    before: Annotated[QueryComparePoint, Field(description='The earlier point.')]
+    cursor: Annotated[
+        str | None,
+        Field(
+            description='`next_cursor` of the page before, with the same request otherwise.\nIt pins both commits.'
+        ),
+    ] = None
+    entailment: SparqlEntailment | None = None
+    key: Annotated[
+        list[str] | None,
+        Field(
+            description='Variables that identify a row\'s entity, at most 8 (for example\n`["contact"]`). With a key the server pairs the rows by it: `added`\nand `removed` hold the rows of keys at one point only, and `changed`\nthe keys whose rows differ. Without a key whole rows are compared.'
+        ),
+    ] = None
+    limit: Annotated[
+        int | None,
+        Field(
+            description='Entries of each list per page: 1 to 1,000, default 100.', ge=0
+        ),
+    ] = None
+    max_rows: Annotated[
+        int | None,
+        Field(
+            description='Rows the server reads per point: 1 to 50,000, default 20,000. Past\nit the comparison is `truncated`.',
+            ge=0,
+        ),
+    ] = None
+    query: Annotated[
+        str,
+        Field(
+            description='A SPARQL `SELECT`, at most 20,000 characters. Leave out `LIMIT`: the\nserver pages through the rows itself.'
+        ),
+    ]
+
+
+class QueryCompareResponse(BaseModel):
+    """
+    The rows that differ between two points of one query.
+    """
+
+    added: Annotated[
+        list[dict[str, QueryRewriteTerm]], Field(description='This page of each list.')
+    ]
+    after: QueryComparePointResult
+    before: QueryComparePointResult
+    changed: list[QueryCompareChange]
+    key: Annotated[
+        list[str] | None,
+        Field(
+            description='The key the rows were paired by; empty when whole rows were compared.'
+        ),
+    ] = None
+    ms: Annotated[int, Field(ge=0)]
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass it as `cursor`, with the same request, for the next page.'
+        ),
+    ] = None
+    notes: Annotated[
+        list[str] | None,
+        Field(
+            description='What to know about the result: a cut, blank nodes, a `LIMIT`.'
+        ),
+    ] = None
+    offset: Annotated[
+        int,
+        Field(
+            description='The index of the first entry of this page in each list.', ge=0
+        ),
+    ]
+    removed: list[dict[str, QueryRewriteTerm]]
+    totals: QueryCompareTotals
+    truncated: Annotated[
+        bool | None,
+        Field(
+            description='A point was not read whole (`max_rows`, or the time ran out), so the\ndifference is not complete.'
+        ),
+    ] = None
+    vars: Annotated[list[str], Field(description="The query's variables.")]
+
+
+class QueryDescribeClass(BaseModel):
+    """
+    One class of a description.
+    """
+
+    comment: str | None = None
+    instances: Annotated[int, Field(description='Instances in the graph.', ge=0)]
+    iri: str
+    label: str | None = None
+    name: Annotated[str, Field(description='`prefix:local`, as `text` writes it.')]
+    properties: Annotated[
+        list[QueryDescribeCoverage] | None,
+        Field(
+            description='The properties its sampled instances use, the most used first, with\ntheir coverage. Empty when the class was not sampled yet.'
+        ),
+    ] = None
+    values: Annotated[
+        list[QueryDescribeInstance] | None,
+        Field(
+            description='A small class (at most 30 instances): its instances with their label\nand literal values. Absent for a larger class, or when the background\nsample has not read it yet (`partial`).'
+        ),
+    ] = None
+
+
+class QueryDescribeProperty(BaseModel):
+    """
+    One property of a description.
+    """
+
+    comment: str | None = None
+    example: str | None = None
+    iri: str
+    label: str | None = None
+    links: Annotated[
+        bool | None,
+        Field(
+            description='`true` when its values are entities, `false` for literal values.'
+        ),
+    ] = None
+    name: str
+    statements: Annotated[
+        int | None,
+        Field(description='Statements in the graph, from the schema summary.', ge=0),
+    ] = None
+    target: str | None = None
+    used_by: Annotated[
+        list[QueryDescribeUse] | None,
+        Field(
+            description='The classes whose sample has it, the most instances first; at most 3.'
+        ),
+    ] = None
+
+
+class QueryDescribeResponse(BaseModel):
+    """
+    The parts of the graph a question needs, as JSON and as compact text.
+    """
+
+    age_ms: Annotated[
+        int,
+        Field(
+            description='Milliseconds since the server built the description it read.',
+            ge=0,
+        ),
+    ]
+    classes: list[QueryDescribeClass]
+    commit_seq: Annotated[
+        int,
+        Field(
+            description='The commit of the published generation the description was read from.',
+            ge=0,
+        ),
+    ]
+    partial: Annotated[
+        bool,
+        Field(
+            description='The background sample has not read every class yet: coverage and the\nvalues of small classes can be missing. Ask again in a minute.'
+        ),
+    ]
+    prefixes: Annotated[
+        dict[str, str],
+        Field(description='`PREFIX` name → namespace, for the names `text` uses.'),
+    ]
+    properties: list[QueryDescribeProperty]
+    statements: list[QueryDescribeStatement]
+    text: Annotated[
+        str,
+        Field(
+            description="The same description as compact text, for a model's prompt."
+        ),
+    ]
+    unknown: Annotated[
+        list[str] | None,
+        Field(
+            description='IRIs of the request that the graph has no class or property for.'
+        ),
+    ] = None
+
+
+class QueryNamesResponse(BaseModel):
+    """
+    The names of a text and the entities each may mean.
+    """
+
+    candidates: Annotated[
+        list[QueryRewriteLink],
+        Field(
+            description='Each candidate of each name found, in the order of the text; the\ncandidates of one name share its `text`, the one to prefer first.\nEmpty when no name linked, or when the index was not ready.'
+        ),
+    ]
+    commit_seq: Annotated[
+        int,
+        Field(
+            description='The commit of the graph description the index was built from.',
+            ge=0,
+        ),
+    ]
+    index_names: Annotated[
+        int | None, Field(description='Names in the index the matching read.', ge=0)
+    ] = None
+    index_ready: Annotated[
+        bool,
+        Field(
+            description="The graph's name index was ready. When `false` the server builds it\nin the background: ask again in a few seconds."
+        ),
+    ]
+    ms: Annotated[int, Field(description='Milliseconds the call took.', ge=0)]
 
 
 class QueryRewriteEventError(BaseModel):
@@ -10833,7 +11316,7 @@ class QueryRewriteHistory(BaseModel):
     added: Annotated[
         list[dict[str, QueryRewriteTerm]] | None,
         Field(
-            description="A comparison's rows that `after` has and `before` has not, keyed by\nall their projected values; at most 500."
+            description="A comparison's rows that `after` has and `before` has not; with a\n`key`, the rows of the entities only `after` has. At most 500."
         ),
     ] = None
     after: SparqlTextResponse | None = None
@@ -10848,12 +11331,24 @@ class QueryRewriteHistory(BaseModel):
         str | None, Field(description='The date the question names (`YYYY-MM-DD`).')
     ] = None
     before: SparqlTextResponse | None = None
+    changed: Annotated[
+        list[QueryCompareChange] | None,
+        Field(
+            description='With a `key`: the entities whose rows differ, with their rows at both\npoints. At most 500.'
+        ),
+    ] = None
     compare: Annotated[
         bool,
         Field(
             description='The question asks what changed: the server runs the query at the\nearlier point and at the later one, and compares the rows.'
         ),
     ]
+    key: Annotated[
+        list[str] | None,
+        Field(
+            description='The variable the rows of a comparison were paired by: the first\nvariable when its values are entities. Empty when whole rows were\ncompared.'
+        ),
+    ] = None
     label: Annotated[
         str | None,
         Field(description='The label of the timeline point the date resolved to.'),
@@ -10861,14 +11356,15 @@ class QueryRewriteHistory(BaseModel):
     removed: Annotated[
         list[dict[str, QueryRewriteTerm]] | None,
         Field(
-            description="A comparison's rows that `before` has and `after` has not; at most\n500. A changed value shows as a removed row and an added row."
+            description="A comparison's rows that `before` has and `after` has not; with a\n`key`, the rows of the entities only `before` has. At most 500.\nWithout a key a changed value shows as a removed row and an added row."
         ),
     ] = None
     resolved_by: QueryHistoryResolution | None = None
+    totals: QueryCompareTotals | None = None
     truncated: Annotated[
         bool | None,
         Field(
-            description='The difference is not complete: a run returned only its first rows\n(`row_page.has_more`), or more than 500 rows were added or removed.'
+            description='The difference is not complete: a run did not read all its rows, or\na list holds more than 500 entries (`totals` has their number).'
         ),
     ] = None
 
