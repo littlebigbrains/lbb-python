@@ -3736,11 +3736,56 @@
         ],
         "type": "object"
       },
+      "EvalAskInput": {
+        "description": "The inputs of an Ask request that shape its answer, kept on an `ask`\ntrace and its golden so a run asks the same way. Every field is optional.",
+        "properties": {
+          "anchor": {
+            "description": "The entity IRIs the user picked (`anchor`).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "context": {
+            "description": "The app's notes for the model (`context`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "The earlier steps of the question (`previous`).",
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteStep"
+            },
+            "type": "array"
+          },
+          "route": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryRoute",
+                "description": "The route the caller fixed (`route`)."
+              }
+            ]
+          },
+          "today": {
+            "description": "The date the question was asked (`YYYY-MM-DD`), so a relative\nquestion reads the same window on every run.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "EvalItem": {
         "description": "One result of a query: a hit of a search, or a row of a SPARQL query.",
         "properties": {
           "id": {
-            "description": "Stable id of the result: the term id of a hit; the blake3 of the\ncanonical row; `ask:true` / `ask:false` for an ASK answer.",
+            "description": "Stable id of the result: the term id of a hit; on the `ask` surface\n`e:` + the blake3 of the entity IRI the row names, or `v:` + the\nblake3 of its values; on the `sparql` surface the blake3 of the\ncanonical row; `ask:true` / `ask:false` for an ASK answer.",
             "type": "string"
           },
           "iri": {
@@ -3923,7 +3968,7 @@
         "type": "object"
       },
       "EvalLabelRequest": {
-        "description": "Thumbs up or down on results of a trace: one result as `item` + `valid`,\nor several in `items`.",
+        "description": "Thumbs up or down on results of a trace: one result as `item` + `valid`,\nor several in `items`. On an `ask` trace, `valid` without `item` or\n`items` labels the answer as a whole: `true` makes the trace's query the\ngolden query of the question; `false` with `sparql` makes that query the\ngolden query (the server checks and runs it once); `false` alone marks\nthe answer wrong.",
         "properties": {
           "by": {
             "type": [
@@ -3958,6 +4003,13 @@
                 "$ref": "#/components/schemas/EvalLabelSource",
                 "description": "`explicit` (default) or `implicit`. `judge` is reserved for the server."
               }
+            ]
+          },
+          "sparql": {
+            "description": "With `valid: false` and no `item`: the right query for the question.",
+            "type": [
+              "string",
+              "null"
             ]
           },
           "valid": {
@@ -4013,9 +4065,53 @@
         ],
         "type": "string"
       },
+      "EvalQueryCheck": {
+        "description": "The query check of an `ask` golden: the rows of the query Ask wrote\nagainst the rows of the golden query, both read at the same commit. It\npasses when `missing` and `extra` are 0.",
+        "properties": {
+          "extra": {
+            "description": "Rows only the written query returns.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missing": {
+            "description": "Rows only the golden query returns.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "same": {
+            "description": "Rows both queries return.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "same",
+          "missing",
+          "extra"
+        ],
+        "type": "object"
+      },
+      "EvalQueryType": {
+        "description": "The type of a question's query.",
+        "enum": [
+          "sparql",
+          "hybrid",
+          "search"
+        ],
+        "type": "string"
+      },
       "EvalResults": {
         "description": "One run of the suite at one commit of the graph. One object per commit.",
         "properties": {
+          "cost_micro_usd": {
+            "description": "What the models of the run's Ask replays cost together, in\nmillionths of a US dollar; absent when the run asked nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "elapsed_ms": {
             "format": "int64",
             "minimum": 0,
@@ -4293,12 +4389,35 @@
         "description": "Which surface a trace or a golden belongs to.",
         "enum": [
           "sparql",
-          "search"
+          "search",
+          "ask"
         ],
         "type": "string"
       },
       "EvalTrace": {
         "properties": {
+          "answer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalLabel",
+                "description": "The answer label of an `ask` trace: its query is right for the\nquestion (`valid: true`), or it is wrong."
+              }
+            ]
+          },
+          "ask": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalAskInput",
+                "description": "The inputs of the Ask request, for an `ask` trace of\n`POST /v1/query/rewrite`."
+              }
+            ]
+          },
           "embedding": {
             "description": "The embedding name, for `surface: search`.",
             "type": [
@@ -4332,6 +4451,17 @@
               "type": "string"
             },
             "type": "object"
+          },
+          "query_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalQueryType",
+                "description": "The type of the query, for an `ask` trace."
+              }
+            ]
           },
           "request": {
             "description": "The user's words, as the caller passed them in `request`.",
@@ -4425,6 +4555,26 @@
       },
       "EvalVerdictDetail": {
         "properties": {
+          "cost_micro_usd": {
+            "description": "What the models of the replay cost, in millionths of a US dollar\n(`via: ask`).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expected_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalQueryType",
+                "description": "The type the golden expects (`ask` goldens)."
+              }
+            ]
+          },
           "item_count": {
             "description": "Results the query returned now.",
             "minimum": 0,
@@ -4445,6 +4595,28 @@
             "type": [
               "number",
               "null"
+            ]
+          },
+          "query_check": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalQueryCheck",
+                "description": "The query check (`ask` goldens of type `sparql` or `hybrid` with a\ngolden query). The result counts above are the result check against\nthe judged results."
+              }
+            ]
+          },
+          "query_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalQueryType",
+                "description": "The type of the query that ran this time (`ask` goldens)."
+              }
             ]
           },
           "recall": {
@@ -4472,6 +4644,24 @@
               "null"
             ]
           },
+          "route": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryRoute",
+                "description": "The route of the question this time (`via: ask`)."
+              }
+            ]
+          },
+          "sparql": {
+            "description": "The query Ask wrote this time (`via: ask`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "unknown_returned": {
             "description": "Returned results nobody judged yet.",
             "minimum": 0,
@@ -4479,6 +4669,17 @@
           },
           "verdict": {
             "$ref": "#/components/schemas/EvalVerdict"
+          },
+          "via": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalVia",
+                "description": "How the run tested the golden; absent when it was skipped."
+              }
+            ]
           },
           "wrong_returned": {
             "description": "Known-wrong results that came back.",
@@ -4490,6 +4691,15 @@
           "verdict"
         ],
         "type": "object"
+      },
+      "EvalVia": {
+        "description": "How a run tested a golden.",
+        "enum": [
+          "ask",
+          "query",
+          "search"
+        ],
+        "type": "string"
       },
       "EvidenceInput": {
         "oneOf": [
@@ -5371,6 +5581,28 @@
               "null"
             ]
           },
+          "answer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalLabel",
+                "description": "The answer label that made `sparql` the golden query of an `ask`\ngolden (who, when). Absent: `sparql` is the query of the newest\nlabeled trace, and the run checks the judged results."
+              }
+            ]
+          },
+          "ask": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalAskInput",
+                "description": "The inputs a run asks an `ask` golden's question with, from the\nnewest labeled trace."
+              }
+            ]
+          },
           "created_at": {
             "description": "RFC 3339.",
             "type": "string"
@@ -5389,7 +5621,7 @@
             "description": "The commit the judgments were last changed at."
           },
           "id": {
-            "description": "blake3 of the request words, the query text and entailment (plus\nembedding and `top_k` for a search), so a regenerated or\nre-added golden keeps its identity and its trend.",
+            "description": "blake3 of the request words, the query text and entailment (plus\nembedding and `top_k` for a search), so a regenerated or\nre-added golden keeps its identity and its trend. An `ask` golden\nkeys on the question alone: its words, its sorted anchors and a\ndigest of its earlier steps.",
             "type": "string"
           },
           "judgments": {
@@ -5414,6 +5646,17 @@
           },
           "origin": {
             "$ref": "#/components/schemas/GoldenOrigin"
+          },
+          "query_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalQueryType",
+                "description": "The type of query an `ask` golden expects: the type of its golden\nquery, else of the newest labeled trace's query."
+              }
+            ]
           },
           "request": {
             "type": [
@@ -5477,7 +5720,7 @@
             ]
           },
           "sparql": {
-            "description": "The SPARQL query, or the query text for `surface: vector`.",
+            "description": "The SPARQL query, or the query text for `surface: search`. Freezes a\n`sparql` or a `search` golden; a question becomes an `ask` golden\nthrough a label on its trace.",
             "type": "string"
           },
           "surface": {
@@ -5798,6 +6041,59 @@
         ],
         "type": "object"
       },
+      "GraphCommitAtResponse": {
+        "description": "The commit of a moment (`GET /v1/graph/commit-at`).",
+        "properties": {
+          "as_of_commit_seq": {
+            "description": "The last commit written at or before the moment. Absent when the\nserver cannot place it: `note` says why.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "committed_at": {
+            "description": "When that commit was written, RFC 3339; absent when it records no\ntime.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_commit_at": {
+            "description": "The moment is before the graph's first commit: when that commit was\nwritten (or the graph created), RFC 3339.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "moment": {
+            "description": "The moment asked about, RFC 3339 UTC: the end of `date`, or `moment`.",
+            "type": "string"
+          },
+          "note": {
+            "description": "Why there is no commit, or what to know about the one found.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GraphCommitResolution"
+              }
+            ]
+          }
+        },
+        "required": [
+          "moment"
+        ],
+        "type": "object"
+      },
       "GraphCommitDryRunResponse": {
         "description": "The result of a validate-only commit (`POST /v1/graph/commit?dry_run=true`):\nthe request is fully validated against the ontology and the active schema and\nthe would-be effect is reported, but nothing is persisted. A 4xx here is the\nsame validation error a real commit would raise (unknown type/relation,\nunregistered property field, type mismatch), so it is a safe ETL preflight.",
         "properties": {
@@ -5853,6 +6149,14 @@
           "entity_properties"
         ],
         "type": "object"
+      },
+      "GraphCommitResolution": {
+        "description": "How `GET /v1/graph/commit-at` placed the moment.",
+        "enum": [
+          "commit_time",
+          "head_write"
+        ],
+        "type": "string"
       },
       "GraphCommitResponse": {
         "properties": {
@@ -12799,6 +13103,687 @@
         ],
         "type": "object"
       },
+      "QueryCompareChange": {
+        "description": "One key whose rows differ between the two points.",
+        "properties": {
+          "after": {
+            "description": "Its rows at the later point, without the key; at most 20.",
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/QueryRewriteTerm"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "before": {
+            "description": "Its rows at the earlier point, without the key; at most 20.",
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/QueryRewriteTerm"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "key": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/QueryRewriteTerm"
+            },
+            "description": "The key's values.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "before",
+          "after"
+        ],
+        "type": "object"
+      },
+      "QueryComparePoint": {
+        "additionalProperties": false,
+        "description": "One point of a comparison: exactly one of a commit, a date, or a moment.",
+        "properties": {
+          "as_of_commit_seq": {
+            "description": "This commit.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "date": {
+            "description": "`YYYY-MM-DD`: the last commit written by the end of that day, UTC.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "moment": {
+            "description": "RFC 3339: the last commit written at or before it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "QueryComparePointResult": {
+        "description": "Where one point of a comparison read, and how much.",
+        "properties": {
+          "as_of_commit_seq": {
+            "description": "The commit read; absent only when the latest read named none.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "committed_at": {
+            "description": "When the commit was written, RFC 3339, when the server knows it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "complete": {
+            "description": "Every row was read.",
+            "type": "boolean"
+          },
+          "ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pages": {
+            "description": "Pages the server read.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resolved_by": {
+            "$ref": "#/components/schemas/QueryCompareResolution"
+          },
+          "rows": {
+            "description": "Rows the server read.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "description": "Rows the query has at this point.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resolved_by",
+          "rows",
+          "total",
+          "complete",
+          "pages",
+          "ms"
+        ],
+        "type": "object"
+      },
+      "QueryCompareRequest": {
+        "additionalProperties": false,
+        "description": "Run one `SELECT` at two points and pair the rows\n(`POST /v1/query/compare`).",
+        "properties": {
+          "after": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryComparePoint",
+                "description": "The later point; default the latest commit."
+              }
+            ]
+          },
+          "before": {
+            "$ref": "#/components/schemas/QueryComparePoint",
+            "description": "The earlier point."
+          },
+          "cursor": {
+            "description": "`next_cursor` of the page before, with the same request otherwise.\nIt pins both commits.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entailment": {
+            "$ref": "#/components/schemas/SparqlEntailment"
+          },
+          "key": {
+            "description": "Variables that identify a row's entity, at most 8 (for example\n`[\"contact\"]`). With a key the server pairs the rows by it: `added`\nand `removed` hold the rows of keys at one point only, and `changed`\nthe keys whose rows differ. Without a key whole rows are compared.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Entries of each list per page: 1 to 1,000, default 100.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_rows": {
+            "description": "Rows the server reads per point: 1 to 50,000, default 20,000. Past\nit the comparison is `truncated`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "query": {
+            "description": "A SPARQL `SELECT`, at most 20,000 characters. Leave out `LIMIT`: the\nserver pages through the rows itself.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "before"
+        ],
+        "type": "object"
+      },
+      "QueryCompareResolution": {
+        "description": "How a point of a comparison was found.",
+        "enum": [
+          "request",
+          "commit_time",
+          "head_write",
+          "latest"
+        ],
+        "type": "string"
+      },
+      "QueryCompareResponse": {
+        "description": "The rows that differ between two points of one query.",
+        "properties": {
+          "added": {
+            "description": "This page of each list.",
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/QueryRewriteTerm"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "after": {
+            "$ref": "#/components/schemas/QueryComparePointResult"
+          },
+          "before": {
+            "$ref": "#/components/schemas/QueryComparePointResult"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/QueryCompareChange"
+            },
+            "type": "array"
+          },
+          "key": {
+            "description": "The key the rows were paired by; empty when whole rows were compared.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_cursor": {
+            "description": "Pass it as `cursor`, with the same request, for the next page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "description": "What to know about the result: a cut, blank nodes, a `LIMIT`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "offset": {
+            "description": "The index of the first entry of this page in each list.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removed": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/QueryRewriteTerm"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/QueryCompareTotals"
+          },
+          "truncated": {
+            "description": "A point was not read whole (`max_rows`, or the time ran out), so the\ndifference is not complete.",
+            "type": "boolean"
+          },
+          "vars": {
+            "description": "The query's variables.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "before",
+          "after",
+          "vars",
+          "added",
+          "removed",
+          "changed",
+          "totals",
+          "offset",
+          "ms"
+        ],
+        "type": "object"
+      },
+      "QueryCompareTotals": {
+        "description": "The size of each list of a comparison, over all pages.",
+        "properties": {
+          "added": {
+            "description": "Rows of the later point that the earlier one has not (of keys only at\nthe later point, with a key).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "changed": {
+            "description": "Keys whose rows differ; 0 without a key.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removed": {
+            "description": "Rows of the earlier point that the later one has not.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unchanged": {
+            "description": "Keys (or rows, without a key) that are the same at both points.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "removed",
+          "changed",
+          "unchanged"
+        ],
+        "type": "object"
+      },
+      "QueryDescribeClass": {
+        "description": "One class of a description.",
+        "properties": {
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instances": {
+            "description": "Instances in the graph.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "`prefix:local`, as `text` writes it.",
+            "type": "string"
+          },
+          "properties": {
+            "description": "The properties its sampled instances use, the most used first, with\ntheir coverage. Empty when the class was not sampled yet.",
+            "items": {
+              "$ref": "#/components/schemas/QueryDescribeCoverage"
+            },
+            "type": "array"
+          },
+          "values": {
+            "description": "A small class (at most 30 instances): its instances with their label\nand literal values. Absent for a larger class, or when the background\nsample has not read it yet (`partial`).",
+            "items": {
+              "$ref": "#/components/schemas/QueryDescribeInstance"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "iri",
+          "name",
+          "instances"
+        ],
+        "type": "object"
+      },
+      "QueryDescribeCoverage": {
+        "description": "How many sampled instances of a class hold one property.",
+        "properties": {
+          "example": {
+            "description": "A short example value (a literal, with its datatype).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instances": {
+            "description": "Sampled instances that have the property.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "`prefix:local`, as `text` writes it.",
+            "type": "string"
+          },
+          "of": {
+            "description": "Instances sampled: the class's instances, at most 100. A filter on a\nproperty that few instances hold returns few rows.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "property": {
+            "type": "string"
+          },
+          "target": {
+            "description": "The class of the linked entities, when the values are entities.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "property",
+          "name",
+          "instances",
+          "of"
+        ],
+        "type": "object"
+      },
+      "QueryDescribeInstance": {
+        "description": "One instance of a small class, with its label and literal values.",
+        "properties": {
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Property IRI → its literal value (the first one), as written.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "iri"
+        ],
+        "type": "object"
+      },
+      "QueryDescribeProperty": {
+        "description": "One property of a description.",
+        "properties": {
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "example": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "links": {
+            "description": "`true` when its values are entities, `false` for literal values.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "statements": {
+            "description": "Statements in the graph, from the schema summary.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "used_by": {
+            "description": "The classes whose sample has it, the most instances first; at most 3.",
+            "items": {
+              "$ref": "#/components/schemas/QueryDescribeUse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "iri",
+          "name"
+        ],
+        "type": "object"
+      },
+      "QueryDescribeRequest": {
+        "additionalProperties": false,
+        "description": "Describe the parts of the graph a question needs\n(`POST /v1/query/describe`). With neither `question`, `classes` nor\n`properties`, the largest described classes.",
+        "properties": {
+          "classes": {
+            "description": "Class IRIs to describe, at most 20.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "properties": {
+            "description": "Property IRIs to describe, at most 50.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "question": {
+            "description": "A question: the classes and properties whose names, labels or\ncomments match its words. At most 4,000 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "QueryDescribeResponse": {
+        "description": "The parts of the graph a question needs, as JSON and as compact text.",
+        "properties": {
+          "age_ms": {
+            "description": "Milliseconds since the server built the description it read.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/QueryDescribeClass"
+            },
+            "type": "array"
+          },
+          "commit_seq": {
+            "description": "The commit of the published generation the description was read from.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "partial": {
+            "description": "The background sample has not read every class yet: coverage and the\nvalues of small classes can be missing. Ask again in a minute.",
+            "type": "boolean"
+          },
+          "prefixes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "`PREFIX` name → namespace, for the names `text` uses.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/QueryDescribeProperty"
+            },
+            "type": "array"
+          },
+          "statements": {
+            "items": {
+              "$ref": "#/components/schemas/QueryDescribeStatement"
+            },
+            "type": "array"
+          },
+          "text": {
+            "description": "The same description as compact text, for a model's prompt.",
+            "type": "string"
+          },
+          "unknown": {
+            "description": "IRIs of the request that the graph has no class or property for.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "commit_seq",
+          "partial",
+          "classes",
+          "properties",
+          "statements",
+          "prefixes",
+          "text",
+          "age_ms"
+        ],
+        "type": "object"
+      },
+      "QueryDescribeStatement": {
+        "description": "One OWL or RDFS statement about a described class or property.",
+        "properties": {
+          "object": {
+            "description": "An IRI, or a literal's text.",
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "predicate",
+          "object"
+        ],
+        "type": "object"
+      },
+      "QueryDescribeUse": {
+        "description": "One class that uses a property, and how many of its sampled instances\nhold it.",
+        "properties": {
+          "class": {
+            "type": "string"
+          },
+          "instances": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "of": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "class",
+          "instances",
+          "of"
+        ],
+        "type": "object"
+      },
       "QueryHistoryResolution": {
         "description": "How the server found the commit of a `history` question.",
         "enum": [
@@ -12817,6 +13802,73 @@
           "acronym"
         ],
         "type": "string"
+      },
+      "QueryNamesRequest": {
+        "additionalProperties": false,
+        "description": "Find the entities a question or a list of names names\n(`POST /v1/query/names`).",
+        "properties": {
+          "limit": {
+            "description": "Candidates per name: 1 to 10, default 5.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "A question, or names: 1 to 4,000 characters.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "QueryNamesResponse": {
+        "description": "The names of a text and the entities each may mean.",
+        "properties": {
+          "candidates": {
+            "description": "Each candidate of each name found, in the order of the text; the\ncandidates of one name share its `text`, the one to prefer first.\nEmpty when no name linked, or when the index was not ready.",
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteLink"
+            },
+            "type": "array"
+          },
+          "commit_seq": {
+            "description": "The commit of the graph description the index was built from.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "index_names": {
+            "description": "Names in the index the matching read.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "index_ready": {
+            "description": "The graph's name index was ready. When `false` the server builds it\nin the background: ask again in a few seconds.",
+            "type": "boolean"
+          },
+          "ms": {
+            "description": "Milliseconds the call took.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "candidates",
+          "index_ready",
+          "commit_seq",
+          "ms"
+        ],
+        "type": "object"
       },
       "QueryRewriteAnchor": {
         "description": "What the server read about one anchored IRI.",
@@ -13178,7 +14230,7 @@
         "description": "What a `history` question asks for beyond the query, and where the\nserver read it.",
         "properties": {
           "added": {
-            "description": "A comparison's rows that `after` has and `before` has not, keyed by\nall their projected values; at most 500.",
+            "description": "A comparison's rows that `after` has and `before` has not; with a\n`key`, the rows of the entities only `after` has. At most 500.",
             "items": {
               "additionalProperties": {
                 "$ref": "#/components/schemas/QueryRewriteTerm"
@@ -13231,9 +14283,26 @@
               }
             ]
           },
+          "changed": {
+            "description": "With a `key`: the entities whose rows differ, with their rows at both\npoints. At most 500.",
+            "items": {
+              "$ref": "#/components/schemas/QueryCompareChange"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "compare": {
             "description": "The question asks what changed: the server runs the query at the\nearlier point and at the later one, and compares the rows.",
             "type": "boolean"
+          },
+          "key": {
+            "description": "The variable the rows of a comparison were paired by: the first\nvariable when its values are entities. Empty when whole rows were\ncompared.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "label": {
             "description": "The label of the timeline point the date resolved to.",
@@ -13243,7 +14312,7 @@
             ]
           },
           "removed": {
-            "description": "A comparison's rows that `before` has and `after` has not; at most\n500. A changed value shows as a removed row and an added row.",
+            "description": "A comparison's rows that `before` has and `after` has not; with a\n`key`, the rows of the entities only `before` has. At most 500.\nWithout a key a changed value shows as a removed row and an added row.",
             "items": {
               "additionalProperties": {
                 "$ref": "#/components/schemas/QueryRewriteTerm"
@@ -13269,8 +14338,19 @@
               }
             ]
           },
+          "totals": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryCompareTotals",
+                "description": "The size of each list before the cut at 500."
+              }
+            ]
+          },
           "truncated": {
-            "description": "The difference is not complete: a run returned only its first rows\n(`row_page.has_more`), or more than 500 rows were added or removed.",
+            "description": "The difference is not complete: a run did not read all its rows, or\na list holds more than 500 entries (`totals` has their number).",
             "type": "boolean"
           }
         },
@@ -27456,7 +28536,7 @@
             "bearer": []
           }
         ],
-        "summary": "The golden suite: every frozen query and its expected rows",
+        "summary": "The golden suite: questions, searches and stored queries, with their golden queries and judged results",
         "tags": [
           "system"
         ]
@@ -27725,7 +28805,7 @@
             "bearer": []
           }
         ],
-        "summary": "Freeze a query and the rows it returns now as a golden",
+        "summary": "Freeze a stored query or a search and the results it returns now as a golden; a question becomes a golden through a label",
         "tags": [
           "system"
         ]
@@ -28004,7 +29084,7 @@
             "bearer": []
           }
         ],
-        "summary": "Accept the rows a golden returns now as its new reference",
+        "summary": "Accept what a golden returns now as its new reference; a question is asked again and the query Ask writes becomes its golden query",
         "tags": [
           "system"
         ]
@@ -28563,7 +29643,7 @@
             "bearer": []
           }
         ],
-        "summary": "Label results of a trace relevant or not (thumbs up or down per result); the labels become the golden's ground truth",
+        "summary": "Label results of a trace relevant or not (thumbs up or down per result), or, on a question, its answer as a whole (`valid` alone; `valid: false` with `sparql` gives the right query); the labels become the golden's ground truth",
         "tags": [
           "system"
         ]
@@ -29094,7 +30174,7 @@
             "bearer": []
           }
         ],
-        "summary": "Replay every golden at the current commit and record the verdicts",
+        "summary": "Check every golden at the current commit and record the verdicts; a question is asked again through Ask and checked for its type, its rows against the golden query, and its judged results",
         "tags": [
           "system"
         ]
@@ -30670,6 +31750,276 @@
           }
         ],
         "summary": "Commit triplets and optional entity embeddings",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graph/commit-at": {
+      "get": {
+        "operationId": "get_v1_graph_commit_at",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "YYYY-MM-DD: the last commit written by the end of that day, UTC",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 3339: the last commit written at or before it",
+            "in": "query",
+            "name": "moment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphCommitAtResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The commit of a date or a moment: the last commit written by the end of `date` (UTC), or at or before `moment`, by the times the commits record. Absent with a note when the moment is before the first commit or the commits record no time",
         "tags": [
           "graph"
         ]
@@ -50270,6 +51620,828 @@
         "summary": "Dry-run the suggestion's change against the current ontology and store the impact",
         "tags": [
           "ontology"
+        ]
+      }
+    },
+    "/v1/query/compare": {
+      "post": {
+        "operationId": "post_v1_query_compare",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "eventual (default) reads the last published commit; strong reads the head",
+            "in": "query",
+            "name": "consistency",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryCompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryCompareResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run one SELECT at two points (a commit, a date or a moment; the later point defaults to the latest commit), in turn, page by page within `max_rows` per point, and report what differs: with `key` the rows are paired by those variables into `added`, `removed` and `changed` (the key with its rows at both points), without a key whole rows are compared. Each list is paged (`limit`, `next_cursor`) with its total; `truncated` says a point was not read whole",
+        "tags": [
+          "query"
+        ]
+      }
+    },
+    "/v1/query/describe": {
+      "post": {
+        "operationId": "post_v1_query_describe",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryDescribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryDescribeResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Describe the classes and properties a question needs, or the ones named by IRI: each class with how many of its sampled instances hold each property (a filter on a property few hold returns few rows), the instances and values of small classes (at most 30 instances: stages, statuses), each property with the classes that use it, examples, and the OWL and RDFS statements about them; as JSON and as compact text. No model call",
+        "tags": [
+          "query"
+        ]
+      }
+    },
+    "/v1/query/names": {
+      "post": {
+        "operationId": "post_v1_query_names",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryNamesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryNamesResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Find the entities a question or a list of names names, from the graph's name index: per name up to `limit` candidates (default 5) with their class, label, score and how they matched, the one to prefer first (a person or an organization before a document that mentions the name). A word that asks (\"Summarize\") and a lone acronym or short word that is not an entity's whole name link to nothing. `index_ready: false` means the index is still building: ask again in a few seconds",
+        "tags": [
+          "query"
         ]
       }
     },
