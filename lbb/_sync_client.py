@@ -175,12 +175,14 @@ class _SyncQueryNamespace(_QueryNamespace):
         as_of_commit_seq: int | None = None,
         today: str | None = None,
         anchor: Sequence[str] | None = None,
+        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> QueryAskResult:
         """Answer a question in plain words: :meth:`rewrite` with ``run=True``,
         and the rows of the run parsed as :meth:`sparql` parses them.
-        ``anchor`` holds entity IRIs the user picked."""
+        ``anchor`` holds entity IRIs the user picked; ``timeline`` names the
+        commit of each date for a history question."""
         response = self.rewrite(
             question,
             context=context,
@@ -191,6 +193,7 @@ class _SyncQueryNamespace(_QueryNamespace):
             as_of_commit_seq=as_of_commit_seq,
             today=today,
             anchor=anchor,
+            timeline=timeline,
             consistency=consistency,
             options=options,
         )
@@ -209,6 +212,7 @@ class _SyncQueryNamespace(_QueryNamespace):
         as_of_commit_seq: int | None = None,
         today: str | None = None,
         include_grounding: bool | None = None,
+        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> Generator[QueryRewriteStreamEvent, None, None]:
@@ -217,7 +221,9 @@ class _SyncQueryNamespace(_QueryNamespace):
         The server sends ``grounding``, ``route``, then ``query``, ``run``
         and ``rows`` per attempt, with ``repair`` before a second attempt.
         The last event, ``done``, holds the same response as ``rewrite``.
-        A second ``route`` comes when the rewriter chose another route.
+        A second ``route`` comes when the rewriter chose another route. A
+        comparison runs twice: ``run`` (``point: "before"``) and ``rows``,
+        then ``run`` (``point: "after"``) and ``rows``.
 
         An ``error`` event raises :class:`LbbError` with the status, code
         and message that ``rewrite`` raises. An error before the stream
@@ -239,6 +245,7 @@ class _SyncQueryNamespace(_QueryNamespace):
             as_of_commit_seq=as_of_commit_seq,
             today=today,
             include_grounding=include_grounding,
+            timeline=timeline,
         )
         params = self._client._consistency_params(consistency, None)
         client = cast("LbbClient", self._client)

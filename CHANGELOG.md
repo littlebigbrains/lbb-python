@@ -31,6 +31,29 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   `QueryRewriteResponse.linked` and `anchors`, `QueryRewriteLink`,
   `QueryRewriteAnchor`, `QueryLinkMethod`, `grounding.names`, and
   `timings.link_ms` and `anchor_ms`.
+- Add `query.rewrite_profile()` and `query.set_rewrite_profile(notes=,
+  examples=, expected_version=, dry_run=)` for the graph's rewrite profile:
+  notes and up to 20 worked examples the rewriter reads for every question.
+  Pass the `version` you read as `expected_version`; when another write came
+  first, the call raises a `409 conflict`.
+- The `grounding` of a rewrite gains `focus_classes`, `focus_properties` and
+  `profile_version`.
+- `SparqlResults.search` gains `rerank` and `timings.relevance_ms`, for a
+  query with `search:rerank true`.
+- `query.rewrite()`, `query.ask()` and `query.rewrite_stream()` take
+  `timeline`: dated points that stand for the graph's commits
+  (`{"date", "as_of_commit_seq", "label"}`, at most 200). A history question
+  about a date then reads the commit of the latest point on or before it.
+  Without a timeline the server reads the last commit written by the end of
+  that day. The async client takes it too.
+- `QueryAskResult` gains `history`: the date, the commit it resolved to
+  (`as_of_commit_seq`) and how (`resolved_by`). A question that asks what
+  changed runs at both points: `before` and `after` hold the two runs, and
+  `added` and `removed` the rows that differ.
+- The generated models add `QueryRewriteRequest.timeline`,
+  `QueryRewriteTimelinePoint`, the new `QueryRewriteHistory` fields,
+  `QueryHistoryResolution`, `QueryRewriteTerm`, and `point` on the `run`
+  event (`QueryRewritePoint`).
 
 ## 0.19.0 (2026-10-04)
 

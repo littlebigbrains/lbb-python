@@ -352,6 +352,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         today: str | None = None,
         include_grounding: bool | None = None,
         anchor: Sequence[str] | None = None,
+        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> Any:
@@ -367,6 +368,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
             today=today,
             include_grounding=include_grounding,
             anchor=anchor,
+            timeline=timeline,
             consistency=consistency,
             options=options,
         )
@@ -382,6 +384,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         as_of_commit_seq: int | None = None,
         today: str | None = None,
         anchor: Sequence[str] | None = None,
+        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> QueryAskResult:
@@ -397,6 +400,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
             as_of_commit_seq=as_of_commit_seq,
             today=today,
             anchor=anchor,
+            timeline=timeline,
             consistency=consistency,
             options=options,
         )
@@ -415,6 +419,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         as_of_commit_seq: int | None = None,
         today: str | None = None,
         include_grounding: bool | None = None,
+        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> AsyncGenerator[QueryRewriteStreamEvent, None]:
@@ -432,6 +437,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
             as_of_commit_seq=as_of_commit_seq,
             today=today,
             include_grounding=include_grounding,
+            timeline=timeline,
         )
         params = self._client._consistency_params(consistency, None)
         client = cast("AsyncLbbClient", self._client)
