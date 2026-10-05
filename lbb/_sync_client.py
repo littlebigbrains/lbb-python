@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Iterator, Mapping, Sequence
 from itertools import chain
 from typing import Any, cast
 
@@ -12,6 +12,7 @@ import httpx
 
 from . import models
 from ._client_base import (
+    _REWRITE_STREAM_ENDED,
     DEFAULT_BASE_URL,
     DEFAULT_INTEGRATIONS_URL,
     DEFAULT_MAX_RETRIES,
@@ -22,6 +23,7 @@ from ._client_base import (
     ListPage,
     ModelT,
     QueryAskResult,
+    QueryRewriteStreamEvent,
     RawLbbResponse,
     RequestOptions,
     RetryEvent,
@@ -44,7 +46,11 @@ from ._client_base import (
     _retry_allowed,
     _retry_delay_seconds,
     _retryable,
+    _rewrite_body,
+    _rewrite_stream_event,
     _SchemaNamespace,
+    _sse_decoder,
+    _SseParser,
 )
 from .integrations import IntegrationsNamespace
 
@@ -168,11 +174,13 @@ class _SyncQueryNamespace(_QueryNamespace):
         limit: int | None = None,
         as_of_commit_seq: int | None = None,
         today: str | None = None,
+        anchor: Sequence[str] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> QueryAskResult:
         """Answer a question in plain words: :meth:`rewrite` with ``run=True``,
-        and the rows of the run parsed as :meth:`sparql` parses them."""
+        and the rows of the run parsed as :meth:`sparql` parses them.
+        ``anchor`` holds entity IRIs the user picked."""
         response = self.rewrite(
             question,
             context=context,
@@ -182,10 +190,59 @@ class _SyncQueryNamespace(_QueryNamespace):
             limit=limit,
             as_of_commit_seq=as_of_commit_seq,
             today=today,
+            anchor=anchor,
             consistency=consistency,
             options=options,
         )
         return QueryAskResult.from_response(response)
+
+    def rewrite_stream(
+        self,
+        question: str,
+        *,
+        context: str | None = None,
+        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
+        route: str | models.QueryRoute | None = None,
+        mode: str | models.QueryRewriteMode | None = None,
+        run: bool | None = None,
+        limit: int | None = None,
+        as_of_commit_seq: int | None = None,
+        today: str | None = None,
+        include_grounding: bool | None = None,
+        consistency: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Generator[QueryRewriteStreamEvent, None, None]:
+        """:meth:`rewrite` with progress: yield one event per step.
+
+        The server sends ``grounding``, ``route``, then ``query``, ``run``
+        and ``rows`` per attempt, with ``repair`` before a second attempt.
+        The last event, ``done``, holds the same response as ``rewrite``.
+        A second ``route`` comes when the rewriter chose another route.
+
+        An ``error`` event raises :class:`LbbError` with the status, code
+        and message that ``rewrite`` raises. An error before the stream
+        starts (a 400, a ``429 rewrite_limit``) raises as ``rewrite`` does.
+        The call is never retried. Close the generator, or leave its loop,
+        to close the response; the server then stops its work. A body that
+        ends before ``done`` raises ``httpx.RemoteProtocolError``.
+        ``options["timeout"]`` bounds each network read, not the whole
+        stream.
+        """
+        body = _rewrite_body(
+            question,
+            context=context,
+            previous=previous,
+            route=route,
+            mode=mode,
+            run=run,
+            limit=limit,
+            as_of_commit_seq=as_of_commit_seq,
+            today=today,
+            include_grounding=include_grounding,
+        )
+        params = self._client._consistency_params(consistency, None)
+        client = cast("LbbClient", self._client)
+        return client._rewrite_events(body, params or None, options)
 
     def update(
         self,
@@ -478,6 +535,86 @@ class LbbClient(_BaseLbbClient):
             response,
             attempts=attempts,
             elapsed_ms=(time.monotonic() - started_at) * 1000,
+        )
+
+    def _event_stream(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        body: Body | None = None,
+        options: RequestOptions | None = None,
+        json_event: str | None = None,
+        on_open: Callable[[httpx.Response], None] | None = None,
+    ) -> Generator[tuple[str, str], None, None]:
+        """Send one request with ``Accept: text/event-stream`` and yield its
+        server-sent events as ``(event, data)`` while they arrive.
+
+        The request is sent once and never retried. A non-2xx answer raises
+        :class:`LbbError` as :meth:`raw_request` does. A 2xx answer that is
+        not an event stream (a server without streams) becomes one event
+        named ``json_event`` with the whole body as its data. Closing the
+        generator closes the response.
+        """
+        request_options = options or {}
+        kwargs = self._request_kwargs(
+            params=params,
+            body=body,
+            content=None,
+            content_type=None,
+            idempotency_key=None,
+            headers={"accept": "text/event-stream", **request_options.get("headers", {})},
+        )
+        if "timeout" in request_options:
+            kwargs["timeout"] = request_options["timeout"]
+        with self._http.stream(method, f"{self._base_url}{path}", **kwargs) as response:
+            if on_open is not None:
+                on_open(response)
+            content_type = response.headers.get("content-type", "").lower()
+            if response.status_code // 100 != 2 or "text/event-stream" not in content_type:
+                response.read()
+                _raw_response(response)
+                if json_event is not None and response.text.strip():
+                    yield json_event, response.text
+                return
+            parser = _SseParser()
+            decoder = _sse_decoder()
+            for chunk in response.iter_bytes():
+                yield from parser.feed(decoder.decode(chunk))
+            yield from parser.feed(decoder.decode(b"", final=True))
+
+    def _rewrite_events(
+        self,
+        body: dict[str, Any],
+        params: Mapping[str, Any] | None,
+        options: RequestOptions | None,
+    ) -> Generator[QueryRewriteStreamEvent, None, None]:
+        """The events of ``POST /v1/query/rewrite`` as a stream."""
+        opened: list[httpx.Response] = []
+        stream = self._event_stream(
+            "POST",
+            "/v1/query/rewrite",
+            params=params,
+            body=body,
+            options=options,
+            # A server without streams answers with the response itself.
+            json_event="done",
+            on_open=opened.append,
+        )
+        try:
+            for name, text in stream:
+                request_id = opened[0].headers.get("x-request-id") if opened else None
+                event = _rewrite_stream_event(name, text, request_id)
+                if event is None:
+                    continue
+                yield event
+                if event.event == "done":
+                    return
+        finally:
+            stream.close()
+        raise httpx.RemoteProtocolError(
+            _REWRITE_STREAM_ENDED, request=opened[0].request if opened else None
         )
 
     def _request(

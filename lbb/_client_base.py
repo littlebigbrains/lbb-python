@@ -17,13 +17,16 @@ For the local ``lbb-testctl`` shell-out wrapper (tests, notebooks), see
 
 from __future__ import annotations
 
+import codecs
 import enum
 import json
 import random
+import re
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Final, Generic, Literal, TypedDict, TypeVar
@@ -350,6 +353,11 @@ class QueryAskResult:
       parse or run.
     - :attr:`trace_id` — the eval trace of the run; label its rows with
       ``evals.label``.
+    - :attr:`linked` — the names of the question the server linked to
+      entities (``text``, ``iri``, ``label``, ``class``, ``score``, ``by``),
+      for a "Did you mean …?"; empty when nothing linked.
+    - :attr:`anchors` — what the server read about each anchored IRI
+      (``iri``, ``found``, ``label``, ``types``, ``note``).
     - :attr:`rewrite` — the whole ``POST /v1/query/rewrite`` response.
     """
 
@@ -363,6 +371,8 @@ class QueryAskResult:
     error: str | None
     trace_id: str | None
     rewrite: dict[str, Any]
+    linked: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    anchors: list[dict[str, Any]] = dataclass_field(default_factory=list)
 
     @classmethod
     def from_response(cls, response: Mapping[str, Any]) -> QueryAskResult:
@@ -383,7 +393,47 @@ class QueryAskResult:
             error=response.get("error"),
             trace_id=result.get("trace_id") if isinstance(result, Mapping) else None,
             rewrite=dict(response),
+            linked=[dict(link) for link in response.get("linked") or []],
+            anchors=[dict(anchor) for anchor in response.get("anchors") or []],
         )
+
+
+#: The generated model of one event of a streamed rewrite.
+QueryRewriteEventModel = (
+    models.QueryRewriteEventGrounding
+    | models.QueryRewriteEventRoute
+    | models.QueryRewriteEventQuery
+    | models.QueryRewriteEventRun
+    | models.QueryRewriteEventRows
+    | models.QueryRewriteEventRepair
+    | models.QueryRewriteEventDone
+    | models.QueryRewriteEventError
+)
+
+
+@dataclass(frozen=True)
+class QueryRewriteStreamEvent:
+    """One event of ``query.rewrite_stream``.
+
+    - :attr:`event` — the step: ``grounding``, ``route``, ``query``, ``run``,
+      ``rows``, ``repair``, and last ``done``.
+    - :attr:`data` — the event's JSON object as a dict. The ``data`` of
+      ``done`` is the whole response, the same dict ``query.rewrite``
+      returns; ``QueryAskResult.from_response(event.data)`` parses its rows.
+
+    The stream raises an ``error`` event as :class:`LbbError`; it never
+    yields one.
+    """
+
+    event: str
+    data: dict[str, Any]
+
+    def model(self) -> QueryRewriteEventModel:
+        """Validate the event as its generated model, for example
+        ``models.QueryRewriteEventRoute``."""
+        return models.QueryRewriteEvent.model_validate(
+            {"event": self.event, "data": self.data}
+        ).root
 
 
 def _coerce_body(body: Body | None) -> Any:
@@ -2477,6 +2527,7 @@ class _QueryNamespace:
         as_of_commit_seq: int | None = None,
         today: str | None = None,
         include_grounding: bool | None = None,
+        anchor: Sequence[str] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> Any:
@@ -2488,6 +2539,8 @@ class _QueryNamespace:
         the rows in ``result``, and corrects a query that fails once.
         ``mode="route"`` returns only the route. ``include_grounding=True``
         returns the graph description the models read in ``grounding.text``.
+        ``anchor`` holds up to 10 entity IRIs the user picked: the rewriter
+        uses them directly. The names the server linked are in ``linked``.
 
         Each call uses model tokens, so a failed call is not retried unless
         ``options={"retry": True}``. A ``429 rewrite_limit`` means the stack
@@ -2504,6 +2557,7 @@ class _QueryNamespace:
             as_of_commit_seq=as_of_commit_seq,
             today=today,
             include_grounding=include_grounding,
+            anchor=anchor,
         )
         params = self._client._consistency_params(consistency, None)
         return self._client._request(
@@ -2527,6 +2581,7 @@ def _rewrite_body(
     as_of_commit_seq: int | None,
     today: str | None,
     include_grounding: bool | None = None,
+    anchor: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """The ``QueryRewriteRequest`` body: every field the caller left at
     ``None`` stays off the wire, since each one has a server default."""
@@ -2552,7 +2607,145 @@ def _rewrite_body(
         body["today"] = today
     if include_grounding is not None:
         body["include_grounding"] = include_grounding
+    if anchor:
+        body["anchor"] = list(anchor)
     return body
+
+
+#: The most text one server-sent event may hold before the parser stops: 64 MiB.
+_MAX_SSE_EVENT_CHARS = 64 * 1024 * 1024
+_SSE_LINE_END = re.compile(r"\r\n|\r|\n")
+
+
+class _SseParser:
+    """An incremental parser of a ``text/event-stream`` body, as the HTML
+    standard defines it.
+
+    Feed decoded text in pieces of any size; each call returns the
+    ``(event, data)`` pairs that completed. A line ends with ``\\n``,
+    ``\\r\\n`` or ``\\r``, also when ``\\r\\n`` arrives in two pieces.
+    Comment lines (``:``) and unknown fields are skipped, and several
+    ``data`` lines join with ``\\n``. One event may hold at most
+    ``max_event_chars`` characters.
+    """
+
+    def __init__(self, max_event_chars: int = _MAX_SSE_EVENT_CHARS) -> None:
+        self._max_event_chars = max_event_chars
+        self._pending: list[str] = []
+        self._pending_chars = 0
+        self._skip_line_feed = False
+        self._event = ""
+        self._data: list[str] = []
+        self._event_chars = 0
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        events: list[tuple[str, str]] = []
+        start = 0
+        if self._skip_line_feed and text:
+            self._skip_line_feed = False
+            if text[0] == "\n":
+                start = 1
+        for match in _SSE_LINE_END.finditer(text, start):
+            piece = text[start : match.start()]
+            if self._pending:
+                piece = "".join(self._pending) + piece
+                self._pending = []
+                self._pending_chars = 0
+            self._line(piece, events)
+            if match.group() == "\r" and match.end() == len(text):
+                self._skip_line_feed = True
+            start = match.end()
+        if start < len(text):
+            self._pending.append(text[start:])
+            self._pending_chars += len(text) - start
+            self._check_size()
+        return events
+
+    def _line(self, line: str, events: list[tuple[str, str]]) -> None:
+        if not line:
+            if self._data:
+                events.append((self._event or "message", "\n".join(self._data)))
+            self._event = ""
+            self._data = []
+            self._event_chars = 0
+            return
+        if line.startswith(":"):
+            return
+        field, colon, value = line.partition(":")
+        if colon and value.startswith(" "):
+            value = value[1:]
+        if field == "event":
+            self._event = value
+        elif field == "data":
+            self._event_chars += len(value) + 1
+            self._check_size()
+            self._data.append(value)
+        # ``id``, ``retry`` and unknown fields do not change what a client reads.
+
+    def _check_size(self) -> None:
+        if self._event_chars + self._pending_chars > self._max_event_chars:
+            raise ValueError(
+                f"a server-sent event is larger than {self._max_event_chars} "
+                "characters; the stream was stopped"
+            )
+
+
+def _sse_decoder() -> codecs.IncrementalDecoder:
+    """The UTF-8 decoder of an event stream: bytes may split a character, a
+    leading byte-order mark is dropped, and bad bytes become U+FFFD."""
+    return codecs.getincrementaldecoder("utf-8-sig")(errors="replace")
+
+
+#: The event names of a streamed rewrite. A client skips any other name.
+_REWRITE_STREAM_EVENTS: Final = frozenset(
+    {"grounding", "route", "query", "run", "rows", "repair", "done", "error"}
+)
+_REWRITE_STREAM_ENDED = (
+    "Little Big Brain rewrite stream ended before its done or error event"
+)
+
+
+def _error_type_for_status(status_code: int) -> str:
+    """The ``type`` the server's JSON error carries for a status."""
+    if status_code == 400:
+        return "invalid_request_error"
+    if status_code in (401, 403):
+        return "auth_error"
+    if status_code == 404:
+        return "not_found_error"
+    if status_code == 409:
+        return "conflict_error"
+    if status_code == 429:
+        return "rate_limit_error"
+    return "api_error"
+
+
+def _rewrite_stream_event(
+    name: str, text: str, request_id: str | None
+) -> QueryRewriteStreamEvent | None:
+    """One server-sent event of a streamed rewrite: ``None`` for an event
+    name the client does not know, the event otherwise. An ``error`` event
+    raises the :class:`LbbError` the same request without a stream gets."""
+    if name not in _REWRITE_STREAM_EVENTS:
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f'Little Big Brain sent invalid JSON in a "{name}" event') from error
+    if not isinstance(data, dict):
+        raise ValueError(f'Little Big Brain sent a "{name}" event that is not a JSON object')
+    if name == "error":
+        status = data.get("status")
+        status_code = status if isinstance(status, int) else 500
+        envelope = {
+            "error": {
+                "type": _error_type_for_status(status_code),
+                "code": data.get("code"),
+                "message": data.get("message"),
+            }
+        }
+        raise _parse_error(status_code, json.dumps(envelope), request_id)
+    return QueryRewriteStreamEvent(event=name, data=data)
 
 
 class _SchemaNamespace:

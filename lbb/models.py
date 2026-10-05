@@ -2838,6 +2838,68 @@ class PublishedReadFamilyView(BaseModel):
     target_hash: str | None = None
 
 
+class QueryLinkMethod(Enum):
+    """
+    How a name of the question matched the name of an entity.
+    """
+
+    exact = 'exact'
+    partial = 'partial'
+    fuzzy = 'fuzzy'
+    acronym = 'acronym'
+
+
+class QueryRewriteAnchor(BaseModel):
+    """
+    What the server read about one anchored IRI.
+    """
+
+    found: Annotated[
+        bool, Field(description='The IRI has statements at the read commit.')
+    ]
+    iri: str
+    label: str | None = None
+    note: Annotated[
+        str | None,
+        Field(
+            description='Why the IRI did not reach the rewriter as an entity: it is not in\nthe graph, or its read failed or ran out of time.'
+        ),
+    ] = None
+    types: list[str] | None = None
+
+
+class Event(Enum):
+    done = 'done'
+
+
+class Event1(Enum):
+    error = 'error'
+
+
+class Event2(Enum):
+    grounding = 'grounding'
+
+
+class Event3(Enum):
+    query = 'query'
+
+
+class Event4(Enum):
+    repair = 'repair'
+
+
+class Event5(Enum):
+    route = 'route'
+
+
+class Event6(Enum):
+    rows = 'rows'
+
+
+class Event7(Enum):
+    run = 'run'
+
+
 class QueryRewriteGrounding(BaseModel):
     """
     The graph description the models read.
@@ -2859,6 +2921,13 @@ class QueryRewriteGrounding(BaseModel):
         ),
     ]
     embeddings: Annotated[int, Field(ge=0)]
+    names: Annotated[
+        int | None,
+        Field(
+            description='Names in the name index the linking read; absent when no index was\nready (the linking was skipped).',
+            ge=0,
+        ),
+    ] = None
     properties: Annotated[int, Field(ge=0)]
     text: Annotated[
         str | None,
@@ -2866,6 +2935,21 @@ class QueryRewriteGrounding(BaseModel):
             description='The description itself, when the request asked for it\n(`include_grounding`).'
         ),
     ] = None
+
+
+class QueryRewriteGroundingEvent(BaseModel):
+    """
+    The graph description is ready (the first event of a streamed rewrite).
+    """
+
+    age_ms: Annotated[
+        int,
+        Field(description='Milliseconds since the server built the description.', ge=0),
+    ]
+    cached: Annotated[
+        bool, Field(description='The node had the description in its cache.')
+    ]
+    classes: Annotated[int, Field(description='Classes the description names.', ge=0)]
 
 
 class QueryRewriteHistory(BaseModel):
@@ -2885,6 +2969,28 @@ class QueryRewriteHistory(BaseModel):
     ]
 
 
+class QueryRewriteLink(BaseModel):
+    """
+    One name of the question that the server linked to an entity of the
+    graph. A name with several close candidates has up to three entries with
+    the same `text`, the best first; an app can show "Did you mean …?".
+    """
+
+    by: QueryLinkMethod
+    class_: Annotated[
+        str,
+        Field(alias='class', description="The class the entity's name was read under."),
+    ]
+    iri: str
+    label: Annotated[str | None, Field(description="The entity's label or name.")] = (
+        None
+    )
+    score: Annotated[
+        float, Field(description='0 to 1: how well the words match the name.')
+    ]
+    text: Annotated[str, Field(description='The words of the question, as written.')]
+
+
 class QueryRewriteMode(Enum):
     """
     What the call returns.
@@ -2901,6 +3007,35 @@ class QueryRewriteModelRole(Enum):
 
     router = 'router'
     rewriter = 'rewriter'
+
+
+class QueryRewriteRepairEvent(BaseModel):
+    """
+    The query failed with a client error, and the rewriter corrects it.
+    """
+
+    attempt: Annotated[int, Field(description='The attempt that comes next (2).', ge=0)]
+    error: Annotated[str, Field(description='The error the rewriter reads.')]
+
+
+class QueryRewriteRowsEvent(BaseModel):
+    """
+    The run of the query ended with rows.
+    """
+
+    count: Annotated[int, Field(description='Rows the run returned.', ge=0)]
+    ms: Annotated[int, Field(description='Milliseconds the run took.', ge=0)]
+
+
+class QueryRewriteRunEvent(BaseModel):
+    """
+    The run of the query started.
+    """
+
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(description='The commit the run reads; `null` for the latest.', ge=0),
+    ] = None
 
 
 class QueryRewriteStep(BaseModel):
@@ -2931,7 +3066,18 @@ class QueryRewriteTimings(BaseModel):
     Where the time of a rewrite went, in milliseconds.
     """
 
+    anchor_ms: Annotated[
+        int | None,
+        Field(description='The reads of the anchored IRIs, beside the route.', ge=0),
+    ] = None
     ground_ms: Annotated[int, Field(ge=0)]
+    link_ms: Annotated[
+        int | None,
+        Field(
+            description='The name linking, beside the route (the wait for a name index that\nis not built yet included).',
+            ge=0,
+        ),
+    ] = None
     rewrite_ms: Annotated[int, Field(ge=0)]
     route_ms: Annotated[int, Field(ge=0)]
     run_ms: Annotated[int, Field(ge=0)]
@@ -5078,6 +5224,21 @@ class SparqlValue6(BaseModel):
     """
 
     entity: EntitySelector
+
+
+class StreamErrorEvent(BaseModel):
+    """
+    A streamed response ended with an error: the status, code and message of
+    the JSON error that the same request without a stream gets. The text of a
+    `5xx` is redacted the same way.
+    """
+
+    code: str
+    message: str
+    status: Annotated[
+        int,
+        Field(description='The HTTP status of the same error without a stream.', ge=0),
+    ]
 
 
 class SuggestContext(BaseModel):
@@ -8125,6 +8286,31 @@ class PublishedReadStatusResponse(BaseModel):
     snapshot: PublishedReadSnapshotView
 
 
+class QueryRewriteEventError(BaseModel):
+    data: StreamErrorEvent
+    event: Literal['error']
+
+
+class QueryRewriteEventGrounding(BaseModel):
+    data: QueryRewriteGroundingEvent
+    event: Literal['grounding']
+
+
+class QueryRewriteEventRepair(BaseModel):
+    data: QueryRewriteRepairEvent
+    event: Literal['repair']
+
+
+class QueryRewriteEventRows(BaseModel):
+    data: QueryRewriteRowsEvent
+    event: Literal['rows']
+
+
+class QueryRewriteEventRun(BaseModel):
+    data: QueryRewriteRunEvent
+    event: Literal['run']
+
+
 class QueryRewriteModelCall(BaseModel):
     """
     One model call of a rewrite.
@@ -8147,6 +8333,23 @@ class QueryRewriteModelCall(BaseModel):
     ]
 
 
+class QueryRewriteQueryEvent(BaseModel):
+    """
+    The rewriter wrote a query (one per attempt).
+    """
+
+    attempt: Annotated[
+        int, Field(description='1 for the first query, 2 for the correction.', ge=0)
+    ]
+    entailment: SparqlEntailment
+    sparql: Annotated[
+        str,
+        Field(
+            description="The query: the checked text with its `PREFIX` lines, or the model's\ntext when it did not pass the check."
+        ),
+    ]
+
+
 class QueryRewriteRequest(BaseModel):
     """
     Turn a question into the query to run (`POST /v1/query/rewrite`).
@@ -8155,6 +8358,12 @@ class QueryRewriteRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+    anchor: Annotated[
+        list[str] | None,
+        Field(
+            description='Entity IRIs the user picked in the app, at most 10. The server reads\neach one at the read commit (its types, its label, and a summary of\nits links) and tells the rewriter to use these IRIs directly instead\nof matching their names. An IRI that is not in the graph gets a note\nin `anchors`, not an error.'
+        ),
+    ] = None
     as_of_commit_seq: Annotated[
         int | None, Field(description='Read the graph at this commit.', ge=0)
     ] = None
@@ -10448,7 +10657,33 @@ class OntologyStarterList(BaseModel):
     starters: list[OntologyStarterSummary]
 
 
+class QueryRewriteEventQuery(BaseModel):
+    data: QueryRewriteQueryEvent
+    event: Literal['query']
+
+
+class QueryRewriteEventRoute(BaseModel):
+    """
+    The router's route as soon as it answers, the caller's route at once,
+    or the rewriter's route when it decides.
+    """
+
+    data: Annotated[
+        QueryRouteDecision,
+        Field(
+            description="The router's route as soon as it answers, the caller's route at once,\nor the rewriter's route when it decides."
+        ),
+    ]
+    event: Literal['route']
+
+
 class QueryRewriteResponse(BaseModel):
+    anchors: Annotated[
+        list[QueryRewriteAnchor] | None,
+        Field(
+            description="What the server read about each anchored IRI (`anchor`), in the\nrequest's order."
+        ),
+    ] = None
     attempts: Annotated[
         int,
         Field(description='Queries the rewriter wrote: 2 when it corrected one.', ge=0),
@@ -10461,6 +10696,12 @@ class QueryRewriteResponse(BaseModel):
     ] = None
     grounding: QueryRewriteGrounding
     history: QueryRewriteHistory | None = None
+    linked: Annotated[
+        list[QueryRewriteLink] | None,
+        Field(
+            description='Names of the question linked to entities of the graph before the\nrewriter wrote the query; the rewriter uses their IRIs directly.'
+        ),
+    ] = None
     models: list[QueryRewriteModelCall]
     query: RewrittenQuery | None = None
     rationale: Annotated[
@@ -10912,6 +11153,20 @@ class OntologyChangeSuggestionList(BaseModel):
     ]
 
 
+class QueryRewriteEventDone(BaseModel):
+    """
+    The whole response: the same JSON as the response without a stream.
+    """
+
+    data: Annotated[
+        QueryRewriteResponse,
+        Field(
+            description='The whole response: the same JSON as the response without a stream.'
+        ),
+    ]
+    event: Literal['done']
+
+
 class TripletCommitFile(BaseModel):
     edge_idempotency: EdgeIdempotencyMode | None = None
     entity_embeddings: Annotated[
@@ -10949,6 +11204,34 @@ class WorkflowRun(BaseModel):
     state: WorkflowState
     steps: list[WorkflowStepView]
     updated_at_ms: int
+
+
+class QueryRewriteEvent(
+    RootModel[
+        QueryRewriteEventGrounding
+        | QueryRewriteEventRoute
+        | QueryRewriteEventQuery
+        | QueryRewriteEventRun
+        | QueryRewriteEventRows
+        | QueryRewriteEventRepair
+        | QueryRewriteEventDone
+        | QueryRewriteEventError
+    ]
+):
+    root: Annotated[
+        QueryRewriteEventGrounding
+        | QueryRewriteEventRoute
+        | QueryRewriteEventQuery
+        | QueryRewriteEventRun
+        | QueryRewriteEventRows
+        | QueryRewriteEventRepair
+        | QueryRewriteEventDone
+        | QueryRewriteEventError,
+        Field(
+            description='One event of a streamed rewrite: `POST /v1/query/rewrite` with\n`Accept: text/event-stream`. On the wire each event is\n`event: <event>\\ndata: <data as JSON>\\n\\n`. The order: `grounding`,\n`route`, then per attempt `query`, `run` and `rows`, with `repair` before\na second attempt; `done` or `error` ends the stream. A second `route`\ncomes when the rewriter chose another route. Clients ignore an event name\nthey do not know: later versions add events.',
+            discriminator='event',
+        ),
+    ]
 
 
 class WorkflowCompleteResponse(BaseModel):

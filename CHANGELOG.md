@@ -6,6 +6,31 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 - `SparqlResults.search` gains `rerank` and `timings.relevance_ms`, for a
   query with `search:rerank true`.
+- Add `query.rewrite_stream(question, ...)` with the keyword arguments of
+  `query.rewrite`. It sends `POST /v1/query/rewrite` with
+  `Accept: text/event-stream` and yields one `QueryRewriteStreamEvent` per
+  step: `grounding`, `route`, `query`, `run`, `rows` and `repair`. The last
+  event, `done`, holds the same dict as `query.rewrite` returns.
+- `LbbClient` returns a generator, and `AsyncLbbClient` an async generator.
+  Closing it closes the response, and the server then stops its work.
+- An `error` event raises the same `LbbError` as `query.rewrite`. An error
+  before the stream starts raises as `query.rewrite` does. The client never
+  retries a stream, and it skips event names it does not know.
+- A body that ends before `done` or `error` raises
+  `httpx.RemoteProtocolError`. A server without streams answers with JSON,
+  and the stream then yields only `done`.
+- `QueryRewriteStreamEvent.model()` validates an event as its generated
+  model, for example `models.QueryRewriteEventRoute`.
+- `query.rewrite()` and `query.ask()` take `anchor`: entity IRIs the user
+  picked, at most 10. The server reads each one, and the query uses the IRIs
+  directly instead of matching their names. The async client takes it too.
+- `QueryAskResult` gains `linked`, the names of the question the server
+  linked to entities (`text`, `iri`, `label`, `class`, `score`, `by`), and
+  `anchors`, what the server read about each anchored IRI.
+- The generated models add `QueryRewriteRequest.anchor`,
+  `QueryRewriteResponse.linked` and `anchors`, `QueryRewriteLink`,
+  `QueryRewriteAnchor`, `QueryLinkMethod`, `grounding.names`, and
+  `timings.link_ms` and `anchor_ms`.
 
 ## 0.19.0 (2026-10-04)
 
