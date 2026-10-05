@@ -2,6 +2,11 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- `SparqlResults.search` gains `rerank` and `timings.relevance_ms`, for a
+  query with `search:rerank true`.
+
 ## 0.19.0 (2026-10-04)
 
 Adds the server features the SDK did not cover yet, on `LbbClient` and
