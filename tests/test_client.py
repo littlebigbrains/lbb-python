@@ -3057,6 +3057,45 @@ class QueryRewriteTests(unittest.TestCase):
         bare = QueryAskResult.from_response(rewrite_payload())
         self.assertEqual(bare.linked, [])
         self.assertEqual(bare.anchors, [])
+        self.assertIsNone(bare.history)
+
+    def test_ask_sends_a_timeline_and_returns_the_history(self) -> None:
+        history = {
+            "as_of_date": "2026-06-05",
+            "compare": True,
+            "as_of_commit_seq": 1,
+            "resolved_by": "timeline",
+            "label": "Tender",
+            "added": [{"t": {"type": "uri", "value": "https://x.test/e/c"}}],
+            "removed": [],
+        }
+        payload = rewrite_payload(history=history)
+        seen: list[httpx.Request] = []
+        timeline = [{"date": "2026-05-20", "as_of_commit_seq": 1, "label": "Tender"}]
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": payload})
+        ) as client:
+            answer = client.query.ask("What changed since 5 June?", timeline=timeline)
+            client.query.rewrite(
+                "What changed?",
+                timeline=[
+                    model_module.QueryRewriteTimelinePoint(
+                        date="2026-05-20", as_of_commit_seq=1
+                    )
+                ],
+            )
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"question": "What changed since 5 June?", "run": True, "timeline": timeline},
+        )
+        self.assertEqual(
+            json.loads(seen[1].content),
+            {
+                "question": "What changed?",
+                "timeline": [{"date": "2026-05-20", "as_of_commit_seq": 1}],
+            },
+        )
+        self.assertEqual(answer.history, history)
 
     def test_ask_returns_the_answer_of_an_ask_query(self) -> None:
         payload = rewrite_payload(

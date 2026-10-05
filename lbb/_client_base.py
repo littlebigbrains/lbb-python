@@ -358,6 +358,11 @@ class QueryAskResult:
       for a "Did you mean …?"; empty when nothing linked.
     - :attr:`anchors` — what the server read about each anchored IRI
       (``iri``, ``found``, ``label``, ``types``, ``note``).
+    - :attr:`history` — for a history question: the date
+      (``as_of_date``), the commit it resolved to (``as_of_commit_seq``)
+      and how (``resolved_by``), and for a comparison both runs
+      (``before``, ``after``) and the rows ``added`` and ``removed``;
+      ``None`` for other questions.
     - :attr:`rewrite` — the whole ``POST /v1/query/rewrite`` response.
     """
 
@@ -373,6 +378,7 @@ class QueryAskResult:
     rewrite: dict[str, Any]
     linked: list[dict[str, Any]] = dataclass_field(default_factory=list)
     anchors: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    history: dict[str, Any] | None = None
 
     @classmethod
     def from_response(cls, response: Mapping[str, Any]) -> QueryAskResult:
@@ -395,6 +401,11 @@ class QueryAskResult:
             rewrite=dict(response),
             linked=[dict(link) for link in response.get("linked") or []],
             anchors=[dict(anchor) for anchor in response.get("anchors") or []],
+            history=(
+                dict(response["history"])
+                if isinstance(response.get("history"), Mapping)
+                else None
+            ),
         )
 
 
@@ -2514,6 +2525,53 @@ class _QueryNamespace:
             options=options,
         )
 
+    def rewrite_profile(self, *, options: RequestOptions | None = None) -> Any:
+        """The graph's rewrite profile (``GET /v1/query/rewrite/profile``):
+        the notes and worked examples the rewriter reads for every question
+        of the graph. ``version`` is 0 when the graph has none."""
+        return self._client._request(
+            "GET", "/v1/query/rewrite/profile", options=options
+        )
+
+    def set_rewrite_profile(
+        self,
+        *,
+        notes: str = "",
+        examples: Sequence[Mapping[str, Any] | models.QueryRewriteExample] = (),
+        expected_version: int | None = None,
+        dry_run: bool = False,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """Store the graph's rewrite profile (``PUT /v1/query/rewrite/profile``).
+
+        ``notes`` (at most 8,000 characters) say what the data means: which
+        property holds the current state, what "me" means. ``examples`` (at
+        most 20) each hold a ``question`` and the ``sparql`` ``SELECT`` or
+        ``ASK`` query that answers it, with an optional ``note``; the server
+        parses each query. Pass the ``version`` you read as
+        ``expected_version``: when another write came first, the call raises
+        a ``409 conflict`` and stores nothing. ``dry_run=True`` checks the
+        profile and stores nothing. Empty notes and no examples clear it. The
+        rewriter reads the profile for every question; a call's ``context``
+        still adds notes.
+        """
+        body: dict[str, Any] = {
+            "notes": notes,
+            "examples": [
+                dict(example) if isinstance(example, Mapping) else _coerce_body(example)
+                for example in examples
+            ],
+        }
+        if expected_version is not None:
+            body["expected_version"] = expected_version
+        return self._client._request(
+            "PUT",
+            "/v1/query/rewrite/profile",
+            body=body,
+            params={"dry_run": "true"} if dry_run else None,
+            options=options,
+        )
+
     def rewrite(
         self,
         question: str,
@@ -2528,6 +2586,7 @@ class _QueryNamespace:
         today: str | None = None,
         include_grounding: bool | None = None,
         anchor: Sequence[str] | None = None,
+        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> Any:
@@ -2541,6 +2600,12 @@ class _QueryNamespace:
         returns the graph description the models read in ``grounding.text``.
         ``anchor`` holds up to 10 entity IRIs the user picked: the rewriter
         uses them directly. The names the server linked are in ``linked``.
+        A history question about a date reads the last commit written by the
+        end of that day; ``timeline`` (``[{"date", "as_of_commit_seq",
+        "label"}]``, at most 200) names the commit of each date instead, for
+        graphs whose commits stand for other dates. A question that asks
+        what changed runs at both points: ``history.added`` and
+        ``history.removed`` hold the rows that differ.
 
         Each call uses model tokens, so a failed call is not retried unless
         ``options={"retry": True}``. A ``429 rewrite_limit`` means the stack
@@ -2558,6 +2623,7 @@ class _QueryNamespace:
             today=today,
             include_grounding=include_grounding,
             anchor=anchor,
+            timeline=timeline,
         )
         params = self._client._consistency_params(consistency, None)
         return self._client._request(
@@ -2582,6 +2648,7 @@ def _rewrite_body(
     today: str | None,
     include_grounding: bool | None = None,
     anchor: Sequence[str] | None = None,
+    timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
 ) -> dict[str, Any]:
     """The ``QueryRewriteRequest`` body: every field the caller left at
     ``None`` stays off the wire, since each one has a server default."""
@@ -2609,6 +2676,11 @@ def _rewrite_body(
         body["include_grounding"] = include_grounding
     if anchor:
         body["anchor"] = list(anchor)
+    if timeline:
+        body["timeline"] = [
+            dict(point) if isinstance(point, Mapping) else _coerce_body(point)
+            for point in timeline
+        ]
     return body
 
 

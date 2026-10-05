@@ -12799,6 +12799,15 @@
         ],
         "type": "object"
       },
+      "QueryHistoryResolution": {
+        "description": "How the server found the commit of a `history` question.",
+        "enum": [
+          "commit_time",
+          "timeline",
+          "request"
+        ],
+        "type": "string"
+      },
       "QueryLinkMethod": {
         "description": "How a name of the question matched the name of an entity.",
         "enum": [
@@ -12846,7 +12855,7 @@
         "type": "object"
       },
       "QueryRewriteEvent": {
-        "description": "One event of a streamed rewrite: `POST /v1/query/rewrite` with\n`Accept: text/event-stream`. On the wire each event is\n`event: <event>\\ndata: <data as JSON>\\n\\n`. The order: `grounding`,\n`route`, then per attempt `query`, `run` and `rows`, with `repair` before\na second attempt; `done` or `error` ends the stream. A second `route`\ncomes when the rewriter chose another route. Clients ignore an event name\nthey do not know: later versions add events.",
+        "description": "One event of a streamed rewrite: `POST /v1/query/rewrite` with\n`Accept: text/event-stream`. On the wire each event is\n`event: <event>\\ndata: <data as JSON>\\n\\n`. The order: `grounding`,\n`route`, then per attempt `query`, `run` and `rows` (a comparison runs\ntwice: `run` and `rows` at the earlier point, then at the later point),\nwith `repair` before a second attempt; `done` or `error` ends the stream. A second `route`\ncomes when the rewriter chose another route. Clients ignore an event name\nthey do not know: later versions add events.",
         "discriminator": {
           "mapping": {
             "done": "#/components/schemas/QueryRewriteEventDone",
@@ -13035,6 +13044,32 @@
         ],
         "type": "object"
       },
+      "QueryRewriteExample": {
+        "additionalProperties": false,
+        "description": "One worked example of a profile: a question and the query that answers\nit on this graph.",
+        "properties": {
+          "note": {
+            "description": "Why the query is written so; at most 1,000 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "question": {
+            "description": "The question as a person asks it; at most 1,000 characters.",
+            "type": "string"
+          },
+          "sparql": {
+            "description": "A SPARQL `SELECT` or `ASK` query with its `PREFIX` declarations; at\nmost 4,000 characters. The server parses it on write.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "sparql"
+        ],
+        "type": "object"
+      },
       "QueryRewriteGrounding": {
         "description": "The graph description the models read.",
         "properties": {
@@ -13060,9 +13095,30 @@
             "minimum": 0,
             "type": "integer"
           },
+          "focus_classes": {
+            "description": "Classes in the part of the description written for this question:\nthe classes whose names match the question and that the rest of the\ndescription leaves out or cuts short.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "focus_properties": {
+            "description": "Properties in the part of the description written for this question.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
           "names": {
             "description": "Names in the name index the linking read; absent when no index was\nready (the linking was skipped).",
             "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "profile_version": {
+            "description": "The version of the graph's stored profile (`PUT\n/v1/query/rewrite/profile`) the rewriter read; absent when the graph\nhas no profile, or an empty one.",
+            "format": "int64",
             "minimum": 0,
             "type": [
               "integer",
@@ -13075,7 +13131,7 @@
             "type": "integer"
           },
           "text": {
-            "description": "The description itself, when the request asked for it\n(`include_grounding`).",
+            "description": "The description itself, when the request asked for it\n(`include_grounding`): the part every question reads, then the part\nfor this question.",
             "type": [
               "string",
               "null"
@@ -13119,17 +13175,102 @@
         "type": "object"
       },
       "QueryRewriteHistory": {
-        "description": "What a `history` question asks for beyond the query.",
+        "description": "What a `history` question asks for beyond the query, and where the\nserver read it.",
         "properties": {
+          "added": {
+            "description": "A comparison's rows that `after` has and `before` has not, keyed by\nall their projected values; at most 500.",
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/QueryRewriteTerm"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "after": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SparqlTextResponse",
+                "description": "A comparison's run at the later point: the request's\n`as_of_commit_seq`, else the latest commit. The same as `result`."
+              }
+            ]
+          },
+          "as_of_commit_seq": {
+            "description": "The commit of the question's point: the commit of `as_of_date`, or\nthe commit the question or the request names. For a comparison, the\nearlier point. Absent when the server could not resolve the date.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "as_of_date": {
-            "description": "The date the question names (`YYYY-MM-DD`). The caller resolves it to\na commit and passes it as `as_of_commit_seq`.",
+            "description": "The date the question names (`YYYY-MM-DD`).",
             "type": [
               "string",
               "null"
             ]
           },
+          "before": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SparqlTextResponse",
+                "description": "A comparison's run at the earlier point (`as_of_commit_seq`)."
+              }
+            ]
+          },
           "compare": {
-            "description": "Run the query at that point and now, and compare the rows.",
+            "description": "The question asks what changed: the server runs the query at the\nearlier point and at the later one, and compares the rows.",
+            "type": "boolean"
+          },
+          "label": {
+            "description": "The label of the timeline point the date resolved to.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "removed": {
+            "description": "A comparison's rows that `before` has and `after` has not; at most\n500. A changed value shows as a removed row and an added row.",
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/QueryRewriteTerm"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "resolved_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryHistoryResolution",
+                "description": "How the server found `as_of_commit_seq`."
+              }
+            ]
+          },
+          "truncated": {
+            "description": "The difference is not complete: a run returned only its first rows\n(`row_page.has_more`), or more than 500 rows were added or removed.",
             "type": "boolean"
           }
         },
@@ -13237,6 +13378,78 @@
         ],
         "type": "string"
       },
+      "QueryRewritePoint": {
+        "description": "Which run of a comparison.",
+        "enum": [
+          "before",
+          "after"
+        ],
+        "type": "string"
+      },
+      "QueryRewriteProfile": {
+        "description": "The graph's rewrite profile.",
+        "properties": {
+          "dry_run": {
+            "description": "A preview (`dry_run=true`): the profile a write would store, with the\nversion it would get. Nothing was stored.",
+            "type": "boolean"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteExample"
+            },
+            "type": "array"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "When this version was written (RFC 3339); absent for version 0.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "description": "0 when the graph has no profile; each write adds 1.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "notes",
+          "examples"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteProfileRequest": {
+        "additionalProperties": false,
+        "description": "Store the graph's rewrite profile (`PUT /v1/query/rewrite/profile`):\nnotes and examples the rewriter reads for every question of the graph.",
+        "properties": {
+          "examples": {
+            "description": "At most 20 worked examples, 32,000 characters together.",
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteExample"
+            },
+            "type": "array"
+          },
+          "expected_version": {
+            "description": "The version this write replaces: the `version` a read returned, 0\nwhen the graph has no profile yet. When the stored version differs,\nthe write answers `409 conflict` and stores nothing. Without it, the\nwrite replaces any version.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "notes": {
+            "description": "What the data means, which property holds the current state, what\n\"me\" or \"my\" means: at most 8,000 characters.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "QueryRewriteQueryEvent": {
         "description": "The rewriter wrote a query (one per attempt).",
         "properties": {
@@ -13302,7 +13515,7 @@
             ]
           },
           "context": {
-            "description": "The app's notes for the model: what the data means, units, names to\nprefer. At most 8,000 characters. Keep it the same across questions,\nso the model provider's prompt cache reads it.",
+            "description": "The app's notes for the model: what the data means, units, names to\nprefer. At most 8,000 characters. Keep it the same across questions,\nso the model provider's prompt cache reads it. The graph's stored\nprofile (`PUT /v1/query/rewrite/profile`) is read as well.",
             "type": [
               "string",
               "null"
@@ -13349,6 +13562,13 @@
           "run": {
             "description": "Run the query and return its rows in `result`. A query that fails\nwith a client error is corrected once.",
             "type": "boolean"
+          },
+          "timeline": {
+            "description": "Dated points that stand for the graph's commits, at most 200. A\nhistory question about a date reads the commit of the latest point\non or before that date, instead of the commit written last on or\nbefore the end of that day (UTC). For graphs whose commits stand for\nother dates (a demo's milestones, an import of old records).",
+            "items": {
+              "$ref": "#/components/schemas/QueryRewriteTimelinePoint"
+            },
+            "type": "array"
           },
           "today": {
             "description": "Today's date for relative questions (\"last 14 days\"), `YYYY-MM-DD`.\nDefault: the server's UTC date.",
@@ -13487,6 +13707,17 @@
               "integer",
               "null"
             ]
+          },
+          "point": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryRewritePoint",
+                "description": "Which run of a comparison this is; absent for a single run."
+              }
+            ]
           }
         },
         "type": "object"
@@ -13532,6 +13763,63 @@
         },
         "required": [
           "sparql"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteTerm": {
+        "description": "One value of a row of a comparison, as SPARQL 1.1 Query Results JSON\nwrites it.",
+        "properties": {
+          "datatype": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "description": "`uri`, `literal` or `bnode`.",
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "xml:lang": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ],
+        "type": "object"
+      },
+      "QueryRewriteTimelinePoint": {
+        "additionalProperties": false,
+        "description": "One dated point of an app's own timeline: the commit that stands for a\ndate. For a graph whose commits stand for other dates than the days they\nwere written (a demo's milestones, an import of old records).",
+        "properties": {
+          "as_of_commit_seq": {
+            "description": "The commit that holds the graph as it was on that date.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "date": {
+            "description": "`YYYY-MM-DD`.",
+            "type": "string"
+          },
+          "label": {
+            "description": "A name for the point (\"Tender\"), at most 200 characters. The\nresponse's `history.label` repeats it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "date",
+          "as_of_commit_seq"
         ],
         "type": "object"
       },
@@ -50267,6 +50555,527 @@
           }
         ],
         "summary": "Turn a question into the SPARQL query to run: the router model picks the kind of query (lookup, aggregate, search, history, schema, unanswerable), the rewriter model writes it from a description of the graph, and the server checks it. `run: true` also runs it (the question becomes the eval trace's request) and corrects a query that fails once. With `Accept: text/event-stream` the answer is a stream of progress events (`QueryRewriteEvent`) that ends with `done` (the same response) or `error`",
+        "tags": [
+          "query"
+        ]
+      }
+    },
+    "/v1/query/rewrite/profile": {
+      "get": {
+        "operationId": "get_v1_query_rewrite_profile",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryRewriteProfile"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the graph's rewrite profile: the notes and worked examples the rewriter reads for every question of the graph, and its version (0 when the graph has none)",
+        "tags": [
+          "query"
+        ]
+      },
+      "put": {
+        "operationId": "put_v1_query_rewrite_profile",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "true checks the profile and answers what a write would store, without storing it",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRewriteProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryRewriteProfile"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Store the graph's rewrite profile: `notes` (at most 8,000 characters) and up to 20 `examples` of a question and the SELECT or ASK query that answers it (32,000 characters together); each query must parse. `expected_version` makes the write conditional: another stored version answers 409 conflict. Each write adds 1 to the version; empty notes and no examples clear the profile. The rewriter reads it as a cached block after the graph description; a request's `context` still adds notes per call",
         "tags": [
           "query"
         ]
