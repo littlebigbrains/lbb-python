@@ -8959,6 +8959,13 @@
           "model": {
             "type": "string"
           },
+          "model_answer": {
+            "description": "The model's answer in a few words, when it has a short one: the\noptions a decision model picked (`lookup`). Absent on older checks.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "provider": {
             "type": "string"
           },

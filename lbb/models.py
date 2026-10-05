@@ -9954,6 +9954,12 @@ class ModelCheck(BaseModel):
     job: ModelJob
     judge: ModelCheckJudge
     model: str
+    model_answer: Annotated[
+        str | None,
+        Field(
+            description="The model's answer in a few words, when it has a short one: the\noptions a decision model picked (`lookup`). Absent on older checks."
+        ),
+    ] = None
     provider: str
     review: ModelCheckReview | None = None
     summary: str
