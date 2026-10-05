@@ -2478,6 +2478,23 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
         self.assertEqual(seen[1].url.params["limit"], "5")
         self.assertEqual(len(seen), 11)
 
+    def test_evals_label_judges_a_result_or_the_answer_of_a_question(self) -> None:
+        seen: list[httpx.Request] = []
+        with self._client(seen) as client:
+            client.evals.label("t1", item="e:1", valid=True)
+            client.evals.label("t1", valid=True, by="agent")
+            client.evals.label("t1", valid=False, sparql="ASK { ?s ?p ?o }")
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("POST", "/v1/evals/label")] * 3,
+        )
+        self.assertEqual(seen[0].url.params["trace"], "t1")
+        self.assertEqual(self._body(seen[0]), {"item": "e:1", "valid": True})
+        self.assertEqual(self._body(seen[1]), {"valid": True, "by": "agent"})
+        self.assertEqual(
+            self._body(seen[2]), {"valid": False, "sparql": "ASK { ?s ?p ?o }"}
+        )
+
 
 CALL_ID = "00000001790000000000-n1-0000000001-0"
 
