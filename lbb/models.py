@@ -4928,6 +4928,10 @@ class SparqlSearchTimings(BaseModel):
     index_ms: Annotated[
         int, Field(description='Cluster probes over the 4-bit codes.', ge=0)
     ]
+    relevance_ms: Annotated[
+        int | None,
+        Field(description="The rerank model's step (`search:rerank true`).", ge=0),
+    ] = None
     rerank_ms: Annotated[
         int, Field(description='The exact rescoring of the candidates.', ge=0)
     ]
@@ -9090,6 +9094,7 @@ class SparqlSearchReport(BaseModel):
     ]
     model_id: str
     plan: SparqlSearchPlan
+    rerank: SearchRerankReport | None = None
     rounds: Annotated[
         int,
         Field(

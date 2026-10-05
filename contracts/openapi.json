@@ -19522,6 +19522,17 @@
           "plan": {
             "$ref": "#/components/schemas/SparqlSearchPlan"
           },
+          "rerank": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SearchRerankReport",
+                "description": "The rerank (`search:rerank true`), when the query asked for one and\nthe search had hits. The model read the best `2·top` hits (20 to 40)\nand the best `top` by its relevance were bound; any other status\nbound the `top` most similar, without a relevance."
+              }
+            ]
+          },
           "rounds": {
             "description": "Search rounds (a search-first plan widens until it has `top`).",
             "format": "int32",
@@ -19582,6 +19593,12 @@
           },
           "index_ms": {
             "description": "Cluster probes over the 4-bit codes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "relevance_ms": {
+            "description": "The rerank model's step (`search:rerank true`).",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
