@@ -66,6 +66,14 @@ from ._client_base import (
 from .integrations import (
     _DEFAULT,
     IntegrationAcceptResult,
+    IntegrationCdcAction,
+    IntegrationCdcAlertsAnswer,
+    IntegrationCdcControlAnswer,
+    IntegrationCdcDiscoveryAnswer,
+    IntegrationCdcDiscoveryCreateAnswer,
+    IntegrationCdcOverview,
+    IntegrationCdcReviewAnswer,
+    IntegrationCdcStatusAnswer,
     IntegrationConnectionAnswer,
     IntegrationConnectorsAnswer,
     IntegrationCreateAnswer,
@@ -668,6 +676,64 @@ class _AsyncIntegrationsNamespace(IntegrationsNamespace):
 
     async def get(self, id: str, *, graph: str) -> IntegrationConnectionAnswer:
         return cast(IntegrationConnectionAnswer, await super().get(id, graph=graph))
+
+    async def cdc_status(self, id: str, *, graph: str) -> IntegrationCdcStatusAnswer:
+        return cast(IntegrationCdcStatusAnswer, await super().cdc_status(id, graph=graph))
+
+    async def cdc_overview(self, *, graph: str) -> IntegrationCdcOverview:
+        return cast(IntegrationCdcOverview, await super().cdc_overview(graph=graph))
+
+    async def cdc_discovery(self, id: str, *, graph: str) -> IntegrationCdcDiscoveryAnswer:
+        return cast(IntegrationCdcDiscoveryAnswer, await super().cdc_discovery(id, graph=graph))
+
+    async def cdc_discover(
+        self, id: str, *, graph: str, job_id: str, expected_revision: int,
+        source: Body, credentials: Mapping[str, str],
+    ) -> IntegrationCdcDiscoveryCreateAnswer:
+        return cast(IntegrationCdcDiscoveryCreateAnswer, await super().cdc_discover(
+            id, graph=graph, job_id=job_id, expected_revision=expected_revision, source=source, credentials=credentials,
+        ))
+
+    async def cdc_review_discovery(
+        self, id: str, *, graph: str, job_id: str, graph_epoch: int, expected_revision: int,
+        catalog_digest: str, mapping: Body, max_capture_bytes: int,
+    ) -> IntegrationCdcReviewAnswer:
+        return cast(IntegrationCdcReviewAnswer, await super().cdc_review_discovery(
+            id, graph=graph, job_id=job_id, graph_epoch=graph_epoch, expected_revision=expected_revision,
+            catalog_digest=catalog_digest, mapping=mapping, max_capture_bytes=max_capture_bytes,
+        ))
+
+    async def cdc_approve_discovery(
+        self, id: str, *, graph: str, job_id: str, graph_epoch: int, expected_revision: int,
+        catalog_digest: str, mapping: Body, max_capture_bytes: int,
+    ) -> IntegrationCdcDiscoveryAnswer:
+        return cast(IntegrationCdcDiscoveryAnswer, await super().cdc_approve_discovery(
+            id, graph=graph, job_id=job_id, graph_epoch=graph_epoch, expected_revision=expected_revision,
+            catalog_digest=catalog_digest, mapping=mapping, max_capture_bytes=max_capture_bytes,
+        ))
+
+    async def cdc_cancel_discovery(
+        self, id: str, *, graph: str, job_id: str, graph_epoch: int, expected_revision: int,
+    ) -> IntegrationCdcDiscoveryAnswer:
+        return cast(IntegrationCdcDiscoveryAnswer, await super().cdc_cancel_discovery(
+            id, graph=graph, job_id=job_id, graph_epoch=graph_epoch, expected_revision=expected_revision,
+        ))
+
+    async def cdc_mute_alerts(self, id: str, *, graph: str, expected_revision: int, muted: bool) -> IntegrationCdcAlertsAnswer:
+        return cast(IntegrationCdcAlertsAnswer, await super().cdc_mute_alerts(
+            id, graph=graph, expected_revision=expected_revision, muted=muted,
+        ))
+
+    async def cdc_control(
+        self, id: str, *, graph: str, operation_id: str,
+        action: IntegrationCdcAction, confirm: str | None = None,
+    ) -> IntegrationCdcControlAnswer:
+        return cast(
+            IntegrationCdcControlAnswer,
+            await super().cdc_control(
+                id, graph=graph, operation_id=operation_id, action=action, confirm=confirm,
+            ),
+        )
 
     async def set_credentials(
         self, id: str, *, graph: str, credentials: Mapping[str, str]

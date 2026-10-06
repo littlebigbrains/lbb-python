@@ -21,6 +21,591 @@
     }
   ],
   "paths": {
+    "/v1/integrations/cdc": {
+      "get": {
+        "operationId": "cdc.overview",
+        "summary": "Find the current CDC setup and connection on a graph",
+        "description": "Returns safe setup metadata and configured connection progress for the freshly authenticated stack and graph. No connection id, browser-local state or management credential object is needed. A partially initialized approval remains visible without a capture binding.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcGraphOverview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "graph",
+            "in": "query",
+            "required": true,
+            "description": "The end customer's graph.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/integrations/connections/{id}/cdc/discovery": {
+      "get": {
+        "operationId": "connections.cdc-discovery",
+        "summary": "Read a CDC discovery job and verified source catalog",
+        "description": "Default-off setup on an existing target graph. Returns selected source settings and a verified catalog when ready. Credentials, seals and worker leases are omitted; discovery does not activate capture.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcDiscoveryAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": true,
+            "description": "The end customer's graph.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "connections.cdc-discover",
+        "summary": "Create a sealed CDC discovery job",
+        "description": "Seal credentials, register the existing target graph and persist bounded discovery intent. The dedicated host contacts PostgreSQL. Repeat the same job id, settings and credentials to recover a lost response; different content conflicts. Replacement needs the previous revision and a terminal/expired job. Requires an explicit CDC sealing key. Developer creation and graph limits apply. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcDiscoveryCreateAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CdcDiscoveryRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/cdc/discovery/review": {
+      "post": {
+        "operationId": "connections.cdc-discovery-review",
+        "summary": "Review a catalog-bound CDC mapping",
+        "description": "Read-only normalization and validation of explicit table, column and foreign-key mappings against the exact discovered catalog. Schema digests and source identity are computed by the data plane. No source connection or activation starts.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcDiscoveryReviewAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CdcDiscoveryApprovalRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/cdc/discovery/approve": {
+      "post": {
+        "operationId": "connections.cdc-discovery-approve",
+        "summary": "Approve immutable CDC mapping and activation intent",
+        "description": "Approves the exact job, graph incarnation, ready revision, catalog and mapping. Retry the identical body after response loss, including after discovery expiry. The dedicated host prepares credentials, activates the fresh target and starts the workflow. Approved discovery cannot be replaced or cancelled; capture controls apply once configured. This request never contacts the source or opens credentials. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcDiscoveryAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CdcDiscoveryApprovalRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/cdc/discovery/cancel": {
+      "post": {
+        "operationId": "connections.cdc-discovery-cancel",
+        "summary": "Cancel a CDC discovery job",
+        "description": "Fences the exact job and graph incarnation. The host stops the process when it observes cancellation. This does not remove source slots or data. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcDiscoveryAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CdcDiscoveryCancelRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/cdc": {
+      "get": {
+        "operationId": "connections.cdc",
+        "summary": "Read experimental CDC progress and health",
+        "description": "Default-off PostgreSQL CDC surface. Returns captured/applied/published positions, current source health and bounded operation history. No source credentials, raw checkpoints or row values are returned.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcStatusAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "required": true,
+            "description": "The end customer's graph.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/integrations/connections/{id}/cdc/alerts": {
+      "post": {
+        "operationId": "connections.cdc-alerts",
+        "summary": "Mute or unmute connection alert notifications",
+        "description": "Version-fenced per-connection notifications preference. Health and active conditions remain visible. Does not start work or require a subscription. Repeat the same revision and value after response loss; refresh status after a conflict.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcAlertsAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CdcAlertsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connections/{id}/cdc/control": {
+      "post": {
+        "operationId": "connections.cdc-control",
+        "summary": "Request a durable CDC control operation",
+        "description": "Records idempotent pause/resume/retire intent before changing capture or apply. A pending operation is recovered by the dedicated host. Retirement requires confirm to repeat the connection id; it stops capture/apply without deleting source slots. Source/configuration replacement fences pending operations. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CdcControlAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connection id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CdcControlRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/integrations/connectors": {
       "get": {
         "operationId": "connectors.list",
@@ -760,6 +1345,1666 @@
       }
     },
     "schemas": {
+      "CdcTableName": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 63
+          },
+          "table": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 63
+          }
+        },
+        "required": [
+          "schema",
+          "table"
+        ],
+        "additionalProperties": false
+      },
+      "CdcSourceSelection": {
+        "type": "object",
+        "properties": {
+          "hostname": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "database": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,63}$"
+          },
+          "publication": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]{0,62}$"
+          },
+          "slot": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{1,63}$"
+          },
+          "tables": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/CdcTableName"
+            }
+          }
+        },
+        "required": [
+          "hostname",
+          "port",
+          "database",
+          "publication",
+          "slot",
+          "tables"
+        ],
+        "additionalProperties": false
+      },
+      "CdcPostgresCatalog": {
+        "type": "object",
+        "properties": {
+          "formatVersion": {
+            "const": 1
+          },
+          "systemId": {
+            "type": "string"
+          },
+          "timeline": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "databaseOid": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "database": {
+            "type": "string"
+          },
+          "publication": {
+            "type": "string"
+          },
+          "tables": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "properties": {
+                "oid": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "name": {
+                  "$ref": "#/components/schemas/CdcTableName"
+                },
+                "replicaIdentity": {
+                  "type": "string",
+                  "enum": [
+                    "d",
+                    "f"
+                  ]
+                },
+                "primaryKey": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "columns": {
+                  "type": "array",
+                  "maxItems": 1600,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "position": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "typeOid": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "elementOid": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "typeModifier": {
+                        "type": "integer"
+                      },
+                      "optional": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "position",
+                      "name",
+                      "typeOid",
+                      "elementOid",
+                      "typeModifier",
+                      "optional"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "foreignKeys": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "columns": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "targetOid": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "targetColumns": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "columns",
+                      "targetOid",
+                      "targetColumns"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "oid",
+                "name",
+                "replicaIdentity",
+                "primaryKey",
+                "columns",
+                "foreignKeys"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "formatVersion",
+          "systemId",
+          "timeline",
+          "databaseOid",
+          "database",
+          "publication",
+          "tables"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryJob": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          },
+          "graph_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "created_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expires_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "discovering",
+              "retrying",
+              "ready",
+              "approved",
+              "failed",
+              "cancelled",
+              "expired"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "Fixed discovery failure code, never source error text."
+          }
+        },
+        "required": [
+          "id",
+          "graph_epoch",
+          "revision",
+          "attempts",
+          "created_at_ms",
+          "expires_at_ms",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryMapping": {
+        "type": "object",
+        "properties": {
+          "tables": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 128,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CdcDiscoveryTableMapping"
+            }
+          }
+        },
+        "required": [
+          "tables"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryTableMapping": {
+        "type": "object",
+        "properties": {
+          "class_iri": {
+            "type": "string",
+            "format": "uri"
+          },
+          "properties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "foreign_keys": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/components/schemas/CdcForeignKeyMapping"
+            }
+          }
+        },
+        "required": [
+          "class_iri",
+          "properties",
+          "foreign_keys"
+        ],
+        "additionalProperties": false
+      },
+      "CdcForeignKeyMapping": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "target_relation": {
+            "type": "string",
+            "pattern": "^pg_[0-9]+$"
+          },
+          "predicate": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "columns",
+          "target_relation",
+          "predicate"
+        ],
+        "additionalProperties": false
+      },
+      "CdcMappingPlan": {
+        "type": "object",
+        "properties": {
+          "tables": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "class_iri": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "properties": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "foreign_keys": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CdcForeignKeyMapping"
+                  }
+                }
+              },
+              "required": [
+                "schema",
+                "class_iri",
+                "properties",
+                "foreign_keys"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "tables"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryApprovalRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "job_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          },
+          "graph_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "catalog_digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/CdcDiscoveryMapping"
+          },
+          "max_capture_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1073741824
+          }
+        },
+        "required": [
+          "graph",
+          "job_id",
+          "graph_epoch",
+          "expected_revision",
+          "catalog_digest",
+          "mapping",
+          "max_capture_bytes"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryReviewAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "job_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "catalog_digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CdcScope"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/CdcMappingPlan"
+          },
+          "max_capture_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "job_id",
+          "graph_epoch",
+          "expected_revision",
+          "catalog_digest",
+          "scope",
+          "mapping",
+          "max_capture_bytes"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryApproval": {
+        "type": "object",
+        "properties": {
+          "intent": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "prepared": {
+            "type": "boolean"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CdcScope"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/CdcMappingPlan"
+          },
+          "max_capture_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "intent",
+          "prepared",
+          "scope",
+          "mapping",
+          "max_capture_bytes"
+        ],
+        "additionalProperties": false
+      },
+      "CdcActivationHealth": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "preparing",
+              "activating",
+              "starting",
+              "ready",
+              "failed"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "cdc_setup_invalid",
+              "cdc_setup_credentials_invalid",
+              "cdc_target_not_empty",
+              "cdc_setup_conflict",
+              "cdc_setup_unavailable"
+            ]
+          },
+          "observed_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "job": {
+            "$ref": "#/components/schemas/CdcDiscoveryJob"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CdcSourceSelection"
+          },
+          "catalog": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcPostgresCatalog"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "catalog_digest": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approval": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcDiscoveryApproval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "activation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcActivationHealth"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "job",
+          "source",
+          "catalog",
+          "catalog_digest",
+          "approval",
+          "activation"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryCreateAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "job": {
+            "$ref": "#/components/schemas/CdcDiscoveryJob"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CdcSourceSelection"
+          },
+          "catalog": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcPostgresCatalog"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "catalog_digest": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approval": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcDiscoveryApproval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "activation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcActivationHealth"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "job",
+          "source",
+          "catalog",
+          "catalog_digest",
+          "approval",
+          "activation",
+          "created"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "job_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source": {
+            "$ref": "#/components/schemas/CdcSourceSelection"
+          },
+          "credentials": {
+            "type": "object",
+            "properties": {
+              "username": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "password": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16384,
+                "writeOnly": true
+              },
+              "rootCertificate": {
+                "type": "string",
+                "maxLength": 65536,
+                "writeOnly": true
+              }
+            },
+            "required": [
+              "username",
+              "password"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "graph",
+          "job_id",
+          "expected_revision",
+          "source",
+          "credentials"
+        ],
+        "additionalProperties": false
+      },
+      "CdcDiscoveryCancelRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "job_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          },
+          "graph_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "graph",
+          "job_id",
+          "graph_epoch",
+          "expected_revision"
+        ],
+        "additionalProperties": false
+      },
+      "CdcScope": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "source_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "source_incarnation": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "capture_epoch": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "connection_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "dataset_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "graph_epoch": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "tenant_id",
+          "source_id",
+          "source_incarnation",
+          "capture_epoch",
+          "connection_id",
+          "dataset_id",
+          "graph_id",
+          "graph_epoch"
+        ],
+        "additionalProperties": false
+      },
+      "CdcLease": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "term": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expires_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "owner",
+          "term",
+          "expires_at_ms"
+        ],
+        "additionalProperties": false
+      },
+      "CdcCaptureRetention": {
+        "type": "object",
+        "properties": {
+          "retained_after_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pending_cleanup_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "eligible_after_ms": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minimum_retention_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "retained_after_sequence",
+          "pending_cleanup_bytes",
+          "eligible_after_ms",
+          "minimum_retention_ms"
+        ],
+        "additionalProperties": false
+      },
+      "CdcProgress": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/CdcScope"
+          },
+          "source_configuration": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "configuration_generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mapping_hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "running",
+              "paused",
+              "retired"
+            ]
+          },
+          "worker_term": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reader_term": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "worker_lease": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcLease"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reader_lease": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcLease"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "capture_retired": {
+            "type": "boolean"
+          },
+          "capture_paused": {
+            "type": "boolean"
+          },
+          "capture_phase": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "phase": {
+                    "const": "pending"
+                  }
+                },
+                "required": [
+                  "phase"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "phase": {
+                    "const": "streaming"
+                  }
+                },
+                "required": [
+                  "phase"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "phase": {
+                    "const": "snapshot"
+                  },
+                  "attempt_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+                  },
+                  "next_chunk": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "phase",
+                  "attempt_id",
+                  "next_chunk"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "captured_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "applied_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "applied_graph_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "published_graph_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "snapshot_complete": {
+            "type": "boolean"
+          },
+          "retained_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_capture_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "retention": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcCaptureRetention"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "scope",
+          "configuration_generation",
+          "mapping_hash",
+          "mode",
+          "worker_term",
+          "reader_term",
+          "worker_lease",
+          "reader_lease",
+          "capture_retired",
+          "capture_phase",
+          "captured_sequence",
+          "applied_sequence",
+          "applied_graph_sequence",
+          "published_graph_sequence",
+          "snapshot_complete",
+          "retained_bytes",
+          "max_capture_bytes"
+        ],
+        "additionalProperties": false
+      },
+      "CdcSlotHealth": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "unknown",
+              "reserved",
+              "extended",
+              "unreserved",
+              "lost"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "retainedWalBytes": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,19})$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unconfirmedWalBytes": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,19})$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "safeWalBytes": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                "description": "Unknown for unlimited/lost slots, never an assumed disk capacity."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "active",
+          "retainedWalBytes",
+          "unconfirmedWalBytes",
+          "safeWalBytes"
+        ],
+        "additionalProperties": false
+      },
+      "CdcSourceHealth": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "reachable",
+              "unreachable"
+            ]
+          },
+          "ageMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30000
+          },
+          "slot": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcSlotHealth"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "ageMs",
+          "slot"
+        ],
+        "additionalProperties": false
+      },
+      "CdcSnapshotHealth": {
+        "type": "object",
+        "properties": {
+          "attempt": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "tables": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "properties": {
+                "relationId": {
+                  "type": "string",
+                  "pattern": "^pg_[1-9][0-9]{0,9}$"
+                },
+                "capturedRows": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^(0|[1-9][0-9]{0,19})$",
+                      "description": "Captured initial-snapshot rows; unknown after restoring an already completed snapshot."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "relationId",
+                "capturedRows"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "attempt",
+          "complete",
+          "tables"
+        ],
+        "additionalProperties": false
+      },
+      "CdcReaderResources": {
+        "type": "object",
+        "properties": {
+          "cpuNanos": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                "description": "Advisory process/cgroup sample; unknown is null. Resets with the reader; not a billing receipt."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cgroupMemoryBytes": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                "description": "Advisory process/cgroup sample; unknown is null. Resets with the reader; not a billing receipt."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cgroupPeakBytes": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                "description": "Advisory process/cgroup sample; unknown is null. Resets with the reader; not a billing receipt."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "heapUsedBytes": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,19})$",
+                "description": "Advisory process/cgroup sample; unknown is null. Resets with the reader; not a billing receipt."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "cpuNanos",
+          "cgroupMemoryBytes",
+          "cgroupPeakBytes",
+          "heapUsedBytes"
+        ],
+        "additionalProperties": false
+      },
+      "CdcHealth": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "starting",
+              "running",
+              "stopped",
+              "failed"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "description": "Fixed safe reader/host error code."
+          },
+          "observed_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "captured_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source": {
+            "$ref": "#/components/schemas/CdcSourceHealth"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/CdcSnapshotHealth"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/CdcReaderResources"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "CdcOperation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]{1,100}$"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "pause_capture",
+              "resume_capture",
+              "pause_apply",
+              "resume_apply",
+              "retire"
+            ]
+          },
+          "requested_at_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "applied",
+              "failed"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "requested_at_ms",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "CdcGraphOverview": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "discovery": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcDiscoveryAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdcStatusAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "graph",
+          "enabled",
+          "discovery",
+          "connection"
+        ],
+        "additionalProperties": false
+      },
+      "CdcStatusAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "retired",
+              "blocked",
+              "capture_paused",
+              "apply_paused",
+              "initial_load_incomplete",
+              "catching_up",
+              "streaming",
+              "source_status_unknown"
+            ]
+          },
+          "progress": {
+            "$ref": "#/components/schemas/CdcProgress"
+          },
+          "health": {
+            "$ref": "#/components/schemas/CdcHealth"
+          },
+          "alerts": {
+            "$ref": "#/components/schemas/CdcAlerts"
+          },
+          "operations": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/CdcOperation"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "state",
+          "progress",
+          "health",
+          "alerts",
+          "operations"
+        ],
+        "additionalProperties": false
+      },
+      "CdcAlertCode": {
+        "type": "string",
+        "enum": [
+          "capture_capacity",
+          "source_unavailable",
+          "source_wal_risk",
+          "source_wal_backlog",
+          "apply_stalled"
+        ]
+      },
+      "CdcAlerts": {
+        "type": "object",
+        "properties": {
+          "settings_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "muted": {
+            "type": "boolean"
+          },
+          "evaluated_at_ms": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "$ref": "#/components/schemas/CdcAlertCode"
+                },
+                "since_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "code",
+                "since_ms"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "notifications": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "code": {
+                  "$ref": "#/components/schemas/CdcAlertCode"
+                },
+                "transition": {
+                  "type": "string",
+                  "enum": [
+                    "firing",
+                    "resolved"
+                  ]
+                },
+                "at_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "id",
+                "code",
+                "transition",
+                "at_ms"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "settings_revision",
+          "muted",
+          "evaluated_at_ms",
+          "stale",
+          "active",
+          "notifications"
+        ],
+        "additionalProperties": false
+      },
+      "CdcAlertsRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "muted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "graph",
+          "expected_revision",
+          "muted"
+        ],
+        "additionalProperties": false
+      },
+      "CdcAlertsAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "alerts": {
+            "$ref": "#/components/schemas/CdcAlerts"
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "alerts"
+        ],
+        "additionalProperties": false
+      },
+      "CdcControlRequest": {
+        "type": "object",
+        "properties": {
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "operation_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]{1,100}$"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "pause_capture",
+              "resume_capture",
+              "pause_apply",
+              "resume_apply",
+              "retire"
+            ]
+          },
+          "confirm": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$",
+            "description": "Required for retirement: repeat the connection id."
+          }
+        },
+        "required": [
+          "graph",
+          "operation_id",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "CdcControlAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/CdcOperation"
+          }
+        },
+        "required": [
+          "ok",
+          "id",
+          "graph",
+          "operation"
+        ],
+        "additionalProperties": false
+      },
       "Error": {
         "type": "object",
         "properties": {
