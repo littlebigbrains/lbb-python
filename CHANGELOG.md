@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.21.0 (2026-10-06)
 
 This release breaks the question API. The server removed the one-shot
 rewrite and renamed its route to `POST /v1/query/ask`.
