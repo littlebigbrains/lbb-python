@@ -119,51 +119,88 @@ asyncio.run(main())
 
 ## Ask a question in plain words
 
-`query.ask` turns a question into a SPARQL query, runs it, and returns the rows.
-A router model selects the kind of query. A rewriter model writes the query from
-a description of the graph. The server checks the query before it runs it.
+`query.ask` answers a question about the graph in plain words. The server's
+model runs a short loop of tool calls. It runs SPARQL queries, looks up names,
+reads the graph description, finds the commit of a date, and compares two
+points. Then it answers.
 
 ```python
-answer = lbb.query.ask(
+result = lbb.query.ask(
     "Which services write to the user database?",
     context="Services and databases of the platform team.",
 )
 
-print(answer.route["kind"], answer.query and answer.query["sparql"])
-for row in answer.rows:
+print(result.answer)
+print(result.citations)
+for row in result.rows:
     print(row)
 ```
 
-The graph can keep notes and worked examples that the rewriter reads for every
+`answer` holds the text. `citations` holds the IRIs the answer names. Each one
+is in the rows the model read. `steps` lists the tool calls. `query` and `rows`
+hold the query whose rows hold the answer. The loop runs at most 4 rounds of
+tool calls, and a question takes about 10 s. When the loop stops before it
+answers, `answer` is `None` and `error` says why. `rows` then hold the best
+rows it read.
+
+`mode="route"` returns only the kind of question, in `result.route["kind"]`.
+The router model answers alone, so the call is fast. `answer`, `query` and
+`rows` are then empty.
+
+`result.trace_id` names the eval trace of the rows, so you can label them.
+Each call uses model tokens, so the client does not retry a failed call. Pass
+`options={"retry": True}` to retry it.
+
+The graph can keep notes and worked examples that the model reads for every
 question. Store them with `query.set_rewrite_profile(notes=..., examples=...,
 expected_version=...)` and read them with `query.rewrite_profile()`. A call's
 `context` still adds notes for that call.
 
-`answer.error` holds the error when the query did not run. `answer.trace_id`
-names the eval trace of the run, so you can label its rows. `query.rewrite`
-returns the query without a run, and `mode="route"` returns only the kind of
-query. Each call uses model tokens, so the client does not retry a failed call.
-
 The server finds the names in the question ("Quelmann", "TU Dresden") in the
-graph, and the query uses the IRIs it found. `answer.linked` lists them, so you
+graph, and the loop uses the IRIs it found. `result.linked` lists them, so you
 can show "Did you mean …?". When the user has a record open, pass its IRI in
 `anchor` (`anchor=[iri]`, at most 10).
 
 A question about a date ("Which findings were open on 18 June?") reads the
-last commit written by the end of that day. `answer.history` names the commit
-and how the server found it. When your commits stand for other dates (a
-demo's milestones, an import of old records), pass `timeline`:
+last commit written by the end of that day. `result.history` names the commit
+and how the loop found it. When your commits stand for other dates (a demo's
+milestones, an import of old records), pass `timeline`:
 `timeline=[{"date": "2026-06-18", "as_of_commit_seq": 5, "label": "Addendum"}]`.
-A question that asks what changed runs at both points, and
-`answer.history["added"]` and `answer.history["removed"]` hold the rows that
-differ. When the first variable holds entities, the rows are paired by it:
-`answer.history["changed"]` holds the entities whose values changed, and
-`answer.history["totals"]` counts each list.
+A question that asks what changed compares two points. Then
+`result.history["added"]` and `result.history["removed"]` hold the rows that
+differ, and `rows` is empty. When the loop pairs the rows by a variable
+(`key`), `result.history["changed"]` holds the entities whose values changed.
+`result.history["totals"]` counts each list.
+
+### Show progress
+
+`query.ask_stream` sends the same request and yields an event for each step.
+The last event, `done`, holds the same response as `query.ask`.
+
+```python
+from lbb import QueryAskResult
+
+for event in lbb.query.ask_stream("Which services write to the user database?"):
+    if event.event == "route":
+        print("route", event.data["kind"])
+    elif event.event == "step":
+        print(event.data["tool"], event.data["input"])
+    elif event.event == "done":
+        result = QueryAskResult.from_response(event.data)
+```
+
+The events are `grounding`, `route`, a `step` per tool call, `answer` and
+`done`. A second `route` comes before `answer` when the loop chose another
+route. `mode="route"` sends `grounding`, `route` and `done`. An error event
+raises the same `LbbError` as `query.ask`. Leave the loop, or call `close()`,
+to close the response and stop the server's work. On `AsyncLbbClient`, use
+`async for` and `aclose()`. The client skips event names it does not know.
 
 ### Tools for your own agent
 
 When your app runs its own agent loop, four calls give it what only the
-server knows. None calls a model.
+server knows. None calls a model. `query.ask` runs the same kind of loop on
+the server.
 
 ```python
 # The IRI of a name, the person before a document with the name.
@@ -183,32 +220,8 @@ print(diff["totals"], diff["changed"], diff.get("next_cursor"))
 ```
 
 `compare` reads up to 20,000 rows per point and pages each list: pass
-`next_cursor` back as `cursor=` with the same arguments.
-
-### Show progress
-
-`query.rewrite_stream` sends the same request and yields an event for each step.
-The last event, `done`, holds the same response as `query.rewrite`.
-
-```python
-from lbb import QueryAskResult
-
-for event in lbb.query.rewrite_stream(
-    "Which services write to the user database?", run=True
-):
-    if event.event == "route":
-        print("route", event.data["kind"])
-    elif event.event == "rows":
-        print(event.data["count"], "rows")
-    elif event.event == "done":
-        answer = QueryAskResult.from_response(event.data)
-```
-
-The steps are `grounding`, `route`, `query`, `run`, `rows` and `repair`. An
-error event raises the same `LbbError` as `query.rewrite`. Leave the loop, or
-call `close()`, to close the response and stop the server's work. On
-`AsyncLbbClient`, use `async for` and `aclose()`. The client skips event names
-it does not know.
+`next_cursor` back as `cursor=` with the same arguments. Run your own queries
+with `query.sparql(..., as_of_commit_seq=...)`.
 
 ## Next steps
 

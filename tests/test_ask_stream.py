@@ -1,4 +1,4 @@
-"""``query.rewrite_stream``: the progress events of a streamed rewrite."""
+"""``query.ask_stream``: the progress events of a streamed question."""
 
 from __future__ import annotations
 
@@ -16,20 +16,21 @@ from lbb import (
     LbbClient,
     LbbError,
     QueryAskResult,
-    QueryRewriteStreamEvent,
+    QueryAskStreamEvent,
 )
 from lbb._client_base import _SseParser
 
 SPARQL = "SELECT ?name WHERE { ?s <http://www.w3.org/2000/01/rdf-schema#label> ?name }"
+SERVICE = "https://x.test/e/billing"
 
 
-def rewrite_response() -> dict[str, Any]:
+def ask_response() -> dict[str, Any]:
     """The ``done`` payload: the same JSON as the response without a stream."""
     return {
         "route": {"kind": "lookup", "confidence": 0.92, "by": "router"},
         "query": {"sparql": SPARQL, "entailment": "none"},
-        "rationale": "The question names services in Zürich — by name.",
-        "attempts": 2,
+        "rationale": "The rows of step 2 name the services in Zürich.",
+        "attempts": 1,
         "grounding": {
             "commit_seq": 7,
             "classes": 3,
@@ -61,7 +62,22 @@ def rewrite_response() -> dict[str, Any]:
             },
             "trace_id": "tr_1",
         },
+        "answer": {"text": "One service: Billing.", "citations": [SERVICE]},
+        "steps": [
+            {"n": 1, "tool": "find_entities", "input": {"text": "Zürich"}, "ok": True, "ms": 12},
+            {"n": 2, "tool": "sparql", "input": {"query": SPARQL}, "ok": True, "rows": 1, "ms": 85},
+        ],
     }
+
+
+def route_response() -> dict[str, Any]:
+    """The ``done`` payload of ``mode="route"``: no query, no rows, no answer."""
+    response = ask_response()
+    for name in ("query", "result", "answer", "steps"):
+        del response[name]
+    response["attempts"] = 0
+    response["rationale"] = "The router chose the route."
+    return response
 
 
 def frame(event: str, data: Any, line_end: str = "\n") -> str:
@@ -69,26 +85,30 @@ def frame(event: str, data: Any, line_end: str = "\n") -> str:
 
 
 def server_stream() -> str:
-    """The events of a rewrite with one correction, as the server sends them."""
+    """The events of a question the loop answered in two tool calls, as the
+    server sends them."""
     return "".join(
         [
             ": keep-alive\n\n",
             frame("grounding", {"cached": True, "age_ms": 5, "classes": 3}),
             frame("route", {"kind": "lookup", "confidence": 0.92, "by": "router"}),
             frame("answer.delta", {"text": "a later event"}),
-            frame("query", {"sparql": "SELECT ?x", "entailment": "none", "attempt": 1}),
-            frame("run", {"as_of_commit_seq": None}, "\r\n"),
+            frame(
+                "step",
+                {"n": 1, "tool": "find_entities", "input": "Zürich", "ok": True},
+                "\r\n",
+            ),
             ": keep-alive\r\n\r\n",
-            frame("repair", {"error": "unknown prefix ex", "attempt": 2}, "\r\n"),
-            frame("query", {"sparql": SPARQL, "entailment": "none", "attempt": 2}),
-            frame("run", {"as_of_commit_seq": 7}),
-            frame("rows", {"count": 1, "ms": 85}),
-            frame("done", rewrite_response()),
+            frame("query", {"sparql": "SELECT ?x", "entailment": "none", "attempt": 1}),
+            frame("step", {"n": 2, "tool": "sparql", "input": SPARQL, "ok": True, "rows": 1}),
+            frame("route", {"kind": "lookup", "confidence": 0.8, "by": "rewriter"}),
+            frame("answer", {"text": "One service: Billing.", "citations": [SERVICE]}),
+            frame("done", ask_response()),
         ]
     )
 
 
-EVENT_NAMES = ["grounding", "route", "query", "run", "repair", "query", "run", "rows", "done"]
+EVENT_NAMES = ["grounding", "route", "step", "step", "route", "answer", "done"]
 
 
 def split(text: str, sizes: tuple[int, ...] = (1, 7, 3, 13, 2, 29)) -> list[bytes]:
@@ -144,7 +164,7 @@ def stream_transport(
     return httpx.MockTransport(handler)
 
 
-class RewriteStreamTests(unittest.TestCase):
+class AskStreamTests(unittest.TestCase):
     def test_events_arrive_in_order_from_a_body_split_at_any_byte(self) -> None:
         seen: list[httpx.Request] = []
         body = ChunkStream(split(server_stream()))
@@ -155,28 +175,34 @@ class RewriteStreamTests(unittest.TestCase):
             transport=stream_transport(seen, body),
         ) as client:
             events = list(
-                client.query.rewrite_stream(
-                    "Which services exist?", run=True, consistency="strong"
+                client.query.ask_stream(
+                    "Which services exist?", limit=20, consistency="strong"
                 )
             )
         self.assertEqual([event.event for event in events], EVENT_NAMES)
-        self.assertTrue(all(isinstance(event, QueryRewriteStreamEvent) for event in events))
+        self.assertTrue(all(isinstance(event, QueryAskStreamEvent) for event in events))
         self.assertEqual(events[0].data, {"cached": True, "age_ms": 5, "classes": 3})
-        self.assertEqual(events[4].data, {"error": "unknown prefix ex", "attempt": 2})
-        self.assertEqual(events[7].data, {"count": 1, "ms": 85})
-        self.assertEqual(events[8].data, rewrite_response())
+        self.assertEqual(
+            events[2].data, {"n": 1, "tool": "find_entities", "input": "Zürich", "ok": True}
+        )
+        self.assertEqual(events[3].data["rows"], 1)
+        self.assertEqual(events[4].data["by"], "rewriter")
+        self.assertEqual(
+            events[5].data, {"text": "One service: Billing.", "citations": [SERVICE]}
+        )
+        self.assertEqual(events[6].data, ask_response())
         self.assertTrue(body.closed)
 
         request = seen[0]
         self.assertEqual(len(seen), 1)
         self.assertEqual(request.method, "POST")
-        self.assertEqual(request.url.path, "/v1/query/rewrite")
+        self.assertEqual(request.url.path, "/v1/query/ask")
         self.assertEqual(request.url.params["graph"], "main")
         self.assertEqual(request.url.params["consistency"], "strong")
         self.assertEqual(request.headers["accept"], "text/event-stream")
         self.assertEqual(request.headers["authorization"], "Bearer k")
         self.assertEqual(
-            json.loads(request.content), {"question": "Which services exist?", "run": True}
+            json.loads(request.content), {"question": "Which services exist?", "limit": 20}
         )
 
         # One byte per chunk: every multi-byte character arrives in pieces.
@@ -184,27 +210,62 @@ class RewriteStreamTests(unittest.TestCase):
             "http://h",
             transport=stream_transport([], ChunkStream(split(server_stream(), (1,)))),
         ) as client:
-            bytewise = list(client.query.rewrite_stream("Which services exist?"))
+            bytewise = list(client.query.ask_stream("Which services exist?"))
         self.assertEqual(bytewise, events)
 
-    def test_the_done_event_parses_as_rewrite_does_and_events_validate(self) -> None:
+    def test_the_done_event_parses_as_ask_does_and_events_validate(self) -> None:
         with LbbClient(
             "http://h", transport=stream_transport([], ChunkStream(split(server_stream())))
         ) as client:
-            events = list(client.query.rewrite_stream("Which services exist?", run=True))
+            events = list(client.query.ask_stream("Which services exist?"))
         answer = QueryAskResult.from_response(events[-1].data)
+        self.assertEqual(answer.answer, "One service: Billing.")
+        self.assertEqual(answer.citations, [SERVICE])
         self.assertEqual(answer.rows, [{"name": "Billing"}])
         self.assertEqual(answer.trace_id, "tr_1")
+        self.assertEqual([step["tool"] for step in answer.steps], ["find_entities", "sparql"])
         route = events[1].model()
         self.assertIsInstance(route, model_module.QueryRewriteEventRoute)
         assert isinstance(route, model_module.QueryRewriteEventRoute)
         self.assertEqual(route.data.kind, model_module.QueryRoute.lookup)
+        step = events[3].model()
+        assert isinstance(step, model_module.QueryRewriteEventStep)
+        self.assertEqual(step.data.tool, model_module.QueryAnswerTool.sparql)
+        said = events[5].model()
+        assert isinstance(said, model_module.QueryRewriteEventAnswer)
+        self.assertEqual(said.data.text, "One service: Billing.")
         self.assertIsInstance(events[-1].model(), model_module.QueryRewriteEventDone)
 
-    def test_an_error_event_raises_the_error_rewrite_raises(self) -> None:
+    def test_route_mode_streams_grounding_route_and_done(self) -> None:
+        text = (
+            frame("grounding", {"cached": False, "age_ms": 0, "classes": 3})
+            + frame("route", {"kind": "lookup", "confidence": 0.92, "by": "router"})
+            + frame("done", route_response())
+        )
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", transport=stream_transport(seen, ChunkStream(split(text)))
+        ) as client:
+            events = list(
+                client.query.ask_stream(
+                    "Which services exist?", mode=model_module.QueryRewriteMode.route
+                )
+            )
+        self.assertEqual([event.event for event in events], ["grounding", "route", "done"])
+        self.assertEqual(
+            json.loads(seen[0].content), {"question": "Which services exist?", "mode": "route"}
+        )
+        result = QueryAskResult.from_response(events[-1].data)
+        self.assertEqual(result.route["kind"], "lookup")
+        self.assertIsNone(result.answer)
+        self.assertIsNone(result.query)
+        self.assertEqual(result.rows, [])
+
+    def test_an_error_event_raises_the_error_ask_raises(self) -> None:
         text = (
             frame("grounding", {"cached": False, "age_ms": 0, "classes": 3})
             + frame("route", {"kind": "lookup", "confidence": 0.9, "by": "router"})
+            + frame("step", {"n": 1, "tool": "sparql", "input": SPARQL, "ok": False})
             + frame(
                 "error",
                 {
@@ -213,15 +274,16 @@ class RewriteStreamTests(unittest.TestCase):
                     "message": "the query rewriter model did not answer; try again",
                 },
             )
+            + frame("done", ask_response())
         )
         body = ChunkStream(split(text))
         seen: list[str] = []
         with LbbClient("http://h", transport=stream_transport([], body)) as client:
             with self.assertRaises(LbbError) as raised:
-                for event in client.query.rewrite_stream("q"):
+                for event in client.query.ask_stream("q"):
                     seen.append(event.event)
         error = raised.exception
-        self.assertEqual(seen, ["grounding", "route"])
+        self.assertEqual(seen, ["grounding", "route", "step"])
         self.assertEqual(error.status_code, 503)
         self.assertEqual(error.code, "rewrite_model_unavailable")
         self.assertEqual(str(error), "the query rewriter model did not answer; try again")
@@ -229,12 +291,12 @@ class RewriteStreamTests(unittest.TestCase):
         self.assertEqual(error.request_id, "req_1")
         self.assertTrue(body.closed)
 
-    def test_a_json_error_before_the_stream_raises_as_rewrite_does_once(self) -> None:
+    def test_a_json_error_before_the_stream_raises_as_ask_does_once(self) -> None:
         failure = {
             "error": {
                 "type": "rate_limit_error",
                 "code": "rewrite_limit",
-                "message": "rewrite_limit: the stack used its 200 rewrites of the day",
+                "message": "rewrite_limit: this stack asked its 200 questions of today",
                 "retryable": False,
             }
         }
@@ -248,10 +310,10 @@ class RewriteStreamTests(unittest.TestCase):
             "http://h", max_retries=3, retry_delay=0, transport=httpx.MockTransport(handler)
         ) as client:
             with self.assertRaises(LbbError) as streamed:
-                list(client.query.rewrite_stream("q", options={"retry": True}))
+                list(client.query.ask_stream("q", options={"retry": True}))
             self.assertEqual(len(seen), 1, "a stream is never retried")
             with self.assertRaises(LbbError) as plain:
-                client.query.rewrite("q")
+                client.query.ask("q")
         for name in ("status_code", "code", "type", "retryable", "retry_after_seconds", "body"):
             self.assertEqual(getattr(streamed.exception, name), getattr(plain.exception, name), name)
         self.assertEqual(str(streamed.exception), str(plain.exception))
@@ -267,7 +329,7 @@ class RewriteStreamTests(unittest.TestCase):
             "http://h", transport=stream_transport([], ChunkStream(split(text)))
         ) as client:
             with self.assertRaises(httpx.RemoteProtocolError) as raised:
-                for event in client.query.rewrite_stream("q"):
+                for event in client.query.ask_stream("q"):
                     seen.append(event.event)
         self.assertEqual(seen, ["grounding"], "an unfinished event is dropped")
         self.assertIn("ended before its done or error event", str(raised.exception))
@@ -275,7 +337,7 @@ class RewriteStreamTests(unittest.TestCase):
     def test_closing_the_generator_closes_the_response(self) -> None:
         body = ChunkStream(split(server_stream()))
         with LbbClient("http://h", transport=stream_transport([], body)) as client:
-            events = client.query.rewrite_stream("q")
+            events = client.query.ask_stream("q")
             self.assertEqual(next(events).event, "grounding")
             self.assertFalse(body.closed)
             events.close()
@@ -284,11 +346,11 @@ class RewriteStreamTests(unittest.TestCase):
 
     def test_a_server_without_streams_yields_the_response_as_done(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, json=rewrite_response())
+            return httpx.Response(200, json=ask_response())
 
         with LbbClient("http://h", transport=httpx.MockTransport(handler)) as client:
-            events = list(client.query.rewrite_stream("q"))
-        self.assertEqual(events, [QueryRewriteStreamEvent("done", rewrite_response())])
+            events = list(client.query.ask_stream("q"))
+        self.assertEqual(events, [QueryAskStreamEvent("done", ask_response())])
 
     def test_the_parser_joins_data_lines_splits_every_line_end_and_bounds_an_event(
         self,
@@ -309,24 +371,31 @@ class RewriteStreamTests(unittest.TestCase):
                 lines.feed("data: xxxx\n")
 
 
-class AsyncRewriteStreamTests(unittest.IsolatedAsyncioTestCase):
+class AsyncAskStreamTests(unittest.IsolatedAsyncioTestCase):
     async def test_async_events_arrive_in_order_and_close_the_response(self) -> None:
         seen: list[httpx.Request] = []
         body = ChunkStream(split(server_stream()))
         async with AsyncLbbClient(
             "http://h", default_consistency="eventual", transport=stream_transport(seen, body)
         ) as client:
-            events = [event async for event in client.query.rewrite_stream("q", run=True)]
+            events = [
+                event
+                async for event in client.query.ask_stream("q", anchor=[SERVICE], mode="answer")
+            ]
             self.assertEqual([event.event for event in events], EVENT_NAMES)
-            self.assertEqual(events[-1].data, rewrite_response())
+            self.assertEqual(events[-1].data, ask_response())
             self.assertTrue(body.closed)
+            self.assertEqual(seen[0].url.path, "/v1/query/ask")
             self.assertEqual(seen[0].headers["accept"], "text/event-stream")
             self.assertEqual(seen[0].url.params["consistency"], "eventual")
-            self.assertEqual(json.loads(seen[0].content), {"question": "q", "run": True})
+            self.assertEqual(
+                json.loads(seen[0].content),
+                {"question": "q", "mode": "answer", "anchor": [SERVICE]},
+            )
 
         early = ChunkStream(split(server_stream()))
         async with AsyncLbbClient("http://h", transport=stream_transport([], early)) as client:
-            async with contextlib.aclosing(client.query.rewrite_stream("q")) as stream:
+            async with contextlib.aclosing(client.query.ask_stream("q")) as stream:
                 async for event in stream:
                     if event.event == "route":
                         break
@@ -334,14 +403,14 @@ class AsyncRewriteStreamTests(unittest.IsolatedAsyncioTestCase):
             self.assertLess(early.read, len(early.chunks))
 
     async def test_async_error_event_and_early_end_raise(self) -> None:
-        error = frame("error", {"status": 400, "code": "invalid_request", "message": "bad"})
+        error = frame("error", {"status": 400, "code": "invalid_ask_request", "message": "bad"})
         async with AsyncLbbClient(
             "http://h", transport=stream_transport([], ChunkStream(split(error)))
         ) as client:
             with self.assertRaises(LbbError) as raised:
-                [event async for event in client.query.rewrite_stream("q")]
+                [event async for event in client.query.ask_stream("q")]
         self.assertEqual(raised.exception.status_code, 400)
-        self.assertEqual(raised.exception.code, "invalid_request")
+        self.assertEqual(raised.exception.code, "invalid_ask_request")
         self.assertEqual(raised.exception.type, "invalid_request_error")
 
         partial = frame("grounding", {"cached": True, "age_ms": 5, "classes": 3})
@@ -349,7 +418,7 @@ class AsyncRewriteStreamTests(unittest.IsolatedAsyncioTestCase):
             "http://h", transport=stream_transport([], ChunkStream(split(partial)))
         ) as client:
             with self.assertRaises(httpx.RemoteProtocolError):
-                [event async for event in client.query.rewrite_stream("q")]
+                [event async for event in client.query.ask_stream("q")]
 
 
 if __name__ == "__main__":

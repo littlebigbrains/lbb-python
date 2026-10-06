@@ -4,6 +4,61 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+This release breaks the question API. The server removed the one-shot
+rewrite and renamed its route to `POST /v1/query/ask`.
+
+What breaks:
+
+- `query.rewrite()` and `query.rewrite_stream()` are removed, on `LbbClient`
+  and `AsyncLbbClient`. `POST /v1/query/rewrite` answers 404; its
+  `did_you_mean` names `/v1/query/ask`. `GET` and
+  `PUT /v1/query/rewrite/profile` stay, and so do `query.rewrite_profile()`
+  and `query.set_rewrite_profile()`.
+- `query.ask()` sends `POST /v1/query/ask`. It answers in plain words by
+  default: the old `mode="answer"`. It no longer runs one written query.
+- `query.ask()` takes no `previous`. The server answers
+  `400 invalid_ask_request` to `previous`, `run` and `mode: "rewrite"`. The
+  loop runs and corrects its own queries. Put what the app knows in
+  `context`.
+- `QueryAskResult.rewrite` is renamed `response`. It holds the whole
+  `POST /v1/query/ask` response.
+- `QueryAskResult.history` has no `before` and `after`. A comparison has no
+  `result`, so `rows` is empty; `history` holds what differs.
+- `QueryRewriteStreamEvent` is renamed `QueryAskStreamEvent`.
+- The stream events `query`, `run`, `rows` and `repair` are removed. The
+  stream sends `grounding`, `route`, a `step` per tool call, `answer` and
+  `done`. The client skips the old names if a server still sends them.
+- The error code `invalid_rewrite_request` is now `invalid_ask_request`.
+  `rewrite_limit` and `rewrite_model_unavailable` keep their names.
+- The generated models drop `QueryRewriteStep`, `QueryRewritePoint`,
+  `QueryRewriteQueryEvent`, `QueryRewriteRunEvent`, `QueryRewriteRowsEvent`,
+  `QueryRewriteRepairEvent` and their `QueryRewriteEvent*` wrappers.
+  `QueryRewriteRequest` drops `run` and `previous`. `QueryRewriteMode` drops
+  `rewrite`.
+
+What to use instead:
+
+- To answer a question, call `query.ask(question)`. Read `answer`,
+  `citations`, `rows` and `steps` of the `QueryAskResult`.
+- To show progress, call `query.ask_stream(question)`. It takes the
+  arguments of `query.ask`. `LbbClient` returns a generator, and
+  `AsyncLbbClient` an async generator. `QueryAskResult.from_response()`
+  parses the data of `done`.
+- For the kind of question alone, call `query.ask(question, mode="route")`.
+  The router model answers alone; `answer` and `query` are `None`.
+- When your app runs its own agent loop, call the tools: `query.names()`,
+  `query.describe()`, `query.commit_at()`, `query.compare()` and
+  `query.sparql(..., as_of_commit_seq=...)`. None calls a model.
+
+Other changes:
+
+- `query.ask()` and `query.ask_stream()` take the same keyword arguments on
+  both clients: `context`, `route`, `mode`, `limit`, `as_of_commit_seq`,
+  `today`, `include_grounding`, `anchor`, `timeline`, `consistency` and
+  `options`. `limit` caps the rows of each query of the loop. A failed call
+  is not retried unless `options={"retry": True}`.
+- The loop has a `compare` tool. `QueryAnswerTool` gains `compare`, and a
+  `compare` step's `rows` counts the entries that differ.
 - Add four tools for an app's own agent, none of which calls a model:
   `query.names(text, limit=...)` (`POST /v1/query/names`) finds the entities
   a text names, with the candidates of each name, the one to prefer first;
@@ -16,9 +71,20 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   (`POST /v1/query/compare`) runs one `SELECT` at two points and pairs the
   rows into `added`, `removed` and `changed`, with `totals` and a `cursor`
   for the next page. The models gain the request and response types.
-- `QueryRewriteHistory` gains `key`, `changed` and `totals`. A comparison of
-  the rewriter reads every row of both points; `limit` only cuts the rows it
-  shows. When the first variable holds entities, the rows are paired by it.
+- `QueryRewriteHistory` gains `key`, `changed` and `totals`. With a `key`,
+  the rows of a comparison are paired by those variables.
+- `query.ask()` answers in plain words. The model runs queries and reads
+  their rows (at most 4 rounds) before it answers. `QueryAskResult` gains
+  `answer` (the text, or `None` when the loop stopped first), `citations`
+  (IRIs from the rows the loop read) and `steps`. `rows` hold the rows of
+  the query the answer stands on.
+- New models: `QueryAnswer`, `QueryAnswerStep`, `QueryAnswerTool`,
+  `QueryAnswerStepEvent`, `QueryRewriteEventStep`, `QueryRewriteEventAnswer`.
+  `QueryRewriteMode` gains `answer`, and `ModelJob` gains `answer`.
+- Evals ask a question again through the answer loop. The model
+  `EvalAskInput` drops `previous` and gains `timeline`. `EvalTrace` and
+  `EvalVerdictDetail` gain `reply`: the loop's answer in words and the IRIs
+  it cites (`QueryAnswer`).
 
 ## 0.20.0 (2026-10-05)
 

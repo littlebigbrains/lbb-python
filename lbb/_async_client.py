@@ -20,7 +20,7 @@ import httpx
 
 from . import models
 from ._client_base import (
-    _REWRITE_STREAM_ENDED,
+    _ASK_STREAM_ENDED,
     DEFAULT_BASE_URL,
     DEFAULT_INTEGRATIONS_URL,
     DEFAULT_MAX_RETRIES,
@@ -31,12 +31,14 @@ from ._client_base import (
     ListPage,
     ModelT,
     QueryAskResult,
-    QueryRewriteStreamEvent,
+    QueryAskStreamEvent,
     RawLbbResponse,
     RequestOptions,
     RetryEvent,
     RowT,
     SparqlResults,
+    _ask_body,
+    _ask_stream_event,
     _BaseLbbClient,
     _body_marks_terminal,
     _ChecksNamespace,
@@ -57,8 +59,6 @@ from ._client_base import (
     _retry_allowed,
     _retry_delay_seconds,
     _retryable,
-    _rewrite_body,
-    _rewrite_stream_event,
     _SchemaNamespace,
     _sse_decoder,
     _SseParser,
@@ -338,15 +338,13 @@ class _AsyncQueryNamespace(_QueryNamespace):
             ),
         )
 
-    async def rewrite(
+    async def ask(
         self,
         question: str,
         *,
         context: str | None = None,
-        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
         route: str | models.QueryRoute | None = None,
         mode: str | models.QueryRewriteMode | None = None,
-        run: bool | None = None,
         limit: int | None = None,
         as_of_commit_seq: int | None = None,
         today: str | None = None,
@@ -355,50 +353,20 @@ class _AsyncQueryNamespace(_QueryNamespace):
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
-    ) -> Any:
-        return await super().rewrite(
+    ) -> QueryAskResult:
+        """Async :meth:`LbbClient.query.ask`: answer a question about the
+        graph in plain words (``POST /v1/query/ask``). ``mode="route"``
+        returns only the kind of question. A failed call is not retried
+        unless ``options={"retry": True}``."""
+        response = await self._ask_response(
             question,
             context=context,
-            previous=previous,
             route=route,
             mode=mode,
-            run=run,
             limit=limit,
             as_of_commit_seq=as_of_commit_seq,
             today=today,
             include_grounding=include_grounding,
-            anchor=anchor,
-            timeline=timeline,
-            consistency=consistency,
-            options=options,
-        )
-
-    async def ask(
-        self,
-        question: str,
-        *,
-        context: str | None = None,
-        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
-        route: str | models.QueryRoute | None = None,
-        limit: int | None = None,
-        as_of_commit_seq: int | None = None,
-        today: str | None = None,
-        anchor: Sequence[str] | None = None,
-        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
-        consistency: str | None = None,
-        options: RequestOptions | None = None,
-    ) -> QueryAskResult:
-        """Async :meth:`LbbClient.query.ask`: rewrite the question, run the
-        query, and return its rows."""
-        response = await self.rewrite(
-            question,
-            context=context,
-            previous=previous,
-            route=route,
-            run=True,
-            limit=limit,
-            as_of_commit_seq=as_of_commit_seq,
-            today=today,
             anchor=anchor,
             timeline=timeline,
             consistency=consistency,
@@ -406,42 +374,40 @@ class _AsyncQueryNamespace(_QueryNamespace):
         )
         return QueryAskResult.from_response(response)
 
-    def rewrite_stream(
+    def ask_stream(
         self,
         question: str,
         *,
         context: str | None = None,
-        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
         route: str | models.QueryRoute | None = None,
         mode: str | models.QueryRewriteMode | None = None,
-        run: bool | None = None,
         limit: int | None = None,
         as_of_commit_seq: int | None = None,
         today: str | None = None,
         include_grounding: bool | None = None,
+        anchor: Sequence[str] | None = None,
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
-    ) -> AsyncGenerator[QueryRewriteStreamEvent, None]:
-        """Async :meth:`LbbClient.query.rewrite_stream`: an async generator
-        of the events. ``await events.aclose()`` (or
-        ``contextlib.aclosing``) closes the response at once."""
-        body = _rewrite_body(
+    ) -> AsyncGenerator[QueryAskStreamEvent, None]:
+        """Async :meth:`LbbClient.query.ask_stream`: an async generator of
+        the events. ``await events.aclose()`` (or ``contextlib.aclosing``)
+        closes the response at once."""
+        body = _ask_body(
             question,
             context=context,
-            previous=previous,
             route=route,
             mode=mode,
-            run=run,
             limit=limit,
             as_of_commit_seq=as_of_commit_seq,
             today=today,
             include_grounding=include_grounding,
+            anchor=anchor,
             timeline=timeline,
         )
         params = self._client._consistency_params(consistency, None)
         client = cast("AsyncLbbClient", self._client)
-        return client._rewrite_events(body, params or None, options)
+        return client._ask_events(body, params or None, options)
 
     async def update(
         self,
@@ -1349,17 +1315,17 @@ class AsyncLbbClient(_BaseLbbClient):
             for item in parser.feed(decoder.decode(b"", final=True)):
                 yield item
 
-    async def _rewrite_events(
+    async def _ask_events(
         self,
         body: dict[str, Any],
         params: Mapping[str, Any] | None,
         options: RequestOptions | None,
-    ) -> AsyncGenerator[QueryRewriteStreamEvent, None]:
-        """The events of ``POST /v1/query/rewrite`` as an async stream."""
+    ) -> AsyncGenerator[QueryAskStreamEvent, None]:
+        """The events of ``POST /v1/query/ask`` as an async stream."""
         opened: list[httpx.Response] = []
         stream = self._event_stream(
             "POST",
-            "/v1/query/rewrite",
+            "/v1/query/ask",
             params=params,
             body=body,
             options=options,
@@ -1370,7 +1336,7 @@ class AsyncLbbClient(_BaseLbbClient):
         try:
             async for name, text in stream:
                 request_id = opened[0].headers.get("x-request-id") if opened else None
-                event = _rewrite_stream_event(name, text, request_id)
+                event = _ask_stream_event(name, text, request_id)
                 if event is None:
                     continue
                 yield event
@@ -1379,7 +1345,7 @@ class AsyncLbbClient(_BaseLbbClient):
         finally:
             await stream.aclose()
         raise httpx.RemoteProtocolError(
-            _REWRITE_STREAM_ENDED, request=opened[0].request if opened else None
+            _ASK_STREAM_ENDED, request=opened[0].request if opened else None
         )
 
     async def _request(

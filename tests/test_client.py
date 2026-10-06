@@ -2836,8 +2836,10 @@ class AsyncModelChecksAndTuningTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(seen[5].content), {"rerank": False, "blend": None})
 
 
-def rewrite_payload(**overrides: Any) -> dict[str, Any]:
-    """A ``POST /v1/query/rewrite`` response without a run."""
+def ask_payload(**overrides: Any) -> dict[str, Any]:
+    """A ``POST /v1/query/ask`` response: the loop answered from one query."""
+    result = sparql_text_envelope({"commit_seq": 7, "compacted_seq": 7, "served_at_seq": 7})
+    result["trace_id"] = "tr_1"
     payload: dict[str, Any] = {
         "route": {
             "kind": "lookup",
@@ -2849,7 +2851,8 @@ def rewrite_payload(**overrides: Any) -> dict[str, Any]:
             "sparql": "SELECT ?s WHERE { ?s ?p ?o }",
             "entailment": "none",
         },
-        "rationale": "The question names services by a condition.",
+        "rationale": "The rows of step 1 name the services.",
+        "result": result,
         "attempts": 1,
         "grounding": {
             "commit_seq": 7,
@@ -2866,57 +2869,144 @@ def rewrite_payload(**overrides: Any) -> dict[str, Any]:
             "run_ms": 4,
             "total_ms": 10,
         },
+        "answer": {"text": "One service.", "citations": ["https://x.test/e/a"]},
+        "steps": [
+            {
+                "n": 1,
+                "tool": "sparql",
+                "input": {"query": "SELECT ?s WHERE { ?s ?p ?o }"},
+                "ok": True,
+                "rows": 1,
+                "ms": 9,
+            }
+        ],
     }
     payload.update(overrides)
     return payload
 
 
-def rewrite_run_payload() -> dict[str, Any]:
-    """A rewrite response whose run returned one row and an eval trace."""
-    result = sparql_text_envelope({"commit_seq": 7, "compacted_seq": 7, "served_at_seq": 7})
-    result["trace_id"] = "tr_1"
-    return rewrite_payload(result=result)
+def route_payload() -> dict[str, Any]:
+    """A ``mode: "route"`` response: the route, no query, no rows, no answer."""
+    payload = ask_payload(rationale="The router chose the route.", attempts=0)
+    for name in ("query", "result", "answer", "steps"):
+        del payload[name]
+    return payload
 
 
-class QueryRewriteTests(unittest.TestCase):
-    """``query.rewrite`` and ``query.ask`` send the documented request."""
+class QueryAskTests(unittest.TestCase):
+    """``query.ask`` sends the documented ``POST /v1/query/ask`` request."""
 
-    def test_rewrite_sends_only_the_given_fields_and_consistency_on_the_url(self) -> None:
+    def test_ask_sends_only_the_question_and_parses_the_answer(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h",
             graph="main",
-            transport=capturing_transport(seen, {"json": rewrite_payload()}),
+            default_consistency="eventual",
+            transport=capturing_transport(seen, {"json": ask_payload()}),
         ) as client:
-            response = client.query.rewrite(
+            answer = client.query.ask("Which services exist?")
+        self.assertIsInstance(answer, QueryAskResult)
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0].method, "POST")
+        self.assertEqual(seen[0].url.path, "/v1/query/ask")
+        self.assertEqual(seen[0].url.params["graph"], "main")
+        self.assertEqual(seen[0].url.params["consistency"], "eventual")
+        self.assertEqual(json.loads(seen[0].content), {"question": "Which services exist?"})
+        self.assertEqual(answer.answer, "One service.")
+        self.assertEqual(answer.citations, ["https://x.test/e/a"])
+        self.assertEqual([step["tool"] for step in answer.steps], ["sparql"])
+        self.assertEqual(answer.route["kind"], "lookup")
+        self.assertEqual(
+            answer.query, {"sparql": "SELECT ?s WHERE { ?s ?p ?o }", "entailment": "none"}
+        )
+        self.assertEqual(answer.rationale, "The rows of step 1 name the services.")
+        self.assertEqual(answer.rows, [{"s": "x"}])
+        self.assertEqual(answer.vars, ["s"])
+        self.assertIsNone(answer.boolean)
+        self.assertEqual(
+            answer.snapshot, {"commit_seq": 7, "compacted_seq": 7, "served_at_seq": 7}
+        )
+        self.assertIsNone(answer.error)
+        self.assertEqual(answer.trace_id, "tr_1")
+        self.assertEqual(answer.response, ask_payload())
+        self.assertFalse(hasattr(answer, "rewrite"))
+
+    def test_ask_sends_every_field_and_serializes_enums_and_models(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": ask_payload()})
+        ) as client:
+            client.query.ask(
                 "Which services exist?",
-                mode="route",
+                context="Services of the platform team.",
+                route=model_module.QueryRoute.lookup,
+                mode=model_module.QueryRewriteMode.answer,
+                limit=10,
+                as_of_commit_seq=0,
+                today="2026-10-04",
+                include_grounding=False,
+                anchor=["https://x.test/e/a"],
+                timeline=[
+                    model_module.QueryRewriteTimelinePoint(date="2026-05-20", as_of_commit_seq=1),
+                    {"date": "2026-06-05", "as_of_commit_seq": 2, "label": "Tender"},
+                ],
                 consistency="strong",
             )
-        self.assertEqual(response["route"]["kind"], "lookup")
-        self.assertEqual(seen[0].method, "POST")
-        self.assertEqual(seen[0].url.path, "/v1/query/rewrite")
-        self.assertEqual(seen[0].url.params["graph"], "main")
+        self.assertEqual(seen[0].url.path, "/v1/query/ask")
         self.assertEqual(seen[0].url.params["consistency"], "strong")
         self.assertEqual(
             json.loads(seen[0].content),
-            {"question": "Which services exist?", "mode": "route"},
+            {
+                "question": "Which services exist?",
+                "context": "Services of the platform team.",
+                "route": "lookup",
+                "mode": "answer",
+                "limit": 10,
+                "as_of_commit_seq": 0,
+                "today": "2026-10-04",
+                "include_grounding": False,
+                "anchor": ["https://x.test/e/a"],
+                "timeline": [
+                    {"date": "2026-05-20", "as_of_commit_seq": 1},
+                    {"date": "2026-06-05", "as_of_commit_seq": 2, "label": "Tender"},
+                ],
+            },
         )
 
-    def test_rewrite_can_ask_for_the_graph_description(self) -> None:
+    def test_ask_takes_no_run_and_no_previous(self) -> None:
+        with LbbClient(
+            "http://h", transport=capturing_transport([], {"json": ask_payload()})
+        ) as client:
+            ask: Any = client.query.ask
+            with self.assertRaises(TypeError):
+                ask("Which services exist?", run=True)
+            with self.assertRaises(TypeError):
+                ask("Which services exist?", previous=[{"sparql": "ASK {}"}])
+            self.assertFalse(hasattr(client.query, "rewrite"))
+            self.assertFalse(hasattr(client.query, "rewrite_stream"))
+
+    def test_route_mode_returns_the_route_alone(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
-            "http://h",
-            graph="main",
-            transport=capturing_transport(seen, {"json": rewrite_payload()}),
+            "http://h", transport=capturing_transport(seen, {"json": route_payload()})
         ) as client:
-            client.query.rewrite("Which services exist?", mode="route", include_grounding=True)
+            routed = client.query.ask(
+                "Which services exist?", mode="route", include_grounding=True
+            )
         self.assertEqual(
             json.loads(seen[0].content),
             {"question": "Which services exist?", "mode": "route", "include_grounding": True},
         )
+        self.assertEqual(routed.route["kind"], "lookup")
+        self.assertEqual(routed.rationale, "The router chose the route.")
+        self.assertIsNone(routed.answer)
+        self.assertIsNone(routed.query)
+        self.assertEqual(routed.rows, [])
+        self.assertEqual(routed.citations, [])
+        self.assertEqual(routed.steps, [])
+        self.assertIsNone(routed.trace_id)
 
-    def test_rewrite_is_not_retried_unless_the_caller_asks(self) -> None:
+    def test_ask_is_not_retried_unless_the_caller_asks(self) -> None:
         failure = {
             "status": 503,
             "json": {"error": {"message": "try again", "code": "rewrite_model_unavailable"}},
@@ -2926,10 +3016,10 @@ class QueryRewriteTests(unittest.TestCase):
             "http://h",
             max_retries=1,
             retry_delay=0,
-            transport=capturing_transport(seen, [failure, {"json": rewrite_payload()}]),
+            transport=capturing_transport(seen, [failure, {"json": ask_payload()}]),
         ) as client:
             with self.assertRaises(LbbError) as raised:
-                client.query.rewrite("Which services exist?")
+                client.query.ask("Which services exist?")
         self.assertEqual(raised.exception.code, "rewrite_model_unavailable")
         self.assertEqual(len(seen), 1)
 
@@ -2938,106 +3028,42 @@ class QueryRewriteTests(unittest.TestCase):
             "http://h",
             max_retries=1,
             retry_delay=0,
-            transport=capturing_transport(seen, [failure, {"json": rewrite_payload()}]),
+            transport=capturing_transport(seen, [failure, {"json": ask_payload()}]),
         ) as client:
-            client.query.rewrite("Which services exist?", options={"retry": True})
+            answer = client.query.ask("Which services exist?", options={"retry": True})
         self.assertEqual(len(seen), 2)
+        self.assertEqual(answer.answer, "One service.")
 
-    def test_rewrite_serializes_steps_and_enums(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h", transport=capturing_transport(seen, {"json": rewrite_payload()})
-        ) as client:
-            client.query.rewrite(
-                "Which services exist?",
-                context="Services of the platform team.",
-                previous=[
-                    model_module.QueryRewriteStep(sparql="SELECT * WHERE { ?s ?p ?o }", rows=0),
-                    {"sparql": "ASK {}", "error": "no rows"},
-                ],
-                route=model_module.QueryRoute.lookup,
-                mode=model_module.QueryRewriteMode.rewrite,
-                run=False,
-                limit=10,
-                as_of_commit_seq=0,
-                today="2026-10-04",
-            )
-        self.assertEqual(
-            json.loads(seen[0].content),
-            {
-                "question": "Which services exist?",
-                "context": "Services of the platform team.",
-                "previous": [
-                    {"sparql": "SELECT * WHERE { ?s ?p ?o }", "rows": 0},
-                    {"sparql": "ASK {}", "error": "no rows"},
-                ],
-                "route": "lookup",
-                "mode": "rewrite",
-                "run": False,
-                "limit": 10,
-                "as_of_commit_seq": 0,
-                "today": "2026-10-04",
-            },
-        )
-        self.assertNotIn("consistency", seen[0].url.params)
-
-    def test_ask_runs_the_rewrite_and_parses_its_rows(self) -> None:
-        seen: list[httpx.Request] = []
-        with LbbClient(
-            "http://h",
-            default_consistency="eventual",
-            transport=capturing_transport(seen, {"json": rewrite_run_payload()}),
-        ) as client:
-            answer = client.query.ask(
-                "Which services exist?", route="lookup", limit=50, as_of_commit_seq=7
-            )
-        self.assertIsInstance(answer, QueryAskResult)
-        self.assertEqual(seen[0].url.params["consistency"], "eventual")
-        self.assertEqual(
-            json.loads(seen[0].content),
-            {
-                "question": "Which services exist?",
-                "route": "lookup",
-                "run": True,
-                "limit": 50,
-                "as_of_commit_seq": 7,
-            },
-        )
-        self.assertEqual(answer.route["kind"], "lookup")
-        self.assertEqual(answer.query, {"sparql": "SELECT ?s WHERE { ?s ?p ?o }", "entailment": "none"})
-        self.assertEqual(answer.rationale, "The question names services by a condition.")
-        self.assertEqual(answer.rows, [{"s": "x"}])
-        self.assertEqual(answer.vars, ["s"])
-        self.assertIsNone(answer.boolean)
-        self.assertEqual(answer.snapshot, {"commit_seq": 7, "compacted_seq": 7, "served_at_seq": 7})
-        self.assertIsNone(answer.error)
-        self.assertEqual(answer.trace_id, "tr_1")
-        self.assertEqual(answer.rewrite["attempts"], 1)
-
-    def test_ask_without_a_run_keeps_the_route_rationale_and_error(self) -> None:
-        unanswerable = rewrite_payload(
+    def test_a_loop_that_stopped_keeps_the_best_rows_and_the_error(self) -> None:
+        stopped = ask_payload(attempts=4, error="the loop ran out of time")
+        del stopped["answer"]
+        unanswerable = ask_payload(
             route={"kind": "unanswerable", "confidence": 0.8, "by": "rewriter"},
-            query=None,
             rationale="The graph holds no salaries.",
+            answer={"text": "The graph holds no salaries."},
+            steps=[],
         )
-        failed = rewrite_payload(attempts=2, error="unknown prefix ex")
-        seen: list[httpx.Request] = []
+        del unanswerable["query"]
+        del unanswerable["result"]
         with LbbClient(
             "http://h",
-            transport=capturing_transport(seen, [{"json": unanswerable}, {"json": failed}]),
+            transport=capturing_transport([], [{"json": stopped}, {"json": unanswerable}]),
         ) as client:
-            none = client.query.ask("What does Ada earn?")
             broken = client.query.ask("Which services exist?")
-        self.assertEqual(json.loads(seen[0].content), {"question": "What does Ada earn?", "run": True})
+            none = client.query.ask("What does Ada earn?")
+        self.assertIsNone(broken.answer)
+        self.assertEqual(broken.error, "the loop ran out of time")
+        self.assertEqual(broken.rows, [{"s": "x"}])
+        self.assertEqual(broken.response["attempts"], 4)
         self.assertEqual(none.route["kind"], "unanswerable")
+        self.assertEqual(none.answer, "The graph holds no salaries.")
+        self.assertEqual(none.citations, [])
         self.assertIsNone(none.query)
         self.assertEqual(none.rows, [])
         self.assertEqual(none.vars, [])
         self.assertIsNone(none.trace_id)
-        self.assertEqual(broken.error, "unknown prefix ex")
-        self.assertEqual(broken.rewrite["attempts"], 2)
 
-    def test_ask_sends_the_anchors_and_returns_the_links(self) -> None:
+    def test_ask_returns_the_links_and_anchors(self) -> None:
         link = {
             "text": "Quelmann",
             "iri": "https://x.test/e/quellmann",
@@ -3051,71 +3077,68 @@ class QueryRewriteTests(unittest.TestCase):
             "found": False,
             "note": "not in the graph at the latest commit",
         }
-        payload = rewrite_payload(linked=[link], anchors=[anchor])
+        payload = ask_payload(linked=[link], anchors=[anchor])
         seen: list[httpx.Request] = []
         with LbbClient(
-            "http://h", transport=capturing_transport(seen, {"json": payload})
+            "http://h", transport=capturing_transport(seen, [{"json": payload}, {"json": payload}])
         ) as client:
             answer = client.query.ask(
                 "Show me everything about Quelmann.", anchor=["https://x.test/e/nope"]
             )
-            client.query.rewrite("Which services exist?", anchor=[])
+            client.query.ask("Which services exist?", anchor=[])
         self.assertEqual(
             json.loads(seen[0].content),
-            {
-                "question": "Show me everything about Quelmann.",
-                "run": True,
-                "anchor": ["https://x.test/e/nope"],
-            },
+            {"question": "Show me everything about Quelmann.", "anchor": ["https://x.test/e/nope"]},
         )
         self.assertEqual(json.loads(seen[1].content), {"question": "Which services exist?"})
         self.assertEqual(answer.linked, [link])
         self.assertEqual(answer.anchors, [anchor])
-        bare = QueryAskResult.from_response(rewrite_payload())
+        bare = QueryAskResult.from_response(route_payload())
         self.assertEqual(bare.linked, [])
         self.assertEqual(bare.anchors, [])
         self.assertIsNone(bare.history)
 
-    def test_ask_sends_a_timeline_and_returns_the_history(self) -> None:
+    def test_a_comparison_returns_the_history_without_rows(self) -> None:
         history = {
             "as_of_date": "2026-06-05",
             "compare": True,
             "as_of_commit_seq": 1,
             "resolved_by": "timeline",
             "label": "Tender",
+            "key": ["t"],
             "added": [{"t": {"type": "uri", "value": "https://x.test/e/c"}}],
             "removed": [],
+            "changed": [],
+            "totals": {"added": 1, "removed": 0, "changed": 0, "unchanged": 2},
         }
-        payload = rewrite_payload(history=history)
+        payload = ask_payload(
+            query={
+                "sparql": "SELECT ?t WHERE { ?t a <https://x.test/class/task> }",
+                "entailment": "none",
+                "as_of_commit_seq": 3,
+            },
+            history=history,
+            attempts=1,
+        )
+        del payload["result"]
         seen: list[httpx.Request] = []
         timeline = [{"date": "2026-05-20", "as_of_commit_seq": 1, "label": "Tender"}]
         with LbbClient(
             "http://h", transport=capturing_transport(seen, {"json": payload})
         ) as client:
             answer = client.query.ask("What changed since 5 June?", timeline=timeline)
-            client.query.rewrite(
-                "What changed?",
-                timeline=[
-                    model_module.QueryRewriteTimelinePoint(
-                        date="2026-05-20", as_of_commit_seq=1
-                    )
-                ],
-            )
         self.assertEqual(
             json.loads(seen[0].content),
-            {"question": "What changed since 5 June?", "run": True, "timeline": timeline},
-        )
-        self.assertEqual(
-            json.loads(seen[1].content),
-            {
-                "question": "What changed?",
-                "timeline": [{"date": "2026-05-20", "as_of_commit_seq": 1}],
-            },
+            {"question": "What changed since 5 June?", "timeline": timeline},
         )
         self.assertEqual(answer.history, history)
+        self.assertEqual(answer.query and answer.query["as_of_commit_seq"], 3)
+        self.assertEqual(answer.rows, [])
+        self.assertIsNone(answer.trace_id)
+        model_module.QueryRewriteResponse.model_validate(payload)
 
     def test_ask_returns_the_answer_of_an_ask_query(self) -> None:
-        payload = rewrite_payload(
+        payload = ask_payload(
             result={
                 "results": json.dumps({"head": {}, "boolean": True}),
                 "row_page": {
@@ -3134,30 +3157,45 @@ class QueryRewriteTests(unittest.TestCase):
         self.assertTrue(answer.boolean)
         self.assertEqual(answer.rows, [])
 
+    def test_the_test_payloads_match_the_generated_response_model(self) -> None:
+        model_module.QueryRewriteResponse.model_validate(ask_payload())
+        model_module.QueryRewriteResponse.model_validate(route_payload())
+        self.assertFalse(hasattr(model_module, "QueryRewriteStep"))
+        self.assertNotIn("run", model_module.QueryRewriteRequest.model_fields)
+        self.assertNotIn("previous", model_module.QueryRewriteRequest.model_fields)
 
-class AsyncQueryRewriteTests(unittest.IsolatedAsyncioTestCase):
-    async def test_async_rewrite_and_ask(self) -> None:
+
+class AsyncQueryAskTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_ask_and_route_mode(self) -> None:
         seen: list[httpx.Request] = []
         async with AsyncLbbClient(
             "http://h",
             transport=capturing_transport(
-                seen, [{"json": rewrite_payload()}, {"json": rewrite_run_payload()}]
+                seen, [{"json": ask_payload()}, {"json": route_payload()}]
             ),
         ) as client:
-            response = await client.query.rewrite("Which services exist?", consistency="strong")
-            answer = await client.query.ask("Which services exist?", context="team notes")
-        self.assertEqual(response["query"]["entailment"], "none")
+            answer = await client.query.ask(
+                "Which services exist?", context="team notes", consistency="strong"
+            )
+            routed = await client.query.ask("Which services exist?", mode="route")
+        self.assertEqual(seen[0].url.path, "/v1/query/ask")
         self.assertEqual(seen[0].url.params["consistency"], "strong")
-        self.assertEqual(json.loads(seen[0].content), {"question": "Which services exist?"})
         self.assertEqual(
-            json.loads(seen[1].content),
-            {"question": "Which services exist?", "context": "team notes", "run": True},
+            json.loads(seen[0].content),
+            {"question": "Which services exist?", "context": "team notes"},
+        )
+        self.assertEqual(
+            json.loads(seen[1].content), {"question": "Which services exist?", "mode": "route"}
         )
         self.assertIsInstance(answer, QueryAskResult)
+        self.assertEqual(answer.answer, "One service.")
         self.assertEqual(answer.rows, [{"s": "x"}])
         self.assertEqual(answer.trace_id, "tr_1")
+        self.assertIsNone(routed.answer)
+        self.assertIsNone(routed.query)
+        self.assertFalse(hasattr(client.query, "rewrite"))
 
-    async def test_async_rewrite_is_not_retried(self) -> None:
+    async def test_async_ask_is_not_retried(self) -> None:
         seen: list[httpx.Request] = []
         async with AsyncLbbClient(
             "http://h",
@@ -3167,7 +3205,7 @@ class AsyncQueryRewriteTests(unittest.IsolatedAsyncioTestCase):
                 seen,
                 [
                     {"status": 503, "json": {"error": {"code": "rewrite_model_unavailable"}}},
-                    {"json": rewrite_payload()},
+                    {"json": ask_payload()},
                 ],
             ),
         ) as client:
