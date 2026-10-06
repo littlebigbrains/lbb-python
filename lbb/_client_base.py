@@ -336,34 +336,43 @@ class SparqlResults:
 
 @dataclass(frozen=True)
 class QueryAskResult:
-    """What ``query.ask`` returns: the query a question became, and its rows.
+    """What ``query.ask`` returns: the answer, the query that holds it, and its rows.
 
-    - :attr:`route` — the kind of query (``kind``), who chose it (``by``), and
-      how sure the choice is (``confidence``).
-    - :attr:`query` — the checked query (``sparql``, ``entailment``), or
-      ``None`` when the graph does not hold the answer.
-    - :attr:`rationale` — one or two sentences: why this route and this query.
-    - :attr:`rows` — the rows as ``{variable: lexical_value}`` dicts; empty
-      when the query did not run.
+    - :attr:`answer` — the answer in plain words. ``None`` when the loop
+      stopped before it answered (``error`` says why; ``rows`` then hold the
+      best rows it read), and for ``mode="route"``.
+    - :attr:`citations` — the IRIs the answer names. Each one appeared in the
+      rows the loop read.
+    - :attr:`steps` — the tool calls of the loop, in order (``n``, ``tool``,
+      ``input``, ``ok``, ``rows``, ``error``, ``ms``).
+    - :attr:`route` — the kind of question (``kind``), who chose it (``by``),
+      and how sure the choice is (``confidence``).
+    - :attr:`query` — the query whose rows hold the answer (``sparql``,
+      ``entailment``, ``as_of_commit_seq``). For a comparison, the query at
+      the later point. ``None`` for ``mode="route"``, and when no query
+      answers the question.
+    - :attr:`rationale` — one sentence: which rows answer the question, or
+      why the loop stopped. For ``mode="route"``, who chose the route.
+    - :attr:`rows` — the rows of :attr:`query` as ``{variable:
+      lexical_value}`` dicts. Empty for a comparison and for ``mode="route"``.
     - :attr:`vars` — the projected variables.
     - :attr:`boolean` — the answer of an ``ASK`` query, ``None`` for a ``SELECT``.
     - :attr:`snapshot` — the snapshot the rows were read from, when the server
       names it.
-    - :attr:`error` — why the last attempt failed, when the query did not
-      parse or run.
-    - :attr:`trace_id` — the eval trace of the run; label its rows with
+    - :attr:`error` — why the loop stopped before it answered.
+    - :attr:`trace_id` — the eval trace of the rows; label them with
       ``evals.label``.
     - :attr:`linked` — the names of the question the server linked to
       entities (``text``, ``iri``, ``label``, ``class``, ``score``, ``by``),
       for a "Did you mean …?"; empty when nothing linked.
     - :attr:`anchors` — what the server read about each anchored IRI
       (``iri``, ``found``, ``label``, ``types``, ``note``).
-    - :attr:`history` — for a history question: the date
-      (``as_of_date``), the commit it resolved to (``as_of_commit_seq``)
-      and how (``resolved_by``), and for a comparison both runs
-      (``before``, ``after``) and the rows ``added`` and ``removed``;
-      ``None`` for other questions.
-    - :attr:`rewrite` — the whole ``POST /v1/query/rewrite`` response.
+    - :attr:`history` — where a history answer read the graph: the date
+      (``as_of_date``), its commit (``as_of_commit_seq``) and how the loop
+      found it (``resolved_by``). For a comparison (``compare`` is ``True``):
+      the rows ``added`` and ``removed``, and with a ``key`` the entities
+      ``changed``, with ``totals``. ``None`` for other questions.
+    - :attr:`response` — the whole ``POST /v1/query/ask`` response.
     """
 
     route: dict[str, Any]
@@ -375,19 +384,24 @@ class QueryAskResult:
     snapshot: dict[str, Any] | None
     error: str | None
     trace_id: str | None
-    rewrite: dict[str, Any]
+    response: dict[str, Any]
     linked: list[dict[str, Any]] = dataclass_field(default_factory=list)
     anchors: list[dict[str, Any]] = dataclass_field(default_factory=list)
     history: dict[str, Any] | None = None
+    answer: str | None = None
+    citations: list[str] = dataclass_field(default_factory=list)
+    steps: list[dict[str, Any]] = dataclass_field(default_factory=list)
 
     @classmethod
     def from_response(cls, response: Mapping[str, Any]) -> QueryAskResult:
-        """Build from a ``POST /v1/query/rewrite`` response."""
+        """Build from a ``POST /v1/query/ask`` response."""
         result = response.get("result")
         parsed = (
             SparqlResults.from_envelope(result) if isinstance(result, Mapping) else None
         )
         query = response.get("query")
+        answer = response.get("answer")
+        answer = answer if isinstance(answer, Mapping) else None
         return cls(
             route=dict(response.get("route") or {}),
             query=dict(query) if isinstance(query, Mapping) else None,
@@ -398,7 +412,7 @@ class QueryAskResult:
             snapshot=parsed.snapshot if parsed is not None else None,
             error=response.get("error"),
             trace_id=result.get("trace_id") if isinstance(result, Mapping) else None,
-            rewrite=dict(response),
+            response=dict(response),
             linked=[dict(link) for link in response.get("linked") or []],
             anchors=[dict(anchor) for anchor in response.get("anchors") or []],
             history=(
@@ -406,31 +420,35 @@ class QueryAskResult:
                 if isinstance(response.get("history"), Mapping)
                 else None
             ),
+            answer=str(answer["text"]) if answer is not None else None,
+            citations=[str(iri) for iri in (answer or {}).get("citations") or []],
+            steps=[dict(step) for step in response.get("steps") or []],
         )
 
 
-#: The generated model of one event of a streamed rewrite.
-QueryRewriteEventModel = (
+#: The generated model of one event of a streamed question.
+QueryAskEventModel = (
     models.QueryRewriteEventGrounding
     | models.QueryRewriteEventRoute
-    | models.QueryRewriteEventQuery
-    | models.QueryRewriteEventRun
-    | models.QueryRewriteEventRows
-    | models.QueryRewriteEventRepair
+    | models.QueryRewriteEventStep
+    | models.QueryRewriteEventAnswer
     | models.QueryRewriteEventDone
     | models.QueryRewriteEventError
 )
 
 
 @dataclass(frozen=True)
-class QueryRewriteStreamEvent:
-    """One event of ``query.rewrite_stream``.
+class QueryAskStreamEvent:
+    """One event of ``query.ask_stream``.
 
-    - :attr:`event` — the step: ``grounding``, ``route``, ``query``, ``run``,
-      ``rows``, ``repair``, and last ``done``.
+    - :attr:`event` — the step: ``grounding``, ``route``, a ``step`` per tool
+      call of the loop, ``answer``, and last ``done``. A second ``route``
+      comes before ``answer`` when the loop chose another route.
+      ``mode="route"`` sends ``grounding``, ``route`` and ``done``.
     - :attr:`data` — the event's JSON object as a dict. The ``data`` of
-      ``done`` is the whole response, the same dict ``query.rewrite``
-      returns; ``QueryAskResult.from_response(event.data)`` parses its rows.
+      ``done`` is the whole ``POST /v1/query/ask`` response.
+      ``QueryAskResult.from_response(event.data)`` parses it as
+      ``query.ask`` does.
 
     The stream raises an ``error`` event as :class:`LbbError`; it never
     yields one.
@@ -439,7 +457,7 @@ class QueryRewriteStreamEvent:
     event: str
     data: dict[str, Any]
 
-    def model(self) -> QueryRewriteEventModel:
+    def model(self) -> QueryAskEventModel:
         """Validate the event as its generated model, for example
         ``models.QueryRewriteEventRoute``."""
         return models.QueryRewriteEvent.model_validate(
@@ -2663,8 +2681,8 @@ class _QueryNamespace:
 
     def rewrite_profile(self, *, options: RequestOptions | None = None) -> Any:
         """The graph's rewrite profile (``GET /v1/query/rewrite/profile``):
-        the notes and worked examples the rewriter reads for every question
-        of the graph. ``version`` is 0 when the graph has none."""
+        the notes and worked examples the model of ``query.ask`` reads for
+        every question of the graph. ``version`` is 0 when the graph has none."""
         return self._client._request(
             "GET", "/v1/query/rewrite/profile", options=options
         )
@@ -2687,9 +2705,9 @@ class _QueryNamespace:
         parses each query. Pass the ``version`` you read as
         ``expected_version``: when another write came first, the call raises
         a ``409 conflict`` and stores nothing. ``dry_run=True`` checks the
-        profile and stores nothing. Empty notes and no examples clear it. The
-        rewriter reads the profile for every question; a call's ``context``
-        still adds notes.
+        profile and stores nothing. Empty notes and no examples clear it.
+        ``query.ask`` reads the profile for every question; a call's
+        ``context`` still adds notes.
         """
         body: dict[str, Any] = {
             "notes": notes,
@@ -2708,52 +2726,33 @@ class _QueryNamespace:
             options=options,
         )
 
-    def rewrite(
+    def _ask_response(
         self,
         question: str,
         *,
-        context: str | None = None,
-        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
-        route: str | models.QueryRoute | None = None,
-        mode: str | models.QueryRewriteMode | None = None,
-        run: bool | None = None,
-        limit: int | None = None,
-        as_of_commit_seq: int | None = None,
-        today: str | None = None,
-        include_grounding: bool | None = None,
-        anchor: Sequence[str] | None = None,
-        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
-        consistency: str | None = None,
-        options: RequestOptions | None = None,
+        context: str | None,
+        route: str | models.QueryRoute | None,
+        mode: str | models.QueryRewriteMode | None,
+        limit: int | None,
+        as_of_commit_seq: int | None,
+        today: str | None,
+        include_grounding: bool | None,
+        anchor: Sequence[str] | None,
+        timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None,
+        consistency: str | None,
+        options: RequestOptions | None,
     ) -> Any:
-        """Turn a question into a SPARQL query (``POST /v1/query/rewrite``).
+        """Send ``POST /v1/query/ask`` and return the response as it came.
 
-        A router model selects the kind of query (the route), and a rewriter
-        model writes the query from a description of the graph. The server
-        checks the query. With ``run=True`` the server also runs it, returns
-        the rows in ``result``, and corrects a query that fails once.
-        ``mode="route"`` returns only the route. ``include_grounding=True``
-        returns the graph description the models read in ``grounding.text``.
-        ``anchor`` holds up to 10 entity IRIs the user picked: the rewriter
-        uses them directly. The names the server linked are in ``linked``.
-        A history question about a date reads the last commit written by the
-        end of that day; ``timeline`` (``[{"date", "as_of_commit_seq",
-        "label"}]``, at most 200) names the commit of each date instead, for
-        graphs whose commits stand for other dates. A question that asks
-        what changed runs at both points: ``history.added`` and
-        ``history.removed`` hold the rows that differ.
-
-        Each call uses model tokens, so a failed call is not retried unless
-        ``options={"retry": True}``. A ``429 rewrite_limit`` means the stack
-        used its rewrites of the day.
+        ``LbbClient`` returns the dict, and ``AsyncLbbClient`` an awaitable
+        of it. The call uses model tokens, so a failed call is not retried
+        unless ``options={"retry": True}``.
         """
-        body = _rewrite_body(
+        body = _ask_body(
             question,
             context=context,
-            previous=previous,
             route=route,
             mode=mode,
-            run=run,
             limit=limit,
             as_of_commit_seq=as_of_commit_seq,
             today=today,
@@ -2764,21 +2763,19 @@ class _QueryNamespace:
         params = self._client._consistency_params(consistency, None)
         return self._client._request(
             "POST",
-            "/v1/query/rewrite",
+            "/v1/query/ask",
             body=body,
             params=params or None,
             options={"retry": False, **(options or {})},
         )
 
 
-def _rewrite_body(
+def _ask_body(
     question: str,
     *,
     context: str | None,
-    previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None,
     route: str | models.QueryRoute | None,
     mode: str | models.QueryRewriteMode | None,
-    run: bool | None,
     limit: int | None,
     as_of_commit_seq: int | None,
     today: str | None,
@@ -2786,22 +2783,16 @@ def _rewrite_body(
     anchor: Sequence[str] | None = None,
     timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
 ) -> dict[str, Any]:
-    """The ``QueryRewriteRequest`` body: every field the caller left at
-    ``None`` stays off the wire, since each one has a server default."""
+    """The ``QueryRewriteRequest`` body of ``POST /v1/query/ask``. A field
+    the caller left at ``None`` stays off the wire: each one has a server
+    default."""
     body: dict[str, Any] = {"question": question}
     if context is not None:
         body["context"] = context
-    if previous is not None:
-        body["previous"] = [
-            dict(step) if isinstance(step, Mapping) else _coerce_body(step)
-            for step in previous
-        ]
     if route is not None:
         body["route"] = getattr(route, "value", route)
     if mode is not None:
         body["mode"] = getattr(mode, "value", mode)
-    if run is not None:
-        body["run"] = run
     if limit is not None:
         body["limit"] = limit
     if as_of_commit_seq is not None:
@@ -2904,12 +2895,12 @@ def _sse_decoder() -> codecs.IncrementalDecoder:
     return codecs.getincrementaldecoder("utf-8-sig")(errors="replace")
 
 
-#: The event names of a streamed rewrite. A client skips any other name.
-_REWRITE_STREAM_EVENTS: Final = frozenset(
-    {"grounding", "route", "query", "run", "rows", "repair", "done", "error"}
+#: The event names of a streamed question. A client skips any other name.
+_ASK_STREAM_EVENTS: Final = frozenset(
+    {"grounding", "route", "step", "answer", "done", "error"}
 )
-_REWRITE_STREAM_ENDED = (
-    "Little Big Brain rewrite stream ended before its done or error event"
+_ASK_STREAM_ENDED = (
+    "Little Big Brain ask stream ended before its done or error event"
 )
 
 
@@ -2928,13 +2919,13 @@ def _error_type_for_status(status_code: int) -> str:
     return "api_error"
 
 
-def _rewrite_stream_event(
+def _ask_stream_event(
     name: str, text: str, request_id: str | None
-) -> QueryRewriteStreamEvent | None:
-    """One server-sent event of a streamed rewrite: ``None`` for an event
+) -> QueryAskStreamEvent | None:
+    """One server-sent event of a streamed question: ``None`` for an event
     name the client does not know, the event otherwise. An ``error`` event
     raises the :class:`LbbError` the same request without a stream gets."""
-    if name not in _REWRITE_STREAM_EVENTS:
+    if name not in _ASK_STREAM_EVENTS:
         return None
     try:
         data = json.loads(text)
@@ -2953,7 +2944,7 @@ def _rewrite_stream_event(
             }
         }
         raise _parse_error(status_code, json.dumps(envelope), request_id)
-    return QueryRewriteStreamEvent(event=name, data=data)
+    return QueryAskStreamEvent(event=name, data=data)
 
 
 class _SchemaNamespace:

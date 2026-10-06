@@ -11,7 +11,7 @@ from ._client_base import (
     LbbError,
     ListPage,
     QueryAskResult,
-    QueryRewriteStreamEvent,
+    QueryAskStreamEvent,
     RawLbbResponse,
     RequestOptions,
     RetryEvent,
@@ -30,6 +30,6 @@ __all__ = [
     "RetryEvent",
     "SparqlResults",
     "QueryAskResult",
-    "QueryRewriteStreamEvent",
+    "QueryAskStreamEvent",
     "RESET",
 ]

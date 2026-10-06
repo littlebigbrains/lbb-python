@@ -1962,6 +1962,7 @@ class ModelJob(Enum):
     propose = 'propose'
     label = 'label'
     embed = 'embed'
+    answer = 'answer'
 
 
 class ModelJobQuality(BaseModel):
@@ -2845,6 +2846,32 @@ class PublishedReadFamilyView(BaseModel):
     target_hash: str | None = None
 
 
+class QueryAnswer(BaseModel):
+    """
+    The answer in plain words.
+    """
+
+    citations: Annotated[
+        list[str] | None,
+        Field(
+            description='IRIs of the entities the answer names, at most 20. Each one appeared\nin the rows the loop read; the server removes any other.'
+        ),
+    ] = None
+    text: Annotated[str, Field(description='A short answer in plain words.')]
+
+
+class QueryAnswerTool(Enum):
+    """
+    A tool the answer loop can call.
+    """
+
+    sparql = 'sparql'
+    find_entities = 'find_entities'
+    describe = 'describe'
+    commit_for_date = 'commit_for_date'
+    compare = 'compare'
+
+
 class QueryComparePoint(BaseModel):
     """
     One point of a comparison: exactly one of a commit, a date, or a moment.
@@ -3000,7 +3027,7 @@ class QueryDescribeUse(BaseModel):
 
 class QueryHistoryResolution(Enum):
     """
-    How the server found the commit of a `history` question.
+    How the loop found the commit of a `history` answer.
     """
 
     commit_time = 'commit_time'
@@ -3056,35 +3083,36 @@ class QueryRewriteAnchor(BaseModel):
 
 
 class Event(Enum):
-    done = 'done'
+    answer = 'answer'
+
+
+class QueryRewriteEventAnswer(BaseModel):
+    """
+    The answer, before `done`.
+    """
+
+    data: Annotated[QueryAnswer, Field(description='The answer, before `done`.')]
+    event: Literal['answer']
 
 
 class Event1(Enum):
-    error = 'error'
+    done = 'done'
 
 
 class Event2(Enum):
-    grounding = 'grounding'
+    error = 'error'
 
 
 class Event3(Enum):
-    query = 'query'
+    grounding = 'grounding'
 
 
 class Event4(Enum):
-    repair = 'repair'
-
-
-class Event5(Enum):
     route = 'route'
 
 
-class Event6(Enum):
-    rows = 'rows'
-
-
-class Event7(Enum):
-    run = 'run'
+class Event5(Enum):
+    step = 'step'
 
 
 class QueryRewriteExample(BaseModel):
@@ -3159,7 +3187,7 @@ class QueryRewriteGrounding(BaseModel):
     profile_version: Annotated[
         int | None,
         Field(
-            description="The version of the graph's stored profile (`PUT\n/v1/query/rewrite/profile`) the rewriter read; absent when the graph\nhas no profile, or an empty one.",
+            description="The version of the graph's stored profile (`PUT\n/v1/query/rewrite/profile`) the model read; absent when the graph\nhas no profile, or an empty one.",
             ge=0,
         ),
     ] = None
@@ -3174,7 +3202,7 @@ class QueryRewriteGrounding(BaseModel):
 
 class QueryRewriteGroundingEvent(BaseModel):
     """
-    The graph description is ready (the first event of a streamed rewrite).
+    The graph description is ready (the first event of a stream).
     """
 
     age_ms: Annotated[
@@ -3211,10 +3239,10 @@ class QueryRewriteLink(BaseModel):
 
 class QueryRewriteMode(Enum):
     """
-    What the call returns.
+    What `POST /v1/query/ask` returns.
     """
 
-    rewrite = 'rewrite'
+    answer = 'answer'
     route = 'route'
 
 
@@ -3225,15 +3253,6 @@ class QueryRewriteModelRole(Enum):
 
     router = 'router'
     rewriter = 'rewriter'
-
-
-class QueryRewritePoint(Enum):
-    """
-    Which run of a comparison.
-    """
-
-    before = 'before'
-    after = 'after'
 
 
 class QueryRewriteProfile(BaseModel):
@@ -3264,7 +3283,8 @@ class QueryRewriteProfile(BaseModel):
 class QueryRewriteProfileRequest(BaseModel):
     """
     Store the graph's rewrite profile (`PUT /v1/query/rewrite/profile`):
-    notes and examples the rewriter reads for every question of the graph.
+    notes and examples the model of `POST /v1/query/ask` reads for every
+    question of the graph.
     """
 
     model_config = ConfigDict(
@@ -3287,59 +3307,6 @@ class QueryRewriteProfileRequest(BaseModel):
             description='What the data means, which property holds the current state, what\n"me" or "my" means: at most 8,000 characters.'
         ),
     ] = None
-
-
-class QueryRewriteRepairEvent(BaseModel):
-    """
-    The query failed with a client error, and the rewriter corrects it.
-    """
-
-    attempt: Annotated[int, Field(description='The attempt that comes next (2).', ge=0)]
-    error: Annotated[str, Field(description='The error the rewriter reads.')]
-
-
-class QueryRewriteRowsEvent(BaseModel):
-    """
-    The run of the query ended with rows.
-    """
-
-    count: Annotated[int, Field(description='Rows the run returned.', ge=0)]
-    ms: Annotated[int, Field(description='Milliseconds the run took.', ge=0)]
-
-
-class QueryRewriteRunEvent(BaseModel):
-    """
-    The run of the query started.
-    """
-
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(description='The commit the run reads; `null` for the latest.', ge=0),
-    ] = None
-    point: QueryRewritePoint | None = None
-
-
-class QueryRewriteStep(BaseModel):
-    """
-    One earlier step of the same question: a query the caller ran, and what
-    came of it.
-    """
-
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    error: Annotated[
-        str | None, Field(description='The error the query got, when it failed.')
-    ] = None
-    note: Annotated[
-        str | None,
-        Field(description='What the caller concluded ("the amounts are missing").'),
-    ] = None
-    rows: Annotated[int | None, Field(description='Rows it returned.', ge=0)] = None
-    sample: Annotated[
-        str | None, Field(description='The first rows as text, for the model to read.')
-    ] = None
-    sparql: Annotated[str, Field(description='The SPARQL query of the step.')]
 
 
 class QueryRewriteTerm(BaseModel):
@@ -3381,7 +3348,7 @@ class QueryRewriteTimelinePoint(BaseModel):
 
 class QueryRewriteTimings(BaseModel):
     """
-    Where the time of a rewrite went, in milliseconds.
+    Where the time of a question went, in milliseconds.
     """
 
     anchor_ms: Annotated[
@@ -3396,9 +3363,11 @@ class QueryRewriteTimings(BaseModel):
             ge=0,
         ),
     ] = None
-    rewrite_ms: Annotated[int, Field(ge=0)]
+    rewrite_ms: Annotated[
+        int, Field(description="The rewriter model's turns of the loop.", ge=0)
+    ]
     route_ms: Annotated[int, Field(ge=0)]
-    run_ms: Annotated[int, Field(ge=0)]
+    run_ms: Annotated[int, Field(description="The loop's tool calls.", ge=0)]
     total_ms: Annotated[int, Field(ge=0)]
 
 
@@ -7032,8 +7001,13 @@ class EntityMetadataResponse(BaseModel):
 
 class EvalAskInput(BaseModel):
     """
-    The inputs of an Ask request that shape its answer, kept on an `ask`
-    trace and its golden so a run asks the same way. Every field is optional.
+    The inputs of an Ask request (`POST /v1/query/ask`) that shape its
+    answer, kept on an `ask` trace and its golden so a run asks the same way.
+    Every field is optional. An object stored before 2026-10-06 may hold
+    `previous`, the earlier steps of the removed one-shot rewrite: they read
+    as notes at the end of `context` (the loop reads what the app knows
+    there), so a follow-up question keeps its meaning when a run asks it
+    again.
     """
 
     anchor: Annotated[
@@ -7043,11 +7017,13 @@ class EvalAskInput(BaseModel):
     context: Annotated[
         str | None, Field(description="The app's notes for the model (`context`).")
     ] = None
-    previous: Annotated[
-        list[QueryRewriteStep] | None,
-        Field(description='The earlier steps of the question (`previous`).'),
-    ] = None
     route: QueryRoute | None = None
+    timeline: Annotated[
+        list[QueryRewriteTimelinePoint] | None,
+        Field(
+            description="The app's own dated points (`timeline`), so a history question finds\nthe same commits on every run."
+        ),
+    ] = None
     today: Annotated[
         str | None,
         Field(
@@ -7123,6 +7099,7 @@ class EvalTrace(BaseModel):
         dict[str, EvalLabel] | None, Field(description='Labels by result id.')
     ] = None
     query_type: EvalQueryType | None = None
+    reply: QueryAnswer | None = None
     request: Annotated[
         str,
         Field(description="The user's words, as the caller passed them in `request`."),
@@ -7195,6 +7172,7 @@ class EvalVerdictDetail(BaseModel):
     relevant_returned: Annotated[
         int | None, Field(description='Known-relevant results that came back.', ge=0)
     ] = None
+    reply: QueryAnswer | None = None
     review_trace_id: Annotated[
         str | None,
         Field(
@@ -8661,6 +8639,53 @@ class PublishedReadStatusResponse(BaseModel):
     snapshot: PublishedReadSnapshotView
 
 
+class QueryAnswerStep(BaseModel):
+    """
+    One tool call of the answer loop.
+    """
+
+    error: Annotated[str | None, Field(description='Why the step failed.')] = None
+    input: Annotated[
+        Any,
+        Field(
+            description="The model's input to the tool, a JSON object; long texts are cut."
+        ),
+    ]
+    ms: Annotated[int, Field(ge=0)]
+    n: Annotated[int, Field(description='1 for the first call.', ge=0)]
+    ok: Annotated[
+        bool,
+        Field(
+            description='The tool answered; `false` when it failed (the model read the error).'
+        ),
+    ]
+    rows: Annotated[
+        int | None,
+        Field(
+            description='Rows a `sparql` step returned; for a `compare` step, the entries that\ndiffer (added, removed and changed).',
+            ge=0,
+        ),
+    ] = None
+    tool: QueryAnswerTool
+
+
+class QueryAnswerStepEvent(BaseModel):
+    """
+    One tool call of a streamed answer loop ended.
+    """
+
+    input: Annotated[
+        str,
+        Field(
+            description='What the tool was asked, in one line of at most 200 characters.'
+        ),
+    ]
+    n: Annotated[int, Field(ge=0)]
+    ok: bool
+    rows: Annotated[int | None, Field(ge=0)] = None
+    tool: QueryAnswerTool
+
+
 class QueryCompareChange(BaseModel):
     """
     One key whose rows differ between the two points.
@@ -8936,24 +8961,83 @@ class QueryRewriteEventGrounding(BaseModel):
     event: Literal['grounding']
 
 
-class QueryRewriteEventRepair(BaseModel):
-    data: QueryRewriteRepairEvent
-    event: Literal['repair']
+class QueryRewriteEventStep(BaseModel):
+    """
+    One tool call of the loop ended.
+    """
+
+    data: Annotated[
+        QueryAnswerStepEvent, Field(description='One tool call of the loop ended.')
+    ]
+    event: Literal['step']
 
 
-class QueryRewriteEventRows(BaseModel):
-    data: QueryRewriteRowsEvent
-    event: Literal['rows']
+class QueryRewriteHistory(BaseModel):
+    """
+    Where a `history` answer read the graph: the commit of a date, or the
+    two points of a comparison and what differs between them.
+    """
 
-
-class QueryRewriteEventRun(BaseModel):
-    data: QueryRewriteRunEvent
-    event: Literal['run']
+    added: Annotated[
+        list[dict[str, QueryRewriteTerm]] | None,
+        Field(
+            description="A comparison's rows that the later point has and the earlier one has\nnot; with a `key`, the rows of the entities only the later point has.\nAt most 500."
+        ),
+    ] = None
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(
+            description='The commit the query read; for a comparison, the earlier point.',
+            ge=0,
+        ),
+    ] = None
+    as_of_date: Annotated[
+        str | None,
+        Field(
+            description="The date the loop resolved (`YYYY-MM-DD`): of the query's commit, or\nof a comparison's earlier point."
+        ),
+    ] = None
+    changed: Annotated[
+        list[QueryCompareChange] | None,
+        Field(
+            description='With a `key`: the entities whose rows differ, with their rows at both\npoints. At most 500.'
+        ),
+    ] = None
+    compare: Annotated[
+        bool,
+        Field(
+            description="The answer comes from the loop's `compare` tool: the query ran at the\nearlier point and at the later one (`query.as_of_commit_seq`), and\nthe lists below hold what differs."
+        ),
+    ]
+    key: Annotated[
+        list[str] | None,
+        Field(
+            description='The variables the rows of a comparison were paired by. Empty when\nwhole rows were compared.'
+        ),
+    ] = None
+    label: Annotated[
+        str | None,
+        Field(description='The label of the timeline point the date resolved to.'),
+    ] = None
+    removed: Annotated[
+        list[dict[str, QueryRewriteTerm]] | None,
+        Field(
+            description="A comparison's rows that the earlier point has and the later one has\nnot; with a `key`, the rows of the entities only the earlier point\nhas. At most 500.\nWithout a key a changed value shows as a removed row and an added row."
+        ),
+    ] = None
+    resolved_by: QueryHistoryResolution | None = None
+    totals: QueryCompareTotals | None = None
+    truncated: Annotated[
+        bool | None,
+        Field(
+            description='The difference is not complete: a run did not read all its rows, or\na list holds more than 500 entries (`totals` has their number).'
+        ),
+    ] = None
 
 
 class QueryRewriteModelCall(BaseModel):
     """
-    One model call of a rewrite.
+    One model call of a question.
     """
 
     cost_micro_usd: Annotated[
@@ -8973,26 +9057,10 @@ class QueryRewriteModelCall(BaseModel):
     ]
 
 
-class QueryRewriteQueryEvent(BaseModel):
-    """
-    The rewriter wrote a query (one per attempt).
-    """
-
-    attempt: Annotated[
-        int, Field(description='1 for the first query, 2 for the correction.', ge=0)
-    ]
-    entailment: SparqlEntailment
-    sparql: Annotated[
-        str,
-        Field(
-            description="The query: the checked text with its `PREFIX` lines, or the model's\ntext when it did not pass the check."
-        ),
-    ]
-
-
 class QueryRewriteRequest(BaseModel):
     """
-    Turn a question into the query to run (`POST /v1/query/rewrite`).
+    Answer a question about the graph (`POST /v1/query/ask`). An unknown
+    field answers `400`: the one-shot rewrite's `run` and `previous` are gone.
     """
 
     model_config = ConfigDict(
@@ -9001,7 +9069,7 @@ class QueryRewriteRequest(BaseModel):
     anchor: Annotated[
         list[str] | None,
         Field(
-            description='Entity IRIs the user picked in the app, at most 10. The server reads\neach one at the read commit (its types, its label, and a summary of\nits links) and tells the rewriter to use these IRIs directly instead\nof matching their names. An IRI that is not in the graph gets a note\nin `anchors`, not an error.'
+            description='Entity IRIs the user picked in the app, at most 10. The server reads\neach one at the read commit (its types, its label, and a summary of\nits links) and tells the rewriter to use these IRIs directly instead\nof matching their names. An IRI that is not in the graph gets a note\nin `anchors`, not an error. `mode: "route"` reads no anchors.'
         ),
     ] = None
     as_of_commit_seq: Annotated[
@@ -9016,32 +9084,23 @@ class QueryRewriteRequest(BaseModel):
     include_grounding: Annotated[
         bool | None,
         Field(
-            description='Return the graph description the models read in `grounding.text`:\nto see why a query came out as it did, or to reuse the description\nin an app\'s own prompt. With `mode: "route"` no rewriter call is made.'
+            description="Return the graph description the models read in `grounding.text`:\nto see why an answer came out as it did, or to reuse the description\nin an app's own prompt."
         ),
     ] = None
     limit: Annotated[
         int | None,
-        Field(description='Rows a run returns: 1 to 1,000, default 100.', ge=0),
+        Field(
+            description='Rows each query of the loop returns: 1 to 1,000, default 100.',
+            ge=0,
+        ),
     ] = None
     mode: QueryRewriteMode | None = None
-    previous: Annotated[
-        list[QueryRewriteStep] | None,
-        Field(
-            description='Earlier steps of the same question, oldest first; at most 6.'
-        ),
-    ] = None
     question: Annotated[str, Field(description='The question, 1 to 4,000 characters.')]
     route: QueryRoute | None = None
-    run: Annotated[
-        bool | None,
-        Field(
-            description='Run the query and return its rows in `result`. A query that fails\nwith a client error is corrected once.'
-        ),
-    ] = None
     timeline: Annotated[
         list[QueryRewriteTimelinePoint] | None,
         Field(
-            description="Dated points that stand for the graph's commits, at most 200. A\nhistory question about a date reads the commit of the latest point\non or before that date, instead of the commit written last on or\nbefore the end of that day (UTC). For graphs whose commits stand for\nother dates (a demo's milestones, an import of old records)."
+            description="Dated points that stand for the graph's commits, at most 200. The\nloop's `commit_for_date` and `compare` read a date as the commit of\nthe latest point on or before it, instead of the commit written last\non or before the end of that day (UTC). For graphs whose commits\nstand for other dates (a demo's milestones, an import of old\nrecords)."
         ),
     ] = None
     today: Annotated[
@@ -9146,13 +9205,13 @@ class ResolvedTerm(BaseModel):
 
 class RewrittenQuery(BaseModel):
     """
-    The query the rewriter wrote.
+    The query whose rows hold the answer.
     """
 
     as_of_commit_seq: Annotated[
         int | None,
         Field(
-            description='The commit to read, when the question or the request names one.',
+            description='The commit the query read; for a comparison, the later point.',
             ge=0,
         ),
     ] = None
@@ -11390,120 +11449,64 @@ class OntologyStarterList(BaseModel):
     starters: list[OntologyStarterSummary]
 
 
-class QueryRewriteEventQuery(BaseModel):
-    data: QueryRewriteQueryEvent
-    event: Literal['query']
-
-
 class QueryRewriteEventRoute(BaseModel):
     """
     The router's route as soon as it answers, the caller's route at once,
-    or the rewriter's route when it decides.
+    or the loop's route when it answers.
     """
 
     data: Annotated[
         QueryRouteDecision,
         Field(
-            description="The router's route as soon as it answers, the caller's route at once,\nor the rewriter's route when it decides."
+            description="The router's route as soon as it answers, the caller's route at once,\nor the loop's route when it answers."
         ),
     ]
     event: Literal['route']
 
 
-class QueryRewriteHistory(BaseModel):
-    """
-    What a `history` question asks for beyond the query, and where the
-    server read it.
-    """
-
-    added: Annotated[
-        list[dict[str, QueryRewriteTerm]] | None,
-        Field(
-            description="A comparison's rows that `after` has and `before` has not; with a\n`key`, the rows of the entities only `after` has. At most 500."
-        ),
-    ] = None
-    after: SparqlTextResponse | None = None
-    as_of_commit_seq: Annotated[
-        int | None,
-        Field(
-            description="The commit of the question's point: the commit of `as_of_date`, or\nthe commit the question or the request names. For a comparison, the\nearlier point. Absent when the server could not resolve the date.",
-            ge=0,
-        ),
-    ] = None
-    as_of_date: Annotated[
-        str | None, Field(description='The date the question names (`YYYY-MM-DD`).')
-    ] = None
-    before: SparqlTextResponse | None = None
-    changed: Annotated[
-        list[QueryCompareChange] | None,
-        Field(
-            description='With a `key`: the entities whose rows differ, with their rows at both\npoints. At most 500.'
-        ),
-    ] = None
-    compare: Annotated[
-        bool,
-        Field(
-            description='The question asks what changed: the server runs the query at the\nearlier point and at the later one, and compares the rows.'
-        ),
-    ]
-    key: Annotated[
-        list[str] | None,
-        Field(
-            description='The variable the rows of a comparison were paired by: the first\nvariable when its values are entities. Empty when whole rows were\ncompared.'
-        ),
-    ] = None
-    label: Annotated[
-        str | None,
-        Field(description='The label of the timeline point the date resolved to.'),
-    ] = None
-    removed: Annotated[
-        list[dict[str, QueryRewriteTerm]] | None,
-        Field(
-            description="A comparison's rows that `before` has and `after` has not; with a\n`key`, the rows of the entities only `before` has. At most 500.\nWithout a key a changed value shows as a removed row and an added row."
-        ),
-    ] = None
-    resolved_by: QueryHistoryResolution | None = None
-    totals: QueryCompareTotals | None = None
-    truncated: Annotated[
-        bool | None,
-        Field(
-            description='The difference is not complete: a run did not read all its rows, or\na list holds more than 500 entries (`totals` has their number).'
-        ),
-    ] = None
-
-
 class QueryRewriteResponse(BaseModel):
+    """
+    The answer of `POST /v1/query/ask`.
+    """
+
     anchors: Annotated[
         list[QueryRewriteAnchor] | None,
         Field(
             description="What the server read about each anchored IRI (`anchor`), in the\nrequest's order."
         ),
     ] = None
+    answer: QueryAnswer | None = None
     attempts: Annotated[
         int,
-        Field(description='Queries the rewriter wrote: 2 when it corrected one.', ge=0),
+        Field(
+            description='Queries the loop ran (its `sparql` and `compare` steps).', ge=0
+        ),
     ]
     error: Annotated[
-        str | None,
-        Field(
-            description='Why the last attempt failed, when the query did not parse or run.'
-        ),
+        str | None, Field(description='Why the loop stopped before it answered.')
     ] = None
     grounding: QueryRewriteGrounding
     history: QueryRewriteHistory | None = None
     linked: Annotated[
         list[QueryRewriteLink] | None,
         Field(
-            description='Names of the question linked to entities of the graph before the\nrewriter wrote the query; the rewriter uses their IRIs directly.'
+            description='Names of the question linked to entities of the graph before the\nloop started; the model uses their IRIs directly.'
         ),
     ] = None
     models: list[QueryRewriteModelCall]
     query: RewrittenQuery | None = None
     rationale: Annotated[
-        str, Field(description='One or two sentences: why this route and this query.')
+        str,
+        Field(
+            description='One sentence: which rows answer the question, or why the loop\nstopped. For `mode: "route"`, who chose the route.'
+        ),
     ]
     result: SparqlTextResponse | None = None
     route: QueryRouteDecision
+    steps: Annotated[
+        list[QueryAnswerStep] | None,
+        Field(description='The tool calls of the loop, in order.'),
+    ] = None
     timings: QueryRewriteTimings
 
 
@@ -12005,10 +12008,8 @@ class QueryRewriteEvent(
     RootModel[
         QueryRewriteEventGrounding
         | QueryRewriteEventRoute
-        | QueryRewriteEventQuery
-        | QueryRewriteEventRun
-        | QueryRewriteEventRows
-        | QueryRewriteEventRepair
+        | QueryRewriteEventStep
+        | QueryRewriteEventAnswer
         | QueryRewriteEventDone
         | QueryRewriteEventError
     ]
@@ -12016,14 +12017,12 @@ class QueryRewriteEvent(
     root: Annotated[
         QueryRewriteEventGrounding
         | QueryRewriteEventRoute
-        | QueryRewriteEventQuery
-        | QueryRewriteEventRun
-        | QueryRewriteEventRows
-        | QueryRewriteEventRepair
+        | QueryRewriteEventStep
+        | QueryRewriteEventAnswer
         | QueryRewriteEventDone
         | QueryRewriteEventError,
         Field(
-            description='One event of a streamed rewrite: `POST /v1/query/rewrite` with\n`Accept: text/event-stream`. On the wire each event is\n`event: <event>\\ndata: <data as JSON>\\n\\n`. The order: `grounding`,\n`route`, then per attempt `query`, `run` and `rows` (a comparison runs\ntwice: `run` and `rows` at the earlier point, then at the later point),\nwith `repair` before a second attempt; `done` or `error` ends the stream. A second `route`\ncomes when the rewriter chose another route. Clients ignore an event name\nthey do not know: later versions add events.',
+            description='One event of a streamed question: `POST /v1/query/ask` with\n`Accept: text/event-stream`. On the wire each event is\n`event: <event>\\ndata: <data as JSON>\\n\\n`. The order: `grounding`,\n`route`, a `step` per tool call of the loop, `answer`, then `done`; a\nsecond `route` comes before `answer` when the loop chose another route.\n`mode: "route"` sends `grounding`, `route` and `done`. `error` ends a\nstream that failed. Clients ignore an event name they do not know: later\nversions add events.',
             discriminator='event',
         ),
     ]

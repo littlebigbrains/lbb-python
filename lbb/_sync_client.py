@@ -12,7 +12,7 @@ import httpx
 
 from . import models
 from ._client_base import (
-    _REWRITE_STREAM_ENDED,
+    _ASK_STREAM_ENDED,
     DEFAULT_BASE_URL,
     DEFAULT_INTEGRATIONS_URL,
     DEFAULT_MAX_RETRIES,
@@ -23,12 +23,14 @@ from ._client_base import (
     ListPage,
     ModelT,
     QueryAskResult,
-    QueryRewriteStreamEvent,
+    QueryAskStreamEvent,
     RawLbbResponse,
     RequestOptions,
     RetryEvent,
     RowT,
     SparqlResults,
+    _ask_body,
+    _ask_stream_event,
     _BaseLbbClient,
     _body_marks_terminal,
     _ChecksNamespace,
@@ -46,8 +48,6 @@ from ._client_base import (
     _retry_allowed,
     _retry_delay_seconds,
     _retryable,
-    _rewrite_body,
-    _rewrite_stream_event,
     _SchemaNamespace,
     _sse_decoder,
     _SseParser,
@@ -169,87 +169,106 @@ class _SyncQueryNamespace(_QueryNamespace):
         question: str,
         *,
         context: str | None = None,
-        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
         route: str | models.QueryRoute | None = None,
+        mode: str | models.QueryRewriteMode | None = None,
         limit: int | None = None,
         as_of_commit_seq: int | None = None,
         today: str | None = None,
+        include_grounding: bool | None = None,
         anchor: Sequence[str] | None = None,
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> QueryAskResult:
-        """Answer a question in plain words: :meth:`rewrite` with ``run=True``,
-        and the rows of the run parsed as :meth:`sparql` parses them.
-        ``anchor`` holds entity IRIs the user picked; ``timeline`` names the
-        commit of each date for a history question."""
-        response = self.rewrite(
-            question,
-            context=context,
-            previous=previous,
-            route=route,
-            run=True,
-            limit=limit,
-            as_of_commit_seq=as_of_commit_seq,
-            today=today,
-            anchor=anchor,
-            timeline=timeline,
-            consistency=consistency,
-            options=options,
-        )
-        return QueryAskResult.from_response(response)
+        """Answer a question about the graph in plain words
+        (``POST /v1/query/ask``).
 
-    def rewrite_stream(
+        The server's model runs a bounded loop of tool calls: it runs
+        queries, looks up names, reads the graph description, finds the
+        commit of a date, and compares two points. Then it answers.
+        ``answer`` holds the text, ``citations`` the IRIs it names, and
+        ``steps`` the tool calls. ``query`` and ``rows`` hold the query
+        whose rows hold the answer. ``limit`` caps the rows each query of
+        the loop returns (default 100).
+
+        ``mode="route"`` returns only the kind of question, from the router
+        model alone. ``route`` fixes the kind instead of asking the router.
+        ``context`` adds notes for this call. ``anchor`` holds up to 10
+        entity IRIs the user picked; the loop uses them directly.
+        ``timeline`` (``[{"date", "as_of_commit_seq", "label"}]``, at most
+        200) names the commit of each date, for graphs whose commits stand
+        for other dates. ``include_grounding=True`` returns the graph
+        description the models read in ``response["grounding"]["text"]``.
+
+        Each call uses model tokens, so a failed call is not retried unless
+        ``options={"retry": True}``. A ``429 rewrite_limit`` means the stack
+        used its questions of the day.
+        """
+        return QueryAskResult.from_response(
+            self._ask_response(
+                question,
+                context=context,
+                route=route,
+                mode=mode,
+                limit=limit,
+                as_of_commit_seq=as_of_commit_seq,
+                today=today,
+                include_grounding=include_grounding,
+                anchor=anchor,
+                timeline=timeline,
+                consistency=consistency,
+                options=options,
+            )
+        )
+
+    def ask_stream(
         self,
         question: str,
         *,
         context: str | None = None,
-        previous: Sequence[Mapping[str, Any] | models.QueryRewriteStep] | None = None,
         route: str | models.QueryRoute | None = None,
         mode: str | models.QueryRewriteMode | None = None,
-        run: bool | None = None,
         limit: int | None = None,
         as_of_commit_seq: int | None = None,
         today: str | None = None,
         include_grounding: bool | None = None,
+        anchor: Sequence[str] | None = None,
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
-    ) -> Generator[QueryRewriteStreamEvent, None, None]:
-        """:meth:`rewrite` with progress: yield one event per step.
+    ) -> Generator[QueryAskStreamEvent, None, None]:
+        """:meth:`ask` with progress: yield one event per step.
 
-        The server sends ``grounding``, ``route``, then ``query``, ``run``
-        and ``rows`` per attempt, with ``repair`` before a second attempt.
-        The last event, ``done``, holds the same response as ``rewrite``.
-        A second ``route`` comes when the rewriter chose another route. A
-        comparison runs twice: ``run`` (``point: "before"``) and ``rows``,
-        then ``run`` (``point: "after"``) and ``rows``.
+        The server sends ``grounding``, ``route``, a ``step`` per tool call
+        of the loop, ``answer``, and last ``done``. ``done`` holds the same
+        response as ``ask``: ``QueryAskResult.from_response(event.data)``
+        parses it. A second ``route`` comes before ``answer`` when the loop
+        chose another route. ``mode="route"`` sends ``grounding``, ``route``
+        and ``done``. The client skips event names it does not know.
 
         An ``error`` event raises :class:`LbbError` with the status, code
-        and message that ``rewrite`` raises. An error before the stream
-        starts (a 400, a ``429 rewrite_limit``) raises as ``rewrite`` does.
-        The call is never retried. Close the generator, or leave its loop,
-        to close the response; the server then stops its work. A body that
-        ends before ``done`` raises ``httpx.RemoteProtocolError``.
-        ``options["timeout"]`` bounds each network read, not the whole
-        stream.
+        and message that ``ask`` raises. An error before the stream starts
+        (a 400, a ``429 rewrite_limit``) raises as ``ask`` does. The call is
+        never retried. Close the generator, or leave its loop, to close the
+        response; the server then stops its work. A body that ends before
+        ``done`` raises ``httpx.RemoteProtocolError``. ``options["timeout"]``
+        bounds each network read, not the whole stream.
         """
-        body = _rewrite_body(
+        body = _ask_body(
             question,
             context=context,
-            previous=previous,
             route=route,
             mode=mode,
-            run=run,
             limit=limit,
             as_of_commit_seq=as_of_commit_seq,
             today=today,
             include_grounding=include_grounding,
+            anchor=anchor,
             timeline=timeline,
         )
         params = self._client._consistency_params(consistency, None)
         client = cast("LbbClient", self._client)
-        return client._rewrite_events(body, params or None, options)
+        return client._ask_events(body, params or None, options)
 
     def update(
         self,
@@ -591,17 +610,17 @@ class LbbClient(_BaseLbbClient):
                 yield from parser.feed(decoder.decode(chunk))
             yield from parser.feed(decoder.decode(b"", final=True))
 
-    def _rewrite_events(
+    def _ask_events(
         self,
         body: dict[str, Any],
         params: Mapping[str, Any] | None,
         options: RequestOptions | None,
-    ) -> Generator[QueryRewriteStreamEvent, None, None]:
-        """The events of ``POST /v1/query/rewrite`` as a stream."""
+    ) -> Generator[QueryAskStreamEvent, None, None]:
+        """The events of ``POST /v1/query/ask`` as a stream."""
         opened: list[httpx.Response] = []
         stream = self._event_stream(
             "POST",
-            "/v1/query/rewrite",
+            "/v1/query/ask",
             params=params,
             body=body,
             options=options,
@@ -612,7 +631,7 @@ class LbbClient(_BaseLbbClient):
         try:
             for name, text in stream:
                 request_id = opened[0].headers.get("x-request-id") if opened else None
-                event = _rewrite_stream_event(name, text, request_id)
+                event = _ask_stream_event(name, text, request_id)
                 if event is None:
                     continue
                 yield event
@@ -621,7 +640,7 @@ class LbbClient(_BaseLbbClient):
         finally:
             stream.close()
         raise httpx.RemoteProtocolError(
-            _REWRITE_STREAM_ENDED, request=opened[0].request if opened else None
+            _ASK_STREAM_ENDED, request=opened[0].request if opened else None
         )
 
     def _request(
