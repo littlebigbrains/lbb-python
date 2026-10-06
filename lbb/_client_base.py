@@ -3109,9 +3109,9 @@ def _enum_value(value: Any) -> Any:
 
 class _ChecksNamespace:
     """Model checks: the log of the model calls LBB makes for its own work on
-    the graph (rerank, route, rewrite, fit, propose, label, embed), the checks
-    a judge model makes of a sample of them, and the reviews people make of
-    the checks. A review is the call's ground truth.
+    the graph (rerank, route, rewrite, fit, propose, label, embed, answer,
+    ask), the checks a judge model makes of a sample of them, and the reviews
+    people make of the checks. A review is the call's ground truth.
 
     Reading calls and checks and reviewing a check use no model.
     :meth:`check_call` spends the platform's judge budget.
