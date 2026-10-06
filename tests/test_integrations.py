@@ -500,7 +500,93 @@ class SyncIntegrationsTests(unittest.TestCase):
         )
 
 
+class CdcIntegrationsTests(unittest.TestCase):
+    def test_alert_preferences_retry_the_same_revision(self) -> None:
+        seen: list[httpx.Request] = []
+        with sync_client(seen, [{"status": 503}, {"json": {"ok": True}}]) as client:
+            client.integrations.cdc_mute_alerts("postgres", graph=GRAPH, expected_revision=3, muted=True)
+        self.assertEqual(len(seen), 2)
+        for request in seen:
+            self.assertEqual(request.url.path, "/v1/integrations/connections/postgres/cdc/alerts")
+            self.assertEqual(body(request), {"graph": GRAPH, "expected_revision": 3, "muted": True})
+
+    def test_discovery_retry_keeps_job_credentials_and_cancel_fence(self) -> None:
+        seen: list[httpx.Request] = []
+        source = {"hostname": "db.example.test", "port": 5432, "database": "source", "publication": "lbb", "slot": "lbb",
+                  "tables": [{"schema": "public", "table": "items"}]}
+        credentials = {"username": "cdc", "password": "fixture"}
+        with sync_client(seen, [{"status": 503}, {"json": {"ok": True}}]) as client:
+            client.integrations.cdc_discover("postgres", graph=GRAPH, job_id="job_1", expected_revision=0, source=source, credentials=credentials)
+            client.integrations.cdc_cancel_discovery("postgres", graph=GRAPH, job_id="job_1", graph_epoch=4, expected_revision=2)
+        self.assertEqual(len(seen), 3)
+        self.assertEqual(body(seen[0]), body(seen[1]))
+        self.assertEqual(body(seen[0]), {"graph": GRAPH, "job_id": "job_1", "expected_revision": 0, "source": source, "credentials": credentials})
+        self.assertEqual(body(seen[2]), {"graph": GRAPH, "job_id": "job_1", "graph_epoch": 4, "expected_revision": 2})
+        self.assertTrue(all(request.url.host == "api.littlebigbrain.com" for request in seen))
+
+    def test_durable_control_retry_keeps_operation_and_stack_scope(self) -> None:
+        seen: list[httpx.Request] = []
+        replies = [{"status": 503}, {"json": {"ok": True, "operation": {"id": "pause", "status": "pending"}}}]
+        with sync_client(seen, replies) as client:
+            result = client.integrations.cdc_control("postgres", graph=GRAPH, operation_id="pause", action="pause_capture")
+            self.assertEqual(result["operation"]["status"], "pending")
+            client.integrations.cdc_status("postgres", graph=GRAPH)
+        self.assertEqual(len(seen), 3)
+        for request in seen[:2]:
+            self.assertEqual(request.url.host, "api.littlebigbrain.com")
+            self.assertEqual(request.url.path, "/v1/integrations/connections/postgres/cdc/control")
+            self.assertEqual(request.url.query, b"")
+            self.assertEqual(request.headers["authorization"], f"Bearer {KEY}")
+            self.assertEqual(body(request), {"graph": GRAPH, "operation_id": "pause", "action": "pause_capture"})
+        self.assertEqual(seen[2].url.params["graph"], GRAPH)
+
+
 class AsyncIntegrationsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_alert_preferences(self) -> None:
+        seen: list[httpx.Request] = []
+        async with async_client(seen) as client:
+            await client.integrations.cdc_mute_alerts("postgres", graph=GRAPH, expected_revision=1, muted=False)
+        self.assertEqual(body(seen[0]), {"graph": GRAPH, "expected_revision": 1, "muted": False})
+
+    async def test_async_discovery_uses_the_setup_routes(self) -> None:
+        seen: list[httpx.Request] = []
+        async with async_client(seen) as client:
+            await client.integrations.cdc_discovery("postgres", graph=GRAPH)
+            await client.integrations.cdc_discover("postgres", graph=GRAPH, job_id="job_1", expected_revision=0,
+                source={"hostname": "db.example.test", "port": 5432, "database": "source", "publication": "lbb", "slot": "lbb",
+                        "tables": [{"schema": "public", "table": "items"}]}, credentials={"username": "cdc", "password": "fixture"})
+            await client.integrations.cdc_cancel_discovery("postgres", graph=GRAPH, job_id="job_1", graph_epoch=4, expected_revision=2)
+        self.assertEqual([request.url.path for request in seen], ["/v1/integrations/connections/postgres/cdc/discovery"] * 2
+                         + ["/v1/integrations/connections/postgres/cdc/discovery/cancel"])
+        self.assertEqual(seen[0].url.params["graph"], GRAPH)
+        self.assertEqual(body(seen[2])["graph_epoch"], 4)
+
+    async def test_async_cdc_approval_retries_exact_reviewed_body(self) -> None:
+        seen: list[httpx.Request] = []
+        mapping = {"tables": {"pg_42": {"class_iri": "https://example.test/Item", "properties": {}, "foreign_keys": []}}}
+        async with async_client(seen, [{"status": 503}, {"json": {"ok": True}}]) as client:
+            await client.integrations.cdc_approve_discovery("postgres", graph=GRAPH, job_id="job_1", graph_epoch=3, expected_revision=4,
+                catalog_digest="a" * 64, mapping=mapping, max_capture_bytes=1_000_000)
+            await client.integrations.cdc_review_discovery("postgres", graph=GRAPH, job_id="job_1", graph_epoch=3, expected_revision=4,
+                catalog_digest="a" * 64, mapping=mapping, max_capture_bytes=1_000_000)
+        self.assertEqual(len(seen), 3)
+        for request in seen:
+            self.assertEqual(body(request), {"graph": GRAPH, "job_id": "job_1", "graph_epoch": 3, "expected_revision": 4,
+                "catalog_digest": "a" * 64, "mapping": mapping, "max_capture_bytes": 1_000_000})
+            self.assertEqual(request.headers["authorization"], f"Bearer {KEY}")
+        self.assertEqual(seen[0].url, seen[1].url)
+        self.assertEqual(seen[2].url.path, "/v1/integrations/connections/postgres/cdc/discovery/review")
+
+    async def test_async_cdc_status_and_control(self) -> None:
+        seen: list[httpx.Request] = []
+        async with async_client(seen) as client:
+            await client.integrations.cdc_status("postgres", graph=GRAPH)
+            await client.integrations.cdc_control("postgres", graph=GRAPH, operation_id="retire", action="retire", confirm="postgres")
+        self.assertEqual(seen[0].url.params["graph"], GRAPH)
+        self.assertEqual(seen[0].url.path, "/v1/integrations/connections/postgres/cdc")
+        self.assertEqual(body(seen[1]), {"graph": GRAPH, "operation_id": "retire", "action": "retire", "confirm": "postgres"})
+        self.assertTrue(all(request.url.host == "api.littlebigbrain.com" for request in seen))
+
     async def test_async_methods_send_the_same_requests(self) -> None:
         seen: list[httpx.Request] = []
         async with async_client(seen) as client:
@@ -629,6 +715,19 @@ class IntegrationsContractTests(unittest.TestCase):
         with sync_client(seen) as client:
             api = client.integrations
             api.connectors()
+            api.cdc_overview(graph=GRAPH)
+            api.cdc_status("postgres", graph=GRAPH)
+            api.cdc_mute_alerts("postgres", graph=GRAPH, expected_revision=0, muted=True)
+            api.cdc_discovery("postgres", graph=GRAPH)
+            api.cdc_discover("postgres", graph=GRAPH, job_id="job_1", expected_revision=0,
+                source={"hostname": "db.example.test", "port": 5432, "database": "source", "publication": "lbb", "slot": "lbb",
+                        "tables": [{"schema": "public", "table": "items"}]}, credentials={"username": "cdc", "password": "fixture"})
+            for approval_method in (api.cdc_review_discovery, api.cdc_approve_discovery):
+                approval_method("postgres", graph=GRAPH, job_id="job_1", graph_epoch=1, expected_revision=2,
+                    catalog_digest="a" * 64, mapping={"tables": {"pg_42": {"class_iri": "https://example.test/Item", "properties": {}, "foreign_keys": []}}},
+                    max_capture_bytes=1_000_000)
+            api.cdc_cancel_discovery("postgres", graph=GRAPH, job_id="job_1", graph_epoch=1, expected_revision=2)
+            api.cdc_control("postgres", graph=GRAPH, operation_id="retire", action="retire", confirm="postgres")
             api.create(
                 graph=GRAPH,
                 id="hubspot",

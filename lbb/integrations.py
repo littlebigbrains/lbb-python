@@ -219,6 +219,207 @@ class IntegrationEraseAnswer(TypedDict):
     reclaims: list[IntegrationReclaim]
 
 
+IntegrationCdcAction = Literal[
+    "pause_capture", "resume_capture", "pause_apply", "resume_apply", "retire"
+]
+
+
+class _CdcOperationOptional(TypedDict, total=False):
+    error: str
+
+
+class IntegrationCdcOperation(_CdcOperationOptional):
+    id: str
+    action: IntegrationCdcAction
+    requested_at_ms: int
+    status: Literal["pending", "applied", "failed"]
+
+
+class IntegrationCdcScope(TypedDict):
+    tenant_id: str
+    source_id: str
+    source_incarnation: str
+    capture_epoch: int
+    connection_id: str
+    dataset_id: str
+    graph_id: str
+    graph_epoch: int
+
+
+class IntegrationCdcLease(TypedDict):
+    owner: str
+    term: int
+    expires_at_ms: int
+
+
+class _CdcProgressOptional(TypedDict, total=False):
+    source_configuration: str | None
+    capture_paused: bool
+
+
+class IntegrationCdcProgress(_CdcProgressOptional):
+    scope: IntegrationCdcScope
+    configuration_generation: int
+    mapping_hash: str
+    mode: Literal["running", "paused", "retired"]
+    worker_term: int
+    reader_term: int
+    worker_lease: IntegrationCdcLease | None
+    reader_lease: IntegrationCdcLease | None
+    capture_retired: bool
+    capture_phase: dict[str, Any]
+    captured_sequence: int
+    applied_sequence: int
+    applied_graph_sequence: int
+    published_graph_sequence: int
+    snapshot_complete: bool
+    retained_bytes: int
+    max_capture_bytes: int
+
+
+class IntegrationCdcSlotHealth(TypedDict):
+    state: Literal["missing", "unknown", "reserved", "extended", "unreserved", "lost"]
+    active: bool
+    retainedWalBytes: str | None
+    unconfirmedWalBytes: str | None
+    safeWalBytes: str | None
+
+
+class IntegrationCdcSourceHealth(TypedDict):
+    state: Literal["unknown", "reachable", "unreachable"]
+    ageMs: int
+    slot: IntegrationCdcSlotHealth | None
+
+
+class IntegrationCdcSnapshotTable(TypedDict):
+    relationId: str
+    capturedRows: str | None
+
+
+class IntegrationCdcSnapshotHealth(TypedDict):
+    attempt: str
+    complete: bool
+    tables: list[IntegrationCdcSnapshotTable]
+
+
+class _CdcHealthOptional(TypedDict, total=False):
+    code: str
+    observed_at_ms: int
+    captured_sequence: int
+    source: IntegrationCdcSourceHealth
+    snapshot: IntegrationCdcSnapshotHealth
+
+
+class IntegrationCdcHealth(_CdcHealthOptional):
+    state: Literal["unknown", "starting", "running", "stopped", "failed"]
+
+
+IntegrationCdcAlertCode = Literal["capture_capacity", "source_unavailable", "source_wal_risk", "source_wal_backlog", "apply_stalled"]
+
+
+class IntegrationCdcActiveAlert(TypedDict):
+    code: IntegrationCdcAlertCode
+    since_ms: int
+
+
+class IntegrationCdcNotification(TypedDict):
+    id: int
+    code: IntegrationCdcAlertCode
+    transition: Literal["firing", "resolved"]
+    at_ms: int
+
+
+class IntegrationCdcAlerts(TypedDict):
+    settings_revision: int
+    muted: bool
+    evaluated_at_ms: int | None
+    stale: bool
+    active: list[IntegrationCdcActiveAlert]
+    notifications: list[IntegrationCdcNotification]
+
+
+class IntegrationCdcAlertsAnswer(TypedDict):
+    ok: Literal[True]
+    id: str
+    graph: str
+    alerts: IntegrationCdcAlerts
+
+
+class _CdcStatusOptional(TypedDict, total=False):
+    alerts: IntegrationCdcAlerts
+
+
+class IntegrationCdcStatusAnswer(_CdcStatusOptional):
+    ok: Literal[True]
+    id: str
+    graph: str
+    state: Literal[
+        "retired", "blocked", "capture_paused", "apply_paused",
+        "initial_load_incomplete", "catching_up", "streaming", "source_status_unknown",
+    ]
+    progress: IntegrationCdcProgress
+    health: IntegrationCdcHealth
+    operations: list[IntegrationCdcOperation]
+
+
+class IntegrationCdcControlAnswer(TypedDict):
+    ok: Literal[True]
+    id: str
+    graph: str
+    operation: IntegrationCdcOperation
+
+
+class _CdcDiscoveryJobOptional(TypedDict, total=False):
+    error: str
+
+
+class IntegrationCdcDiscoveryJob(_CdcDiscoveryJobOptional):
+    id: str
+    graph_epoch: int
+    revision: int
+    attempts: int
+    created_at_ms: int
+    expires_at_ms: int
+    state: Literal["queued", "discovering", "retrying", "ready", "approved", "failed", "cancelled", "expired"]
+
+
+class IntegrationCdcDiscoveryAnswer(TypedDict):
+    ok: Literal[True]
+    id: str
+    graph: str
+    job: IntegrationCdcDiscoveryJob
+    source: dict[str, Any]
+    catalog: dict[str, Any] | None
+    catalog_digest: str | None
+    approval: dict[str, Any] | None
+    activation: dict[str, Any] | None
+
+
+class IntegrationCdcReviewAnswer(TypedDict):
+    ok: Literal[True]
+    id: str
+    graph: str
+    job_id: str
+    graph_epoch: int
+    expected_revision: int
+    catalog_digest: str
+    scope: dict[str, Any]
+    mapping: dict[str, Any]
+    max_capture_bytes: int
+
+
+class IntegrationCdcOverview(TypedDict):
+    ok: Literal[True]
+    graph: str
+    enabled: bool
+    discovery: IntegrationCdcDiscoveryAnswer | None
+    connection: IntegrationCdcStatusAnswer | None
+
+
+class IntegrationCdcDiscoveryCreateAnswer(IntegrationCdcDiscoveryAnswer):
+    created: bool
+
+
 @dataclass(frozen=True)
 class IntegrationAcceptResult:
     """What :meth:`IntegrationsNamespace.accept` did."""
@@ -342,6 +543,101 @@ class IntegrationsNamespace:
             IntegrationConnectionAnswer,
             self._client._integrations_call(
                 "GET", _connection_path(id), params={"graph": graph}
+            ),
+        )
+
+    def cdc_status(self, id: str, *, graph: str) -> IntegrationCdcStatusAnswer:
+        """Experimental: captured/applied/published counters and expiring source health."""
+        return cast(
+            IntegrationCdcStatusAnswer,
+            self._client._integrations_call(
+                "GET", f"{_connection_path(id)}/cdc", params={"graph": graph}
+            ),
+        )
+
+    def cdc_overview(self, *, graph: str) -> IntegrationCdcOverview:
+        """Find the graph's current CDC setup and connection without a saved connection id."""
+        return cast(IntegrationCdcOverview, self._client._integrations_call(
+            "GET", f"{_BASE}/cdc", params={"graph": graph},
+        ))
+
+    def cdc_discovery(self, id: str, *, graph: str) -> IntegrationCdcDiscoveryAnswer:
+        """Read setup progress and a verified catalog; no secrets or seals are returned."""
+        return cast(IntegrationCdcDiscoveryAnswer, self._client._integrations_call(
+            "GET", f"{_connection_path(id)}/cdc/discovery", params={"graph": graph},
+        ))
+
+    def cdc_discover(
+        self, id: str, *, graph: str, job_id: str, expected_revision: int,
+        source: Body, credentials: Mapping[str, str],
+    ) -> IntegrationCdcDiscoveryCreateAnswer:
+        """Create a sealed discovery job on an existing graph. Keep job_id on retry.
+
+        Discovery does not activate capture; the mapping still needs approval.
+        """
+        return cast(IntegrationCdcDiscoveryCreateAnswer, self._client._integrations_call(
+            "POST", f"{_connection_path(id)}/cdc/discovery", options=_RETRY,
+            body={"graph": graph, "job_id": job_id, "expected_revision": expected_revision,
+                  "source": _coerce_body(source), "credentials": dict(credentials)},
+        ))
+
+    def cdc_review_discovery(
+        self, id: str, *, graph: str, job_id: str, graph_epoch: int, expected_revision: int,
+        catalog_digest: str, mapping: Body, max_capture_bytes: int,
+    ) -> IntegrationCdcReviewAnswer:
+        """Read-only validation and normalization of an exact catalog and mapping."""
+        return cast(IntegrationCdcReviewAnswer, self._client._integrations_call(
+            "POST", f"{_connection_path(id)}/cdc/discovery/review", options=_RETRY,
+            body={"graph": graph, "job_id": job_id, "graph_epoch": graph_epoch, "expected_revision": expected_revision,
+                  "catalog_digest": catalog_digest, "mapping": _coerce_body(mapping), "max_capture_bytes": max_capture_bytes},
+        ))
+
+    def cdc_approve_discovery(
+        self, id: str, *, graph: str, job_id: str, graph_epoch: int, expected_revision: int,
+        catalog_digest: str, mapping: Body, max_capture_bytes: int,
+    ) -> IntegrationCdcDiscoveryAnswer:
+        """Approve durable activation intent. Retry the identical body, including its original revision."""
+        return cast(IntegrationCdcDiscoveryAnswer, self._client._integrations_call(
+            "POST", f"{_connection_path(id)}/cdc/discovery/approve", options=_RETRY,
+            body={"graph": graph, "job_id": job_id, "graph_epoch": graph_epoch, "expected_revision": expected_revision,
+                  "catalog_digest": catalog_digest, "mapping": _coerce_body(mapping), "max_capture_bytes": max_capture_bytes},
+        ))
+
+    def cdc_cancel_discovery(
+        self, id: str, *, graph: str, job_id: str, graph_epoch: int, expected_revision: int,
+    ) -> IntegrationCdcDiscoveryAnswer:
+        """Fence the exact discovery job and target incarnation."""
+        return cast(IntegrationCdcDiscoveryAnswer, self._client._integrations_call(
+            "POST", f"{_connection_path(id)}/cdc/discovery/cancel", options=_RETRY,
+            body={"graph": graph, "job_id": job_id, "graph_epoch": graph_epoch, "expected_revision": expected_revision},
+        ))
+
+    def cdc_mute_alerts(self, id: str, *, graph: str, expected_revision: int, muted: bool) -> IntegrationCdcAlertsAnswer:
+        """Version-fenced notifications preference; muting does not hide health."""
+        return cast(IntegrationCdcAlertsAnswer, self._client._integrations_call(
+            "POST", f"{_connection_path(id)}/cdc/alerts", options=_RETRY,
+            body={"graph": graph, "expected_revision": expected_revision, "muted": muted},
+        ))
+
+    def cdc_control(
+        self, id: str, *, graph: str, operation_id: str,
+        action: IntegrationCdcAction, confirm: str | None = None,
+    ) -> IntegrationCdcControlAnswer:
+        """Experimental durable intent. Keep operation_id when retrying across processes.
+
+        Retirement requires confirm=id. A pending answer is accepted intent;
+        the CDC host completes it and cdc_status reports the outcome.
+        """
+        request: dict[str, Any] = {
+            "graph": graph, "operation_id": operation_id, "action": action,
+        }
+        if confirm is not None:
+            request["confirm"] = confirm
+        return cast(
+            IntegrationCdcControlAnswer,
+            self._client._integrations_call(
+                "POST", f"{_connection_path(id)}/cdc/control",
+                body=request, options=_RETRY,
             ),
         )
 

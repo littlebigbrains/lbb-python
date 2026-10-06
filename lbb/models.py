@@ -253,6 +253,22 @@ class AnnTargetKind(Enum):
     path = 'path'
 
 
+class ApplyMode(Enum):
+    running = 'running'
+    paused = 'paused'
+    retired = 'retired'
+
+
+class ApplyReceipt(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    applied_sequence: Annotated[int, Field(ge=0)]
+    graph_sequence: Annotated[int, Field(ge=0)]
+    replay: bool
+    visibility_token: str
+
+
 class AskFilterOperatorV2(Enum):
     eq = 'eq'
     ne = 'ne'
@@ -355,6 +371,85 @@ class CalibrationServingDefaults(BaseModel):
     target_kind: str
 
 
+class Kind(Enum):
+    transaction = 'transaction'
+
+
+class Kind1(Enum):
+    snapshot = 'snapshot'
+
+
+class Kind2(Enum):
+    snapshot_complete = 'snapshot_complete'
+
+
+class CaptureBatch3(BaseModel):
+    attempt_id: str
+    kind: Kind2
+
+
+class Kind3(Enum):
+    schema = 'schema'
+
+
+class Kind4(Enum):
+    heartbeat = 'heartbeat'
+
+
+class CaptureBatch5(BaseModel):
+    kind: Kind4
+
+
+class CaptureMode(Enum):
+    running = 'running'
+    paused = 'paused'
+    retired = 'retired'
+
+
+class Phase(Enum):
+    pending = 'pending'
+
+
+class CapturePhase1(BaseModel):
+    phase: Phase
+
+
+class Phase1(Enum):
+    snapshot = 'snapshot'
+
+
+class CapturePhase2(BaseModel):
+    attempt_id: str
+    next_chunk: Annotated[int, Field(ge=0)]
+    phase: Phase1
+
+
+class Phase2(Enum):
+    streaming = 'streaming'
+
+
+class CapturePhase3(BaseModel):
+    phase: Phase2
+
+
+class CaptureScope(BaseModel):
+    """
+    Immutable authorization and identity binding for a capture epoch.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capture_epoch: Annotated[int, Field(ge=0)]
+    connection_id: str
+    dataset_id: str
+    graph_epoch: Annotated[int, Field(ge=0)]
+    graph_id: str
+    source_id: str
+    source_incarnation: str
+    tenant_id: str
+
+
 class CardAttributeField(BaseModel):
     field: str
     top_values: list[str]
@@ -388,6 +483,141 @@ class CardRelation(BaseModel):
 class CardType(BaseModel):
     count: Annotated[int, Field(ge=0)]
     name: str
+
+
+class CdcApplyClaimRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_term: Annotated[int, Field(ge=0)]
+    lease_ms: Annotated[int, Field(ge=0)]
+    owner: str
+    scope: CaptureScope
+
+
+class CdcApplyModeRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_generation: Annotated[int, Field(ge=0)]
+    mode: ApplyMode
+    scope: CaptureScope
+
+
+class CdcApplyNextRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_applied_sequence: Annotated[int, Field(ge=0)]
+    scope: CaptureScope
+
+
+class CdcCaptureClaimRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_term: Annotated[int, Field(ge=0)]
+    lease_ms: Annotated[int, Field(ge=0)]
+    owner: str
+    scope: CaptureScope
+
+
+class CdcCaptureModeRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_term: Annotated[int, Field(ge=0)]
+    mode: CaptureMode
+    scope: CaptureScope
+
+
+class CdcCaptureRetentionStatus(BaseModel):
+    """
+    Committed capture-retention facts; eligibility is not a scheduled deletion.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    eligible_after_ms: Annotated[
+        int | None,
+        Field(
+            description='Earliest eligibility of the observed applied watermark, if one exists.'
+        ),
+    ] = None
+    minimum_retention_ms: int
+    pending_cleanup_bytes: Annotated[
+        int,
+        Field(
+            description='Still charged until the durable physical-cleanup plan is acknowledged.',
+            ge=0,
+        ),
+    ]
+    retained_after_sequence: Annotated[
+        int,
+        Field(
+            description='Capture batches at or below this floor no longer authorize replay.',
+            ge=0,
+        ),
+    ]
+
+
+class CdcDiscoveryCancelRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_revision: Annotated[int, Field(ge=0)]
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+
+
+class CdcDiscoveryClaimRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_term: Annotated[int, Field(ge=0)]
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+    owner: str
+
+
+class CdcMetadataPutRequest(BaseModel):
+    """
+    Operational metadata is scoped to an exact graph incarnation. The current
+    epoch comes from discovery/status; an old request cannot target a new graph.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_version: Annotated[int, Field(ge=0)]
+    graph_epoch: Annotated[int, Field(ge=0)]
+    name: str
+    value: Any
+
+
+class CdcReconcileRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    scope: CaptureScope
+
+
+class CdcSourceDiscoveryCancelRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_revision: Annotated[int, Field(ge=0)]
+    id: str
+
+
+class CdcSourceDiscoveryClaimRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_term: Annotated[int, Field(ge=0)]
+    id: str
+    owner: str
 
 
 class CheckVerdict(Enum):
@@ -433,6 +663,73 @@ class ConformanceViolationKind(Enum):
     range_mismatch = 'range_mismatch'
 
 
+class CustomerBoundary(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    columns: list[str]
+    relation: str
+
+
+class CustomerGraphPolicy(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    include_shared: Annotated[
+        bool,
+        Field(
+            description="Explicit approval to copy tables classified as shared to this source's\nbounded customer set. False rejects shared tables; no default broadcast."
+        ),
+    ]
+    max_customers: Annotated[int, Field(ge=0)]
+    prefix: Annotated[
+        str,
+        Field(
+            description='An approved namespace, never a raw database value used as a path.'
+        ),
+    ]
+
+
+class Kind5(Enum):
+    direct = 'direct'
+
+
+class CustomerRule1(BaseModel):
+    columns: list[str]
+    kind: Kind5
+    relation: str
+
+
+class Kind6(Enum):
+    parent = 'parent'
+
+
+class CustomerRule2(BaseModel):
+    columns: list[str]
+    kind: Kind6
+    parent: str
+    parentColumns: list[str]
+    relation: str
+
+
+class Kind7(Enum):
+    shared = 'shared'
+
+
+class CustomerRule3(BaseModel):
+    kind: Kind7
+    relation: str
+
+
+class Kind8(Enum):
+    exclude = 'exclude'
+
+
+class CustomerRule4(BaseModel):
+    kind: Kind8
+    relation: str
+
+
 class DateBucketGranularity(Enum):
     """
     The calendar unit a [`SparqlGroupKey::DateBucket`] truncates a datetime to.
@@ -473,6 +770,70 @@ class DecorationStatus(BaseModel):
         ),
     ]
     status: Annotated[str, Field(description='`enforced` | `advisory` | `reserved`.')]
+
+
+class DiscoveryApprovalReference(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    configuration: str | None = None
+    intent: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+
+
+class DiscoveryFailure(Enum):
+    """
+    Fixed operator-facing failures. Source/driver exception strings cannot enter
+    the stored result. An adapter maps any unknown failure to `reader_failed`.
+    """
+
+    source_network_refused = 'source_network_refused'
+    source_tls_invalid = 'source_tls_invalid'
+    source_connection_failed = 'source_connection_failed'
+    source_readiness_failed = 'source_readiness_failed'
+    source_version_unsupported = 'source_version_unsupported'
+    source_key_required = 'source_key_required'
+    source_type_unsupported = 'source_type_unsupported'
+    source_table_unsupported = 'source_table_unsupported'
+    source_publication_scope_mismatch = 'source_publication_scope_mismatch'
+    source_slot_conflict = 'source_slot_conflict'
+    source_slot_in_use = 'source_slot_in_use'
+    source_catalog_too_large = 'source_catalog_too_large'
+    reader_capacity = 'reader_capacity'
+    reader_failed = 'reader_failed'
+    discovery_deadline = 'discovery_deadline'
+
+
+class State(Enum):
+    pending = 'pending'
+
+
+class DiscoveryPhase1(BaseModel):
+    state: State
+
+
+class State1(Enum):
+    running = 'running'
+
+
+class State2(Enum):
+    ready = 'ready'
+
+
+class State3(Enum):
+    failed = 'failed'
+
+
+class State4(Enum):
+    cancelled = 'cancelled'
+
+
+class DiscoveryPhase5(BaseModel):
+    state: State4
 
 
 class EdgeIdempotencyMode(Enum):
@@ -563,15 +924,15 @@ class EmbeddingModelRequest(BaseModel):
     model: str
 
 
-class Kind(Enum):
+class Kind9(Enum):
     hash = 'hash'
 
 
-class Kind1(Enum):
+class Kind10(Enum):
     external_vectors = 'external_vectors'
 
 
-class Kind2(Enum):
+class Kind11(Enum):
     stored = 'stored'
 
 
@@ -979,6 +1340,20 @@ class FacetResult(BaseModel):
     buckets: list[FacetBucket]
     field: str
     missing: Annotated[int, Field(ge=0)]
+
+
+class ForeignKeyMapping(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    columns: Annotated[
+        list[str],
+        Field(
+            description='Source columns in the exact order of the referenced primary key.'
+        ),
+    ]
+    predicate: str
+    target_relation: str
 
 
 class FullTextIndexInspectRequest(BaseModel):
@@ -1897,18 +2272,18 @@ class ModelCheckReviewRequest(BaseModel):
     verdict: CheckVerdict | None = None
 
 
-class Kind3(Enum):
+class Kind12(Enum):
     neighbors = 'neighbors'
 
 
 class ModelCheckSpec1(BaseModel):
     entity: EntitySelector
     expected_targets: list[str]
-    kind: Kind3
+    kind: Kind12
     relation: str | None = None
 
 
-class Kind4(Enum):
+class Kind13(Enum):
     temporal_state = 'temporal_state'
 
 
@@ -1916,7 +2291,7 @@ class ModelCheckSpec2(BaseModel):
     as_of_valid_time: str | None = None
     entity: EntitySelector
     expected_target: str
-    kind: Kind4
+    kind: Kind13
     relation: str
 
 
@@ -2677,6 +3052,35 @@ class PlattCalibration(BaseModel):
 
     a: float
     b: float
+
+
+class PostgresColumn(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    elementOid: Annotated[int, Field(ge=0)]
+    name: str
+    optional: bool
+    position: Annotated[int, Field(ge=0)]
+    typeModifier: int
+    typeOid: Annotated[int, Field(ge=0)]
+
+
+class PostgresForeignKey(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    columns: list[str]
+    targetColumns: list[str]
+    targetOid: Annotated[int, Field(ge=0)]
+
+
+class PostgresTableName(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    schema_: Annotated[str, Field(alias='schema')]
+    table: str
 
 
 class PropertyMergeMode(Enum):
@@ -3476,6 +3880,15 @@ class RdfSchemaTermCount(BaseModel):
     term: str
 
 
+class ReaderLease(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expires_at_ms: int
+    owner: str
+    term: Annotated[int, Field(ge=0)]
+
+
 class RegionAnchorInput(BaseModel):
     """
     A page-region provenance anchor on a fact's evidence (region provenance
@@ -3653,6 +4066,27 @@ class RetrievalProfileId(Enum):
     scored_atom_v1 = 'scored_atom_v1'
     graph_aware_v1 = 'graph_aware_v1'
     ndcg_v1 = 'ndcg_v1'
+
+
+class RoutingObject(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    bytes: Annotated[int, Field(ge=0)]
+    digest: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    generation: Annotated[int, Field(ge=0)]
+
+
+class RowOperation(Enum):
+    read = 'read'
+    insert = 'insert'
+    update = 'update'
+    delete = 'delete'
 
 
 class RowPage(BaseModel):
@@ -3983,40 +4417,40 @@ class SearchFeedbackSplitCounts(BaseModel):
     train: Annotated[int, Field(ge=0)]
 
 
-class Kind5(Enum):
+class Kind14(Enum):
     entity = 'entity'
 
 
 class SearchFeedbackTarget1(BaseModel):
     entity: EntitySelector
-    kind: Kind5
+    kind: Kind14
 
 
-class Kind6(Enum):
+class Kind15(Enum):
     assertion = 'assertion'
 
 
 class SearchFeedbackTarget2(BaseModel):
     edge_event_id: str
-    kind: Kind6
+    kind: Kind15
 
 
-class Kind7(Enum):
+class Kind16(Enum):
     observation = 'observation'
 
 
 class SearchFeedbackTarget3(BaseModel):
-    kind: Kind7
+    kind: Kind16
     observation_id: str
 
 
-class Kind8(Enum):
+class Kind17(Enum):
     concept = 'concept'
 
 
 class SearchFeedbackTarget4(BaseModel):
     concept_id: str | None = None
-    kind: Kind8
+    kind: Kind17
     name: str | None = None
 
 
@@ -4856,6 +5290,254 @@ class SnapshotView(BaseModel):
             description='The reason a read is `stale`. `"storage_degraded"` (F2),\n`"eventual_consistency"` (served from the immutable published\ngeneration); omitted when not stale.'
         ),
     ] = None
+
+
+class SourceCaptureScope(BaseModel):
+    """
+    Source capture has no destination graph. Customer graph deletion therefore
+    cannot retire a shared reader or erase another customer's replay history.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capture_epoch: Annotated[int, Field(ge=0)]
+    connection_id: str
+    dataset_id: str
+    source_id: str
+    source_incarnation: str
+    tenant_id: str
+
+
+class SourceCheckpoint(BaseModel):
+    """
+    The connector owns the meaning and comparison of offsets. Equality here is
+    an exact checkpoint-chain check, never a lexical LSN/GTID comparison.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    adapter: str
+    adapter_version: str
+    offsets: dict[str, str]
+    partition: dict[str, str]
+    restore_state: Annotated[
+        str,
+        Field(
+            description='Exact opaque connector restore state, including schema history. Large\nschema snapshots must use separately verified, scoped objects later.'
+        ),
+    ]
+
+
+class SourceSetupScope(BaseModel):
+    """
+    A connection in the owning storage tenant. No customer graph exists yet.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    connection_id: str
+    tenant_id: str
+
+
+class Type(Enum):
+    null = 'null'
+
+
+class SourceValue1(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type
+
+
+class Type1(Enum):
+    unchanged = 'unchanged'
+
+
+class SourceValue2(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type1
+
+
+class Type2(Enum):
+    boolean = 'boolean'
+
+
+class SourceValue3(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type2
+    value: bool
+
+
+class Type3(Enum):
+    integer = 'integer'
+
+
+class SourceValue4(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type3
+    value: str
+
+
+class Type4(Enum):
+    decimal = 'decimal'
+
+
+class SourceValue5(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type4
+    value: str
+
+
+class Type5(Enum):
+    float = 'float'
+
+
+class SourceValue6(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type5
+    value: str
+
+
+class Type6(Enum):
+    text = 'text'
+
+
+class SourceValue7(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type6
+    value: str
+
+
+class Type7(Enum):
+    uuid = 'uuid'
+
+
+class SourceValue8(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type7
+    value: str
+
+
+class Type8(Enum):
+    binary_hex = 'binary_hex'
+
+
+class SourceValue9(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type8
+    value: str
+
+
+class Type9(Enum):
+    date = 'date'
+
+
+class SourceValue10(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type9
+    value: str
+
+
+class Type10(Enum):
+    time = 'time'
+
+
+class SourceValue11(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type10
+    value: str
+
+
+class Type11(Enum):
+    timestamp = 'timestamp'
+
+
+class SourceValue12(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type11
+    value: str
+
+
+class Type12(Enum):
+    timestamp_tz = 'timestamp_tz'
+
+
+class SourceValue13(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type12
+    value: str
+
+
+class Type13(Enum):
+    json = 'json'
+
+
+class SourceValue14(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type13
+    value: str
+
+
+class Type14(Enum):
+    array = 'array'
 
 
 class SparqlAggregateFunc(Enum):
@@ -5746,6 +6428,27 @@ class SyntheticEvalResponse(BaseModel):
     truncated: bool
 
 
+class TableMapping(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    class_iri: str
+    foreign_keys: list[ForeignKeyMapping]
+    properties: Annotated[
+        dict[str, str],
+        Field(
+            description='Source column to owned RDF predicate. SQL NULL contributes no fact.'
+        ),
+    ]
+    schema_: Annotated[
+        str,
+        Field(
+            alias='schema',
+            description='Validated content address. Deserialization cannot introduce an object path.',
+        ),
+    ]
+
+
 class TimeGranularity(Enum):
     instant = 'instant'
     day = 'day'
@@ -6154,6 +6857,46 @@ class WidenRelationOp(BaseModel):
     relation: Annotated[
         str, Field(description='Relation to widen, by name (case-insensitive).')
     ]
+
+
+class Scope(BaseModel):
+    """
+    Immutable authorization and identity binding for a capture epoch.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capture_epoch: Annotated[int, Field(ge=0)]
+    connection_id: str
+    dataset_id: str
+    graph_epoch: Annotated[int, Field(ge=0)]
+    graph_id: str
+    source_id: str
+    source_incarnation: str
+    tenant_id: str
+
+
+class Scope1(BaseModel):
+    """
+    Source capture has no destination graph. Customer graph deletion therefore
+    cannot retire a shared reader or erase another customer's replay history.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capture_epoch: Annotated[int, Field(ge=0)]
+    connection_id: str
+    dataset_id: str
+    source_id: str
+    source_incarnation: str
+    tenant_id: str
+
+
+class WorkerRole(Enum):
+    capture = 'capture'
+    apply = 'apply'
 
 
 class WorkflowCheckpointKind(Enum):
@@ -6629,6 +7372,29 @@ class AnalyticTriplePattern(BaseModel):
     ]
 
 
+class ApplyRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    configuration_generation: Annotated[int, Field(ge=0)]
+    descriptor: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    expected_applied_sequence: Annotated[int, Field(ge=0)]
+    lease: ReaderLease
+    mapping_hash: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    scope: CaptureScope
+    sequence: Annotated[int, Field(ge=0)]
+
+
 class AskStructuredPlanV2(BaseModel):
     execution_mode: AskPlanExecutionModeV2
     filters: list[AskTypedFilterV2] | None = None
@@ -6653,6 +7419,340 @@ class AssertionSearchResult(BaseModel):
     why: list[SearchExplanation]
 
 
+class CaptureBatch4(BaseModel):
+    kind: Kind3
+    relation_id: str
+    schema_: Annotated[
+        str,
+        Field(
+            alias='schema',
+            description='Validated content address. Deserialization cannot introduce an object path.',
+        ),
+    ]
+
+
+class CaptureReceipt(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    checkpoint: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    descriptor: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    replay: bool
+    sequence: Annotated[int, Field(ge=0)]
+
+
+class CdcApplyNext(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    receipt: CaptureReceipt | None = None
+
+
+class CdcApplyReleaseRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    configuration_generation: Annotated[int, Field(ge=0)]
+    lease: ReaderLease
+    scope: CaptureScope
+
+
+class CdcApplyRenewRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    configuration_generation: Annotated[int, Field(ge=0)]
+    lease: ReaderLease
+    lease_ms: Annotated[int, Field(ge=0)]
+    scope: CaptureScope
+
+
+class CdcBindingStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    applied_graph_sequence: Annotated[int, Field(ge=0)]
+    applied_sequence: Annotated[int, Field(ge=0)]
+    capture_paused: bool | None = None
+    capture_phase: CapturePhase1 | CapturePhase2 | CapturePhase3
+    capture_retired: bool
+    captured_sequence: Annotated[int, Field(ge=0)]
+    configuration_generation: Annotated[int, Field(ge=0)]
+    mapping_hash: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    max_capture_bytes: Annotated[int, Field(ge=0)]
+    mode: ApplyMode
+    published_graph_sequence: Annotated[int, Field(ge=0)]
+    reader_lease: ReaderLease | None = None
+    reader_term: Annotated[int, Field(ge=0)]
+    retained_bytes: Annotated[int, Field(ge=0)]
+    retention: CdcCaptureRetentionStatus | None = None
+    scope: CaptureScope
+    snapshot_complete: bool
+    source_configuration: str | None = None
+    worker_lease: ReaderLease | None = None
+    worker_term: Annotated[int, Field(ge=0)]
+
+
+class CdcCaptureLeaseRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    lease: ReaderLease
+    scope: CaptureScope
+
+
+class CdcCaptureRenewRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    lease: ReaderLease
+    lease_ms: Annotated[int, Field(ge=0)]
+    scope: CaptureScope
+
+
+class CdcCaptureRestore(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    checkpoint: SourceCheckpoint | None = None
+    checkpoint_digest: str | None = None
+    phase: CapturePhase1 | CapturePhase2 | CapturePhase3
+    sequence: Annotated[int, Field(ge=0)]
+
+
+class CdcCaptureSchemaRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    lease: ReaderLease
+    schema_: Annotated[
+        str,
+        Field(
+            alias='schema',
+            description='Exact immutable schema bytes; digest must already be in the mapping.',
+        ),
+    ]
+    scope: CaptureScope
+
+
+class CdcCredentialIssueRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    owner: str
+    role: WorkerRole
+    scope: CaptureScope
+    ttl_ms: Annotated[int, Field(ge=0)]
+
+
+class CdcCredentialRevokeRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    scope: CaptureScope
+
+
+class CdcCustomerGraphStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    customer: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    error: str | None = None
+    progress: CdcBindingStatus | None = None
+    scope: CaptureScope | None = None
+
+
+class CdcCustomerPauseRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    customer: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    expected_revision: Annotated[
+        int,
+        Field(
+            description='Revision observed by the caller. Only a later control for this customer\ninvalidates it; routing, acknowledgements and other customers do not.',
+            ge=0,
+        ),
+    ]
+    paused: bool
+
+
+class CdcDiscoveryActivateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+    intent: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+
+
+class CdcDiscoveryFailRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    code: DiscoveryFailure
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+    lease: ReaderLease
+
+
+class CdcSourceCaptureClaimRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_term: Annotated[int, Field(ge=0)]
+    lease_ms: Annotated[int, Field(ge=0)]
+    owner: str
+    scope: SourceCaptureScope
+
+
+class CdcSourceCaptureLeaseRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    lease: ReaderLease
+    scope: SourceCaptureScope
+
+
+class CdcSourceCaptureModeRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_term: Annotated[int, Field(ge=0)]
+    mode: CaptureMode
+    scope: SourceCaptureScope
+
+
+class CdcSourceCaptureRenewRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    lease: ReaderLease
+    lease_ms: Annotated[int, Field(ge=0)]
+    scope: SourceCaptureScope
+
+
+class CdcSourceCaptureSchemaRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    lease: ReaderLease
+    schema_: Annotated[
+        str,
+        Field(
+            alias='schema',
+            description='Exact immutable schema bytes; digest must already be in the mapping.',
+        ),
+    ]
+    scope: SourceCaptureScope
+
+
+class CdcSourceCaptureStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capture_paused: bool
+    capture_phase: CapturePhase1 | CapturePhase2 | CapturePhase3
+    capture_retired: bool
+    captured_sequence: Annotated[int, Field(ge=0)]
+    max_capture_bytes: Annotated[int, Field(ge=0)]
+    reader_lease: ReaderLease | None = None
+    reader_term: Annotated[int, Field(ge=0)]
+    retained_bytes: Annotated[int, Field(ge=0)]
+    scope: SourceCaptureScope
+
+
+class CdcSourceCaptureStatusResponse(BaseModel):
+    binding: CdcSourceCaptureStatus
+
+
+class CdcSourceCredentialIssueRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    owner: str
+    scope: SourceCaptureScope
+    ttl_ms: Annotated[int, Field(ge=0)]
+
+
+class CdcSourceCredentialRevokeRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    scope: SourceCaptureScope
+
+
+class CdcSourceDiscoveryFailRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    code: DiscoveryFailure
+    id: str
+    lease: ReaderLease
+
+
+class CdcSourceRoutingStartRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    plan: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+
+
+class CdcStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    binding: CdcBindingStatus | None = None
+    enabled: bool
+
+
 class ConformanceResult(BaseModel):
     focus_node: Annotated[
         str,
@@ -6669,6 +7769,63 @@ class ConformanceResult(BaseModel):
     value: Annotated[
         str, Field(description="The offending value (the endpoint's entity-type name).")
     ]
+
+
+class CustomerOwnership(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    boundary: CustomerBoundary
+    rules: list[CustomerRule1 | CustomerRule2 | CustomerRule3 | CustomerRule4]
+    version: Annotated[int, Field(ge=0)]
+
+
+class DiscoveryPhase2(BaseModel):
+    lease: ReaderLease
+    state: State1
+
+
+class DiscoveryPhase3(BaseModel):
+    catalog: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    lease: ReaderLease
+    state: State2
+
+
+class DiscoveryPhase4(BaseModel):
+    code: DiscoveryFailure
+    lease: ReaderLease
+    state: State3
+
+
+class DiscoverySource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    database: str
+    hostname: str
+    port: Annotated[int, Field(ge=0)]
+    publication: str
+    slot: str
+    tables: list[PostgresTableName]
+
+
+class DiscoveryTableMapping(BaseModel):
+    """
+    Schema hashes come from the verified catalog, never from a browser's JSON
+    serializer. Relation keys are the catalog's stable `pg_<table OID>` ids.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    class_iri: str
+    foreign_keys: list[ForeignKeyMapping]
+    properties: dict[str, str]
 
 
 class EdgeEventRow(BaseModel):
@@ -6778,7 +7935,7 @@ class EmbeddingPreviewRequest(EmbeddingDeclareRequest):
 
 class EmbeddingProviderConfig1(BaseModel):
     dim: Annotated[int | None, Field(ge=0)] = None
-    kind: Kind
+    kind: Kind9
     metric: VectorMetric | None = None
     model_id: str | None = None
 
@@ -6786,7 +7943,7 @@ class EmbeddingProviderConfig1(BaseModel):
 class EmbeddingProviderConfig2(BaseModel):
     dim: Annotated[int, Field(ge=0)]
     fallback_to_hash: bool | None = None
-    kind: Kind1
+    kind: Kind10
     metric: VectorMetric | None = None
     model_id: str
     vectors: list[ExternalEmbeddingVector]
@@ -6795,7 +7952,7 @@ class EmbeddingProviderConfig2(BaseModel):
 class EmbeddingProviderConfig3(BaseModel):
     dim: Annotated[int, Field(ge=0)]
     fallback_to_hash: bool | None = None
-    kind: Kind2
+    kind: Kind11
     metric: VectorMetric | None = None
     model_id: str
 
@@ -7955,6 +9112,13 @@ class ManagedModelsResponse(BaseModel):
     ] = None
 
 
+class MappingPlan(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    tables: dict[str, TableMapping]
+
+
 class ModelActivityDay(BaseModel):
     """
     One feature and model on one day (UTC).
@@ -8581,6 +9745,18 @@ class PlannerStatsResponse(BaseModel):
             description='Value-order index coverage: the plan `GET /v1/graph/index-upgrade`\nreports.'
         ),
     ]
+
+
+class PostgresTable(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    columns: list[PostgresColumn]
+    foreignKeys: list[PostgresForeignKey]
+    name: PostgresTableName
+    oid: Annotated[int, Field(ge=0)]
+    primaryKey: list[str]
+    replicaIdentity: str
 
 
 class PropertyInput(BaseModel):
@@ -9230,6 +10406,16 @@ class RewrittenQuery(BaseModel):
     ]
 
 
+class RoutingIndexRef(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    entries: Annotated[int, Field(ge=0)]
+    object: RoutingObject
+    prefix: str
+    value_bytes: Annotated[int, Field(ge=0)]
+
+
 class SchemaAuditReport(BaseModel):
     conforms: bool
     messages: list[str] | None = None
@@ -9858,6 +11044,46 @@ class SignalInput(BaseModel):
     snapshot_token: str | None = None
 
 
+class SourceDiscoveryDraft(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    format_version: Annotated[int, Field(ge=0)]
+    id: str
+    reader_version: str
+    scope: SourceSetupScope
+    sealed_credentials: str
+    source: DiscoverySource
+
+
+class SourceDiscoveryHead(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    attempts: Annotated[int, Field(ge=0)]
+    created_at_ms: int
+    draft: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    expires_at_ms: int
+    format_version: Annotated[int, Field(ge=0)]
+    id: str
+    jobs: Annotated[int, Field(ge=0)]
+    phase: (
+        DiscoveryPhase1
+        | DiscoveryPhase2
+        | DiscoveryPhase3
+        | DiscoveryPhase4
+        | DiscoveryPhase5
+    )
+    revision: Annotated[int, Field(ge=0)]
+    scope: SourceSetupScope
+    term: Annotated[int, Field(ge=0)]
+
+
 class SparqlGroup(BaseModel):
     """
     One result group of a grouped/aggregated SELECT: the GROUP BY key entities
@@ -10224,6 +11450,44 @@ class VocabularyFilter(BaseModel):
     origins: list[VocabularyOrigin] | None = None
 
 
+class WorkerGrantCaptureScope(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expires_at_ms: int
+    format_version: Annotated[int, Field(ge=0)]
+    issued_at_ms: int
+    owner: str
+    revoked: bool
+    role: WorkerRole
+    scope: Annotated[
+        Scope,
+        Field(
+            description='Immutable authorization and identity binding for a capture epoch.'
+        ),
+    ]
+    source_configuration: str | None = None
+
+
+class WorkerGrantSourceCaptureScope(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expires_at_ms: int
+    format_version: Annotated[int, Field(ge=0)]
+    issued_at_ms: int
+    owner: str
+    revoked: bool
+    role: WorkerRole
+    scope: Annotated[
+        Scope1,
+        Field(
+            description="Source capture has no destination graph. Customer graph deletion therefore\ncannot retire a shared reader or erase another customer's replay history."
+        ),
+    ]
+    source_configuration: str | None = None
+
+
 class WorkflowClaimResponse(BaseModel):
     task: WorkflowTask | None = None
 
@@ -10497,6 +11761,67 @@ class CapturedSignal(BaseModel):
     seq: Annotated[int, Field(ge=0)]
 
 
+class CdcActivateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    mapping: MappingPlan
+    max_capture_bytes: Annotated[int, Field(ge=0)]
+    scope: CaptureScope
+
+
+class CdcMetadataDocument(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    format_version: Annotated[int, Field(ge=0)]
+    graph: GraphKey
+    graph_epoch: Annotated[int, Field(ge=0)]
+    name: str
+    updated_at_ms: int
+    value: Any
+    version: Annotated[int, Field(ge=0)]
+
+
+class CdcMetadataResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    document: CdcMetadataDocument | None = None
+
+
+class CdcSourceCredential(BaseModel):
+    grant: WorkerGrantSourceCaptureScope
+    id: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    token: str
+
+
+class CdcSourceDiscoveryCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    draft: SourceDiscoveryDraft
+    expected_revision: Annotated[int, Field(ge=0)]
+
+
+class CdcSourceDiscoveryStatus(BaseModel):
+    """
+    Source-scoped discovery does not require a destination graph or graph epoch.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    enabled: bool
+    head: SourceDiscoveryHead | None = None
+    scope: SourceSetupScope
+
+
 class ConformanceReport(BaseModel):
     """
     Closed-world validation report for a commit. Mirrors the shape of a SHACL
@@ -10511,6 +11836,57 @@ class CreateGraphResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     graph: GraphKey
     ontology_version: Annotated[int, Field(ge=0)]
+
+
+class DiscoveryDraft(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    connection_id: str
+    format_version: Annotated[int, Field(ge=0)]
+    graph: GraphKey
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+    reader_version: str
+    sealed_credentials: str
+    source: DiscoverySource
+
+
+class DiscoveryHead(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    approval: DiscoveryApprovalReference | None = None
+    attempts: Annotated[int, Field(ge=0)]
+    created_at_ms: int
+    draft: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    expires_at_ms: int
+    format_version: Annotated[int, Field(ge=0)]
+    graph: GraphKey
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+    jobs: Annotated[int, Field(ge=0)]
+    phase: (
+        DiscoveryPhase1
+        | DiscoveryPhase2
+        | DiscoveryPhase3
+        | DiscoveryPhase4
+        | DiscoveryPhase5
+    )
+    revision: Annotated[int, Field(ge=0)]
+    term: Annotated[int, Field(ge=0)]
+
+
+class DiscoveryMapping(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    tables: dict[str, DiscoveryTableMapping]
 
 
 class Embedding(BaseModel):
@@ -10919,6 +12295,21 @@ class HybridMultiSearchResponse(BaseModel):
     results: list[HybridMultiSearchResult]
     search_id: str | None = None
     snapshot: SnapshotView
+
+
+class IssuedWorkerCredential(BaseModel):
+    """
+    No Debug implementation: credentials must not appear in diagnostic output.
+    """
+
+    grant: WorkerGrantCaptureScope
+    id: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    token: str
 
 
 class ModelCallRow(BaseModel):
@@ -11450,6 +12841,29 @@ class OntologyStarterList(BaseModel):
     starters: list[OntologyStarterSummary]
 
 
+class PostgresCatalog(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    database: str
+    databaseOid: Annotated[int, Field(ge=0)]
+    formatVersion: Annotated[int, Field(ge=0)]
+    publication: str
+    systemId: str
+    tables: list[PostgresTable]
+    timeline: Annotated[int, Field(ge=0)]
+
+
+class PostgresSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    catalog: PostgresCatalog
+    hostname: str
+    port: Annotated[int, Field(ge=0)]
+    slot: str
+
+
 class QueryRewriteEventRoute(BaseModel):
     """
     The router's route as soon as it answers, the caller's route at once,
@@ -11555,6 +12969,19 @@ class ResolveTermResponse(BaseModel):
     ]
     snapshot: SnapshotView
     snapshot_token: str
+
+
+class RoutingPlan(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    catalog: PostgresCatalog
+    format_version: Annotated[int, Field(ge=0)]
+    graphs: CustomerGraphPolicy
+    mapping: MappingPlan
+    ontology: RoutingObject | None = None
+    ownership: CustomerOwnership
+    scope: SourceCaptureScope
 
 
 class SchemaPublishResponse(BaseModel):
@@ -11668,6 +13095,22 @@ class SignalReadResponse(BaseModel):
     ]
 
 
+class SourceConfiguration(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    format_version: Annotated[int, Field(ge=0)]
+    reader_version: str
+    scope: CaptureScope
+    sealed_credentials: Annotated[
+        str,
+        Field(
+            description='Sealed by the SaaS control plane. Username, password and optional CA\nopen only in its isolated reader supervisor, never in a workflow step.'
+        ),
+    ]
+    source: PostgresSource
+
+
 class SparqlAggregate(BaseModel):
     """
     One aggregate projection: `func(operand) AS as_var`. `operand` is absent for
@@ -11755,6 +13198,133 @@ class WorkflowTurnClaimResponse(BaseModel):
     task: WorkflowTurnTask | None = None
 
 
+class CdcDiscoveryCompleteRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    catalog: PostgresCatalog
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+    lease: ReaderLease
+
+
+class CdcDiscoveryCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    draft: DiscoveryDraft
+    expected_revision: Annotated[int, Field(ge=0)]
+
+
+class CdcDiscoveryPrepareRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    configuration: SourceConfiguration
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+    intent: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+
+
+class CdcDiscoveryStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    enabled: bool
+    graph: GraphKey
+    graph_epoch: Annotated[int, Field(ge=0)]
+    head: DiscoveryHead | None = None
+
+
+class CdcSourceConfiguration(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    configuration: SourceConfiguration | None = None
+    mapping: Annotated[
+        MappingPlan,
+        Field(
+            description='Authoritative mapping, including the exact approved schema digests the\nhosted supervisor passes to the pinned reader.'
+        ),
+    ]
+    reader_term: Annotated[int, Field(ge=0)]
+    reference: str | None = None
+
+
+class CdcSourceConfigureRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    configuration: SourceConfiguration
+    expected_configuration: str | None = None
+    expected_term: Annotated[int, Field(ge=0)]
+
+
+class CdcSourceDiscoveryCompleteRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    catalog: PostgresCatalog
+    id: str
+    lease: ReaderLease
+
+
+class CdcSourceDiscoveryInput(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    catalog: PostgresCatalog | None = None
+    draft: SourceDiscoveryDraft
+    head: SourceDiscoveryHead
+
+
+class CdcSourceRoutingPrepareRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    catalog: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    discovery_id: str
+    discovery_revision: Annotated[int, Field(ge=0)]
+    graphs: CustomerGraphPolicy
+    mapping: DiscoveryMapping
+    max_capture_bytes: Annotated[int, Field(ge=0)]
+    max_pending_bytes: Annotated[int, Field(ge=0)]
+    ontology_ops: (
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ]
+        | None
+    ) = None
+    ontology_template_graph: str | None = None
+    ontology_template_version: Annotated[int | None, Field(ge=0)] = None
+    ownership: CustomerOwnership
+
+
 class CommitResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     conformance: ConformanceReport | None = None
@@ -11785,6 +13355,23 @@ class CommitResponse(BaseModel):
             description='Property fields actually written by this commit, per entity (canonical\nfield names, resolved against the ontology). Lets a writer confirm a\nproperty landed without a follow-up read. Present only on a fresh commit\nthat carried `entity_properties`; empty on idempotent replays and no-ops.'
         ),
     ] = None
+
+
+class DiscoveryApprovalRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    catalog: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    expected_revision: Annotated[int, Field(ge=0)]
+    graph_epoch: Annotated[int, Field(ge=0)]
+    id: str
+    mapping: DiscoveryMapping
+    max_capture_bytes: Annotated[int, Field(ge=0)]
 
 
 class EmbeddingIndexInspectResponse(BaseModel):
@@ -12005,6 +13592,22 @@ class WorkflowRun(BaseModel):
     updated_at_ms: int
 
 
+class DiscoveryApproval(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    draft: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    format_version: Annotated[int, Field(ge=0)]
+    mapping: MappingPlan
+    request: DiscoveryApprovalRequest
+    scope: CaptureScope
+
+
 class QueryRewriteEvent(
     RootModel[
         QueryRewriteEventGrounding
@@ -12037,6 +13640,130 @@ class WorkflowCompleteResponse(BaseModel):
 class WorkflowListResponse(BaseModel):
     next_after: str | None = None
     runs: list[WorkflowRun]
+
+
+class CdcDiscoveryInput(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    approval: DiscoveryApproval | None = None
+    catalog: PostgresCatalog | None = None
+    configuration: SourceConfiguration | None = None
+    draft: DiscoveryDraft
+    head: DiscoveryHead
+
+
+class CaptureBatch1(BaseModel):
+    """
+    Exactly one complete committed source transaction in this first codec.
+    """
+
+    kind: Kind
+    rows: list[RowChange]
+    transaction_id: str
+
+
+class CaptureBatch2(BaseModel):
+    attempt_id: str
+    chunk: Annotated[int, Field(ge=0)]
+    kind: Kind1
+    rows: list[RowChange]
+
+
+class CdcCaptureAppendRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    batch: CaptureBatch1 | CaptureBatch2 | CaptureBatch3 | CaptureBatch4 | CaptureBatch5
+    before_checkpoint: str | None = None
+    checkpoint: SourceCheckpoint
+    lease: ReaderLease
+    scope: CaptureScope
+    sequence: Annotated[int, Field(ge=0)]
+
+
+class CdcSourceCaptureAppendRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    batch: CaptureBatch1 | CaptureBatch2 | CaptureBatch3 | CaptureBatch4 | CaptureBatch5
+    before_checkpoint: str | None = None
+    checkpoint: SourceCheckpoint
+    lease: ReaderLease
+    scope: SourceCaptureScope
+    sequence: Annotated[int, Field(ge=0)]
+
+
+class CdcSourceRoutingInput(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    draft: SourceDiscoveryDraft
+    head: RoutingHead
+    plan: RoutingPlan
+    schema_digests: dict[str, str]
+
+
+class CdcSourceRoutingStatus(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    capture: CdcSourceCaptureStatus | None = None
+    destinations: list[CdcCustomerGraphStatus]
+    enabled: bool
+    routing: RoutingHead | None = None
+    scope: SourceSetupScope
+
+
+class CustomerDestination(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    control_revision: Annotated[
+        int | None,
+        Field(
+            description="Routing revision of the last customer control, independent of data\nprogress. A poll's revision fences conflicting controls, not appends.",
+            ge=0,
+        ),
+    ] = None
+    customer_key: list[
+        SourceValue1
+        | SourceValue2
+        | SourceValue3
+        | SourceValue4
+        | SourceValue5
+        | SourceValue6
+        | SourceValue7
+        | SourceValue8
+        | SourceValue9
+        | SourceValue10
+        | SourceValue11
+        | SourceValue12
+        | SourceValue13
+        | SourceValue14
+        | SourceValue15
+    ]
+    delivered_sequence: Annotated[int, Field(ge=0)]
+    detached: Annotated[
+        bool,
+        Field(
+            description='A proved graph deletion permanently detaches this destination.'
+        ),
+    ]
+    failure: str | None = None
+    graph_epoch: Annotated[int | None, Field(ge=0)] = None
+    graph_id: str
+    outbox: RoutingIndexRef | None = None
+    paused: bool
+    pending_bytes: Annotated[int, Field(ge=0)]
+    planned_sequence: Annotated[int, Field(ge=0)]
+    provisioned: Annotated[
+        bool | None,
+        Field(
+            description='The graph binding, delivery log and all pinned schemas are durable.'
+        ),
+    ] = None
+    retired: bool
 
 
 class EmbeddingSearchRequest(BaseModel):
@@ -12259,6 +13986,116 @@ class HybridSubquery(BaseModel):
     weight: float | None = None
 
 
+class RoutingHead(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    customers: dict[str, CustomerDestination]
+    dependencies: RoutingIndexRef | None = None
+    discovery: RoutingObject | None = None
+    enabled: bool
+    failure: str | None = None
+    format_version: Annotated[int, Field(ge=0)]
+    max_pending_bytes: Annotated[int, Field(ge=0)]
+    pending_bytes: Annotated[int, Field(ge=0)]
+    plan: Annotated[
+        str,
+        Field(
+            description='Validated content address. Deserialization cannot introduce an object path.'
+        ),
+    ]
+    retained_customers: list[str]
+    revision: Annotated[int, Field(ge=0)]
+    routed_sequence: Annotated[int, Field(ge=0)]
+    row_count: Annotated[int, Field(ge=0)]
+    rows: RoutingIndexRef | None = None
+    scope: SourceCaptureScope
+    snapshot: RoutingIndexRef | None = None
+    snapshot_bytes: Annotated[int, Field(ge=0)]
+    snapshot_complete: bool
+    source_descriptor: str | None = None
+
+
+class RowChange(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    fields: dict[
+        str,
+        SourceValue1
+        | SourceValue2
+        | SourceValue3
+        | SourceValue4
+        | SourceValue5
+        | SourceValue6
+        | SourceValue7
+        | SourceValue8
+        | SourceValue9
+        | SourceValue10
+        | SourceValue11
+        | SourceValue12
+        | SourceValue13
+        | SourceValue14
+        | SourceValue15,
+    ]
+    key: Annotated[
+        list[
+            SourceValue1
+            | SourceValue2
+            | SourceValue3
+            | SourceValue4
+            | SourceValue5
+            | SourceValue6
+            | SourceValue7
+            | SourceValue8
+            | SourceValue9
+            | SourceValue10
+            | SourceValue11
+            | SourceValue12
+            | SourceValue13
+            | SourceValue14
+            | SourceValue15
+        ],
+        Field(
+            description='Canonical typed source key, encoded by the versioned adapter. It must be\nlossless and stable across restart. No key is inferred from row content.'
+        ),
+    ]
+    operation: RowOperation
+    previous_key: Annotated[
+        list[
+            SourceValue1
+            | SourceValue2
+            | SourceValue3
+            | SourceValue4
+            | SourceValue5
+            | SourceValue6
+            | SourceValue7
+            | SourceValue8
+            | SourceValue9
+            | SourceValue10
+            | SourceValue11
+            | SourceValue12
+            | SourceValue13
+            | SourceValue14
+            | SourceValue15
+        ]
+        | None,
+        Field(
+            description="For a primary-key move, name the immediately preceding delete's key.\nThis permits unchanged TOAST columns to carry forward from that exact\nrow image within the same source transaction; it is never a point read."
+        ),
+    ] = None
+    relation_id: Annotated[
+        str, Field(description='Stable relation incarnation, not its display name.')
+    ]
+    schema_: Annotated[
+        str,
+        Field(
+            alias='schema',
+            description='Validated content address. Deserialization cannot introduce an object path.',
+        ),
+    ]
+
+
 class SearchEngineOptions(BaseModel):
     bm25: bool | None = None
     consistency: SearchConsistency | None = None
@@ -12457,6 +14294,32 @@ class ShadowEvalRequest(BaseModel):
     top_k: Annotated[int | None, Field(ge=0)] = None
 
 
+class SourceValue15(BaseModel):
+    """
+    A source value never uses a JSON number for exact decimal/integer data.
+    Missing columns are absent map entries; unchanged and NULL are distinct.
+    """
+
+    type: Type14
+    value: list[
+        SourceValue1
+        | SourceValue2
+        | SourceValue3
+        | SourceValue4
+        | SourceValue5
+        | SourceValue6
+        | SourceValue7
+        | SourceValue8
+        | SourceValue9
+        | SourceValue10
+        | SourceValue11
+        | SourceValue12
+        | SourceValue13
+        | SourceValue14
+        | SourceValue15
+    ]
+
+
 class SparqlFilter2(BaseModel):
     """
     A FILTER over a solution: a comparison, or a boolean composition of filters.
@@ -12617,16 +14480,23 @@ class SparqlSelectRequest(BaseModel):
 
 
 SchemaAuditResult.model_rebuild()
+CaptureBatch1.model_rebuild()
+CaptureBatch2.model_rebuild()
+CdcSourceRoutingInput.model_rebuild()
+CdcSourceRoutingStatus.model_rebuild()
+CustomerDestination.model_rebuild()
 EmbeddingSearchRequest.model_rebuild()
 EntityFilterRequest.model_rebuild()
 FullTextSearchRequest.model_rebuild()
 GraphRecallRequest.model_rebuild()
 HybridMultiSearchRequest.model_rebuild()
 HybridSubquery.model_rebuild()
+RowChange.model_rebuild()
 SearchEngineOptions.model_rebuild()
 SearchFilterExpr20.model_rebuild()
 SearchFilterExpr21.model_rebuild()
 SearchFilterExpr22.model_rebuild()
+SourceValue15.model_rebuild()
 SparqlFilter2.model_rebuild()
 SparqlFilter3.model_rebuild()
 SparqlFilter4.model_rebuild()
