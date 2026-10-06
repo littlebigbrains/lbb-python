@@ -9813,7 +9813,8 @@
           "propose",
           "label",
           "embed",
-          "answer"
+          "answer",
+          "ask"
         ],
         "type": "string"
       },
@@ -39357,7 +39358,7 @@
             }
           },
           {
-            "description": "rerank, route, rewrite, fit, propose, label or embed",
+            "description": "rerank, route, rewrite, fit, propose, label, embed, answer or ask",
             "in": "query",
             "name": "job",
             "required": false,
@@ -39625,7 +39626,7 @@
             "bearer": []
           }
         ],
-        "summary": "The graph's model call log, newest first: every call LBB made for its own work (rerank, route, rewrite, fit, propose, label, embed) with its model, whether it was sampled for a check, and the brief of its check. Walks back day by day from `day` (or the day of `after`), up to 31 days, until the page fills",
+        "summary": "The graph's model call log, newest first: every call LBB made for its own work (rerank, route, rewrite, fit, propose, label, embed, answer, ask) with its model, whether it was sampled for a check, and the brief of its check. Walks back day by day from `day` (or the day of `after`), up to 31 days, until the page fills",
         "tags": [
           "system"
         ]
@@ -40185,7 +40186,7 @@
             }
           },
           {
-            "description": "rerank, route, rewrite, fit, propose, label or embed",
+            "description": "rerank, route, rewrite, fit, propose, label, embed, answer or ask",
             "in": "query",
             "name": "job",
             "required": false,
@@ -40491,7 +40492,7 @@
             }
           },
           {
-            "description": "rerank, route, rewrite, fit, propose, label or embed",
+            "description": "rerank, route, rewrite, fit, propose, label, embed, answer or ask",
             "in": "query",
             "name": "job",
             "required": false,

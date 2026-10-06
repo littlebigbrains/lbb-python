@@ -1963,6 +1963,7 @@ class ModelJob(Enum):
     label = 'label'
     embed = 'embed'
     answer = 'answer'
+    ask = 'ask'
 
 
 class ModelJobQuality(BaseModel):
