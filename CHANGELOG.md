@@ -2,6 +2,14 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- `QueryAskResult.chart`: how to draw `rows` (`kind` `bar`, `line`,
+  `scatter` or `table`, and the columns `x`, `y` and `series`), or `None`.
+  The server checked the hint against the rows. New models
+  `QueryAnswerChart` and `QueryAnswerChartKind`; `QueryAnswer` has `chart`,
+  and so does the stream's `answer` event.
+
 ## 0.21.0 (2026-10-06)
 
 This release breaks the question API. The server removed the one-shot

@@ -3251,18 +3251,15 @@ class PublishedReadFamilyView(BaseModel):
     target_hash: str | None = None
 
 
-class QueryAnswer(BaseModel):
+class QueryAnswerChartKind(Enum):
     """
-    The answer in plain words.
+    The kind of chart that fits the rows of an answer.
     """
 
-    citations: Annotated[
-        list[str] | None,
-        Field(
-            description='IRIs of the entities the answer names, at most 20. Each one appeared\nin the rows the loop read; the server removes any other.'
-        ),
-    ] = None
-    text: Annotated[str, Field(description='A short answer in plain words.')]
+    bar = 'bar'
+    line = 'line'
+    scatter = 'scatter'
+    table = 'table'
 
 
 class QueryAnswerTool(Enum):
@@ -3489,15 +3486,6 @@ class QueryRewriteAnchor(BaseModel):
 
 class Event(Enum):
     answer = 'answer'
-
-
-class QueryRewriteEventAnswer(BaseModel):
-    """
-    The answer, before `done`.
-    """
-
-    data: Annotated[QueryAnswer, Field(description='The answer, before `done`.')]
-    event: Literal['answer']
 
 
 class Event1(Enum):
@@ -8239,118 +8227,6 @@ class EvalLabelRequest(BaseModel):
     valid: bool | None = None
 
 
-class EvalTrace(BaseModel):
-    answer: EvalLabel | None = None
-    ask: EvalAskInput | None = None
-    embedding: Annotated[
-        str | None, Field(description='The embedding name, for `surface: search`.')
-    ] = None
-    entailment: SparqlEntailment
-    golden_id: Annotated[
-        str | None, Field(description="The golden that holds this trace's labels.")
-    ] = None
-    judged_at: Annotated[
-        str | None,
-        Field(description='RFC 3339; set when the judge looked at the trace.'),
-    ] = None
-    labels: Annotated[
-        dict[str, EvalLabel] | None, Field(description='Labels by result id.')
-    ] = None
-    query_type: EvalQueryType | None = None
-    reply: QueryAnswer | None = None
-    request: Annotated[
-        str,
-        Field(description="The user's words, as the caller passed them in `request`."),
-    ]
-    results: EvalItems
-    review: Annotated[
-        dict[str, float] | None,
-        Field(
-            description='Results the judge looked at but left for a person, with its\nprobability (between the two thresholds).'
-        ),
-    ] = None
-    served_at_seq: Annotated[
-        int,
-        Field(description='The commit of the graph the results were read at.', ge=0),
-    ]
-    sparql: Annotated[
-        str,
-        Field(description='The SPARQL query, or the query text on the vector surface.'),
-    ]
-    surface: EvalSurface | None = None
-    top_k: Annotated[
-        int | None, Field(description='The `top_k` of a search.', ge=0)
-    ] = None
-    trace_id: str
-    ts: Annotated[str, Field(description='RFC 3339.')]
-    v: Annotated[
-        int,
-        Field(
-            description='Trace format version. Currently `2`: labels per result.', ge=0
-        ),
-    ]
-
-
-class EvalTraceListResponse(BaseModel):
-    traces: list[EvalTrace]
-    truncated: bool
-
-
-class EvalVerdictDetail(BaseModel):
-    cost_micro_usd: Annotated[
-        int | None,
-        Field(
-            description='What the models of the replay cost, in millionths of a US dollar\n(`via: ask`).',
-            ge=0,
-        ),
-    ] = None
-    expected_type: EvalQueryType | None = None
-    item_count: Annotated[
-        int | None, Field(description='Results the query returned now.', ge=0)
-    ] = None
-    message: str | None = None
-    precision: Annotated[
-        float | None,
-        Field(
-            description='`relevant_returned / (relevant_returned + wrong_returned)`, over the\njudged results that came back.'
-        ),
-    ] = None
-    query_check: EvalQueryCheck | None = None
-    query_type: EvalQueryType | None = None
-    recall: Annotated[
-        float | None,
-        Field(
-            description='`relevant_returned / relevant`, over the known-relevant results.'
-        ),
-    ] = None
-    relevant_missing: Annotated[
-        int | None,
-        Field(description='Known-relevant results that did not come back.', ge=0),
-    ] = None
-    relevant_returned: Annotated[
-        int | None, Field(description='Known-relevant results that came back.', ge=0)
-    ] = None
-    reply: QueryAnswer | None = None
-    review_trace_id: Annotated[
-        str | None,
-        Field(
-            description='The trace opened for the unknown results (the review queue).'
-        ),
-    ] = None
-    route: QueryRoute | None = None
-    sparql: Annotated[
-        str | None, Field(description='The query Ask wrote this time (`via: ask`).')
-    ] = None
-    unknown_returned: Annotated[
-        int | None, Field(description='Returned results nobody judged yet.', ge=0)
-    ] = None
-    verdict: EvalVerdict
-    via: EvalVia | None = None
-    wrong_returned: Annotated[
-        int | None, Field(description='Known-wrong results that came back.', ge=0)
-    ] = None
-
-
 class EvidenceInput1(BaseModel):
     observation_id: Annotated[
         str | None,
@@ -9814,6 +9690,35 @@ class PublishedReadStatusResponse(BaseModel):
     head_seq: Annotated[int, Field(ge=0)]
     query_lag_commits: Annotated[int, Field(ge=0)]
     snapshot: PublishedReadSnapshotView
+
+
+class QueryAnswerChart(BaseModel):
+    """
+    A chart hint: which columns of the response's `result` an app can draw,
+    and how. The server checked it against those rows: every column it
+    names is a column of `result`, and `y` holds numbers for `bar` and
+    `line` (`x` and `y` for `scatter`).
+    """
+
+    kind: QueryAnswerChartKind
+    series: Annotated[
+        str | None,
+        Field(
+            description='A column that splits the rows into groups: a bar color or a line\neach.'
+        ),
+    ] = None
+    x: Annotated[
+        str | None,
+        Field(
+            description='The column of the categories or of the x axis, a variable of\n`result` without its `?`. Always present for `bar`, `line` and\n`scatter`.'
+        ),
+    ] = None
+    y: Annotated[
+        str | None,
+        Field(
+            description='The column of the numbers. Always present for `bar`, `line` and\n`scatter`.'
+        ),
+    ] = None
 
 
 class QueryAnswerStep(BaseModel):
@@ -12028,115 +11933,6 @@ class EntityRdfRelations(BaseModel):
     outgoing_truncation: TruncatedCollection | None = None
 
 
-class EvalJudgeResponse(BaseModel):
-    judged: list[EvalTrace]
-    provider: str
-    rejected: Annotated[
-        int, Field(description='Results the judge labeled not relevant.', ge=0)
-    ]
-    relevant: Annotated[
-        int, Field(description='Results the judge labeled relevant.', ge=0)
-    ]
-    review: Annotated[
-        int, Field(description='Results the judge left for a person.', ge=0)
-    ]
-
-
-class EvalLabelResponse(BaseModel):
-    golden: Golden | None = None
-    labeled: Annotated[
-        int | None, Field(description='Results labeled by this call.', ge=0)
-    ] = None
-    trace: EvalTrace
-
-
-class EvalResults(BaseModel):
-    """
-    One run of the suite at one commit of the graph. One object per commit.
-    """
-
-    cost_micro_usd: Annotated[
-        int | None,
-        Field(
-            description="What the models of the run's Ask replays cost together, in\nmillionths of a US dollar; absent when the run asked nothing.",
-            ge=0,
-        ),
-    ] = None
-    elapsed_ms: Annotated[int, Field(ge=0)]
-    errors: Annotated[int, Field(ge=0)]
-    failed: Annotated[int, Field(ge=0)]
-    goldens_version: Annotated[
-        int, Field(description='The suite version the run read.', ge=0)
-    ]
-    passed: Annotated[int, Field(ge=0)]
-    precision: Annotated[
-        float | None,
-        Field(
-            description='Mean precision over the goldens with judged results returned.'
-        ),
-    ] = None
-    ran_at: Annotated[str, Field(description='RFC 3339.')]
-    ran_by: Annotated[str, Field(description='`manual` or `tick`.')]
-    recall: Annotated[
-        float | None,
-        Field(description='Mean recall over the goldens with known-relevant results.'),
-    ] = None
-    regression: Annotated[
-        bool, Field(description='True when `score` is below the settings threshold.')
-    ]
-    review_traces: Annotated[
-        int | None,
-        Field(
-            description='Traces this run opened for results nobody judged yet.', ge=0
-        ),
-    ] = None
-    score: Annotated[
-        float,
-        Field(description='Share of goldens that pass; `1.0` for an empty suite.'),
-    ]
-    served_at_seq: Annotated[int, Field(ge=0)]
-    skipped: Annotated[int, Field(ge=0)]
-    total: Annotated[int, Field(ge=0)]
-    v: Annotated[int, Field(description='Results format version. Currently `2`.', ge=0)]
-    verdicts: dict[str, EvalVerdictDetail]
-
-
-class EvalResultsListResponse(BaseModel):
-    results: list[EvalResults]
-
-
-class EvalRunResponse(BaseModel):
-    results: EvalResults
-
-
-class EvalSummaryResponse(BaseModel):
-    goldens: Annotated[int, Field(ge=0)]
-    goldens_from_traces: Annotated[int, Field(ge=0)]
-    goldens_manual: Annotated[int, Field(ge=0)]
-    history: Annotated[list[EvalScorePoint], Field(description='Oldest first.')]
-    judge: EvalJudgeStatus
-    judged_results: Annotated[
-        int | None, Field(description='Judged results across every golden.', ge=0)
-    ] = None
-    latest: EvalResults | None = None
-    review_traces: Annotated[
-        int, Field(description='Traces with results the judge left for a person.', ge=0)
-    ]
-    settings: EvalSettings
-    suite_version: Annotated[int, Field(ge=0)]
-    unlabeled_items: Annotated[
-        int | None,
-        Field(description='Results nobody labeled yet, across those traces.', ge=0),
-    ] = None
-    unlabeled_traces: Annotated[
-        int,
-        Field(
-            description='Traces with a result nobody labeled yet, among the most recent traces.',
-            ge=0,
-        ),
-    ]
-
-
 class ExtractorDatasetResponse(BaseModel):
     """
     `GET /v1/models/extractor-dataset` — the extractor fine-tune's training
@@ -12864,6 +12660,30 @@ class PostgresSource(BaseModel):
     slot: str
 
 
+class QueryAnswer(BaseModel):
+    """
+    The answer in plain words.
+    """
+
+    chart: QueryAnswerChart | None = None
+    citations: Annotated[
+        list[str] | None,
+        Field(
+            description='IRIs of the entities the answer names, at most 20. Each one appeared\nin the rows the loop read; the server removes any other.'
+        ),
+    ] = None
+    text: Annotated[str, Field(description='A short answer in plain words.')]
+
+
+class QueryRewriteEventAnswer(BaseModel):
+    """
+    The answer, before `done`.
+    """
+
+    data: Annotated[QueryAnswer, Field(description='The answer, before `done`.')]
+    event: Literal['answer']
+
+
 class QueryRewriteEventRoute(BaseModel):
     """
     The router's route as soon as it answers, the caller's route at once,
@@ -13454,6 +13274,118 @@ class EntityPropertiesInput(BaseModel):
     type: str
 
 
+class EvalTrace(BaseModel):
+    answer: EvalLabel | None = None
+    ask: EvalAskInput | None = None
+    embedding: Annotated[
+        str | None, Field(description='The embedding name, for `surface: search`.')
+    ] = None
+    entailment: SparqlEntailment
+    golden_id: Annotated[
+        str | None, Field(description="The golden that holds this trace's labels.")
+    ] = None
+    judged_at: Annotated[
+        str | None,
+        Field(description='RFC 3339; set when the judge looked at the trace.'),
+    ] = None
+    labels: Annotated[
+        dict[str, EvalLabel] | None, Field(description='Labels by result id.')
+    ] = None
+    query_type: EvalQueryType | None = None
+    reply: QueryAnswer | None = None
+    request: Annotated[
+        str,
+        Field(description="The user's words, as the caller passed them in `request`."),
+    ]
+    results: EvalItems
+    review: Annotated[
+        dict[str, float] | None,
+        Field(
+            description='Results the judge looked at but left for a person, with its\nprobability (between the two thresholds).'
+        ),
+    ] = None
+    served_at_seq: Annotated[
+        int,
+        Field(description='The commit of the graph the results were read at.', ge=0),
+    ]
+    sparql: Annotated[
+        str,
+        Field(description='The SPARQL query, or the query text on the vector surface.'),
+    ]
+    surface: EvalSurface | None = None
+    top_k: Annotated[
+        int | None, Field(description='The `top_k` of a search.', ge=0)
+    ] = None
+    trace_id: str
+    ts: Annotated[str, Field(description='RFC 3339.')]
+    v: Annotated[
+        int,
+        Field(
+            description='Trace format version. Currently `2`: labels per result.', ge=0
+        ),
+    ]
+
+
+class EvalTraceListResponse(BaseModel):
+    traces: list[EvalTrace]
+    truncated: bool
+
+
+class EvalVerdictDetail(BaseModel):
+    cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='What the models of the replay cost, in millionths of a US dollar\n(`via: ask`).',
+            ge=0,
+        ),
+    ] = None
+    expected_type: EvalQueryType | None = None
+    item_count: Annotated[
+        int | None, Field(description='Results the query returned now.', ge=0)
+    ] = None
+    message: str | None = None
+    precision: Annotated[
+        float | None,
+        Field(
+            description='`relevant_returned / (relevant_returned + wrong_returned)`, over the\njudged results that came back.'
+        ),
+    ] = None
+    query_check: EvalQueryCheck | None = None
+    query_type: EvalQueryType | None = None
+    recall: Annotated[
+        float | None,
+        Field(
+            description='`relevant_returned / relevant`, over the known-relevant results.'
+        ),
+    ] = None
+    relevant_missing: Annotated[
+        int | None,
+        Field(description='Known-relevant results that did not come back.', ge=0),
+    ] = None
+    relevant_returned: Annotated[
+        int | None, Field(description='Known-relevant results that came back.', ge=0)
+    ] = None
+    reply: QueryAnswer | None = None
+    review_trace_id: Annotated[
+        str | None,
+        Field(
+            description='The trace opened for the unknown results (the review queue).'
+        ),
+    ] = None
+    route: QueryRoute | None = None
+    sparql: Annotated[
+        str | None, Field(description='The query Ask wrote this time (`via: ask`).')
+    ] = None
+    unknown_returned: Annotated[
+        int | None, Field(description='Returned results nobody judged yet.', ge=0)
+    ] = None
+    verdict: EvalVerdict
+    via: EvalVia | None = None
+    wrong_returned: Annotated[
+        int | None, Field(description='Known-wrong results that came back.', ge=0)
+    ] = None
+
+
 class GraphCommitResponse(BaseModel):
     commit: CommitResponse
     commit_seq: Annotated[int, Field(ge=0)]
@@ -13606,6 +13538,115 @@ class DiscoveryApproval(BaseModel):
     mapping: MappingPlan
     request: DiscoveryApprovalRequest
     scope: CaptureScope
+
+
+class EvalJudgeResponse(BaseModel):
+    judged: list[EvalTrace]
+    provider: str
+    rejected: Annotated[
+        int, Field(description='Results the judge labeled not relevant.', ge=0)
+    ]
+    relevant: Annotated[
+        int, Field(description='Results the judge labeled relevant.', ge=0)
+    ]
+    review: Annotated[
+        int, Field(description='Results the judge left for a person.', ge=0)
+    ]
+
+
+class EvalLabelResponse(BaseModel):
+    golden: Golden | None = None
+    labeled: Annotated[
+        int | None, Field(description='Results labeled by this call.', ge=0)
+    ] = None
+    trace: EvalTrace
+
+
+class EvalResults(BaseModel):
+    """
+    One run of the suite at one commit of the graph. One object per commit.
+    """
+
+    cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description="What the models of the run's Ask replays cost together, in\nmillionths of a US dollar; absent when the run asked nothing.",
+            ge=0,
+        ),
+    ] = None
+    elapsed_ms: Annotated[int, Field(ge=0)]
+    errors: Annotated[int, Field(ge=0)]
+    failed: Annotated[int, Field(ge=0)]
+    goldens_version: Annotated[
+        int, Field(description='The suite version the run read.', ge=0)
+    ]
+    passed: Annotated[int, Field(ge=0)]
+    precision: Annotated[
+        float | None,
+        Field(
+            description='Mean precision over the goldens with judged results returned.'
+        ),
+    ] = None
+    ran_at: Annotated[str, Field(description='RFC 3339.')]
+    ran_by: Annotated[str, Field(description='`manual` or `tick`.')]
+    recall: Annotated[
+        float | None,
+        Field(description='Mean recall over the goldens with known-relevant results.'),
+    ] = None
+    regression: Annotated[
+        bool, Field(description='True when `score` is below the settings threshold.')
+    ]
+    review_traces: Annotated[
+        int | None,
+        Field(
+            description='Traces this run opened for results nobody judged yet.', ge=0
+        ),
+    ] = None
+    score: Annotated[
+        float,
+        Field(description='Share of goldens that pass; `1.0` for an empty suite.'),
+    ]
+    served_at_seq: Annotated[int, Field(ge=0)]
+    skipped: Annotated[int, Field(ge=0)]
+    total: Annotated[int, Field(ge=0)]
+    v: Annotated[int, Field(description='Results format version. Currently `2`.', ge=0)]
+    verdicts: dict[str, EvalVerdictDetail]
+
+
+class EvalResultsListResponse(BaseModel):
+    results: list[EvalResults]
+
+
+class EvalRunResponse(BaseModel):
+    results: EvalResults
+
+
+class EvalSummaryResponse(BaseModel):
+    goldens: Annotated[int, Field(ge=0)]
+    goldens_from_traces: Annotated[int, Field(ge=0)]
+    goldens_manual: Annotated[int, Field(ge=0)]
+    history: Annotated[list[EvalScorePoint], Field(description='Oldest first.')]
+    judge: EvalJudgeStatus
+    judged_results: Annotated[
+        int | None, Field(description='Judged results across every golden.', ge=0)
+    ] = None
+    latest: EvalResults | None = None
+    review_traces: Annotated[
+        int, Field(description='Traces with results the judge left for a person.', ge=0)
+    ]
+    settings: EvalSettings
+    suite_version: Annotated[int, Field(ge=0)]
+    unlabeled_items: Annotated[
+        int | None,
+        Field(description='Results nobody labeled yet, across those traces.', ge=0),
+    ] = None
+    unlabeled_traces: Annotated[
+        int,
+        Field(
+            description='Traces with a result nobody labeled yet, among the most recent traces.',
+            ge=0,
+        ),
+    ]
 
 
 class QueryRewriteEvent(

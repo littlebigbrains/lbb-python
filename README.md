@@ -138,7 +138,10 @@ for row in result.rows:
 
 `answer` holds the text. `citations` holds the IRIs the answer names. Each one
 is in the rows the model read. `steps` lists the tool calls. `query` and `rows`
-hold the query whose rows hold the answer. The loop runs at most 4 rounds of
+hold the query whose rows hold the answer. `chart` says how to draw `rows`, or
+is `None`: `kind` (`bar`, `line`, `scatter` or `table`) and the columns `x`,
+`y` and `series`. The server checked that the columns exist and that `y`
+holds numbers for `bar` and `line`. The loop runs at most 4 rounds of
 tool calls, and a question takes about 10 s. When the loop stops before it
 answers, `answer` is `None` and `error` says why. `rows` then hold the best
 rows it read.

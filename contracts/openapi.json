@@ -16012,6 +16012,17 @@
       "QueryAnswer": {
         "description": "The answer in plain words.",
         "properties": {
+          "chart": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/QueryAnswerChart",
+                "description": "How an app can draw the rows of the response's `result`: the model's\nhint, checked against those rows. Absent when the model saw no chart\nin the rows, and when its hint named a column the rows lack or a\nkind their values do not fit (the server drops such a hint)."
+              }
+            ]
+          },
           "citations": {
             "description": "IRIs of the entities the answer names, at most 20. Each one appeared\nin the rows the loop read; the server removes any other.",
             "items": {
@@ -16028,6 +16039,49 @@
           "text"
         ],
         "type": "object"
+      },
+      "QueryAnswerChart": {
+        "description": "A chart hint: which columns of the response's `result` an app can draw,\nand how. The server checked it against those rows: every column it\nnames is a column of `result`, and `y` holds numbers for `bar` and\n`line` (`x` and `y` for `scatter`).",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/QueryAnswerChartKind"
+          },
+          "series": {
+            "description": "A column that splits the rows into groups: a bar color or a line\neach.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "x": {
+            "description": "The column of the categories or of the x axis, a variable of\n`result` without its `?`. Always present for `bar`, `line` and\n`scatter`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "y": {
+            "description": "The column of the numbers. Always present for `bar`, `line` and\n`scatter`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "QueryAnswerChartKind": {
+        "description": "The kind of chart that fits the rows of an answer.",
+        "enum": [
+          "bar",
+          "line",
+          "scatter",
+          "table"
+        ],
+        "type": "string"
       },
       "QueryAnswerStep": {
         "description": "One tool call of the answer loop.",
