@@ -343,6 +343,11 @@ class QueryAskResult:
       best rows it read), and for ``mode="route"``.
     - :attr:`citations` — the IRIs the answer names. Each one appeared in the
       rows the loop read.
+    - :attr:`chart` — how to draw :attr:`rows`: ``kind`` (``bar``, ``line``,
+      ``scatter`` or ``table``) and the columns ``x``, ``y`` and ``series``.
+      The server checked the hint against the rows: the columns exist, and
+      ``y`` holds numbers for ``bar`` and ``line`` (``x`` and ``y`` for
+      ``scatter``). ``None`` when the rows make no chart.
     - :attr:`steps` — the tool calls of the loop, in order (``n``, ``tool``,
       ``input``, ``ok``, ``rows``, ``error``, ``ms``).
     - :attr:`route` — the kind of question (``kind``), who chose it (``by``),
@@ -391,6 +396,7 @@ class QueryAskResult:
     answer: str | None = None
     citations: list[str] = dataclass_field(default_factory=list)
     steps: list[dict[str, Any]] = dataclass_field(default_factory=list)
+    chart: dict[str, Any] | None = None
 
     @classmethod
     def from_response(cls, response: Mapping[str, Any]) -> QueryAskResult:
@@ -423,6 +429,11 @@ class QueryAskResult:
             answer=str(answer["text"]) if answer is not None else None,
             citations=[str(iri) for iri in (answer or {}).get("citations") or []],
             steps=[dict(step) for step in response.get("steps") or []],
+            chart=(
+                dict(answer["chart"])
+                if answer is not None and isinstance(answer.get("chart"), Mapping)
+                else None
+            ),
         )
 
 

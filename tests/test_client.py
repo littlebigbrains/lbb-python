@@ -2869,7 +2869,11 @@ def ask_payload(**overrides: Any) -> dict[str, Any]:
             "run_ms": 4,
             "total_ms": 10,
         },
-        "answer": {"text": "One service.", "citations": ["https://x.test/e/a"]},
+        "answer": {
+            "text": "One service.",
+            "citations": ["https://x.test/e/a"],
+            "chart": {"kind": "table", "x": "s"},
+        },
         "steps": [
             {
                 "n": 1,
@@ -2914,6 +2918,7 @@ class QueryAskTests(unittest.TestCase):
         self.assertEqual(json.loads(seen[0].content), {"question": "Which services exist?"})
         self.assertEqual(answer.answer, "One service.")
         self.assertEqual(answer.citations, ["https://x.test/e/a"])
+        self.assertEqual(answer.chart, {"kind": "table", "x": "s"})
         self.assertEqual([step["tool"] for step in answer.steps], ["sparql"])
         self.assertEqual(answer.route["kind"], "lookup")
         self.assertEqual(
@@ -3003,6 +3008,7 @@ class QueryAskTests(unittest.TestCase):
         self.assertIsNone(routed.query)
         self.assertEqual(routed.rows, [])
         self.assertEqual(routed.citations, [])
+        self.assertIsNone(routed.chart)
         self.assertEqual(routed.steps, [])
         self.assertIsNone(routed.trace_id)
 
