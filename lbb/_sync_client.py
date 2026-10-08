@@ -29,6 +29,7 @@ from ._client_base import (
     RetryEvent,
     RowT,
     SparqlResults,
+    TrialCandidate,
     _ask_body,
     _ask_stream_event,
     _BaseLbbClient,
@@ -39,6 +40,8 @@ from ._client_base import (
     _error_body_field,
     _EvalsNamespace,
     _jittered_backoff,
+    _ModelSwitchesNamespace,
+    _ModelTrialsNamespace,
     _OntologyNamespace,
     _parse_model,
     _QueryNamespace,
@@ -51,6 +54,8 @@ from ._client_base import (
     _SchemaNamespace,
     _sse_decoder,
     _SseParser,
+    _trial_settled,
+    _trial_timeout,
 )
 from .integrations import IntegrationsNamespace
 
@@ -280,6 +285,95 @@ class _SyncQueryNamespace(_QueryNamespace):
         super().update(update, idempotency_key=idempotency_key, options=options)
 
 
+class _SyncModelTrialsNamespace(_ModelTrialsNamespace):
+    __doc__ = _ModelTrialsNamespace.__doc__
+
+    def options(self) -> models.ModelTrialOptionsResponse:
+        return cast(models.ModelTrialOptionsResponse, super().options())
+
+    def create(
+        self,
+        *,
+        candidate: TrialCandidate,
+        jobs: Sequence[str | models.ModelJob] | None = None,
+        target: int | None = None,
+        days: int | None = None,
+    ) -> models.ModelTrialStartResponse:
+        return cast(
+            models.ModelTrialStartResponse,
+            super().create(candidate=candidate, jobs=jobs, target=target, days=days),
+        )
+
+    def list(
+        self, *, job: str | models.ModelJob | None = None, limit: int | None = None
+    ) -> models.ModelTrialListResponse:
+        return cast(models.ModelTrialListResponse, super().list(job=job, limit=limit))
+
+    def get(self, trial_id: str) -> models.ModelTrial:
+        return cast(models.ModelTrial, super().get(trial_id))
+
+    def call(self, trial_id: str, call_id: str) -> models.ModelTrialCallResponse:
+        return cast(models.ModelTrialCallResponse, super().call(trial_id, call_id))
+
+    def stop(self, trial_id: str) -> models.ModelTrial:
+        return cast(models.ModelTrial, super().stop(trial_id))
+
+    def wait(
+        self,
+        trial_id: str,
+        *,
+        until: str = "compared",
+        timeout: float | None = None,
+        poll_interval: float = 5.0,
+        on_update: Callable[[models.ModelTrial], None] | None = None,
+    ) -> models.ModelTrial:
+        """Read the trial until it compared what it can (``until="compared"``,
+        the default: it no longer runs) or until it ended (``until="ended"``:
+        ``done``, ``stopped`` or ``failed``), and return it.
+
+        ``on_update`` gets the trial after each read, e.g. to show
+        ``report.calls``. ``timeout`` (seconds) raises :class:`TimeoutError`.
+        A trial of question answers takes about 10 to 30 s per call; one of
+        a decision or an order, about 1 s.
+        """
+        if poll_interval < 0:
+            raise ValueError("poll_interval must be non-negative")
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
+        deadline = time.monotonic() + timeout if timeout is not None else None
+        while True:
+            trial = self.get(trial_id)
+            if on_update is not None:
+                on_update(trial)
+            if _trial_settled(trial, until):
+                return trial
+            if deadline is not None and time.monotonic() >= deadline:
+                raise _trial_timeout(trial_id, trial)
+            time.sleep(poll_interval)
+
+
+class _SyncModelSwitchesNamespace(_ModelSwitchesNamespace):
+    __doc__ = _ModelSwitchesNamespace.__doc__
+
+    def list(self) -> models.ModelSwitchListResponse:
+        return cast(models.ModelSwitchListResponse, super().list())
+
+    def create(self, *, trial: str) -> models.ModelSwitch:
+        return cast(models.ModelSwitch, super().create(trial=trial))
+
+    def revert(self, job: str | models.ModelJob) -> models.ModelSwitchListResponse:
+        return cast(models.ModelSwitchListResponse, super().revert(job))
+
+
+class _SyncModelsNamespace:
+    """The models of the graph's uses: trials of other models
+    (:attr:`trials`), and switches (:attr:`switches`)."""
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self.trials = _SyncModelTrialsNamespace(client)
+        self.switches = _SyncModelSwitchesNamespace(client)
+
+
 class LbbClient(_BaseLbbClient):
     """Synchronous client. Usable as a context manager."""
 
@@ -328,6 +422,8 @@ class LbbClient(_BaseLbbClient):
         self.evals = _EvalsNamespace(self)
         # Model checks: the call log, the judge's checks, and reviews.
         self.checks = _ChecksNamespace(self)
+        # Model trials of other models on the graph's uses, and switches.
+        self.models = _SyncModelsNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
         self.integrations = IntegrationsNamespace(self)
