@@ -1694,6 +1694,48 @@ class SyncClientTests(unittest.TestCase):
                 client.embeddings.delete("people")
         self.assertEqual(len(seen), 1)
 
+    def test_fit_sources_map_each_operation_to_its_route(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, [{"json": {}}] * 6)
+        ) as client:
+            fit = client.ontology.fit_sources
+            fit.list()
+            fit.get("interview")
+            fit.declare(
+                "https://example.org/class/interview",
+                from_=["transcript"],
+                context="employee interviews",
+            )
+            fit.preview("https://example.org/class/interview", propose=True)
+            fit.refresh("interview")
+            fit.delete("interview")
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [
+                ("GET", "/v1/ontology/fit-sources"),
+                ("GET", "/v1/ontology/fit-sources"),
+                ("PUT", "/v1/ontology/fit-sources"),
+                ("POST", "/v1/ontology/fit-sources/preview"),
+                ("POST", "/v1/ontology/fit-sources/refresh"),
+                ("DELETE", "/v1/ontology/fit-sources"),
+            ],
+        )
+        self.assertEqual(seen[1].url.params["name"], "interview")
+        self.assertEqual(
+            json.loads(seen[2].content),
+            {
+                "class": "https://example.org/class/interview",
+                "from": ["transcript"],
+                "context": "employee interviews",
+            },
+        )
+        self.assertEqual(
+            json.loads(seen[3].content),
+            {"class": "https://example.org/class/interview", "propose": True},
+        )
+        self.assertEqual(seen[5].url.params["confirm"], "interview")
+
     def test_retries_idempotent_whole_graph_delete(self) -> None:
         seen: list[httpx.Request] = []
         payload = {
