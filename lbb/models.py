@@ -2168,6 +2168,7 @@ class ModelActivityFeature(Enum):
     training = 'training'
     rerank = 'rerank'
     rewrite = 'rewrite'
+    trial = 'trial'
 
 
 class ModelActivityGraph(BaseModel):
@@ -2647,6 +2648,18 @@ class ModelSplitAudit(BaseModel):
     trained_at_commit_seq: Annotated[int, Field(ge=0)]
 
 
+class ModelSwitchRequest(BaseModel):
+    """
+    `POST /v1/models/switches?graph`: switch a task to the candidate of a
+    trial that meets the bar.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    trial: str
+
+
 class ModelTrainingConfig(BaseModel):
     """
     Per-graph automatic-training configuration, stored as one small CAS
@@ -2667,6 +2680,165 @@ class ModelTrainingConfig(BaseModel):
         ),
     ] = None
     v: Annotated[int, Field(description='Config format version. Currently `1`.', ge=0)]
+
+
+class ModelTrialAnswer(BaseModel):
+    """
+    One model's answer to a compared call.
+    """
+
+    brief: Annotated[
+        str | None,
+        Field(
+            description="The answer in a few words: a decision's picks, the first items of an\norder, the first words of an answer."
+        ),
+    ] = None
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    error: Annotated[
+        str | None,
+        Field(description='Why there is no answer: `refused`, `failed`, `no answer`.'),
+    ] = None
+    model: str
+    ms: Annotated[int, Field(ge=0)]
+    provider: str
+    score: Annotated[
+        float | None, Field(description='0 to 1; absent when the model did not answer.')
+    ] = None
+    verdict: CheckVerdict | None = None
+
+
+class ModelTrialCandidate(BaseModel):
+    """
+    A model a trial can test on a job.
+    """
+
+    available: Annotated[
+        bool, Field(description="This server holds the provider's key.")
+    ]
+    default_effort: str | None = None
+    efforts: Annotated[
+        list[str] | None,
+        Field(
+            description='The efforts it takes, lowest first; empty for a model without one.'
+        ),
+    ] = None
+    label: str
+    model: str
+    note: str | None = None
+    price_in_per_million_usd: Annotated[
+        float | None,
+        Field(description='USD per million input and output tokens, when known.'),
+    ] = None
+    price_out_per_million_usd: float | None = None
+    provider: str
+    switchable: Annotated[
+        bool | None,
+        Field(
+            description='A trial of it that meets the bar can switch the task to it: the task\ncan run on this provider (`ask`: Claude; `route`: Jev).'
+        ),
+    ] = None
+
+
+class ModelTrialModel(BaseModel):
+    """
+    A model: the candidate of a trial, or the model a job uses now.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    effort: Annotated[
+        str | None,
+        Field(
+            description='The reasoning effort sent with each call (`low` … `max`), for a model\nthat takes one.'
+        ),
+    ] = None
+    model: Annotated[
+        str,
+        Field(
+            description="The provider's model id (`claude-haiku-5-5`, `jev-latest`)."
+        ),
+    ]
+    provider: Annotated[str, Field(description='`anthropic`, `typesafe` or `mock`.')]
+
+
+class ModelTrialOutcome(Enum):
+    """
+    What the comparison shows.
+    """
+
+    too_few = 'too_few'
+    better = 'better'
+    same = 'same'
+    worse = 'worse'
+
+
+class ModelTrialSide(BaseModel):
+    """
+    One model's figures over the compared calls.
+    """
+
+    cost_micro_usd_per_call: Annotated[
+        int,
+        Field(
+            description='The mean model cost of one call, in millionths of a US dollar.',
+            ge=0,
+        ),
+    ]
+    failed: Annotated[
+        int,
+        Field(
+            description='Calls the model did not answer (an error, a refusal, no answer).',
+            ge=0,
+        ),
+    ]
+    ms_p50: Annotated[int, Field(description='The median latency of one call.', ge=0)]
+    right: Annotated[
+        float, Field(description='The share of calls whose answer is right, 0 to 1.')
+    ]
+    score: Annotated[float, Field(description='The mean score, 0 to 1.')]
+
+
+class ModelTrialSkippedJob(BaseModel):
+    """
+    A job a start did not test, and why.
+    """
+
+    job: ModelJob
+    reason: str
+
+
+class ModelTrialStartRequest(BaseModel):
+    """
+    `POST /v1/models/trials?graph`: test a candidate model.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    candidate: ModelTrialModel
+    days: Annotated[
+        int | None,
+        Field(description='Days to collect new checks, 1 to 30; default 14.', ge=0),
+    ] = None
+    jobs: Annotated[
+        list[ModelJob] | None,
+        Field(
+            description='The jobs to test it on; absent: every job it can do that has checked\ncalls.'
+        ),
+    ] = None
+    target: Annotated[
+        int | None,
+        Field(description='Calls to compare per trial, 1 to 100; default 40.', ge=0),
+    ] = None
+
+
+class ModelTrialStatus(Enum):
+    running = 'running'
+    collecting = 'collecting'
+    done = 'done'
+    stopped = 'stopped'
+    failed = 'failed'
 
 
 class NameSemantics(BaseModel):
@@ -9604,6 +9776,85 @@ class ModelServingDefaults(BaseModel):
     v: Annotated[int, Field(description='Format version. Currently `1`.', ge=0)]
 
 
+class ModelTrialCall(BaseModel):
+    """
+    One call a trial compared.
+    """
+
+    at_ms: Annotated[int, Field(description='When the trial compared it.')]
+    call: Annotated[str, Field(description='The call id.')]
+    call_at_ms: int
+    candidate: ModelTrialAnswer
+    current: Annotated[
+        ModelTrialAnswer,
+        Field(
+            description="The model the task uses: the call's own answer when that model made\nthe call, else its answer to the call again (`replayed`)."
+        ),
+    ]
+    judge_cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description="The checker's cost for the candidate's answer, and for the current\nmodel's when it answered again (`ask`).",
+            ge=0,
+        ),
+    ] = None
+    pinned: Annotated[
+        bool | None,
+        Field(
+            description="`ask`: the candidate's queries read the commit the original read."
+        ),
+    ] = None
+    reason: Annotated[
+        str | None,
+        Field(description="The checker's reason about the candidate's answer (`ask`)."),
+    ] = None
+    replayed: Annotated[
+        bool | None,
+        Field(
+            description='Another model made the call (before a switch, say), so the model the\ntask uses answered it again for this comparison.'
+        ),
+    ] = None
+    summary: str
+    truth: Annotated[
+        ModelCheckTruth,
+        Field(
+            description="The ground truth of the call's check when the trial compared it."
+        ),
+    ]
+
+
+class ModelTrialReport(BaseModel):
+    """
+    The comparison of a trial.
+    """
+
+    calls: Annotated[
+        int, Field(description='Calls both models answered and the trial scored.', ge=0)
+    ]
+    candidate: ModelTrialSide
+    ci_high: float
+    ci_low: Annotated[
+        float, Field(description='The bootstrap 95% interval of `delta`.')
+    ]
+    cost_ratio: Annotated[
+        float | None,
+        Field(
+            description="The candidate's cost per call over the current model's; absent when\nthe current model's cost is 0."
+        ),
+    ] = None
+    current: ModelTrialSide
+    delta: Annotated[
+        float, Field(description='Mean of candidate score − current score.')
+    ]
+    outcome: ModelTrialOutcome
+    qualifies: Annotated[
+        bool,
+        Field(
+            description="The candidate meets the quality threshold: at least 20 calls, `ci_low`\nat or above −0.05, a failure share at most 0.05 above the current\nmodel's, and cheaper per call or `better`."
+        ),
+    ]
+
+
 class OntologyDefineResponse(BaseModel):
     changed: Annotated[
         bool | None,
@@ -12654,6 +12905,164 @@ class ModelRegistryResponse(BaseModel):
     ] = None
     kind: str
     runs: list[ModelRunView]
+
+
+class ModelSwitch(BaseModel):
+    """
+    A task whose model a person switched on one graph, after a trial of the
+    model met the bar.
+    """
+
+    at_ms: int
+    by: Annotated[
+        str, Field(description='Who switched: `account:<id>`, `key:<key id>`, `token`.')
+    ]
+    job: ModelJob
+    model: Annotated[
+        ModelTrialModel, Field(description='The model the task uses on the graph.')
+    ]
+    previous: ModelTrialModel | None = None
+    report: ModelTrialReport
+    trial: Annotated[
+        str,
+        Field(description='The trial that met the bar, and its report at the switch.'),
+    ]
+
+
+class ModelSwitchListResponse(BaseModel):
+    """
+    `GET /v1/models/switches?graph`: the graph's switched tasks.
+    """
+
+    switches: list[ModelSwitch]
+
+
+class ModelTrial(BaseModel):
+    """
+    One trial.
+    """
+
+    budget_micro_usd: Annotated[
+        int,
+        Field(
+            description="The candidate's, the current model's (on calls another model made)\nand the checker's cost the trial may spend.",
+            ge=0,
+        ),
+    ]
+    by: Annotated[
+        str,
+        Field(description='Who started it: `account:<id>`, `key:<key id>`, `token`.'),
+    ]
+    calls: Annotated[
+        list[ModelTrialCall] | None,
+        Field(description='The compared calls, newest call first. Empty in a list.'),
+    ] = None
+    candidate: ModelTrialModel
+    candidate_cost_micro_usd: Annotated[int, Field(ge=0)]
+    created_at_ms: int
+    current: ModelTrialModel | None = None
+    current_cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description="The current model's cost on the calls it answered again.", ge=0
+        ),
+    ] = None
+    error: str | None = None
+    finished_at_ms: int | None = None
+    id: Annotated[str, Field(description='`<created_ms:020>-<8 hex>`.')]
+    job: ModelJob
+    judge_cost_micro_usd: Annotated[int, Field(ge=0)]
+    report: ModelTrialReport
+    skipped: Annotated[
+        int | None,
+        Field(
+            description='Checked calls the trial could not compare: no usable ground truth, an\ninput the candidate cannot answer.',
+            ge=0,
+        ),
+    ] = None
+    status: ModelTrialStatus
+    stopped_by: str | None = None
+    target: Annotated[int, Field(description='Calls to compare.', ge=0)]
+    until_ms: Annotated[
+        int, Field(description='The trial collects new checks until this time.')
+    ]
+    workflow_turn: Annotated[int | None, Field(ge=0)] = None
+
+
+class ModelTrialCallResponse(BaseModel):
+    """
+    `GET /v1/models/trials/call?graph&id&call`: one compared call with the
+    call itself, its check and the candidate's answer.
+    """
+
+    answer: Annotated[
+        Any | None,
+        Field(
+            description="The candidate's answer: `output` in the shape of the call's output,\n`steps` for `ask`, and `current` (its own `output` and `steps`) when\nthe model the task uses answered the call again."
+        ),
+    ] = None
+    call: ModelCall | None = None
+    check: ModelCheck | None = None
+    compared: ModelTrialCall
+    job: ModelJob
+    trial: str
+
+
+class ModelTrialJobOption(BaseModel):
+    """
+    One job a trial can run on.
+    """
+
+    candidates: list[ModelTrialCandidate]
+    checked: Annotated[
+        int,
+        Field(
+            description='Checked calls of the last three months a trial can compare.',
+            ge=0,
+        ),
+    ]
+    current: ModelTrialModel | None = None
+    default: ModelTrialModel | None = None
+    job: ModelJob
+    switched: ModelSwitch | None = None
+
+
+class ModelTrialListResponse(BaseModel):
+    """
+    `GET /v1/models/trials?graph`: trials, newest first, without their calls.
+    """
+
+    trials: list[ModelTrial]
+
+
+class ModelTrialOptionsResponse(BaseModel):
+    """
+    `GET /v1/models/trials/options?graph`.
+    """
+
+    available: Annotated[
+        bool,
+        Field(
+            description='Trials can run here: workflows are on and the catalog has a checker.'
+        ),
+    ]
+    budget_micro_usd: Annotated[
+        int, Field(description='The budget of one trial (`LBB_MODEL_TRIAL_USD`).', ge=0)
+    ]
+    jobs: list[ModelTrialJobOption]
+    reason: str | None = None
+    target_default: Annotated[int, Field(ge=0)]
+    target_max: Annotated[int, Field(ge=0)]
+
+
+class ModelTrialStartResponse(BaseModel):
+    """
+    The answer to a start: the trials (an open trial of the same job and
+    candidate is answered as it is), and the jobs left out.
+    """
+
+    skipped: list[ModelTrialSkippedJob] | None = None
+    trials: list[ModelTrial]
 
 
 class NeighborResponse(BaseModel):
