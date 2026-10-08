@@ -3878,6 +3878,26 @@ class QueryLinkMethod(Enum):
     acronym = 'acronym'
 
 
+class QueryNamesGapReason(Enum):
+    """
+    Why the name index lacks names of a class.
+    """
+
+    read_failed = 'read_failed'
+    time_budget = 'time_budget'
+    name_bound = 'name_bound'
+    instance_bound = 'instance_bound'
+
+
+class QueryNamesIndexGap(BaseModel):
+    """
+    A class the name index did not read in full.
+    """
+
+    class_: Annotated[str, Field(alias='class', description='The class IRI.')]
+    reason: QueryNamesGapReason
+
+
 class QueryNamesRequest(BaseModel):
     """
     Find the entities a question or a list of names names
@@ -10674,6 +10694,25 @@ class QueryNamesResponse(BaseModel):
             ge=0,
         ),
     ]
+    index_classes_read: Annotated[
+        int | None,
+        Field(
+            description='Classes the index read, in full or in part. People and organizations\nare read first, then other entities, then records.',
+            ge=0,
+        ),
+    ] = None
+    index_complete: Annotated[
+        bool | None,
+        Field(
+            description='Every class of the graph description was read in full. Absent when\nthe index was not ready.'
+        ),
+    ] = None
+    index_gaps: Annotated[
+        list[QueryNamesIndexGap] | None,
+        Field(
+            description='The classes the index did not read in full, and why, in the order it\nreads them. Empty when the index is complete.'
+        ),
+    ] = None
     index_names: Annotated[
         int | None, Field(description='Names in the index the matching read.', ge=0)
     ] = None

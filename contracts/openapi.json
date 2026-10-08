@@ -18519,6 +18519,33 @@
         ],
         "type": "string"
       },
+      "QueryNamesGapReason": {
+        "description": "Why the name index lacks names of a class.",
+        "enum": [
+          "read_failed",
+          "time_budget",
+          "name_bound",
+          "instance_bound"
+        ],
+        "type": "string"
+      },
+      "QueryNamesIndexGap": {
+        "description": "A class the name index did not read in full.",
+        "properties": {
+          "class": {
+            "description": "The class IRI.",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/QueryNamesGapReason"
+          }
+        },
+        "required": [
+          "class",
+          "reason"
+        ],
+        "type": "object"
+      },
       "QueryNamesRequest": {
         "additionalProperties": false,
         "description": "Find the entities a question or a list of names names\n(`POST /v1/query/names`).",
@@ -18557,6 +18584,29 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "index_classes_read": {
+            "description": "Classes the index read, in full or in part. People and organizations\nare read first, then other entities, then records.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "index_complete": {
+            "description": "Every class of the graph description was read in full. Absent when\nthe index was not ready.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "index_gaps": {
+            "description": "The classes the index did not read in full, and why, in the order it\nreads them. Empty when the index is complete.",
+            "items": {
+              "$ref": "#/components/schemas/QueryNamesIndexGap"
+            },
+            "type": "array"
           },
           "index_names": {
             "description": "Names in the index the matching read.",

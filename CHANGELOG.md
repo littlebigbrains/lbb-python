@@ -2,6 +2,13 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- `query.names` responses carry `index_complete`, `index_classes_read` and
+  `index_gaps` (new models `QueryNamesIndexGap` and `QueryNamesGapReason`):
+  whether the name index read every class in full, and the classes it did
+  not, with the reason. The index reads people and organizations first.
+
 ## 0.22.0 (2026-10-08)
 
 - The `ModelJob` type gains `ask`: the checked answer of one question
