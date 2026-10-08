@@ -7804,6 +7804,810 @@
         ],
         "type": "object"
       },
+      "FitProposal": {
+        "description": "One change the reasoning model proposed, and what the checks made of it.",
+        "properties": {
+          "change": {
+            "description": "The evolve operations the suggestion would carry.",
+            "items": {
+              "$ref": "#/components/schemas/OntologyEvolveOp"
+            },
+            "type": "array"
+          },
+          "detail": {
+            "description": "Why a proposal was dropped, when the check says more.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entity": {
+            "description": "The instance whose text the proposal came from.",
+            "type": "string"
+          },
+          "key": {
+            "description": "The suggestion key: `fit:<source>/<kind>/<normalised names>`. The\nsame change from many instances is one suggestion.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FitProposalKind"
+          },
+          "name": {
+            "description": "The class, property or relation the change adds or widens.",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/FitProposalOutcome"
+          },
+          "quote": {
+            "description": "The sentence of the text that supports the change, as the model\nquoted it.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "The model's reason, one sentence.",
+            "type": "string"
+          },
+          "support": {
+            "description": "The decision model's probability that the quote supports the change.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "key",
+          "title",
+          "change",
+          "entity",
+          "quote",
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "FitProposalKind": {
+        "description": "What kind of change a proposal is.",
+        "enum": [
+          "add_class",
+          "add_property",
+          "add_relation",
+          "widen_relation"
+        ],
+        "type": "string"
+      },
+      "FitProposalOutcome": {
+        "description": "What became of a proposal.",
+        "enum": [
+          "kept",
+          "quote_not_found",
+          "invalid",
+          "already_covered",
+          "weak_support"
+        ],
+        "type": "string"
+      },
+      "FitSource": {
+        "description": "The persisted fit source\n(`…/ontology/fit-sources/epoch=<e>/<name>/source.json`, CAS).",
+        "properties": {
+          "backfill": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FitSourceBackfill"
+              }
+            ]
+          },
+          "counters": {
+            "$ref": "#/components/schemas/FitSourceCounters"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "last_error": {
+            "description": "Why the last step stopped, until a later step succeeds.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "pending": {
+            "description": "Changed instances still to read, oldest first.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "processed_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The published commit the source has read through."
+              }
+            ]
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/FitSourceRecipe"
+          },
+          "revision": {
+            "description": "Every write increments it.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/FitSourceSpend",
+            "description": "This month's spend (the month rolls over at the first step of the\nnext month)."
+          },
+          "state": {
+            "$ref": "#/components/schemas/FitSourceState"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "v": {
+            "description": "Format version. Currently `1`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "name",
+          "recipe",
+          "state",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "FitSourceBackfill": {
+        "description": "A pass over every instance of the class: the first pass of a source, or a\nnew pass when the commit deltas are not available.",
+        "properties": {
+          "cursor": {
+            "description": "The last instance IRI done; the next page starts after it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scanned": {
+            "description": "Instances the pass has read.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "The published commit the pass reads."
+          }
+        },
+        "required": [
+          "target_seq",
+          "scanned"
+        ],
+        "type": "object"
+      },
+      "FitSourceCounters": {
+        "description": "What a fit source has done since it was declared.",
+        "properties": {
+          "already_covered": {
+            "description": "Dropped: the ontology has the change already.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "chunks": {
+            "description": "Chunks sent to the reasoning model.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed_chunks": {
+            "description": "Chunks the reasoning model gave no usable answer for (a refusal, an\nanswer cut at its token limit, or text that is not JSON), read as no\nproposal so that one text cannot stop the source.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "filed": {
+            "description": "Suggestions this source filed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "instances": {
+            "description": "Instances read (an instance read again after a change counts again).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "invalid": {
+            "description": "Dropped: the change is not valid against the ontology.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kept": {
+            "description": "Proposals that support a suggestion (new or existing).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proposals": {
+            "description": "Changes the reasoning model proposed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "quote_not_found": {
+            "description": "Dropped: the quote is not in the text.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reopened": {
+            "description": "Dismissed suggestions reopened by new evidence.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "skipped": {
+            "description": "Changed instances not read: more changed in one window than the job\nkeeps (5,000).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updated": {
+            "description": "Updates of open suggestions with new evidence.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "weak_support": {
+            "description": "Dropped: the decision model scored the support below 0.5.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "FitSourceDeclareRequest": {
+        "description": "Declare or change a fit source (`PUT /v1/ontology/fit-sources`).",
+        "properties": {
+          "class": {
+            "description": "The class IRI whose instances the fit reads.",
+            "type": "string"
+          },
+          "context": {
+            "description": "One sentence about what the text is, for the model (\"employee\ninterviews about their work processes\"). At most 500 characters.\nAbsent on an existing source: its context stays.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exclude": {
+            "description": "Names or IRIs to drop from the automatic choice.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "The fields in text order, with the path syntax of embeddings\n(`transcript`, `label`, `rdfs:label`, `about/label`, `<https://…>`).\nAbsent: the server picks the text facts of a sample of the class,\nlongest text first, and stores the result.",
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingFieldSpec"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "`[a-z0-9][a-z0-9-]{0,62}`; defaults to the class's local name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "class"
+        ],
+        "type": "object"
+      },
+      "FitSourceListResponse": {
+        "properties": {
+          "fit_sources": {
+            "items": {
+              "$ref": "#/components/schemas/FitSourceStatus"
+            },
+            "type": "array"
+          },
+          "month_cost_micro_usd": {
+            "description": "The stack's fit spend this month, in millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "monthly_budget_usd": {
+            "description": "The stack's monthly budget for fit from text in US dollars (every\nsource of every graph together); absent when there is no limit.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "fit_sources"
+        ],
+        "type": "object"
+      },
+      "FitSourcePreviewRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FitSourceDeclareRequest"
+          },
+          {
+            "properties": {
+              "iris": {
+                "description": "Show these instances instead of the first ones.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "propose": {
+                "description": "Run the models on the first 3 sample instances (a dry run).",
+                "type": "boolean"
+              },
+              "sample": {
+                "description": "Sample instances to show (default 3, at most 20).",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "Preview a declaration (`POST /v1/ontology/fit-sources/preview`): the text\nthe fit would read. With `propose`, the models also run on at most 3\ninstances and the proposals come back; nothing is filed or stored."
+      },
+      "FitSourcePreviewResponse": {
+        "properties": {
+          "candidates": {
+            "description": "Every field the class could give the text: the recipe's fields first,\nthen the others by coverage.",
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingCandidate"
+            },
+            "type": "array"
+          },
+          "cost_micro_usd": {
+            "description": "With `propose`: the spend of the dry run, in millionths of a US\ndollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "instances": {
+            "description": "Instances of the class at the published generation.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "proposals": {
+            "description": "With `propose`: every proposal of the sample instances, the dropped\nones included.",
+            "items": {
+              "$ref": "#/components/schemas/FitProposal"
+            },
+            "type": "array"
+          },
+          "read_at_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/FitSourceRecipe"
+          },
+          "sampled": {
+            "description": "Instances the candidates were measured on (up to 1,000).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/FitSourceSample"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "description": "With `propose`: the dry run reached its time limit (60 s), and the\nproposals of the instances that did not finish are left out.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "recipe",
+          "instances",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "FitSourceRecipe": {
+        "description": "What a fit source reads. A change of fields or context applies to the\ninstances read after it; the job does not read the earlier ones again.",
+        "properties": {
+          "class": {
+            "description": "The class IRI whose instances (`?s a <class>`, subclasses included)\nthe fit reads.",
+            "type": "string"
+          },
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/EmbeddingField"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "class",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "FitSourceRefreshResponse": {
+        "properties": {
+          "fit_source": {
+            "$ref": "#/components/schemas/FitSourceStatus"
+          },
+          "queued": {
+            "description": "The fit job was asked to run now; the status shows its progress.",
+            "type": "boolean"
+          },
+          "steps": {
+            "description": "The steps the call ran itself. Empty from\n`POST /v1/ontology/fit-sources/refresh`, which only asks the fit job\nto run (`queued`).",
+            "items": {
+              "$ref": "#/components/schemas/FitSourceStep"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "fit_source"
+        ],
+        "type": "object"
+      },
+      "FitSourceSample": {
+        "properties": {
+          "chars": {
+            "description": "Characters of the whole text the fit reads.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "chunks": {
+            "description": "Chunks the text makes (one reasoning-model call each).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "text": {
+            "description": "The text, up to 8,000 characters; empty when the instance has no\nvalue in any field.",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "`text` is the start of a longer text.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "iri",
+          "label",
+          "chars",
+          "chunks",
+          "text"
+        ],
+        "type": "object"
+      },
+      "FitSourceSpend": {
+        "description": "The model spend of a fit source in one month (UTC), from the providers'\nreported usage at list prices.",
+        "properties": {
+          "calls": {
+            "description": "Model calls (reasoning and decision).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "description": "In millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "month": {
+            "description": "`yyyy-mm`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month"
+        ],
+        "type": "object"
+      },
+      "FitSourceState": {
+        "enum": [
+          "backfilling",
+          "ready"
+        ],
+        "type": "string"
+      },
+      "FitSourceStatus": {
+        "description": "A fit source as `GET /v1/ontology/fit-sources` reports it.",
+        "properties": {
+          "backfill": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FitSourceBackfill"
+              }
+            ]
+          },
+          "class": {
+            "type": "string"
+          },
+          "counters": {
+            "$ref": "#/components/schemas/FitSourceCounters"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "lag_commits": {
+            "description": "Commits the source is behind the published generation.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_error_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "pending": {
+            "description": "Changed instances still to read.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "processed_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "published_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The commit of the published RDF generation now."
+              }
+            ]
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/FitSourceRecipe"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/FitSourceSpend",
+            "description": "This month's spend."
+          },
+          "state": {
+            "$ref": "#/components/schemas/FitSourceState"
+          },
+          "suggestions": {
+            "$ref": "#/components/schemas/SuggestionStatusCounts",
+            "description": "The suggestions of this source (origin id `fit:<name>`) per status."
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "class",
+          "recipe",
+          "state",
+          "pending",
+          "counters",
+          "spend",
+          "suggestions",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "FitSourceStep": {
+        "description": "What one step of the fit job did.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/FitSourceStepAction"
+          },
+          "already_covered": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "chunks": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "description": "In millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed_chunks": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "filed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "instances": {
+            "description": "Instances read.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "invalid": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kept": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "more": {
+            "description": "The source has more work (a backfill page, changed instances).",
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "processed_through_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "proposals": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "quote_not_found": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reopened": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updated": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "weak_support": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "action",
+          "instances",
+          "chunks",
+          "failed_chunks",
+          "proposals",
+          "kept",
+          "filed",
+          "updated",
+          "reopened",
+          "quote_not_found",
+          "invalid",
+          "already_covered",
+          "weak_support",
+          "cost_micro_usd",
+          "more"
+        ],
+        "type": "object"
+      },
+      "FitSourceStepAction": {
+        "enum": [
+          "idle",
+          "backfill",
+          "incremental"
+        ],
+        "type": "string"
+      },
       "FlatPropertyValue": {
         "anyOf": [
           {
@@ -67363,6 +68167,1345 @@
           }
         ],
         "summary": "Evolve the scoped graph's ontology with ordered operations, or preview the exact diff, conflicts, and resulting version without mutation",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/fit-sources": {
+      "delete": {
+        "operationId": "delete_v1_ontology_fit_sources",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the fit source",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the fit source name again",
+            "in": "query",
+            "name": "confirm",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a fit source; the suggestions it filed stay in the inbox",
+        "tags": [
+          "ontology"
+        ]
+      },
+      "get": {
+        "operationId": "get_v1_ontology_fit_sources",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one fit source (returns FitSourceStatus)",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitSourceListResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The fit sources of the graph with their status: the resolved fields, the watermark and lag, backfill progress, changed instances still to read, counters, this month's spend, the suggestions filed per status, and the last error; `name` for one",
+        "tags": [
+          "ontology"
+        ]
+      },
+      "put": {
+        "operationId": "put_v1_ontology_fit_sources",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitSourceDeclareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitSourceStatus"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Declare or change the fit source of a class: the fields whose text the fit reads (the path syntax of embeddings, or long text chosen automatically) and a sentence about the text. A job reads every instance and files ontology change suggestions; nothing changes the ontology until one is accepted",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/fit-sources/preview": {
+      "post": {
+        "operationId": "post_v1_ontology_fit_sources_preview",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitSourcePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitSourcePreviewResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What a declaration would read: the resolved fields, every candidate fact of the class, the instance count, and the text of sample instances. With `propose: true`, the models also run on the first chunk of up to 3 instances, within 60 s (`truncated` when an instance did not finish), and every proposal comes back with what the checks made of it; nothing is filed",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/fit-sources/refresh": {
+      "post": {
+        "operationId": "post_v1_ontology_fit_sources_refresh",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the fit source",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitSourceRefreshResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ask the fit job to run now (`queued: true`) and return the source's status at once; it calls no model. 429 `fit_budget_exceeded` when the stack's monthly fit budget is spent, 503 `fit_models_unavailable` without the models",
         "tags": [
           "ontology"
         ]

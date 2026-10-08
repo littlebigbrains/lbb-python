@@ -2216,6 +2216,121 @@ class _OntologyStartersNamespace:
         )
 
 
+class _FitSourcesNamespace:
+    """Fit from text: fit sources declared on classes.
+
+    A fit source names the properties of a class that hold text
+    (transcripts, documents), like an embedding. A job reads the text of
+    every instance, proposes ontology changes with verified quotes, and files
+    them as suggestions (origin id ``fit:<name>``). Nothing changes the
+    ontology until a suggestion is accepted.
+    """
+
+    def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
+        self._client = client
+        self._graph = graph
+
+    def _scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        return _graph_scoped(self._graph, params)
+
+    @staticmethod
+    def _declaration(
+        class_: str,
+        name: str | None,
+        from_: Sequence[str | Mapping[str, Any]] | None,
+        exclude: Sequence[str] | None,
+        context: str | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"class": class_}
+        if name is not None:
+            body["name"] = name
+        if from_ is not None:
+            body["from"] = list(from_)
+        if exclude is not None:
+            body["exclude"] = list(exclude)
+        if context is not None:
+            body["context"] = context
+        return body
+
+    def list(self) -> Any:
+        """Every fit source of the graph with its status, and the stack's budget."""
+        return self._client._request(
+            "GET", "/v1/ontology/fit-sources", params=self._scope()
+        )
+
+    def get(self, name: str) -> Any:
+        """One fit source: progress, lag, counters, spend, suggestions, last error."""
+        return self._client._request(
+            "GET", "/v1/ontology/fit-sources", params=self._scope({"name": name})
+        )
+
+    def declare(
+        self,
+        class_: str,
+        *,
+        name: str | None = None,
+        from_: Sequence[str | Mapping[str, Any]] | None = None,
+        exclude: Sequence[str] | None = None,
+        context: str | None = None,
+    ) -> Any:
+        """Declare or change the fit source of a class (``PUT /v1/ontology/fit-sources``).
+
+        ``from_`` (the wire field ``from``) takes the paths of an embedding
+        (``"transcript"``, ``"label"``, ``"about/label"``); without it the
+        server picks the long text facts. ``context`` is one sentence about
+        the text. On an existing source only what you name changes; the same
+        declaration again is a no-op.
+        """
+        return self._client._request(
+            "PUT",
+            "/v1/ontology/fit-sources",
+            params=self._scope(),
+            body=self._declaration(class_, name, from_, exclude, context),
+        )
+
+    def preview(
+        self,
+        class_: str,
+        *,
+        name: str | None = None,
+        from_: Sequence[str | Mapping[str, Any]] | None = None,
+        exclude: Sequence[str] | None = None,
+        context: str | None = None,
+        sample: int | None = None,
+        iris: Sequence[str] | None = None,
+        propose: bool = False,
+    ) -> Any:
+        """The text the fit would read for a few instances. With
+        ``propose=True`` the models run on up to 3 instances and the
+        proposals come back with their checks; nothing is filed."""
+        body = self._declaration(class_, name, from_, exclude, context)
+        if sample is not None:
+            body["sample"] = sample
+        if iris is not None:
+            body["iris"] = list(iris)
+        if propose:
+            body["propose"] = True
+        return self._client._request(
+            "POST", "/v1/ontology/fit-sources/preview", params=self._scope(), body=body
+        )
+
+    def refresh(self, name: str) -> Any:
+        """Ask the fit job to run now; returns the status at once (``queued``)."""
+        return self._client._request(
+            "POST",
+            "/v1/ontology/fit-sources/refresh",
+            params=self._scope({"name": name}),
+        )
+
+    def delete(self, name: str) -> Any:
+        """Remove a fit source. Its suggestions stay in the inbox."""
+        return self._client._request(
+            "DELETE",
+            "/v1/ontology/fit-sources",
+            params=self._scope({"name": name, "confirm": name}),
+        )
+
+
 class _OntologyNamespace:
     """Typed ontology discovery and lifecycle operations."""
 
@@ -2223,6 +2338,8 @@ class _OntologyNamespace:
         self._client = client
         self._graph = graph
         self.starters = _OntologyStartersNamespace(client, graph)
+        # Fit from text: suggestions made from the text of a class's instances.
+        self.fit_sources = _FitSourcesNamespace(client, graph)
 
     def _scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         """Query parameters, with this namespace's graph when it has one."""

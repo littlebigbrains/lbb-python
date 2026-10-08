@@ -4,6 +4,13 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- New `ontology.fit_sources` for fit from text: `list`, `get`, `declare`,
+  `preview`, `refresh` and `delete` call `/v1/ontology/fit-sources*`. A fit
+  source names the properties of a class that hold text (transcripts,
+  documents); the server reads every instance and files ontology change
+  suggestions with verified quotes. `preview(..., propose=True)` runs the
+  models on up to 3 instances without filing anything. New models
+  `FitSource*` and `FitProposal*`.
 - `QueryAskResult.chart`: how to draw `rows` (`kind` `bar`, `line`,
   `scatter` or `table`, and the columns `x`, `y` and `series`), or `None`.
   The server checked the hint against the rows. New models

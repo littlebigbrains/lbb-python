@@ -1342,6 +1342,241 @@ class FacetResult(BaseModel):
     missing: Annotated[int, Field(ge=0)]
 
 
+class FitProposalKind(Enum):
+    """
+    What kind of change a proposal is.
+    """
+
+    add_class = 'add_class'
+    add_property = 'add_property'
+    add_relation = 'add_relation'
+    widen_relation = 'widen_relation'
+
+
+class FitProposalOutcome(Enum):
+    """
+    What became of a proposal.
+    """
+
+    kept = 'kept'
+    quote_not_found = 'quote_not_found'
+    invalid = 'invalid'
+    already_covered = 'already_covered'
+    weak_support = 'weak_support'
+
+
+class FitSourceBackfill(BaseModel):
+    """
+    A pass over every instance of the class: the first pass of a source, or a
+    new pass when the commit deltas are not available.
+    """
+
+    cursor: Annotated[
+        str | None,
+        Field(description='The last instance IRI done; the next page starts after it.'),
+    ] = None
+    scanned: Annotated[int, Field(description='Instances the pass has read.', ge=0)]
+    target_seq: Annotated[
+        int, Field(description='The published commit the pass reads.', ge=0)
+    ]
+
+
+class FitSourceCounters(BaseModel):
+    """
+    What a fit source has done since it was declared.
+    """
+
+    already_covered: Annotated[
+        int | None,
+        Field(description='Dropped: the ontology has the change already.', ge=0),
+    ] = None
+    chunks: Annotated[
+        int | None, Field(description='Chunks sent to the reasoning model.', ge=0)
+    ] = None
+    failed_chunks: Annotated[
+        int | None,
+        Field(
+            description='Chunks the reasoning model gave no usable answer for (a refusal, an\nanswer cut at its token limit, or text that is not JSON), read as no\nproposal so that one text cannot stop the source.',
+            ge=0,
+        ),
+    ] = None
+    filed: Annotated[
+        int | None, Field(description='Suggestions this source filed.', ge=0)
+    ] = None
+    instances: Annotated[
+        int | None,
+        Field(
+            description='Instances read (an instance read again after a change counts again).',
+            ge=0,
+        ),
+    ] = None
+    invalid: Annotated[
+        int | None,
+        Field(
+            description='Dropped: the change is not valid against the ontology.', ge=0
+        ),
+    ] = None
+    kept: Annotated[
+        int | None,
+        Field(
+            description='Proposals that support a suggestion (new or existing).', ge=0
+        ),
+    ] = None
+    proposals: Annotated[
+        int | None, Field(description='Changes the reasoning model proposed.', ge=0)
+    ] = None
+    quote_not_found: Annotated[
+        int | None, Field(description='Dropped: the quote is not in the text.', ge=0)
+    ] = None
+    reopened: Annotated[
+        int | None,
+        Field(description='Dismissed suggestions reopened by new evidence.', ge=0),
+    ] = None
+    skipped: Annotated[
+        int | None,
+        Field(
+            description='Changed instances not read: more changed in one window than the job\nkeeps (5,000).',
+            ge=0,
+        ),
+    ] = None
+    updated: Annotated[
+        int | None,
+        Field(description='Updates of open suggestions with new evidence.', ge=0),
+    ] = None
+    weak_support: Annotated[
+        int | None,
+        Field(
+            description='Dropped: the decision model scored the support below 0.5.',
+            ge=0,
+        ),
+    ] = None
+
+
+class FitSourceDeclareRequest(BaseModel):
+    """
+    Declare or change a fit source (`PUT /v1/ontology/fit-sources`).
+    """
+
+    class_: Annotated[
+        str,
+        Field(
+            alias='class', description='The class IRI whose instances the fit reads.'
+        ),
+    ]
+    context: Annotated[
+        str | None,
+        Field(
+            description='One sentence about what the text is, for the model ("employee\ninterviews about their work processes"). At most 500 characters.\nAbsent on an existing source: its context stays.'
+        ),
+    ] = None
+    exclude: Annotated[
+        list[str] | None,
+        Field(description='Names or IRIs to drop from the automatic choice.'),
+    ] = None
+    from_: Annotated[
+        list[str | EmbeddingFieldInput] | None,
+        Field(
+            alias='from',
+            description='The fields in text order, with the path syntax of embeddings\n(`transcript`, `label`, `rdfs:label`, `about/label`, `<https://…>`).\nAbsent: the server picks the text facts of a sample of the class,\nlongest text first, and stores the result.',
+        ),
+    ] = None
+    name: Annotated[
+        str | None,
+        Field(
+            description="`[a-z0-9][a-z0-9-]{0,62}`; defaults to the class's local name."
+        ),
+    ] = None
+
+
+class FitSourcePreviewRequest(FitSourceDeclareRequest):
+    """
+    Preview a declaration (`POST /v1/ontology/fit-sources/preview`): the text
+    the fit would read. With `propose`, the models also run on at most 3
+    instances and the proposals come back; nothing is filed or stored.
+    """
+
+    iris: Annotated[
+        list[str] | None,
+        Field(description='Show these instances instead of the first ones.'),
+    ] = None
+    propose: Annotated[
+        bool | None,
+        Field(
+            description='Run the models on the first 3 sample instances (a dry run).'
+        ),
+    ] = None
+    sample: Annotated[
+        int | None,
+        Field(description='Sample instances to show (default 3, at most 20).', ge=0),
+    ] = None
+
+
+class FitSourceRecipe(BaseModel):
+    """
+    What a fit source reads. A change of fields or context applies to the
+    instances read after it; the job does not read the earlier ones again.
+    """
+
+    class_: Annotated[
+        str,
+        Field(
+            alias='class',
+            description='The class IRI whose instances (`?s a <class>`, subclasses included)\nthe fit reads.',
+        ),
+    ]
+    context: str | None = None
+    fields: list[EmbeddingField]
+
+
+class FitSourceSample(BaseModel):
+    chars: Annotated[
+        int, Field(description='Characters of the whole text the fit reads.', ge=0)
+    ]
+    chunks: Annotated[
+        int,
+        Field(
+            description='Chunks the text makes (one reasoning-model call each).', ge=0
+        ),
+    ]
+    iri: str
+    label: str
+    text: Annotated[
+        str,
+        Field(
+            description='The text, up to 8,000 characters; empty when the instance has no\nvalue in any field.'
+        ),
+    ]
+    truncated: Annotated[
+        bool | None, Field(description='`text` is the start of a longer text.')
+    ] = None
+
+
+class FitSourceSpend(BaseModel):
+    """
+    The model spend of a fit source in one month (UTC), from the providers'
+    reported usage at list prices.
+    """
+
+    calls: Annotated[
+        int | None, Field(description='Model calls (reasoning and decision).', ge=0)
+    ] = None
+    cost_micro_usd: Annotated[
+        int | None, Field(description='In millionths of a US dollar.', ge=0)
+    ] = None
+    month: Annotated[str, Field(description='`yyyy-mm`.')]
+
+
+class FitSourceState(Enum):
+    backfilling = 'backfilling'
+    ready = 'ready'
+
+
+class FitSourceStepAction(Enum):
+    idle = 'idle'
+    backfill = 'backfill'
+    incremental = 'incremental'
+
+
 class ForeignKeyMapping(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -8286,6 +8521,103 @@ class ExtractorExample(BaseModel):
     transcript: str
 
 
+class FitSource(BaseModel):
+    """
+    The persisted fit source
+    (`…/ontology/fit-sources/epoch=<e>/<name>/source.json`, CAS).
+    """
+
+    backfill: FitSourceBackfill | None = None
+    counters: FitSourceCounters | None = None
+    created_at: str
+    last_error: Annotated[
+        str | None,
+        Field(description='Why the last step stopped, until a later step succeeds.'),
+    ] = None
+    last_error_at: str | None = None
+    name: str
+    pending: Annotated[
+        list[str] | None,
+        Field(description='Changed instances still to read, oldest first.'),
+    ] = None
+    processed_through_seq: CommitSeq | None = None
+    recipe: FitSourceRecipe
+    revision: Annotated[int, Field(description='Every write increments it.', ge=0)]
+    spend: Annotated[
+        FitSourceSpend | None,
+        Field(
+            description="This month's spend (the month rolls over at the first step of the\nnext month)."
+        ),
+    ] = None
+    state: FitSourceState
+    updated_at: str
+    v: Annotated[int, Field(description='Format version. Currently `1`.', ge=0)]
+
+
+class FitSourceStatus(BaseModel):
+    """
+    A fit source as `GET /v1/ontology/fit-sources` reports it.
+    """
+
+    backfill: FitSourceBackfill | None = None
+    class_: Annotated[str, Field(alias='class')]
+    counters: FitSourceCounters
+    created_at: str
+    lag_commits: Annotated[
+        int | None,
+        Field(
+            description='Commits the source is behind the published generation.', ge=0
+        ),
+    ] = None
+    last_error: str | None = None
+    last_error_at: str | None = None
+    name: str
+    pending: Annotated[int, Field(description='Changed instances still to read.', ge=0)]
+    processed_through_seq: CommitSeq | None = None
+    published_seq: CommitSeq | None = None
+    recipe: FitSourceRecipe
+    spend: Annotated[FitSourceSpend, Field(description="This month's spend.")]
+    state: FitSourceState
+    suggestions: Annotated[
+        SuggestionStatusCounts,
+        Field(
+            description='The suggestions of this source (origin id `fit:<name>`) per status.'
+        ),
+    ]
+    updated_at: str
+
+
+class FitSourceStep(BaseModel):
+    """
+    What one step of the fit job did.
+    """
+
+    action: FitSourceStepAction
+    already_covered: Annotated[int, Field(ge=0)]
+    chunks: Annotated[int, Field(ge=0)]
+    cost_micro_usd: Annotated[
+        int, Field(description='In millionths of a US dollar.', ge=0)
+    ]
+    failed_chunks: Annotated[int, Field(ge=0)]
+    filed: Annotated[int, Field(ge=0)]
+    instances: Annotated[int, Field(description='Instances read.', ge=0)]
+    invalid: Annotated[int, Field(ge=0)]
+    kept: Annotated[int, Field(ge=0)]
+    more: Annotated[
+        bool,
+        Field(
+            description='The source has more work (a backfill page, changed instances).'
+        ),
+    ]
+    name: str
+    processed_through_seq: CommitSeq | None = None
+    proposals: Annotated[int, Field(ge=0)]
+    quote_not_found: Annotated[int, Field(ge=0)]
+    reopened: Annotated[int, Field(ge=0)]
+    updated: Annotated[int, Field(ge=0)]
+    weak_support: Annotated[int, Field(ge=0)]
+
+
 class FullTextIndexInspectResponse(BaseModel):
     average_document_len: float
     document_count: Annotated[int, Field(ge=0)]
@@ -11962,6 +12294,144 @@ class ExtractorDatasetResponse(BaseModel):
             description="The extraction prompt's entity-type vocabulary at this snapshot."
         ),
     ]
+
+
+class FitProposal(BaseModel):
+    """
+    One change the reasoning model proposed, and what the checks made of it.
+    """
+
+    change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ],
+        Field(description='The evolve operations the suggestion would carry.'),
+    ]
+    detail: Annotated[
+        str | None,
+        Field(description='Why a proposal was dropped, when the check says more.'),
+    ] = None
+    entity: Annotated[
+        str, Field(description='The instance whose text the proposal came from.')
+    ]
+    key: Annotated[
+        str,
+        Field(
+            description='The suggestion key: `fit:<source>/<kind>/<normalised names>`. The\nsame change from many instances is one suggestion.'
+        ),
+    ]
+    kind: FitProposalKind
+    name: Annotated[
+        str,
+        Field(description='The class, property or relation the change adds or widens.'),
+    ]
+    outcome: FitProposalOutcome
+    quote: Annotated[
+        str,
+        Field(
+            description='The sentence of the text that supports the change, as the model\nquoted it.'
+        ),
+    ]
+    reason: Annotated[
+        str | None, Field(description="The model's reason, one sentence.")
+    ] = None
+    support: Annotated[
+        float | None,
+        Field(
+            description="The decision model's probability that the quote supports the change."
+        ),
+    ] = None
+    title: str
+
+
+class FitSourceListResponse(BaseModel):
+    fit_sources: list[FitSourceStatus]
+    month_cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description="The stack's fit spend this month, in millionths of a US dollar.",
+            ge=0,
+        ),
+    ] = None
+    monthly_budget_usd: Annotated[
+        float | None,
+        Field(
+            description="The stack's monthly budget for fit from text in US dollars (every\nsource of every graph together); absent when there is no limit."
+        ),
+    ] = None
+
+
+class FitSourcePreviewResponse(BaseModel):
+    candidates: Annotated[
+        list[EmbeddingCandidate] | None,
+        Field(
+            description="Every field the class could give the text: the recipe's fields first,\nthen the others by coverage."
+        ),
+    ] = None
+    cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='With `propose`: the spend of the dry run, in millionths of a US\ndollar.',
+            ge=0,
+        ),
+    ] = None
+    instances: Annotated[
+        int,
+        Field(description='Instances of the class at the published generation.', ge=0),
+    ]
+    name: str
+    proposals: Annotated[
+        list[FitProposal] | None,
+        Field(
+            description='With `propose`: every proposal of the sample instances, the dropped\nones included.'
+        ),
+    ] = None
+    read_at_seq: CommitSeq | None = None
+    recipe: FitSourceRecipe
+    sampled: Annotated[
+        int | None,
+        Field(
+            description='Instances the candidates were measured on (up to 1,000).', ge=0
+        ),
+    ] = None
+    samples: list[FitSourceSample]
+    truncated: Annotated[
+        bool | None,
+        Field(
+            description='With `propose`: the dry run reached its time limit (60 s), and the\nproposals of the instances that did not finish are left out.'
+        ),
+    ] = None
+
+
+class FitSourceRefreshResponse(BaseModel):
+    fit_source: FitSourceStatus
+    queued: Annotated[
+        bool | None,
+        Field(
+            description='The fit job was asked to run now; the status shows its progress.'
+        ),
+    ] = None
+    steps: Annotated[
+        list[FitSourceStep] | None,
+        Field(
+            description='The steps the call ran itself. Empty from\n`POST /v1/ontology/fit-sources/refresh`, which only asks the fit job\nto run (`queued`).'
+        ),
+    ] = None
 
 
 class GraphActivityResponse(BaseModel):
