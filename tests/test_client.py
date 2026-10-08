@@ -2843,6 +2843,197 @@ class ModelChecksAndTuningTests(unittest.TestCase):
         self.assertEqual(dict(seen[5].url.params), {"graph": "crm"})
 
 
+TRIAL_ID = "00000001791454313946-18f056c7"
+HAIKU_LOW = {"provider": "anthropic", "model": "claude-haiku-5-5", "effort": "low"}
+
+
+def trial_side(score: float) -> dict[str, Any]:
+    return {"right": score, "score": score, "cost_micro_usd_per_call": 700, "ms_p50": 4000, "failed": 0}
+
+
+def trial_report(calls: int) -> dict[str, Any]:
+    return {
+        "calls": calls,
+        "current": trial_side(0.86),
+        "candidate": trial_side(0.91),
+        "delta": 0.05,
+        "ci_low": -0.006,
+        "ci_high": 0.105,
+        "outcome": "same" if calls >= 10 else "too_few",
+        "qualifies": calls >= 20,
+        "cost_ratio": 0.05,
+    }
+
+
+def trial_payload(status: str = "collecting", calls: int = 24) -> dict[str, Any]:
+    return {
+        "id": TRIAL_ID,
+        "job": "ask",
+        "candidate": HAIKU_LOW,
+        "current": {"provider": "anthropic", "model": "claude-sonnet-5-5", "effort": "low"},
+        "status": status,
+        "created_at_ms": 1,
+        "by": "token",
+        "target": 40,
+        "until_ms": 2,
+        "budget_micro_usd": 3_000_000,
+        "candidate_cost_micro_usd": 20_000,
+        "judge_cost_micro_usd": 300_000,
+        "report": trial_report(calls),
+    }
+
+
+def switch_payload() -> dict[str, Any]:
+    return {
+        "job": "ask",
+        "model": HAIKU_LOW,
+        "trial": TRIAL_ID,
+        "report": trial_report(24),
+        "by": "token",
+        "at_ms": 3,
+    }
+
+
+class ModelTrialsAndSwitchesTests(unittest.TestCase):
+    def test_trials_and_switches_map_each_operation_to_its_route_with_typed_answers(self) -> None:
+        seen: list[httpx.Request] = []
+        compared = {
+            "call": "c1",
+            "call_at_ms": 1,
+            "summary": "how many services are there",
+            "truth": {"verdict": "right", "score": 1.0, "by": "judge"},
+            "current": {"provider": "anthropic", "model": "claude-haiku-5-5", "cost_micro_usd": 700, "ms": 4000},
+            "candidate": {"provider": "anthropic", "model": "claude-haiku-5-5", "cost_micro_usd": 800, "ms": 4100},
+            "replayed": True,
+            "at_ms": 2,
+        }
+        responses = [
+            {"json": {"jobs": [{"job": "ask", "checked": 24, "candidates": []}], "available": True, "budget_micro_usd": 3_000_000, "target_default": 40, "target_max": 100}},
+            {"json": {"trials": [trial_payload("running", 0)], "skipped": [{"job": "route", "reason": "Jev does not answer questions."}]}},
+            {"json": {"trials": [trial_payload()]}},
+            {"json": trial_payload()},
+            {"json": {"trial": TRIAL_ID, "job": "ask", "compared": compared, "answer": {"output": {}, "current": {"output": {}}}}},
+            {"json": trial_payload("stopped")},
+            {"json": {"switches": []}},
+            {"json": switch_payload()},
+            {"json": {"switches": []}},
+        ]
+        with LbbClient("http://h", graph="crm", transport=capturing_transport(seen, responses)) as client:
+            options = client.models.trials.options()
+            started = client.models.trials.create(
+                candidate=HAIKU_LOW, jobs=[model_module.ModelJob.ask, "route"], target=20
+            )
+            listed = client.models.trials.list(job="ask", limit=5)
+            trial = client.models.trials.get(TRIAL_ID)
+            call = client.models.trials.call(TRIAL_ID, "c1")
+            stopped = client.models.trials.stop(TRIAL_ID)
+            client.models.switches.list()
+            switched = client.models.switches.create(trial=TRIAL_ID)
+            client.models.switches.revert(model_module.ModelJob.ask)
+        # Typed answers: attribute access all the way down.
+        self.assertTrue(options.available)
+        self.assertEqual(options.jobs[0].checked, 24)
+        self.assertEqual(started.trials[0].status.value, "running")
+        self.assertEqual(started.skipped[0].job.value, "route")
+        self.assertEqual(listed.trials[0].report.calls, 24)
+        self.assertTrue(trial.report.qualifies)
+        self.assertTrue(call.compared.replayed)
+        self.assertEqual(stopped.status.value, "stopped")
+        self.assertEqual(switched.model.effort, "low")
+        self.assertEqual(
+            [(request.method, request.url.path, dict(request.url.params)) for request in seen],
+            [
+                ("GET", "/v1/models/trials/options", {"graph": "crm"}),
+                ("POST", "/v1/models/trials", {"graph": "crm"}),
+                ("GET", "/v1/models/trials", {"graph": "crm", "job": "ask", "limit": "5"}),
+                ("GET", "/v1/models/trials/get", {"graph": "crm", "id": TRIAL_ID}),
+                ("GET", "/v1/models/trials/call", {"graph": "crm", "id": TRIAL_ID, "call": "c1"}),
+                ("POST", "/v1/models/trials/stop", {"graph": "crm", "id": TRIAL_ID}),
+                ("GET", "/v1/models/switches", {"graph": "crm"}),
+                ("POST", "/v1/models/switches", {"graph": "crm"}),
+                ("POST", "/v1/models/switches/revert", {"graph": "crm", "job": "ask"}),
+            ],
+        )
+        self.assertEqual(
+            json.loads(seen[1].content),
+            {"candidate": HAIKU_LOW, "jobs": ["ask", "route"], "target": 20},
+        )
+        self.assertEqual(json.loads(seen[7].content), {"trial": TRIAL_ID})
+
+    def test_a_typed_candidate_drops_an_unset_effort(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, {"json": {"trials": []}})
+        ) as client:
+            client.models.trials.create(
+                candidate=model_module.ModelTrialModel(provider="typesafe", model="jev-latest"),
+            )
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"candidate": {"provider": "typesafe", "model": "jev-latest"}},
+        )
+
+    def test_wait_reads_until_the_trial_compared_what_it_can(self) -> None:
+        seen: list[httpx.Request] = []
+        responses = [
+            {"json": trial_payload("running", 0)},
+            {"json": trial_payload("running", 12)},
+            {"json": trial_payload("collecting", 24)},
+        ]
+        progress: list[int] = []
+        with LbbClient("http://h", transport=capturing_transport(seen, responses)) as client:
+            trial = client.models.trials.wait(
+                TRIAL_ID, poll_interval=0, on_update=lambda t: progress.append(t.report.calls)
+            )
+        self.assertEqual(trial.status.value, "collecting")
+        self.assertEqual(progress, [0, 12, 24])
+        self.assertEqual(len(seen), 3)
+
+        # until="ended" reads on while the trial collects new checks.
+        seen.clear()
+        ended = [{"json": trial_payload("collecting", 24)}, {"json": trial_payload("done", 40)}]
+        with LbbClient("http://h", transport=capturing_transport(seen, ended)) as client:
+            done = client.models.trials.wait(TRIAL_ID, until="ended", poll_interval=0)
+        self.assertEqual(done.status.value, "done")
+        self.assertEqual(len(seen), 2)
+
+        # A time limit raises with what the trial did so far.
+        stuck = [{"json": trial_payload("running", 3)} for _ in range(3)]
+        with LbbClient("http://h", transport=capturing_transport([], stuck)) as client:
+            with self.assertRaisesRegex(TimeoutError, r"running, 3 calls compared"):
+                client.models.trials.wait(TRIAL_ID, timeout=0, poll_interval=0)
+            with self.assertRaises(ValueError):
+                client.models.trials.wait(TRIAL_ID, until="forever")
+
+
+class AsyncModelTrialsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_trials_wait_and_switch(self) -> None:
+        seen: list[httpx.Request] = []
+        responses = [
+            {"json": {"trials": [trial_payload("running", 0)]}},
+            {"json": trial_payload("running", 5)},
+            {"json": trial_payload("collecting", 24)},
+            {"json": switch_payload()},
+        ]
+        async with AsyncLbbClient(
+            "http://h", transport=capturing_transport(seen, responses)
+        ) as client:
+            started = await client.models.trials.create(candidate=HAIKU_LOW, jobs=["ask"])
+            trial = await client.models.trials.wait(started.trials[0].id, poll_interval=0)
+            switched = await client.models.switches.create(trial=trial.id)
+        self.assertTrue(trial.report.qualifies)
+        self.assertEqual(switched.trial, TRIAL_ID)
+        self.assertEqual(
+            [request.url.path for request in seen],
+            [
+                "/v1/models/trials",
+                "/v1/models/trials/get",
+                "/v1/models/trials/get",
+                "/v1/models/switches",
+            ],
+        )
+
+
 class AsyncModelChecksAndTuningTests(unittest.IsolatedAsyncioTestCase):
     async def test_async_checks_tuning_and_settings(self) -> None:
         seen: list[httpx.Request] = []

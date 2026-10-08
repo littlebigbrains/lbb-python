@@ -3391,6 +3391,191 @@ class _ChecksNamespace:
         )
 
 
+TrialCandidate = Mapping[str, Any] | models.ModelTrialModel
+"""A model to test: ``{"provider": ..., "model": ..., "effort": ...}`` or a
+:class:`~lbb.models.ModelTrialModel`. ``effort`` is for Claude models only."""
+
+#: The trial statuses after which a trial changes no more.
+_TRIAL_ENDED = frozenset({"done", "stopped", "failed"})
+
+
+def _trial_candidate(candidate: TrialCandidate) -> dict[str, Any]:
+    if isinstance(candidate, models.ModelTrialModel):
+        return candidate.model_dump(mode="json", exclude_none=True)
+    return {key: value for key, value in dict(candidate).items() if value is not None}
+
+
+def _trial_settled(trial: Any, until: str) -> bool:
+    """Whether :meth:`wait` returns: the trial ended, or (``until="compared"``)
+    it no longer runs."""
+    if until not in ("compared", "ended"):
+        raise ValueError('until must be "compared" or "ended"')
+    status = _enum_value(trial.status)
+    return status in _TRIAL_ENDED or (until == "compared" and status != "running")
+
+
+def _trial_timeout(trial_id: str, trial: Any) -> TimeoutError:
+    return TimeoutError(
+        f"timed out waiting for model trial {trial_id} "
+        f"({_enum_value(trial.status)}, {trial.report.calls} calls compared)"
+    )
+
+
+class _ModelTrialsNamespace:
+    """Model trials: test another model on one use of a model on the graph
+    (question answers ``ask``, query routing ``route``, search rerank
+    ``rerank``, ontology fit ``fit``, eval labels ``label``).
+
+    The candidate answers the use's checked calls again, and both models are
+    scored against the same ground truth (a person's review, else the
+    judge's verdict). The model the use runs now is the one compared; when
+    another model made a call (before a switch), the model in use answers it
+    again too. A trial runs by itself on the server and changes no model.
+    When ``report.qualifies`` (it meets the bar), switch with
+    ``client.models.switches.create(trial=...)``::
+
+        started = client.models.trials.create(
+            candidate={"provider": "anthropic", "model": "claude-haiku-5-5", "effort": "low"},
+            jobs=["ask"],
+        )
+        trial = client.models.trials.wait(started.trials[0].id)
+        if trial.report.qualifies:
+            client.models.switches.create(trial=trial.id)
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def options(self) -> models.ModelTrialOptionsResponse:
+        """What you can test, per use (``GET /v1/models/trials/options``):
+        the model it runs now (``current``), the catalog's model
+        (``default``), a switch (``switched``), its checked calls, and the
+        candidates with their efforts, prices and whether this server holds
+        their key. ``available`` is ``False`` with a ``reason`` when trials
+        cannot run here (they need the model workflows and a checker)."""
+        return self._client._model_request(
+            models.ModelTrialOptionsResponse, "GET", "/v1/models/trials/options"
+        )
+
+    def create(
+        self,
+        *,
+        candidate: TrialCandidate,
+        jobs: Sequence[str | models.ModelJob] | None = None,
+        target: int | None = None,
+        days: int | None = None,
+    ) -> models.ModelTrialStartResponse:
+        """Start a trial of ``candidate`` on each use in ``jobs``
+        (``POST /v1/models/trials``); without ``jobs``, on every use it can do
+        that has checked calls.
+
+        An open trial of the same use and candidate comes back as it is, so
+        this is safe to call again. A use the candidate cannot do, or that
+        runs it now, is in ``skipped`` with the reason. ``target`` is the
+        calls to compare (default 40, at most 100); ``days`` how long the
+        trial takes new checks (default 14, at most 30). Raises
+        :class:`LbbError` ``trials_unavailable`` (503) without workflows or a
+        checker, ``trial_candidate_unavailable`` (409) without the provider's
+        key.
+        """
+        body: dict[str, Any] = {"candidate": _trial_candidate(candidate)}
+        if jobs is not None:
+            body["jobs"] = [_enum_value(job) for job in jobs]
+        if target is not None:
+            body["target"] = target
+        if days is not None:
+            body["days"] = days
+        return self._client._model_request(
+            models.ModelTrialStartResponse, "POST", "/v1/models/trials", body=body
+        )
+
+    def list(
+        self,
+        *,
+        job: str | models.ModelJob | None = None,
+        limit: int | None = None,
+    ) -> models.ModelTrialListResponse:
+        """The graph's trials, newest first, with their reports and without
+        their calls (``GET /v1/models/trials``). ``limit`` is 1 to 50
+        (default 20)."""
+        return self._client._model_request(
+            models.ModelTrialListResponse,
+            "GET",
+            "/v1/models/trials",
+            params={"job": _enum_value(job), "limit": limit},
+        )
+
+    def get(self, trial_id: str) -> models.ModelTrial:
+        """One trial with its report and every compared call
+        (``GET /v1/models/trials/get``)."""
+        return self._client._model_request(
+            models.ModelTrial, "GET", "/v1/models/trials/get", params={"id": trial_id}
+        )
+
+    def call(self, trial_id: str, call_id: str) -> models.ModelTrialCallResponse:
+        """One compared call: the logged call, its check (the ground truth)
+        and the candidate's answer (``GET /v1/models/trials/call``).
+        ``answer["current"]`` is the answer of the model in use when it
+        answered the call again."""
+        return self._client._model_request(
+            models.ModelTrialCallResponse,
+            "GET",
+            "/v1/models/trials/call",
+            params={"id": trial_id, "call": call_id},
+        )
+
+    def stop(self, trial_id: str) -> models.ModelTrial:
+        """Stop a running or collecting trial (``POST /v1/models/trials/stop``).
+        It keeps what it compared."""
+        return self._client._model_request(
+            models.ModelTrial, "POST", "/v1/models/trials/stop", params={"id": trial_id}
+        )
+
+
+class _ModelSwitchesNamespace:
+    """Switches: a use of a model on the graph runs a trial's candidate from
+    the next call on. Only a trial that meets the bar and compared its
+    candidate with the model the use runs now switches; :meth:`revert` goes
+    back to the catalog's model. Question answers (``ask``) switch to a
+    Claude model with its effort, query routing (``route``) to a Jev model."""
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def list(self) -> models.ModelSwitchListResponse:
+        """The graph's switched uses (``GET /v1/models/switches``): the model,
+        the one before, the trial and its report at the switch, who switched
+        and when."""
+        return self._client._model_request(
+            models.ModelSwitchListResponse, "GET", "/v1/models/switches"
+        )
+
+    def create(self, *, trial: str) -> models.ModelSwitch:
+        """Switch the trial's use to its candidate (``POST /v1/models/switches``).
+        The same switch again returns the existing one.
+
+        Raises :class:`LbbError` (409) ``trial_not_qualified`` when the trial
+        does not meet the bar, ``trial_outdated`` when it compared the
+        candidate with another model than the one the use runs now (start a
+        new trial), ``switch_unsupported`` when the use cannot run on the
+        candidate's provider, ``trial_candidate_unavailable`` without the
+        provider's key.
+        """
+        return self._client._model_request(
+            models.ModelSwitch, "POST", "/v1/models/switches", body={"trial": trial}
+        )
+
+    def revert(self, job: str | models.ModelJob) -> models.ModelSwitchListResponse:
+        """Put the use back on the catalog's model
+        (``POST /v1/models/switches/revert``). Returns the switches left."""
+        return self._client._model_request(
+            models.ModelSwitchListResponse,
+            "POST",
+            "/v1/models/switches/revert",
+            params={"job": _enum_value(job)},
+        )
+
+
 class _SearchTuningNamespace:
     """Search tuning: a session runs the graph's own searches with other
     search settings, grades the hits with the platform's judge, and proposes

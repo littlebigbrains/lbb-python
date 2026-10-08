@@ -37,6 +37,7 @@ from ._client_base import (
     RetryEvent,
     RowT,
     SparqlResults,
+    TrialCandidate,
     _ask_body,
     _ask_stream_event,
     _BaseLbbClient,
@@ -49,6 +50,8 @@ from ._client_base import (
     _FactsNamespace,
     _GraphNamespace,
     _jittered_backoff,
+    _ModelSwitchesNamespace,
+    _ModelTrialsNamespace,
     _OntologyNamespace,
     _OntologyStartersNamespace,
     _parse_model,
@@ -62,6 +65,8 @@ from ._client_base import (
     _SchemaNamespace,
     _sse_decoder,
     _SseParser,
+    _trial_settled,
+    _trial_timeout,
 )
 from .integrations import (
     _DEFAULT,
@@ -833,6 +838,94 @@ class _AsyncIntegrationsNamespace(IntegrationsNamespace):
         )
 
 
+class _AsyncModelTrialsNamespace(_ModelTrialsNamespace):
+    __doc__ = _ModelTrialsNamespace.__doc__
+
+    async def options(self) -> models.ModelTrialOptionsResponse:
+        return cast(models.ModelTrialOptionsResponse, await super().options())
+
+    async def create(
+        self,
+        *,
+        candidate: TrialCandidate,
+        jobs: Sequence[str | models.ModelJob] | None = None,
+        target: int | None = None,
+        days: int | None = None,
+    ) -> models.ModelTrialStartResponse:
+        return cast(
+            models.ModelTrialStartResponse,
+            await super().create(candidate=candidate, jobs=jobs, target=target, days=days),
+        )
+
+    async def list(
+        self, *, job: str | models.ModelJob | None = None, limit: int | None = None
+    ) -> models.ModelTrialListResponse:
+        return cast(models.ModelTrialListResponse, await super().list(job=job, limit=limit))
+
+    async def get(self, trial_id: str) -> models.ModelTrial:
+        return cast(models.ModelTrial, await super().get(trial_id))
+
+    async def call(self, trial_id: str, call_id: str) -> models.ModelTrialCallResponse:
+        return cast(models.ModelTrialCallResponse, await super().call(trial_id, call_id))
+
+    async def stop(self, trial_id: str) -> models.ModelTrial:
+        return cast(models.ModelTrial, await super().stop(trial_id))
+
+    async def wait(
+        self,
+        trial_id: str,
+        *,
+        until: str = "compared",
+        timeout: float | None = None,
+        poll_interval: float = 5.0,
+        on_update: Callable[[models.ModelTrial], None] | None = None,
+    ) -> models.ModelTrial:
+        """Read the trial until it compared what it can (``until="compared"``,
+        the default: it no longer runs) or until it ended (``until="ended"``:
+        ``done``, ``stopped`` or ``failed``), and return it.
+
+        ``on_update`` gets the trial after each read, e.g. to show
+        ``report.calls``. ``timeout`` (seconds) raises :class:`TimeoutError`.
+        """
+        if poll_interval < 0:
+            raise ValueError("poll_interval must be non-negative")
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout if timeout is not None else None
+        while True:
+            trial = await self.get(trial_id)
+            if on_update is not None:
+                on_update(trial)
+            if _trial_settled(trial, until):
+                return trial
+            if deadline is not None and loop.time() >= deadline:
+                raise _trial_timeout(trial_id, trial)
+            await asyncio.sleep(poll_interval)
+
+
+class _AsyncModelSwitchesNamespace(_ModelSwitchesNamespace):
+    __doc__ = _ModelSwitchesNamespace.__doc__
+
+    async def list(self) -> models.ModelSwitchListResponse:
+        return cast(models.ModelSwitchListResponse, await super().list())
+
+    async def create(self, *, trial: str) -> models.ModelSwitch:
+        return cast(models.ModelSwitch, await super().create(trial=trial))
+
+    async def revert(self, job: str | models.ModelJob) -> models.ModelSwitchListResponse:
+        return cast(models.ModelSwitchListResponse, await super().revert(job))
+
+
+class _AsyncModelsNamespace:
+    """The models of the graph's uses: trials of other models
+    (:attr:`trials`), and switches (:attr:`switches`)."""
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self.trials = _AsyncModelTrialsNamespace(client)
+        self.switches = _AsyncModelSwitchesNamespace(client)
+
+
 class AsyncLbbClient(_BaseLbbClient):
     """Asynchronous client. Usable as an async context manager."""
 
@@ -879,6 +972,8 @@ class AsyncLbbClient(_BaseLbbClient):
         # Model checks: the call log, the judge's checks, and reviews. Each
         # method returns an awaitable here.
         self.checks = _ChecksNamespace(self)
+        # Model trials of other models on the graph's uses, and switches.
+        self.models = _AsyncModelsNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
         self.integrations = _AsyncIntegrationsNamespace(self)

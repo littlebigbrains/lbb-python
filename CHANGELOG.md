@@ -2,8 +2,17 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.22.0 (2026-10-08)
 
+- New `models.trials` and `models.switches` on `LbbClient` and
+  `AsyncLbbClient`: test another model on a use of a model on the graph
+  (`ask`, `route`, `rerank`, `fit`, `label`) against the ground truth of its
+  checked calls, then switch the use to it. `trials.options`, `create`,
+  `list`, `get`, `call` and `stop` call `/v1/models/trials*` and return
+  typed models (`ModelTrial`, `ModelTrialStartResponse`, ...);
+  `trials.wait(trial_id, until=, timeout=, on_update=)` reads the trial
+  until it compared the checked calls (or ended). `switches.create(trial=)`,
+  `list` and `revert(job)` call `/v1/models/switches*`.
 - New `ontology.fit_sources` for fit from text: `list`, `get`, `declare`,
   `preview`, `refresh` and `delete` call `/v1/ontology/fit-sources*`. A fit
   source names the properties of a class that hold text (transcripts,
