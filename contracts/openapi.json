@@ -5855,6 +5855,17 @@
           "entity": {
             "$ref": "#/components/schemas/EntityView"
           },
+          "evidence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvidenceCompleteness",
+                "description": "Whether the relationship evidence in `rdf_relations` is complete."
+              }
+            ]
+          },
           "history": {
             "items": {
               "$ref": "#/components/schemas/EdgeEventRow"
@@ -5940,6 +5951,10 @@
                 "description": "Set when `outgoing`/`incoming`/`current_state` are a partial view of the\nentity's current edges."
               }
             ]
+          },
+          "evidence_lookups": {
+            "description": "True when the per-response cap on evidence statement lookups stopped\nthe evidence read: some relationships may show fewer evidence entries\nthan they have, without `evidence_truncated`.",
+            "type": "boolean"
           },
           "history": {
             "oneOf": [
@@ -7346,6 +7361,14 @@
         ],
         "type": "string"
       },
+      "EvidenceCompleteness": {
+        "description": "Whether the evidence a read returns is complete.",
+        "enum": [
+          "complete",
+          "partial"
+        ],
+        "type": "string"
+      },
       "EvidenceInput": {
         "oneOf": [
           {
@@ -7387,6 +7410,40 @@
             "type": "object"
           }
         ]
+      },
+      "EvidenceRegion": {
+        "description": "A page region of a piece of evidence: a 0-based page and a box in\ncoordinates normalized to the page (`[0, 1]`, origin top-left, y down),\non the grid the commit quantized them to.",
+        "properties": {
+          "page": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "x0": {
+            "format": "double",
+            "type": "number"
+          },
+          "x1": {
+            "format": "double",
+            "type": "number"
+          },
+          "y0": {
+            "format": "double",
+            "type": "number"
+          },
+          "y1": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "page",
+          "x0",
+          "y0",
+          "x1",
+          "y1"
+        ],
+        "type": "object"
       },
       "ExpandedConceptView": {
         "properties": {
@@ -19528,6 +19585,17 @@
           "entity": {
             "$ref": "#/components/schemas/EntityView"
           },
+          "evidence": {
+            "description": "The evidence of this relationship, newest commit first: one entry per\npiece of evidence on a current assert event of the edge\n(`docs/architecture/evidence-in-rdf.md`). At most `evidence` entries\n(query parameter, default 5). Empty when the edge has no evidence, or\nwhen the response's `evidence` is `partial` and the edge predates\nevidence projection.",
+            "items": {
+              "$ref": "#/components/schemas/RelationEvidence"
+            },
+            "type": "array"
+          },
+          "evidence_truncated": {
+            "description": "True when this relationship has more evidence than `evidence` holds.",
+            "type": "boolean"
+          },
           "relation": {
             "$ref": "#/components/schemas/RelationView"
           }
@@ -19727,6 +19795,57 @@
           "source_type",
           "target_type",
           "count"
+        ],
+        "type": "object"
+      },
+      "RelationEvidence": {
+        "description": "One piece of evidence on a relationship, read from its RDF statement node.",
+        "properties": {
+          "commit_seq": {
+            "description": "The commit of that assert event.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "confidence": {
+            "description": "The confidence of the assert event that carries the evidence.",
+            "format": "double",
+            "type": "number"
+          },
+          "observation_id": {
+            "description": "The observation that holds the full evidence text (32 hex characters).",
+            "type": "string"
+          },
+          "region": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvidenceRegion",
+                "description": "Where the evidence appears in its source document."
+              }
+            ]
+          },
+          "source_id": {
+            "description": "The caller's evidence source id, or `inline:<request>:<index>`.",
+            "type": "string"
+          },
+          "text": {
+            "description": "The evidence text, at most 4,096 bytes; see `text_truncated`.",
+            "type": "string"
+          },
+          "text_truncated": {
+            "description": "True when the stored text was cut at 4,096 bytes. The full text stays\nin the observation.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "source_id",
+          "observation_id",
+          "confidence",
+          "commit_seq"
         ],
         "type": "object"
       },
@@ -54070,6 +54189,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Evidence entries per relationship, newest commit first (default 5, 0 to 20; 0 reads none)",
+            "in": "query",
+            "name": "evidence",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -54295,7 +54423,7 @@
             "bearer": []
           }
         ],
-        "summary": "Native entity attributes and relationships from the graph-owned RDF view; unavailable provenance sections are explicitly listed",
+        "summary": "Native entity attributes and relationships from the graph-owned RDF view, each relationship with its evidence; unavailable provenance sections are explicitly listed",
         "tags": [
           "graph"
         ]

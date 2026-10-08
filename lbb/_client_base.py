@@ -3673,12 +3673,16 @@ class _EntityNamespace:
         consistency: str | None = None,
         edges: int | None = None,
         as_of_commit_seq: int | None = None,
+        evidence: int | None = None,
     ) -> Any:
         """One record's typed attributes and current links (``GET /v1/graph/entity``).
 
         Name the record by ``id``, by ``type`` and ``name``, or by ``type``
         and ``key``. ``edges`` caps the links read per direction (1 to
-        10,000, default 1,000). ``consistency="strong"`` reads your own
+        10,000, default 1,000). Each link carries its evidence, newest commit
+        first; ``evidence`` sets how many entries per link (0 to 20, default
+        5), and the response's ``evidence`` says whether that evidence is
+        ``complete`` or ``partial``. ``consistency="strong"`` reads your own
         write at once; ``as_of_commit_seq`` reads the record at a retained
         commit. ``unavailable_sections`` names the sections this read
         does not fill.
@@ -3687,7 +3691,7 @@ class _EntityNamespace:
             "GET",
             "/v1/graph/entity",
             params=self._detail_params(
-                id, type, name, key, consistency, edges, as_of_commit_seq
+                id, type, name, key, consistency, edges, as_of_commit_seq, evidence
             ),
         )
 
@@ -3701,6 +3705,7 @@ class _EntityNamespace:
         consistency: str | None = None,
         edges: int | None = None,
         as_of_commit_seq: int | None = None,
+        evidence: int | None = None,
     ) -> models.EntityDetailResponse:
         """One record validated as ``EntityDetailResponse``."""
         return self._client._model_request(
@@ -3708,7 +3713,7 @@ class _EntityNamespace:
             "GET",
             "/v1/graph/entity",
             params=self._detail_params(
-                id, type, name, key, consistency, edges, as_of_commit_seq
+                id, type, name, key, consistency, edges, as_of_commit_seq, evidence
             ),
         )
 
@@ -3721,6 +3726,7 @@ class _EntityNamespace:
         consistency: str | None,
         edges: int | None,
         as_of_commit_seq: int | None,
+        evidence: int | None = None,
     ) -> dict[str, Any]:
         params = {
             "id": id,
@@ -3729,6 +3735,7 @@ class _EntityNamespace:
             "key": key,
             "consistency": self._client._resolve_consistency(consistency),
             "edges": edges,
+            "evidence": evidence,
             "as_of_commit_seq": as_of_commit_seq,
         }
         return {field: value for field, value in params.items() if value is not None}

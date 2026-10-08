@@ -613,6 +613,7 @@ class _AsyncEntityNamespace(_EntityNamespace):
         consistency: str | None = None,
         edges: int | None = None,
         as_of_commit_seq: int | None = None,
+        evidence: int | None = None,
     ) -> models.EntityDetailResponse:
         return cast(
             models.EntityDetailResponse,
@@ -624,6 +625,7 @@ class _AsyncEntityNamespace(_EntityNamespace):
                 consistency=consistency,
                 edges=edges,
                 as_of_commit_seq=as_of_commit_seq,
+                evidence=evidence,
             ),
         )
 
