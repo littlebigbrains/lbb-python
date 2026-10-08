@@ -2081,7 +2081,7 @@ class SyncClientTests(unittest.TestCase):
                 seen, [{"json": entity_detail_payload()}, {"json": entity_detail_payload()}]
             ),
         ) as client:
-            raw = client.entities.detail(type="Ticket", key="4821", edges=50)
+            raw = client.entities.detail(type="Ticket", key="4821", edges=50, evidence=3)
             typed = client.entities.detail_model(id="e1", as_of_commit_seq=7)
         self.assertEqual(raw["attributes"], {"priority": "high"})
         self.assertIsInstance(typed, model_module.EntityDetailResponse)
@@ -2095,6 +2095,7 @@ class SyncClientTests(unittest.TestCase):
                 "key": "4821",
                 "consistency": "strong",
                 "edges": "50",
+                "evidence": "3",
             },
         )
         self.assertEqual(seen[1].url.params["as_of_commit_seq"], "7")

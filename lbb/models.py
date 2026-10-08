@@ -1288,6 +1288,29 @@ class EvalVia(Enum):
     search = 'search'
 
 
+class EvidenceCompleteness(Enum):
+    """
+    Whether the evidence a read returns is complete.
+    """
+
+    complete = 'complete'
+    partial = 'partial'
+
+
+class EvidenceRegion(BaseModel):
+    """
+    A page region of a piece of evidence: a 0-based page and a box in
+    coordinates normalized to the page (`[0, 1]`, origin top-left, y down),
+    on the grid the commit quantized them to.
+    """
+
+    page: Annotated[int, Field(ge=0)]
+    x0: float
+    x1: float
+    y0: float
+    y1: float
+
+
 class ExpandedConceptView(BaseModel):
     from_: Annotated[str, Field(alias='from')]
     kind: ConceptMappingKind
@@ -4317,6 +4340,47 @@ class RelationAdjacencyCount(BaseModel):
     relation: str
     source_type: str
     target_type: str
+
+
+class RelationEvidence(BaseModel):
+    """
+    One piece of evidence on a relationship, read from its RDF statement node.
+    """
+
+    commit_seq: Annotated[
+        int, Field(description='The commit of that assert event.', ge=0)
+    ]
+    confidence: Annotated[
+        float,
+        Field(
+            description='The confidence of the assert event that carries the evidence.'
+        ),
+    ]
+    observation_id: Annotated[
+        str,
+        Field(
+            description='The observation that holds the full evidence text (32 hex characters).'
+        ),
+    ]
+    region: EvidenceRegion | None = None
+    source_id: Annotated[
+        str,
+        Field(
+            description="The caller's evidence source id, or `inline:<request>:<index>`."
+        ),
+    ]
+    text: Annotated[
+        str,
+        Field(
+            description='The evidence text, at most 4,096 bytes; see `text_truncated`.'
+        ),
+    ]
+    text_truncated: Annotated[
+        bool | None,
+        Field(
+            description='True when the stored text was cut at 4,096 bytes. The full text stays\nin the observation.'
+        ),
+    ] = None
 
 
 class RelationView(BaseModel):
@@ -8481,6 +8545,12 @@ class EntityDetailTruncation(BaseModel):
     """
 
     edges: TruncatedCollection | None = None
+    evidence_lookups: Annotated[
+        bool | None,
+        Field(
+            description='True when the per-response cap on evidence statement lookups stopped\nthe evidence read: some relationships may show fewer evidence entries\nthan they have, without `evidence_truncated`.'
+        ),
+    ] = None
     history: TruncatedCollection | None = None
     observations: TruncatedCollection | None = None
     truncated_by_read_budget: Annotated[
@@ -10799,6 +10869,18 @@ class QueryRouteDecision(BaseModel):
 
 class RdfEntityRelation(BaseModel):
     entity: EntityView
+    evidence: Annotated[
+        list[RelationEvidence] | None,
+        Field(
+            description="The evidence of this relationship, newest commit first: one entry per\npiece of evidence on a current assert event of the edge\n(`docs/architecture/evidence-in-rdf.md`). At most `evidence` entries\n(query parameter, default 5). Empty when the edge has no evidence, or\nwhen the response's `evidence` is `partial` and the edge predates\nevidence projection."
+        ),
+    ] = None
+    evidence_truncated: Annotated[
+        bool | None,
+        Field(
+            description='True when this relationship has more evidence than `evidence` holds.'
+        ),
+    ] = None
     relation: RelationView
 
 
@@ -14089,6 +14171,7 @@ class EntityDetailResponse(BaseModel):
     ] = None
     current_state: list[StateEntry]
     entity: EntityView
+    evidence: EvidenceCompleteness | None = None
     history: list[EdgeEventRow]
     incoming: list[GraphEdgeRow]
     metadata: EntityMetadataResponse
