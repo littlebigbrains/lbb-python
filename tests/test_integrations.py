@@ -114,6 +114,39 @@ STATUS = {"kind": "starting", "detail": "The first sync starts soon."}
 
 
 class SyncIntegrationsTests(unittest.TestCase):
+    def test_provider_apps_and_connect_sessions_use_the_integrations_host(self) -> None:
+        seen: list[httpx.Request] = []
+        app_id, session_id = "a" * 32, "b" * 32
+        replies = [
+            {"json": {"ok": True, "apps": [{"id": app_id, "kind": "github", "label": "Product", "active": True}]}},
+            {"json": {"ok": True, "session_id": session_id, "url": "https://connect.example.test/customer", "expires_at": 12345}},
+            {"json": {"ok": True, "session_id": session_id, "status": "complete", "graph": GRAPH, "connection_id": "github", "expires_at": 12345}},
+        ]
+        with sync_client(seen, replies) as client:
+            self.assertEqual(client.integrations.provider_apps()["apps"][0]["kind"], "github")
+            self.assertEqual(client.integrations.create_connect_session(
+                app_id=app_id, graph=GRAPH, return_url="https://product.example.test/return", connection_id="github"
+            )["session_id"], session_id)
+            self.assertEqual(client.integrations.get_connect_session(session_id)["status"], "complete")
+        self.assertEqual([request.url.path for request in seen], [
+            "/v1/integrations/apps", "/v1/integrations/connect-sessions", f"/v1/integrations/connect-sessions/{session_id}"
+        ])
+        self.assertEqual(body(seen[1]), {"app_id": app_id, "graph": GRAPH, "return_url": "https://product.example.test/return", "connection_id": "github"})
+        for request in seen:
+            self.assertEqual(request.url.host, "api.littlebigbrain.com")
+            self.assertEqual(request.url.query, b"")
+            self.assertEqual(request.headers["authorization"], f"Bearer {KEY}")
+
+    def test_connect_session_creation_does_not_retry_after_a_server_failure(self) -> None:
+        seen: list[httpx.Request] = []
+        with sync_client(seen, [{"status": 503}, {"json": {"ok": True}}]) as client:
+            with self.assertRaises(LbbError):
+                client.integrations.create_connect_session(
+                    app_id="a" * 32, graph=GRAPH, return_url="https://product.example.test/return"
+                )
+        self.assertEqual(len(seen), 1)
+        self.assertNotIn("connection_id", body(seen[0]))
+
     def test_create_uses_integrations_url_and_the_stack_key(self) -> None:
         seen: list[httpx.Request] = []
         created = {
@@ -542,6 +575,18 @@ class CdcIntegrationsTests(unittest.TestCase):
 
 
 class AsyncIntegrationsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_provider_app_and_connect_session_helpers(self) -> None:
+        seen: list[httpx.Request] = []
+        async with async_client(seen) as client:
+            await client.integrations.provider_apps()
+            await client.integrations.create_connect_session(
+                app_id="a" * 32, graph=GRAPH, return_url="https://product.example.test/return", connection_id="github"
+            )
+            await client.integrations.get_connect_session("b" * 32)
+        self.assertEqual([request.method for request in seen], ["GET", "POST", "GET"])
+        self.assertEqual(seen[2].url.path, f"/v1/integrations/connect-sessions/{'b' * 32}")
+        self.assertEqual(body(seen[1])["connection_id"], "github")
+
     async def test_async_alert_preferences(self) -> None:
         seen: list[httpx.Request] = []
         async with async_client(seen) as client:
@@ -715,6 +760,10 @@ class IntegrationsContractTests(unittest.TestCase):
         with sync_client(seen) as client:
             api = client.integrations
             api.connectors()
+            api.provider_apps()
+            api.create_connect_session(app_id="a" * 32, graph=GRAPH,
+                return_url="https://product.example.test/return", connection_id="github")
+            api.get_connect_session("b" * 32)
             api.cdc_overview(graph=GRAPH)
             api.cdc_status("postgres", graph=GRAPH)
             api.cdc_mute_alerts("postgres", graph=GRAPH, expected_revision=0, muted=True)

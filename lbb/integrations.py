@@ -20,6 +20,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict, cast
+from urllib.parse import quote
 
 from . import models
 from ._client_base import Body, RequestOptions, _coerce_body
@@ -155,6 +156,45 @@ class IntegrationConnector(TypedDict):
 class IntegrationConnectorsAnswer(TypedDict):
     ok: Literal[True]
     connectors: list[IntegrationConnector]
+
+
+class IntegrationProviderApp(TypedDict):
+    """Safe provider-app discovery; no client metadata or management secrets."""
+
+    id: str
+    kind: Literal["notion", "github", "slack"]
+    label: str
+    active: bool
+
+
+class IntegrationProviderAppsAnswer(TypedDict):
+    ok: Literal[True]
+    apps: list[IntegrationProviderApp]
+
+
+IntegrationConnectSessionStatus = Literal[
+    "created", "authorizing", "exchanging", "selecting", "completing", "complete", "failed"
+]
+
+
+class IntegrationConnectSessionCreateAnswer(TypedDict):
+    """The URL is a short-lived bearer link; expires_at is Unix epoch milliseconds."""
+
+    ok: Literal[True]
+    session_id: str
+    url: str
+    expires_at: int
+
+
+class IntegrationConnectSessionAnswer(TypedDict):
+    """Authenticated session state without OAuth state, tokens or hosted links."""
+
+    ok: Literal[True]
+    session_id: str
+    status: IntegrationConnectSessionStatus
+    graph: str
+    connection_id: str
+    expires_at: int
 
 
 class IntegrationCreateAnswer(TypedDict):
@@ -481,6 +521,41 @@ class IntegrationsNamespace:
         return cast(
             IntegrationConnectorsAnswer,
             self._client._integrations_call("GET", f"{_BASE}/connectors"),
+        )
+
+    def provider_apps(self) -> IntegrationProviderAppsAnswer:
+        """Discover this stack's provider apps without exposing management details."""
+        return cast(
+            IntegrationProviderAppsAnswer,
+            self._client._integrations_call("GET", f"{_BASE}/apps"),
+        )
+
+    def create_connect_session(
+        self, *, app_id: str, graph: str, return_url: str,
+        connection_id: str | None = None,
+    ) -> IntegrationConnectSessionCreateAnswer:
+        """Create a hosted customer authorization link without provider credentials.
+
+        Each call creates a new session and spends the creation quota. This
+        operation never retries automatically after response loss.
+        """
+        body: dict[str, Any] = {"app_id": app_id, "graph": graph, "return_url": return_url}
+        if connection_id is not None:
+            body["connection_id"] = connection_id
+        return cast(
+            IntegrationConnectSessionCreateAnswer,
+            self._client._integrations_call(
+                "POST", f"{_BASE}/connect-sessions", body=body, options={"retry": False}
+            ),
+        )
+
+    def get_connect_session(self, id: str) -> IntegrationConnectSessionAnswer:
+        """Confirm completion through the authenticated backend API."""
+        return cast(
+            IntegrationConnectSessionAnswer,
+            self._client._integrations_call(
+                "GET", f"{_BASE}/connect-sessions/{quote(id, safe='')}"
+            ),
         )
 
     def create(

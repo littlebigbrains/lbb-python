@@ -743,6 +743,113 @@ class DateBucketGranularity(Enum):
     hour = 'hour'
 
 
+class DecideActivityAnswer(BaseModel):
+    """
+    The answer of one question.
+    """
+
+    choice: Annotated[str | None, Field(description='The option the model picked.')] = (
+        None
+    )
+    confidence: Annotated[
+        float | None, Field(description='The probability of `choice`.')
+    ] = None
+    probabilities: Annotated[
+        dict[str, float] | None, Field(description='The probability of each option.')
+    ] = None
+
+
+class DecideActivityQuestion(BaseModel):
+    """
+    One choice question of a decide request.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    criteria: Annotated[
+        dict[str, str],
+        Field(
+            description='Option id → what the option means: 2 to 64 options, ids\n`[A-Za-z0-9_.-]{1,64}`.'
+        ),
+    ]
+    instructions: Annotated[
+        str, Field(description='What to decide about the state. Not empty.')
+    ]
+
+
+class DecideActivityRequest(BaseModel):
+    """
+    `POST /v1/workflows/activities/decide`: the decision model answers each
+    question about `state` with one of its options.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    effect_id: Annotated[
+        str | None,
+        Field(
+            description="The effect id of the workflow step that makes the call (`ctx.step`'s\n`effectId`): with one, the first answer is kept, and a repeat of the\nsame request returns it with `cached: true`. `[A-Za-z0-9_.:/-]`, 1 to\n200 characters."
+        ),
+    ] = None
+    label: Annotated[
+        str | None,
+        Field(description='A short name for the call log, at most 64 characters.'),
+    ] = None
+    questions: Annotated[
+        dict[str, DecideActivityQuestion],
+        Field(
+            description='Question id → question: 1 to 64 questions, ids\n`[A-Za-z0-9_.-]{1,64}`.'
+        ),
+    ]
+    state: Annotated[
+        Any,
+        Field(
+            description='What the questions are about: any JSON, at most 200,000 characters.'
+        ),
+    ]
+
+
+class DecideActivityResponse(BaseModel):
+    """
+    The answers of a decide call.
+    """
+
+    answers: Annotated[
+        dict[str, DecideActivityAnswer],
+        Field(
+            description='Question id → answer. A question the model did not answer is missing.'
+        ),
+    ]
+    cached: Annotated[
+        bool,
+        Field(
+            description='The answers were kept from an earlier request with the same\n`effect_id`.'
+        ),
+    ]
+    cost_micro_usd: Annotated[
+        int,
+        Field(
+            description='What this request cost, in millionths of a US dollar: 0 for a cached\nanswer.',
+            ge=0,
+        ),
+    ]
+    model: Annotated[str, Field(description='The model that answered.')]
+    tokens_in: Annotated[
+        int,
+        Field(
+            description='Input tokens this request used: 0 for a cached answer.', ge=0
+        ),
+    ]
+    tokens_out: Annotated[
+        int,
+        Field(
+            description='Output tokens this request used: 0 for a cached answer.', ge=0
+        ),
+    ]
+
+
 class DecorationStatus(BaseModel):
     """
     One row of the engine's decoration-status catalog: whether a declarable
@@ -839,6 +946,66 @@ class DiscoveryPhase5(BaseModel):
 class EdgeIdempotencyMode(Enum):
     append = 'append'
     skip_unchanged = 'skip_unchanged'
+
+
+class EmbedActivityRequest(BaseModel):
+    """
+    `POST /v1/workflows/activities/embed`: the server's embedding model
+    embeds `texts`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    effect_id: Annotated[
+        str | None,
+        Field(
+            description="The effect id of the workflow step that makes the call (`ctx.step`'s\n`effectId`): with one, the first answer is kept, and a repeat of the\nsame request returns it with `cached: true`. `[A-Za-z0-9_.:/-]`, 1 to\n200 characters."
+        ),
+    ] = None
+    label: Annotated[
+        str | None,
+        Field(description='A short name for the call log, at most 64 characters.'),
+    ] = None
+    texts: Annotated[
+        list[str],
+        Field(
+            description='1 to 256 texts, each not empty and at most 8,000 characters.'
+        ),
+    ]
+
+
+class EmbedActivityResponse(BaseModel):
+    """
+    The vectors of an embed call.
+    """
+
+    cached: Annotated[
+        bool,
+        Field(
+            description='The vectors were kept from an earlier request with the same\n`effect_id`.'
+        ),
+    ]
+    cost_micro_usd: Annotated[
+        int,
+        Field(
+            description='What this request cost, in millionths of a US dollar: 0 for a cached\nanswer.',
+            ge=0,
+        ),
+    ]
+    dim: Annotated[int, Field(description='The length of each vector.', ge=0)]
+    model: Annotated[str, Field(description='The embedding model.')]
+    tokens_in: Annotated[
+        int,
+        Field(
+            description='Input tokens this request used (an estimate: characters / 4): 0 for\na cached answer.',
+            ge=0,
+        ),
+    ]
+    vectors: Annotated[
+        list[list[float]],
+        Field(description='One vector per text, in the order of the texts.'),
+    ]
 
 
 class EmbeddingBackfill(BaseModel):
@@ -1363,6 +1530,86 @@ class FacetResult(BaseModel):
     buckets: list[FacetBucket]
     field: str
     missing: Annotated[int, Field(ge=0)]
+
+
+class FileDeleteResponse(BaseModel):
+    """
+    `DELETE /v1/files`.
+    """
+
+    deleted: bool
+    sha256: str
+
+
+class FileParse(BaseModel):
+    """
+    What the parse starter made of a file.
+    """
+
+    error: str | None = None
+    page_count: Annotated[int | None, Field(ge=0)] = None
+    parsed_at: Annotated[str, Field(description='RFC 3339.')]
+    parser: Annotated[
+        str | None, Field(description='The parser and its version (`poppler-26.03.0`).')
+    ] = None
+    status: Annotated[
+        str, Field(description='`parsed`, `unsupported` (not a PDF) or `failed`.')
+    ]
+
+
+class FileRecord(BaseModel):
+    """
+    One file of a graph.
+    """
+
+    bytes: Annotated[int, Field(ge=0)]
+    content_type: str
+    document: Annotated[
+        str,
+        Field(description='The IRI of its `Document` entity (key `file:<sha256>`).'),
+    ]
+    name: Annotated[
+        str, Field(description="The name it was uploaded under (the last upload's).")
+    ]
+    parse: FileParse | None = None
+    sha256: Annotated[
+        str,
+        Field(
+            description="The SHA-256 of the bytes, lowercase hex: the file's identity."
+        ),
+    ]
+    uploaded_at: Annotated[str, Field(description='RFC 3339 time of the first upload.')]
+
+
+class FileUploadResponse(BaseModel):
+    """
+    `POST /v1/files`.
+    """
+
+    commit_seq: Annotated[
+        int | None,
+        Field(
+            description='The commit that wrote the `Document` entity (absent when nothing\nchanged).',
+            ge=0,
+        ),
+    ] = None
+    created: Annotated[
+        bool,
+        Field(
+            description='False when the graph held these bytes under this name already: the\nupload changed nothing.'
+        ),
+    ]
+    file: FileRecord
+
+
+class FileWord(BaseModel):
+    """
+    One word of a parsed line. `box` is `[x0, y0, x1, y1]` normalized to the
+    page (0 to 1, origin top left), 4 decimals.
+    """
+
+    box: list[float]
+    text: str
 
 
 class FitProposalKind(Enum):
@@ -2598,6 +2845,12 @@ class ModelJob(Enum):
     embed = 'embed'
     answer = 'answer'
     ask = 'ask'
+    define = 'define'
+    mention = 'mention'
+    resolve = 'resolve'
+    infer = 'infer'
+    reason = 'reason'
+    decide = 'decide'
 
 
 class ModelJobQuality(BaseModel):
@@ -3389,6 +3642,26 @@ class OntologyTermView(BaseModel):
     """
 
     name: str
+
+
+class OwnedOutputsOutcome(BaseModel):
+    """
+    What `replace_owned` removed.
+    """
+
+    edges_retracted: Annotated[
+        int, Field(description='Distinct current edges retracted.', ge=0)
+    ]
+    entities_retracted: Annotated[
+        int,
+        Field(
+            description='Entities of `retract_entities` that had a current edge or field.',
+            ge=0,
+        ),
+    ]
+    fields_removed: Annotated[
+        int, Field(description='Fields removed, counted per entity.', ge=0)
+    ]
 
 
 class PlannerKeyHistograms(BaseModel):
@@ -4327,6 +4600,87 @@ class ReaderLease(BaseModel):
     term: Annotated[int, Field(ge=0)]
 
 
+class ReasonActivityRequest(BaseModel):
+    """
+    `POST /v1/workflows/activities/reason`: the reasoning model answers
+    `prompt` with JSON that follows `schema`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    effect_id: Annotated[
+        str | None,
+        Field(
+            description="The effect id of the workflow step that makes the call (`ctx.step`'s\n`effectId`): with one, the first answer is kept, and a repeat of the\nsame request returns it with `cached: true`. `[A-Za-z0-9_.:/-]`, 1 to\n200 characters."
+        ),
+    ] = None
+    label: Annotated[
+        str | None,
+        Field(description='A short name for the call log, at most 64 characters.'),
+    ] = None
+    max_tokens: Annotated[
+        int | None,
+        Field(description='Output tokens at most: 1 to 32,000, default 8,000.', ge=0),
+    ] = None
+    prompt: Annotated[
+        str,
+        Field(
+            description='What to answer. Not empty; with `system`, at most 200,000 characters.'
+        ),
+    ]
+    schema_: Annotated[
+        dict[str, Any],
+        Field(
+            alias='schema',
+            description="The JSON Schema of the answer, a JSON object (at most 64 KiB). The\nserver sets `additionalProperties: false` on each object schema that\ndoes not set it, as the model's structured output needs.",
+        ),
+    ]
+    system: Annotated[
+        str | None,
+        Field(description='The system prompt: who the model is and how it answers.'),
+    ] = None
+
+
+class ReasonActivityResponse(BaseModel):
+    """
+    The answer of a reason call.
+    """
+
+    cached: Annotated[
+        bool,
+        Field(
+            description='The answer was kept from an earlier request with the same\n`effect_id`.'
+        ),
+    ]
+    cost_micro_usd: Annotated[
+        int,
+        Field(
+            description='What this request cost, in millionths of a US dollar: 0 for a cached\nanswer.',
+            ge=0,
+        ),
+    ]
+    model: Annotated[str, Field(description='The model that answered.')]
+    tokens_in: Annotated[
+        int,
+        Field(
+            description='Input tokens this request used: 0 for a cached answer.', ge=0
+        ),
+    ]
+    tokens_out: Annotated[
+        int,
+        Field(
+            description='Output tokens this request used: 0 for a cached answer.', ge=0
+        ),
+    ]
+    value: Annotated[
+        Any,
+        Field(
+            description="The model's answer: JSON that follows the request's `schema`."
+        ),
+    ]
+
+
 class RegionAnchorInput(BaseModel):
     """
     A page-region provenance anchor on a fact's evidence (region provenance
@@ -4471,6 +4825,35 @@ class RenameRelationOp(BaseModel):
     from_: Annotated[str, Field(alias='from')]
     op: Literal['rename_relation']
     to: str
+
+
+class ReplaceOwnedInput(BaseModel):
+    """
+    The outputs a writer owns, replaced by one commit (`replace_owned`).
+
+    In one commit, under one head CAS, for each subject: every current
+    out-edge whose relation is in `relations` and that the commit does not
+    assert again is retracted, and every field in `properties` that the commit
+    does not set on the subject is removed. Every entity in
+    `retract_entities` loses its current edges and fields, except the ones the
+    commit writes again. Then the commit's triplets and properties apply.
+    Ownership is by relation and field: a retraction of (source, relation,
+    target) retracts every copy of that edge, whoever wrote it.
+    """
+
+    properties: Annotated[
+        list[str] | None, Field(description='Owned property fields of the subjects.')
+    ] = None
+    relations: Annotated[
+        list[str] | None, Field(description='Owned out-edge relations of the subjects.')
+    ] = None
+    retract_entities: Annotated[
+        list[NamedEntityInput] | None,
+        Field(description='Entities the writer made and no longer makes.'),
+    ] = None
+    subjects: Annotated[
+        list[NamedEntityInput], Field(description='The instances this write is for.')
+    ]
 
 
 class ResolutionAlternative(BaseModel):
@@ -6675,6 +7058,39 @@ class SparqlValue6(BaseModel):
     entity: EntitySelector
 
 
+class StarterWorkflowParamKind(Enum):
+    """
+    The value kind of a starter workflow parameter.
+    """
+
+    string = 'string'
+    number = 'number'
+    bool = 'bool'
+    string_list = 'string_list'
+    object = 'object'
+
+
+class StarterWorkflowTryRequest(BaseModel):
+    """
+    Try a starter workflow on its samples (`POST
+    /v1/workflows/starters/try`): a new graph in the caller's stack with the
+    samples loaded and the workflow created there with its sample defaults.
+    """
+
+    params: Annotated[
+        Any | None,
+        Field(
+            description="Parameters over the sample defaults, an object: each key replaces the\ndefault of that key. The starter workflow's own `params` keys apply."
+        ),
+    ] = None
+    starter: Annotated[
+        str,
+        Field(
+            description='The catalog id, with or without the version (`infer.llm`,\n`infer.llm@v1`).'
+        ),
+    ]
+
+
 class StreamErrorEvent(BaseModel):
     """
     A streamed response ended with an error: the status, code and message of
@@ -6862,6 +7278,27 @@ class SuggestionEvidence(BaseModel):
             description='Source fields the change is about, for example `deals.amount`.'
         ),
     ] = None
+
+
+class SuggestionFactsCommit(BaseModel):
+    """
+    The commit an accept made for a suggestion's facts.
+    """
+
+    commit_seq: Annotated[int, Field(ge=0)]
+    no_op: Annotated[
+        bool | None,
+        Field(
+            description='The facts were in the graph already: nothing new was written.'
+        ),
+    ] = None
+    owned: OwnedOutputsOutcome | None = None
+    request_id: Annotated[
+        str,
+        Field(
+            description="The commit's idempotency key: `ontology-suggestion:<id>:facts:r<revision>`."
+        ),
+    ]
 
 
 class SuggestionOriginKind(Enum):
@@ -7114,6 +7551,95 @@ class TrainModelResponse(BaseModel):
     suggest_weights: SuggestRankerWeights | None = None
     train_probes: Annotated[int, Field(ge=0)]
     weights: SearchSignalWeights | None = None
+
+
+class TriggeredWorkflowBackfill(BaseModel):
+    """
+    How far a backfill got.
+    """
+
+    cursor: str | None = None
+    scanned: Annotated[int, Field(ge=0)]
+    target_seq: Annotated[int, Field(ge=0)]
+
+
+class TriggeredWorkflowDeleteResponse(BaseModel):
+    """
+    `DELETE /v1/workflows/triggered`.
+    """
+
+    deleted: bool
+
+
+class TriggeredWorkflowPauseRequest(BaseModel):
+    """
+    `POST /v1/workflows/triggered/pause`.
+    """
+
+    paused: bool
+
+
+class TriggeredWorkflowRef(BaseModel):
+    """
+    A triggered workflow by its two names: the starter workflow's catalog id
+    and the workflow's name (`?starter=&name=` of the triggered routes).
+    """
+
+    name: str
+    starter: str
+
+
+class TriggeredWorkflowSpend(BaseModel):
+    """
+    Model spend of one month.
+    """
+
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    month: Annotated[str, Field(description='`YYYY-MM`.')]
+
+
+class TriggeredWorkflowState(Enum):
+    """
+    The state of a triggered workflow.
+    """
+
+    backfilling = 'backfilling'
+    ready = 'ready'
+    paused = 'paused'
+    failed = 'failed'
+    unavailable = 'unavailable'
+
+
+class TriggeredWorkflowStatus(BaseModel):
+    """
+    The one status shape every triggered workflow reports.
+    """
+
+    backfill: TriggeredWorkflowBackfill | None = None
+    budget_usd_per_month: float | None = None
+    counters: Annotated[
+        dict[str, int] | None,
+        Field(
+            description='Work counters, by name (`entries`, `instances`, `kept`, `sent_messages`, …).'
+        ),
+    ] = None
+    lag_commits: Annotated[
+        int | None,
+        Field(
+            description='Published commits the workflow has not read yet (when ready).',
+            ge=0,
+        ),
+    ] = None
+    last_error: str | None = None
+    last_error_at: str | None = None
+    outputs: SuggestionStatusCounts | None = None
+    pending: Annotated[
+        int | None, Field(description='Instances waiting to be read or sent.', ge=0)
+    ] = None
+    processed_through_seq: Annotated[int | None, Field(ge=0)] = None
+    published_seq: Annotated[int | None, Field(ge=0)] = None
+    spend: TriggeredWorkflowSpend | None = None
+    state: TriggeredWorkflowState
 
 
 class TruncatedCollection(BaseModel):
@@ -7407,6 +7933,15 @@ class WorkflowCompleteRequest(BaseModel):
     token: str
 
 
+class WorkflowGate(BaseModel):
+    """
+    Outputs whose confidence is below `below` go to the review inbox instead
+    of the graph.
+    """
+
+    below: float
+
+
 class WorkflowHeartbeatRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -7502,6 +8037,32 @@ class WorkflowOperationKind(Enum):
     step = 'step'
     model = 'model'
     tool = 'tool'
+
+
+class WorkflowOwns(BaseModel):
+    """
+    The outputs a workflow owns: the classes whose instances it creates, and
+    the relations and properties it writes on the instances it watches. A
+    rerun replaces them, and they never wake the workflow itself.
+    """
+
+    classes: list[str] | None = None
+    properties: list[str] | None = None
+    relations: list[str] | None = None
+
+
+class WorkflowRunsIn(Enum):
+    """
+    Where a workflow's work runs.
+    """
+
+    lbb = 'lbb'
+    worker = 'worker'
+
+
+class WorkflowScopeTruth(Enum):
+    property_graph = 'property_graph'
+    rdf_native = 'rdf_native'
 
 
 class WorkflowSignalRequest(BaseModel):
@@ -7607,6 +8168,17 @@ class WorkflowTask(BaseModel):
     step_id: str
     token: str
     workflow_input: Any
+
+
+class WorkflowTriggerReason(Enum):
+    """
+    Why a developer workflow receives instances.
+    """
+
+    backfill = 'backfill'
+    changed = 'changed'
+    refresh = 'refresh'
+    schema_changed = 'schema_changed'
 
 
 class WorkflowTurnCheckpointRequest(BaseModel):
@@ -7750,6 +8322,59 @@ class WorkflowTurnWaitSignalRequest(BaseModel):
     token: str
     turn: Annotated[int, Field(ge=0)]
     workflow_id: str
+
+
+class WorkflowTypeRef(BaseModel):
+    """
+    The workflow type a developer workflow sends its trigger messages to.
+    """
+
+    version: str
+    workflow_type: str
+
+
+class WorkflowWatch(BaseModel):
+    """
+    The class a workflow watches, and the fields whose change marks an
+    instance dirty. `fields` takes the `from` path syntax of embeddings.
+    """
+
+    class_: Annotated[
+        str,
+        Field(
+            alias='class',
+            description='The class IRI (or a local name or prefixed name the ontology knows).',
+        ),
+    ]
+    exclude: Annotated[
+        list[str] | None,
+        Field(description='Names or IRIs to drop from an automatic choice of fields.'),
+    ] = None
+    fields: Annotated[
+        list[str | EmbeddingFieldInput] | None,
+        Field(
+            description="The fields, in the path syntax of embeddings. Absent or empty: the\nworkflow's own default (an embedding or a fit source picks the text\nfacts of a sample of the class)."
+        ),
+    ] = None
+
+
+class WorkflowWatchResolved(BaseModel):
+    """
+    A watch as the server resolved it.
+    """
+
+    class_: Annotated[str, Field(alias='class')]
+    fields: list[EmbeddingField]
+
+
+class WorkflowWatchRule(Enum):
+    """
+    Whether a request that creates a workflow names the watch.
+    """
+
+    required = 'required'
+    fixed = 'fixed'
+    none = 'none'
 
 
 class WorkflowWorkerType(BaseModel):
@@ -8781,6 +9406,52 @@ class ExtractorExample(BaseModel):
 
     facts: list[ExtractorFact]
     transcript: str
+
+
+class FileLine(BaseModel):
+    """
+    One parsed line: its id (`p<page number>-l<line number>`, both from 1),
+    its text (the words joined by one space, NFC), its box and its words.
+    """
+
+    box: list[float]
+    id: str
+    text: str
+    words: list[FileWord]
+
+
+class FileList(BaseModel):
+    """
+    `GET /v1/files`: the graph's files, newest upload first.
+    """
+
+    files: list[FileRecord]
+
+
+class FilePage(BaseModel):
+    """
+    One parsed page. `page` is the 0-based index (the `page` of a region
+    anchor); `width` and `height` are in PDF points.
+    """
+
+    height: float
+    lines: list[FileLine]
+    page: Annotated[int, Field(ge=0)]
+    width: float
+
+
+class FilePages(BaseModel):
+    """
+    `GET /v1/files/pages`: pages `from` (inclusive) to `to` (exclusive) of a
+    parsed file, 0-based.
+    """
+
+    from_: Annotated[int, Field(alias='from', ge=0)]
+    page_count: Annotated[int, Field(ge=0)]
+    pages: list[FilePage]
+    parser: str
+    sha256: str
+    to: Annotated[int, Field(ge=0)]
 
 
 class FitSource(BaseModel):
@@ -11958,6 +12629,44 @@ class SparqlTextResponse(BaseModel):
     ] = None
 
 
+class StarterWorkflowParam(BaseModel):
+    """
+    One parameter a starter workflow takes in `params`.
+    """
+
+    description: str
+    kind: StarterWorkflowParamKind
+    name: str
+    required: bool | None = None
+
+
+class StarterWorkflowTryResponse(BaseModel):
+    """
+    The answer of `POST /v1/workflows/starters/try`. The workflows run as
+    usual from here; read them with `GET
+    /v1/workflows/triggered?graph=<graph>`.
+    """
+
+    graph: Annotated[
+        str, Field(description="The new graph's id, in the caller's stack.")
+    ]
+    note: Annotated[
+        str,
+        Field(
+            description='What happens next and how to delete the graph, in one or two\nsentences.'
+        ),
+    ]
+    samples: Annotated[
+        list[str], Field(description='The sample files loaded, by name.')
+    ]
+    workflows: Annotated[
+        list[TriggeredWorkflowRef],
+        Field(
+            description='The workflows created there, in the order they were created\n(`documents.link` also creates `documents.parse`, which reads its\nfiles).'
+        ),
+    ]
+
+
 class StateEntry(BaseModel):
     confidence: float
     derived_from: list[str]
@@ -12020,6 +12729,107 @@ class TrainModelJobStatusResponse(BaseModel):
     ]
     terminal_error: str | None = None
     updated_at_micros: int
+
+
+class TriggeredWorkflow(BaseModel):
+    """
+    One triggered workflow (`GET /v1/workflows/triggered?starter=&name=`).
+    """
+
+    batch: Annotated[int | None, Field(ge=0)] = None
+    created_at: str | None = None
+    details: Annotated[
+        Any | None,
+        Field(
+            description="The workflow's own status: `EmbeddingStatus` for `search.embed`,\n`FitSourceStatus` for `ontology.fit`, `DeveloperWorkflowDetails` for\n`workflow`."
+        ),
+    ] = None
+    gate: WorkflowGate | None = None
+    name: str
+    owns: WorkflowOwns | None = None
+    params: Any | None = None
+    starter: Annotated[
+        str,
+        Field(description="The starter workflow's catalog id, without the version."),
+    ]
+    status: TriggeredWorkflowStatus
+    updated_at: str | None = None
+    version: str
+    watch: WorkflowWatchResolved | None = None
+    workflow: WorkflowTypeRef | None = None
+
+
+class TriggeredWorkflowList(BaseModel):
+    """
+    `GET /v1/workflows/triggered`: every triggered workflow of the graph,
+    ordered by starter, then name.
+    """
+
+    starters: list[TriggeredWorkflow]
+
+
+class TriggeredWorkflowPreview(BaseModel):
+    """
+    The answer of `POST /v1/workflows/triggered/preview`.
+    """
+
+    details: Annotated[
+        Any | None,
+        Field(
+            description="The workflow's own preview: `EmbeddingPreviewResponse`,\n`FitSourcePreviewResponse`, or the trigger messages a developer\nworkflow would receive."
+        ),
+    ] = None
+    instance_count: Annotated[int | None, Field(ge=0)] = None
+    name: str
+    starter: str
+    watch: WorkflowWatchResolved | None = None
+
+
+class TriggeredWorkflowRefreshResponse(BaseModel):
+    """
+    `POST /v1/workflows/triggered/refresh`.
+    """
+
+    queued: Annotated[bool, Field(description="The workflow's job was asked to run.")]
+    starter: TriggeredWorkflow
+
+
+class TriggeredWorkflowRequest(BaseModel):
+    """
+    Create a workflow from a starter workflow, or change one (`PUT
+    /v1/workflows/triggered`). The same request again is a no-op.
+    """
+
+    batch: Annotated[
+        int | None,
+        Field(
+            description='`workflow` only: instances per message, 1 to 64 (default 16).',
+            ge=0,
+        ),
+    ] = None
+    budget_usd_per_month: float | None = None
+    gate: WorkflowGate | None = None
+    name: Annotated[
+        str | None,
+        Field(
+            description="`[a-z0-9][a-z0-9-]{0,62}`. Default: the class's local name, or the\nstarter workflow's default name."
+        ),
+    ] = None
+    owns: WorkflowOwns | None = None
+    params: Annotated[
+        Any | None,
+        Field(
+            description="The starter workflow's parameters, an object. `search.embed`:\n`model`, `dim`, `title`. `ontology.fit`: `context`."
+        ),
+    ] = None
+    starter: Annotated[
+        str,
+        Field(
+            description='The catalog id, with or without the version (`search.embed`,\n`search.embed@v1`).'
+        ),
+    ]
+    watch: WorkflowWatch | None = None
+    workflow: WorkflowTypeRef | None = None
 
 
 class TripletInput(BaseModel):
@@ -12101,6 +12911,16 @@ class WorkflowClaimResponse(BaseModel):
     task: WorkflowTask | None = None
 
 
+class WorkflowScopeResponse(BaseModel):
+    """
+    Current graph incarnation and the durable write model it owns. The epoch
+    is a decimal string so clients preserve the entire u64 identity.
+    """
+
+    epoch: str
+    truth: WorkflowScopeTruth
+
+
 class WorkflowStep(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -12117,6 +12937,51 @@ class WorkflowStep(BaseModel):
     ] = None
     retry_delay_ms: Annotated[int | None, Field(ge=0)] = None
     timeout_ms: Annotated[int | None, Field(ge=0)] = None
+
+
+class WorkflowTriggerInFlight(BaseModel):
+    """
+    A trigger message a developer workflow wrote down before it sent it: the
+    next run sends it again unchanged until the send succeeds.
+    """
+
+    id: str
+    instances: Annotated[int, Field(ge=0)]
+    reason: WorkflowTriggerReason
+    removed: Annotated[int, Field(ge=0)]
+
+
+class WorkflowTriggerMessage(BaseModel):
+    """
+    The trigger message a developer workflow receives (`workflow@v1`). Its
+    id is `starter-<name>-<n>`; the same id always carries the same message.
+    """
+
+    as_of_commit_seq: Annotated[
+        int,
+        Field(
+            description='The published commit the workflow had read through when it built the\nmessage. Read the instances at this commit or later.',
+            ge=0,
+        ),
+    ]
+    graph: Annotated[str, Field(description='The graph id.')]
+    instances: Annotated[
+        list[str], Field(description='Instance IRIs to read and work on.')
+    ]
+    reason: WorkflowTriggerReason
+    removed: Annotated[
+        list[str],
+        Field(
+            description='Instance IRIs that left the watched class: drop what was written for\nthem.'
+        ),
+    ]
+    type: Annotated[str, Field(description='Always `instances`.')]
+    workflow: Annotated[
+        str,
+        Field(
+            description="The triggered workflow's name. Read as `starter` too: a message\nstored before the field was renamed still reads."
+        ),
+    ]
 
 
 class WorkflowTurn(BaseModel):
@@ -12445,6 +13310,52 @@ class CreateGraphResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     graph: GraphKey
     ontology_version: Annotated[int, Field(ge=0)]
+
+
+class DeveloperWorkflowDetails(BaseModel):
+    """
+    `details` of a developer workflow (a triggered workflow of `workflow`).
+    """
+
+    batch: Annotated[int, Field(ge=0)]
+    every_field: Annotated[
+        bool,
+        Field(
+            description='The watch has no fields: a change of any fact of an instance marks it.'
+        ),
+    ]
+    in_flight: WorkflowTriggerInFlight | None = None
+    inbox_full_since: Annotated[
+        str | None,
+        Field(
+            description='The inbox of the workflow was full at the last send, since this time.'
+        ),
+    ] = None
+    instance_id: Annotated[
+        str,
+        Field(
+            description='The workflow instance that receives the messages: `starter.<name>`.'
+        ),
+    ]
+    next_message: Annotated[
+        int, Field(description='The number of the next message id.', ge=0)
+    ]
+    ontology_version: Annotated[
+        int | None,
+        Field(
+            description='The ontology version the workflow last checked the watched class at.',
+            ge=0,
+        ),
+    ] = None
+    paused: bool
+    pending_instances: Annotated[
+        int, Field(description='Instances waiting to be sent.', ge=0)
+    ]
+    pending_removed: Annotated[
+        int,
+        Field(description='Instances that left the class, waiting to be sent.', ge=0),
+    ]
+    workflow: WorkflowTypeRef
 
 
 class DiscoveryDraft(BaseModel):
@@ -12877,6 +13788,7 @@ class GraphCommitDryRunResponse(BaseModel):
     op_count: Annotated[
         int, Field(description='Number of WAL ops the commit would produce.', ge=0)
     ]
+    owned: OwnedOutputsOutcome | None = None
     schema_validation: SchemaAuditReport | None = None
     skipped_edges: Annotated[
         list[SkippedEdge] | None,
@@ -13192,127 +14104,6 @@ class NeighborResponse(BaseModel):
     snapshot: SnapshotView
 
 
-class OntologyChangeSuggestion(BaseModel):
-    """
-    A durable, reviewable ontology change suggestion.
-    """
-
-    accepted_links: Annotated[
-        int | None,
-        Field(description='How many `SAME_AS` edges the accept wrote.', ge=0),
-    ] = None
-    accepted_ontology_version: Annotated[
-        int | None,
-        Field(description='The ontology version the accepted change produced.', ge=0),
-    ] = None
-    anchor: SuggestionAnchor
-    change: Annotated[
-        list[
-            Annotated[
-                WidenRelationOp
-                | AddEntityTypeOp
-                | AddSuperTypesOp
-                | AddRelationOp
-                | AddPropertyOp
-                | SetPropertyConstraintOp
-                | RenameEntityTypeOp
-                | RenameRelationOp
-                | SetRelationInverseOp
-                | SetRelationCardinalityOp
-                | NarrowRelationOp
-                | RemoveEntityTypeOp
-                | RemoveRelationOp,
-                Field(discriminator='op'),
-            ]
-        ],
-        Field(
-            description='The evolve operations that accepting applies, in order. May be empty\nwhen `identities` is not.'
-        ),
-    ]
-    change_sources: Annotated[
-        list[ChangeSource | None] | None,
-        Field(
-            description='For an edited change: for each op of `change`, the index of the op in\n`proposed_change` it was edited from, or null for an op the person\nadded. Lets a producer map its proposal onto what was accepted.'
-        ),
-    ] = None
-    comments: list[SuggestionComment] | None = None
-    created_at: Annotated[str, Field(description='RFC 3339 times.')]
-    decided_at: str | None = None
-    decided_by: Annotated[
-        str | None,
-        Field(description='Who accepted, dismissed or superseded it, when, and why.'),
-    ] = None
-    decision_reason: str | None = None
-    evidence: SuggestionEvidence | None = None
-    graph: GraphKey
-    identities: Annotated[
-        list[SuggestedIdentity] | None,
-        Field(description='Records to link as one identity after `change` applies.'),
-    ] = None
-    impact: OntologyEvolveResponse | None = None
-    impact_error: Annotated[
-        str | None,
-        Field(
-            description='Why the last dry run failed (for example an unknown class).'
-        ),
-    ] = None
-    key: Annotated[
-        str,
-        Field(
-            description="The producer's idempotency key. Creating again with the same key\nupdates this suggestion instead of adding another one."
-        ),
-    ]
-    mapping: Annotated[
-        Any | None,
-        Field(
-            description='Opaque to the server: how the origin applies the change to its own\nconfiguration once accepted (for an integration, its mapping changes).'
-        ),
-    ] = None
-    origin: SuggestionOrigin
-    proposed_change: Annotated[
-        list[
-            Annotated[
-                WidenRelationOp
-                | AddEntityTypeOp
-                | AddSuperTypesOp
-                | AddRelationOp
-                | AddPropertyOp
-                | SetPropertyConstraintOp
-                | RenameEntityTypeOp
-                | RenameRelationOp
-                | SetRelationInverseOp
-                | SetRelationCardinalityOp
-                | NarrowRelationOp
-                | RemoveEntityTypeOp
-                | RemoveRelationOp,
-                Field(discriminator='op'),
-            ]
-        ]
-        | None,
-        Field(
-            description='The operations as the producer proposed them, kept when a person edited\n`change` before accepting.'
-        ),
-    ] = None
-    proposed_identities: Annotated[
-        list[SuggestedIdentity] | None,
-        Field(
-            description='The identities as the producer proposed them, kept when a person\nremoved some before accepting.'
-        ),
-    ] = None
-    rationale: str | None = None
-    revision: Annotated[
-        int,
-        Field(
-            description='Starts at 1 and grows each time the producer revises the change.',
-            ge=0,
-        ),
-    ]
-    status: OntologyChangeSuggestionStatus
-    suggestion_id: Annotated[str, Field(description='Stable id, derived from `key`.')]
-    title: str
-    updated_at: str
-
-
 class OntologyChangeSuggestionAcceptRequest(BaseModel):
     """
     Accept a suggestion: apply its change to the current ontology, then link
@@ -13361,67 +14152,6 @@ class OntologyChangeSuggestionAcceptRequest(BaseModel):
     ] = None
 
 
-class OntologyChangeSuggestionCreateRequest(BaseModel):
-    """
-    Create a suggestion, or update the one with the same `key`.
-
-    Update rules for an existing key: an `open` suggestion takes the new
-    content (a different `change` raises `revision`); an `accepted` one is
-    returned unchanged; a `dismissed` one stays dismissed unless `change`
-    differs, which reopens it; a `superseded` one reopens.
-    """
-
-    anchor: SuggestionAnchor | None = None
-    change: Annotated[
-        list[
-            Annotated[
-                WidenRelationOp
-                | AddEntityTypeOp
-                | AddSuperTypesOp
-                | AddRelationOp
-                | AddPropertyOp
-                | SetPropertyConstraintOp
-                | RenameEntityTypeOp
-                | RenameRelationOp
-                | SetRelationInverseOp
-                | SetRelationCardinalityOp
-                | NarrowRelationOp
-                | RemoveEntityTypeOp
-                | RemoveRelationOp,
-                Field(discriminator='op'),
-            ]
-        ],
-        Field(
-            description='Up to 128 evolve operations; at least one unless `identities` is set\n(then it may be empty).'
-        ),
-    ]
-    evidence: SuggestionEvidence | None = None
-    identities: Annotated[
-        list[SuggestedIdentity] | None,
-        Field(description='Up to 200 identities to link on accept.'),
-    ] = None
-    key: Annotated[
-        str | None,
-        Field(
-            description='Idempotency key, at most 255 characters of `[A-Za-z0-9-_.:/]`, for\nexample `hubspot-main/deals`. When absent the server derives one from\n`anchor`, `change` and (when set) `identities`, so the same suggestion\nis filed once.'
-        ),
-    ] = None
-    mapping: Annotated[
-        Any | None, Field(description='Opaque origin data, at most 16 KiB of JSON.')
-    ] = None
-    origin: SuggestionOrigin
-    rationale: Annotated[
-        str | None,
-        Field(description='Why the change is needed. At most 4,000 characters.'),
-    ] = None
-    title: Annotated[
-        str,
-        Field(
-            description='Short imperative text, for example "Add class Deal". At most 200\ncharacters.'
-        ),
-    ]
-
-
 class OntologyChangeSuggestionSummary(BaseModel):
     """
     One row of a suggestion list: everything but the evidence samples, the
@@ -13449,6 +14179,13 @@ class OntologyChangeSuggestionSummary(BaseModel):
     ]
     comment_count: Annotated[int, Field(ge=0)]
     created_at: str
+    fact_count: Annotated[
+        int | None,
+        Field(
+            description="How many triplets and entity property rows the suggestion's facts\nhold.",
+            ge=0,
+        ),
+    ] = None
     identity_count: Annotated[
         int | None, Field(description='How many identities the suggestion links.', ge=0)
     ] = None
@@ -13966,6 +14703,102 @@ class SparqlFilter1(BaseModel):
     compare: Compare
 
 
+class StarterWorkflow(BaseModel):
+    """
+    One starter workflow: an entry of `GET /v1/workflows/starters`.
+    """
+
+    available: Annotated[bool, Field(description='Whether this server can run it now.')]
+    code: Annotated[
+        str | None,
+        Field(
+            description="The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/` (`documents-link`,\n`values-from-text`, `fit-from-text`). Null when there is none\n(`search.embed` and `documents.parse` run in LBB only, and `workflow`\nis the developer's own code)."
+        ),
+    ] = None
+    fixed_watch: WorkflowWatch | None = None
+    group: Annotated[
+        str,
+        Field(
+            description='The Workflows page group, a stable slug: `documents`, `values`,\n`search`, `ontology`, `developer`.'
+        ),
+    ]
+    id: Annotated[
+        str, Field(description='`search.embed`, `ontology.fit`, `workflow`, …')
+    ]
+    owns: Annotated[
+        WorkflowOwns | None,
+        Field(
+            description='The outputs it owns when they are fixed. A developer workflow\ndeclares its own when it is created.'
+        ),
+    ] = None
+    params: list[StarterWorkflowParam] | None = None
+    runs_in: WorkflowRunsIn
+    samples: Annotated[
+        list[str] | None,
+        Field(
+            description="The names of the sample files that Try on samples loads\n(`POST /v1/workflows/starters/try`), as the template's `samples/`\nfolder names them. Empty for `workflow`."
+        ),
+    ] = None
+    shortcut: Annotated[
+        str | None,
+        Field(
+            description='The older route family that reads and writes the same documents.'
+        ),
+    ] = None
+    summary: str
+    title: str
+    truth: Annotated[
+        list[str],
+        Field(
+            description='The graph kinds it supports: `property_graph`, `rdf_native`.'
+        ),
+    ]
+    try_on_samples: Annotated[
+        bool | None,
+        Field(
+            description='Whether this server can run Try on samples for it now: SaaS mode, a\nsample set, and the models (and for the document starter workflows,\nthe parser) the run needs.'
+        ),
+    ] = None
+    unavailable_reason: Annotated[
+        str | None,
+        Field(description='Why not: `fit_models_unavailable`, `workflows_disabled`, …'),
+    ] = None
+    version: Annotated[str, Field(description='`v1`.')]
+    watch: WorkflowWatchRule
+
+
+class StarterWorkflowCatalog(BaseModel):
+    """
+    `GET /v1/workflows/starters`: the starter workflows of this server.
+    """
+
+    starters: list[StarterWorkflow]
+
+
+class TriggeredWorkflowPreviewRequest(TriggeredWorkflowRequest):
+    """
+    `POST /v1/workflows/triggered/preview`: what creating or changing a
+    triggered workflow would do. Writes nothing.
+    """
+
+    iris: Annotated[
+        list[str] | None, Field(description='Show these instances instead of a sample.')
+    ] = None
+    propose: Annotated[
+        bool | None,
+        Field(
+            description='Run the models on the sample, where the starter workflow has models\n(a dry run of `ontology.fit`). Its spend counts against the budget.'
+        ),
+    ] = None
+    sample: Annotated[
+        int | None,
+        Field(
+            description="Sample instances to show (the starter workflow's own default and cap apply).",
+            ge=0,
+        ),
+    ] = None
+
+
 class WorkflowInstance(BaseModel):
     completed_turns: Annotated[int, Field(ge=0)]
     created_at_ms: int
@@ -14159,6 +14992,7 @@ class CommitResponse(BaseModel):
     idempotent_replay: bool
     no_op: bool | None = None
     observation_ids: list[str]
+    owned: OwnedOutputsOutcome | None = None
     schema_validation: SchemaAuditReport | None = None
     skipped_edges: list[SkippedEdge] | None = None
     throttle_ms: Annotated[
@@ -14401,6 +15235,7 @@ class GraphCommitResponse(BaseModel):
     graph_created: bool
     idempotency_key: str
     no_op: bool | None = None
+    owned: OwnedOutputsOutcome | None = None
     replayed: Annotated[
         bool,
         Field(
@@ -14486,6 +15321,25 @@ class QueryRewriteEventDone(BaseModel):
     event: Literal['done']
 
 
+class SuggestedFacts(BaseModel):
+    """
+    Graph facts a review item proposes. Accepting commits them through the
+    ordinary triplet commit, after any evolve operations; dismissing writes
+    nothing. At most 200 triplets plus entity property rows, and 64 KiB of
+    JSON. Records graphs only: an RDF-native graph refuses the accept.
+    """
+
+    entity_properties: list[EntityPropertiesInput] | None = None
+    replace_owned: ReplaceOwnedInput | None = None
+    summary: Annotated[
+        str | None,
+        Field(
+            description='One line about the facts for a reviewer. At most 500 characters.'
+        ),
+    ] = None
+    triplets: list[TripletInput] | None = None
+
+
 class TripletCommitFile(BaseModel):
     edge_idempotency: EdgeIdempotencyMode | None = None
     entity_embeddings: Annotated[
@@ -14508,6 +15362,7 @@ class TripletCommitFile(BaseModel):
     ] = None
     preconditions: WritePreconditions | None = None
     property_merge: PropertyMergeMode | None = None
+    replace_owned: ReplaceOwnedInput | None = None
     triplets: Annotated[
         list[TripletInput] | None,
         Field(
@@ -14646,6 +15501,192 @@ class EvalSummaryResponse(BaseModel):
         Field(
             description='Traces with a result nobody labeled yet, among the most recent traces.',
             ge=0,
+        ),
+    ]
+
+
+class OntologyChangeSuggestion(BaseModel):
+    """
+    A durable, reviewable ontology change suggestion.
+    """
+
+    accepted_links: Annotated[
+        int | None,
+        Field(description='How many `SAME_AS` edges the accept wrote.', ge=0),
+    ] = None
+    accepted_ontology_version: Annotated[
+        int | None,
+        Field(description='The ontology version the accepted change produced.', ge=0),
+    ] = None
+    anchor: SuggestionAnchor
+    change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ],
+        Field(
+            description='The evolve operations that accepting applies, in order. May be empty\nwhen `identities` or `facts` is not.'
+        ),
+    ]
+    change_sources: Annotated[
+        list[ChangeSource | None] | None,
+        Field(
+            description='For an edited change: for each op of `change`, the index of the op in\n`proposed_change` it was edited from, or null for an op the person\nadded. Lets a producer map its proposal onto what was accepted.'
+        ),
+    ] = None
+    comments: list[SuggestionComment] | None = None
+    created_at: Annotated[str, Field(description='RFC 3339 times.')]
+    decided_at: str | None = None
+    decided_by: Annotated[
+        str | None,
+        Field(description='Who accepted, dismissed or superseded it, when, and why.'),
+    ] = None
+    decision_reason: str | None = None
+    evidence: SuggestionEvidence | None = None
+    facts: SuggestedFacts | None = None
+    facts_commit: SuggestionFactsCommit | None = None
+    graph: GraphKey
+    identities: Annotated[
+        list[SuggestedIdentity] | None,
+        Field(description='Records to link as one identity after `change` applies.'),
+    ] = None
+    impact: OntologyEvolveResponse | None = None
+    impact_error: Annotated[
+        str | None,
+        Field(
+            description='Why the last dry run failed (for example an unknown class).'
+        ),
+    ] = None
+    key: Annotated[
+        str,
+        Field(
+            description="The producer's idempotency key. Creating again with the same key\nupdates this suggestion instead of adding another one."
+        ),
+    ]
+    mapping: Annotated[
+        Any | None,
+        Field(
+            description='Opaque to the server: how the origin applies the change to its own\nconfiguration once accepted (for an integration, its mapping changes).'
+        ),
+    ] = None
+    origin: SuggestionOrigin
+    proposed_change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ]
+        | None,
+        Field(
+            description='The operations as the producer proposed them, kept when a person edited\n`change` before accepting.'
+        ),
+    ] = None
+    proposed_identities: Annotated[
+        list[SuggestedIdentity] | None,
+        Field(
+            description='The identities as the producer proposed them, kept when a person\nremoved some before accepting.'
+        ),
+    ] = None
+    rationale: str | None = None
+    revision: Annotated[
+        int,
+        Field(
+            description='Starts at 1 and grows each time the producer revises the change.',
+            ge=0,
+        ),
+    ]
+    status: OntologyChangeSuggestionStatus
+    suggestion_id: Annotated[str, Field(description='Stable id, derived from `key`.')]
+    title: str
+    updated_at: str
+
+
+class OntologyChangeSuggestionCreateRequest(BaseModel):
+    """
+    Create a suggestion, or update the one with the same `key`.
+
+    Update rules for an existing key: an `open` suggestion takes the new
+    content (a different `change` raises `revision`); an `accepted` one is
+    returned unchanged; a `dismissed` one stays dismissed unless `change`
+    differs, which reopens it; a `superseded` one reopens.
+    """
+
+    anchor: SuggestionAnchor | None = None
+    change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ]
+        | None,
+        Field(
+            description='Up to 128 evolve operations; at least one unless `identities` or\n`facts` is set (then it may be empty).'
+        ),
+    ] = None
+    evidence: SuggestionEvidence | None = None
+    facts: SuggestedFacts | None = None
+    identities: Annotated[
+        list[SuggestedIdentity] | None,
+        Field(description='Up to 200 identities to link on accept.'),
+    ] = None
+    key: Annotated[
+        str | None,
+        Field(
+            description='Idempotency key, at most 255 characters of `[A-Za-z0-9-_.:/]`, for\nexample `hubspot-main/deals`. When absent the server derives one from\n`anchor`, `change` and (when set) `identities` and `facts`, so the same\nsuggestion is filed once.'
+        ),
+    ] = None
+    mapping: Annotated[
+        Any | None, Field(description='Opaque origin data, at most 16 KiB of JSON.')
+    ] = None
+    origin: SuggestionOrigin
+    rationale: Annotated[
+        str | None,
+        Field(description='Why the change is needed. At most 4,000 characters.'),
+    ] = None
+    title: Annotated[
+        str,
+        Field(
+            description='Short imperative text, for example "Add class Deal". At most 200\ncharacters.'
         ),
     ]
 

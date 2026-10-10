@@ -226,6 +226,33 @@ print(diff["totals"], diff["changed"], diff.get("next_cursor"))
 `next_cursor` back as `cursor=` with the same arguments. Run your own queries
 with `query.sparql(..., as_of_commit_seq=...)`.
 
+## Model calls for your own pipeline
+
+`reason_activity`, `decide_activity` and `embed_activity` call LBB's own
+models: the reasoning model answers a prompt with JSON that follows a
+schema, the decision model answers choice questions about a state, and the
+embedding model embeds texts. The calls count against the stack's model
+budget for workflows and appear in the call log under `label`. Pass the
+same `effect_id` when a step repeats, and the server returns the first
+answer (`cached: True`) at no cost.
+
+```python
+answer = lbb.reason_activity(
+    'Which code does this row define? "P3 Waschtisch 55x45"',
+    {
+        "type": "object",
+        "properties": {"code": {"type": "string"}, "description": {"type": "string"}},
+        "required": ["code", "description"],
+    },
+    effect_id="tender-import/define-p3",
+    label="define P3",
+)
+print(answer["value"]["code"], answer["cost_micro_usd"])
+```
+
+A request too large for the model raises `LbbError` with the code
+`activity_request_refused` (422): split it and send each half.
+
 ## Next steps
 
 - [Search by meaning](https://docs.littlebigbrain.com/guides/search-by-meaning/): choose which facts to embed, find records from a text description, and search inside a SPARQL query with `search:similarTo`.

@@ -21,6 +21,151 @@
     }
   ],
   "paths": {
+    "/v1/integrations/apps": {
+      "get": {
+        "operationId": "apps.list",
+        "summary": "List developer-owned provider apps available in this stack",
+        "description": "Returns only registration id, provider kind, label and active state. No client identity, management event URL, configuration, credentials or secrets are returned. Provider app management requires the developer's authenticated console session.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderAppsAnswer"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/v1/integrations/connect-sessions": {
+      "post": {
+        "operationId": "connect-sessions.create",
+        "summary": "Create a hosted customer authorization session",
+        "description": "Creates a short-lived connection link using a developer-owned app in the freshly authenticated stack. Initializes the customer's graph and reserves its integration target. The return URL must use an app-allowlisted origin. Session creation shares the connection creation quota and graph limit, including reconnect attempts. Each successful call creates a new session; it is not idempotent and must not be automatically retried after response loss. No provider credentials are accepted. Needs an active subscription.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectSessionCreateAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectSessionCreateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/integrations/connect-sessions/{id}": {
+      "get": {
+        "operationId": "connect-sessions.get",
+        "summary": "Read a customer's connect session status",
+        "description": "Reads a session only within the freshly authenticated stack. Returns its graph, intended connection, lifecycle status and expiry; no hosted link, provider credentials or OAuth state. Use this authenticated result to confirm completion rather than browser return parameters.",
+        "tags": [
+          "integrations"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectSessionAnswer"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The connect session id.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
     "/v1/integrations/cdc": {
       "get": {
         "operationId": "cdc.overview",
@@ -1345,6 +1490,162 @@
       }
     },
     "schemas": {
+      "ProviderApp": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "notion",
+              "github",
+              "slack"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "active"
+        ],
+        "additionalProperties": false
+      },
+      "ProviderAppsAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "apps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderApp"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "apps"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectSessionCreateRequest": {
+        "type": "object",
+        "properties": {
+          "app_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "return_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "Return to the developer product; its origin must be allowed by the selected app."
+          },
+          "connection_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          }
+        },
+        "required": [
+          "app_id",
+          "graph",
+          "return_url"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectSessionCreateAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "session_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Short-lived customer authorization link. Treat it as a bearer capability."
+          },
+          "expires_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Expiry as Unix epoch milliseconds."
+          }
+        },
+        "required": [
+          "ok",
+          "session_id",
+          "url",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
+      "ConnectSessionAnswer": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "session_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "created",
+              "authorizing",
+              "exchanging",
+              "selecting",
+              "completing",
+              "complete",
+              "failed"
+            ]
+          },
+          "graph": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+          },
+          "connection_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+          },
+          "expires_at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Expiry as Unix epoch milliseconds."
+          }
+        },
+        "required": [
+          "ok",
+          "session_id",
+          "status",
+          "graph",
+          "connection_id",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      },
       "CdcTableName": {
         "type": "object",
         "properties": {

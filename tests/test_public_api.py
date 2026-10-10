@@ -22,13 +22,15 @@ def test_public_exports_are_explicit_and_stable() -> None:
         "QueryAskResult",
         "QueryAskStreamEvent",
         "RESET",
+        "entity_ref",
+        "entity_id_from_iri",
         "LbbLocalClient",
         "LbbCommandError",
     ]
 
 
 def test_package_version_and_primary_clients_are_available() -> None:
-    assert lbb.__version__ == "0.22.0"
+    assert lbb.__version__ == "0.23.0"
     try:
         distribution_version = version("littlebigbrain")
     except PackageNotFoundError:
