@@ -2,8 +2,66 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.23.0 (2026-10-11)
 
+- `try_workflow_starter(starter, *, params=None)` runs Try on samples
+  (`POST /v1/workflows/starters/try`, SaaS mode) and is sent once.
+- Workflow activities on `LbbClient`, `AsyncLbbClient` and `graph(name)`:
+  `reason_activity(prompt, schema, system=, max_tokens=, effect_id=,
+  label=)`, `decide_activity(state, questions, effect_id=, label=)` and
+  `embed_activity(texts, effect_id=, label=)` call
+  `POST /v1/workflows/activities/{reason,decide,embed}`. `schema` goes on
+  the wire as `schema` (the generated `ReasonActivityRequest` names the
+  field `schema_`). With `effect_id` the server keeps the first answer and
+  returns it again with `cached: True`, so a `5xx` and a transport failure
+  are retried; without one only a `429` the server returns before it runs
+  the request is. `reason_activity` waits up to 5 minutes per attempt.
+  Each returns the JSON answer (an awaitable on `AsyncLbbClient`);
+  validate it with `models.ReasonActivityResponse`,
+  `models.DecideActivityResponse` or `models.EmbedActivityResponse`.
+- Starter workflows and triggered workflows on `LbbClient`,
+  `AsyncLbbClient` and `graph(name)`. A starter workflow is a template. A
+  triggered workflow is a workflow created from one on a graph, and it
+  follows a class of the graph. Embeddings on classes (`search.embed`) and
+  fit sources (`ontology.fit`) are triggered workflows.
+  `workflow_starters()` calls `GET /v1/workflows/starters`.
+  `use_workflow_starter(starter, class_=..., fields=..., params=...)`
+  creates or changes a triggered workflow. `triggered_workflows()` and
+  `triggered_workflow(starter, name)` read them.
+  `preview_triggered_workflow(..., sample=, iris=, propose=)`,
+  `refresh_triggered_workflow(starter, name)` and
+  `delete_triggered_workflow(starter, name)` call the other
+  `/v1/workflows/triggered*` routes. Each returns the JSON answer (an
+  awaitable on `AsyncLbbClient`). `use_workflow_starter` and a preview
+  without `propose` retry a failed call. `delete_triggered_workflow`
+  repeats the name as `confirm`. Ontology starters stay
+  `ontology.starters`.
+- Developer workflows (the `workflow@v1` starter workflow):
+  `use_workflow_starter("workflow", ...)` takes `workflow` (`workflow_type`,
+  `version`), `owns` and `batch`.
+  `pause_triggered_workflow(starter, name, paused=True)` calls
+  `POST /v1/workflows/triggered/pause` (`paused=False` resumes) and retries
+  a failed call. `commit` and `graph(name).facts.create` send
+  `replace_owned` as given and return `owned`. `ontology.suggestion_create`
+  sends `facts`, and the accepted suggestion's `facts_commit` names the
+  commit.
+- New `files` on `LbbClient`, `AsyncLbbClient` and `graph(name)` for the
+  files of a graph: `upload(data, name=, content_type=)` sends the bytes,
+  or the file at a path (`str` or a path object; the name and the content
+  type default to the path's), as the raw body of `POST /v1/files` and
+  retries a failed call (the same bytes again change nothing); `list()`,
+  `content(sha256)` (the bytes), `pages(sha256, from_=, to=)` (the parsed
+  lines and words with their boxes) and `delete(sha256)` (repeats the
+  SHA-256 as `confirm`) call `/v1/files*`. A SHA-256 that is not 64
+  hexadecimal characters or a bad page range raises `ValueError` before a
+  request.
+- New `entity_ref(iri, type, name=None)` and `entity_id_from_iri(iri)`
+  (also `lbb.entities.ENTITY_IRI_NAMESPACE` and `ENTITY_ID_KEY_SENTINEL`):
+  the commit reference of an entity you know by its IRI. Its `key` is the
+  id sentinel and the entity's 32-hex id, so a commit or a `replace_owned`
+  subject addresses that entity directly, a keyed one included. `name`
+  (default: the id) is the display name a triplet endpoint or a field row
+  writes; `replace_owned` reads only the id.
 - `query.names` responses carry `index_complete`, `index_classes_read` and
   `index_gaps` (new models `QueryNamesIndexGap` and `QueryNamesGapReason`):
   whether the name index read every class in full, and the classes it did

@@ -39,6 +39,7 @@ from ._client_base import (
     _EntityNamespace,
     _error_body_field,
     _EvalsNamespace,
+    _FilesNamespace,
     _jittered_backoff,
     _ModelSwitchesNamespace,
     _ModelTrialsNamespace,
@@ -425,6 +426,8 @@ class LbbClient(_BaseLbbClient):
         # Model trials of other models on the graph's uses, and switches.
         self.models = _SyncModelsNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
+        # Files of the graph: upload, list, bytes, parsed pages, delete.
+        self.files = _FilesNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
         self.integrations = IntegrationsNamespace(self)
         self._http = httpx.Client(
@@ -583,6 +586,7 @@ class LbbClient(_BaseLbbClient):
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
         scoped: bool = True,
+        binary: bool = False,
     ) -> RawLbbResponse:
         request_options = options or {}
         kwargs = self._request_kwargs(
@@ -657,6 +661,7 @@ class LbbClient(_BaseLbbClient):
             response,
             attempts=attempts,
             elapsed_ms=(time.monotonic() - started_at) * 1000,
+            binary=binary,
         )
 
     def _event_stream(
@@ -791,6 +796,24 @@ class LbbClient(_BaseLbbClient):
 
     def _page_request(self, row_model: type[RowT], payload: Any) -> ListPage[RowT]:
         return ListPage.from_payload(payload, row_model)
+
+    def _bytes_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        options: RequestOptions | None = None,
+    ) -> bytes:
+        response = self._send(
+            method,
+            path,
+            f"{self._base_url}{path}",
+            params=params,
+            options=options,
+            binary=True,
+        )
+        return cast(bytes, response.data)
 
     def wait_for_published(
         self,

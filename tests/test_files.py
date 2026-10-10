@@ -1,0 +1,286 @@
+"""Files of a graph (``/v1/files*``) and entity references by IRI, sync and
+async, against a mock transport."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from lbb import AsyncLbbClient, LbbClient, LbbError, entity_id_from_iri, entity_ref
+from lbb.entities import ENTITY_ID_KEY_SENTINEL, ENTITY_IRI_NAMESPACE
+from lbb.models import FilePages, FileUploadResponse
+
+SHA = "ab" * 32
+RECORD = {
+    "sha256": SHA,
+    "name": "room-book.pdf",
+    "content_type": "application/pdf",
+    "bytes": 4,
+    "uploaded_at": "2026-10-10T08:00:00Z",
+    "document": "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+}
+PAGES = {
+    "sha256": SHA,
+    "parser": "poppler-26.03.0",
+    "page_count": 3,
+    "from": 1,
+    "to": 2,
+    "pages": [
+        {
+            "page": 1,
+            "width": 595.22,
+            "height": 842,
+            "lines": [
+                {
+                    "id": "p2-l1",
+                    "text": "S 1.1",
+                    "box": [0.1, 0.2, 0.3, 0.4],
+                    "words": [{"text": "S", "box": [0.1, 0.2, 0.15, 0.4]}],
+                }
+            ],
+        }
+    ],
+}
+PDF = b"%PDF\xff\x00\x80"
+ENTRY_ID = "0123456789abcdef0123456789abcdef"
+ENTRY_IRI = f"https://littlebigbrain.com/e/{ENTRY_ID}"
+
+
+def transport(captured: list[httpx.Request], answers: list[httpx.Response]) -> httpx.MockTransport:
+    queue = list(answers)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return queue.pop(0) if queue else httpx.Response(200, json={})
+
+    return httpx.MockTransport(handler)
+
+
+def json_answer(body: Any, status: int = 200) -> httpx.Response:
+    return httpx.Response(status, json=body)
+
+
+class FilesSync(unittest.TestCase):
+    def client(self, captured: list[httpx.Request], answers: list[httpx.Response]) -> LbbClient:
+        return LbbClient(
+            "http://h",
+            graph="docs",
+            retry_delay=0,
+            transport=transport(captured, answers),
+        )
+
+    def test_upload_sends_the_bytes_under_the_name(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [json_answer({"file": RECORD, "created": True, "commit_seq": 12})],
+        )
+        answer = lbb.files.upload(PDF, name="room book.pdf", content_type="application/pdf")
+        self.assertTrue(FileUploadResponse.model_validate(answer).created)
+        request = captured[0]
+        self.assertEqual(request.method, "POST")
+        self.assertEqual(request.url.path, "/v1/files")
+        self.assertEqual(dict(request.url.params), {"graph": "docs", "name": "room book.pdf"})
+        self.assertEqual(request.content, PDF)
+        self.assertEqual(request.headers["content-type"], "application/pdf")
+
+    def test_upload_reads_a_path_and_retries_a_503(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                json_answer({"error": {"code": "server_busy", "message": "busy"}}, 503),
+                json_answer({"file": RECORD, "created": False}),
+                json_answer({"file": RECORD, "created": False}),
+            ],
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "room-book.pdf"
+            path.write_bytes(PDF)
+            lbb.files.upload(path)
+            lbb.files.upload(str(path), name="other.bin", content_type="application/x-test")
+        self.assertEqual(len(captured), 3, "the 503 was retried")
+        self.assertEqual(captured[0].content, PDF)
+        self.assertEqual(captured[1].content, PDF)
+        self.assertEqual(captured[1].url.params["name"], "room-book.pdf")
+        self.assertEqual(captured[1].headers["content-type"], "application/pdf")
+        self.assertEqual(captured[2].url.params["name"], "other.bin")
+        self.assertEqual(captured[2].headers["content-type"], "application/x-test")
+
+    def test_upload_of_bytes_needs_a_name_and_defaults_to_octet_stream(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(captured, [json_answer({"file": RECORD, "created": True})])
+        with self.assertRaises(ValueError):
+            lbb.files.upload(b"x")
+        lbb.files.upload(bytearray(b"x"), name="x.bin")
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0].headers["content-type"], "application/octet-stream")
+
+    def test_list_content_pages_and_delete(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                json_answer({"files": [RECORD]}),
+                httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"}),
+                json_answer(PAGES),
+                json_answer({"deleted": True, "sha256": SHA}),
+            ],
+        )
+        self.assertEqual(lbb.files.list()["files"][0]["name"], "room-book.pdf")
+        self.assertEqual(lbb.files.content(SHA.upper()), PDF)
+        pages = FilePages.model_validate(lbb.files.pages(SHA, from_=1, to=2))
+        self.assertEqual(pages.pages[0].lines[0].id, "p2-l1")
+        self.assertEqual(pages.pages[0].lines[0].box, [0.1, 0.2, 0.3, 0.4])
+        self.assertTrue(lbb.files.delete(f" {SHA} ")["deleted"])
+        self.assertEqual(
+            [(request.method, request.url.path, dict(request.url.params)) for request in captured],
+            [
+                ("GET", "/v1/files", {"graph": "docs"}),
+                ("GET", "/v1/files/content", {"graph": "docs", "sha256": SHA}),
+                (
+                    "GET",
+                    "/v1/files/pages",
+                    {"graph": "docs", "sha256": SHA, "from": "1", "to": "2"},
+                ),
+                ("DELETE", "/v1/files", {"graph": "docs", "sha256": SHA, "confirm": SHA}),
+            ],
+        )
+
+    def test_a_plain_text_file_stays_bytes(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [httpx.Response(200, content=b"{not json", headers={"content-type": "text/plain"})],
+        )
+        self.assertEqual(lbb.files.content(SHA), b"{not json")
+
+    def test_bad_arguments_send_nothing(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(captured, [])
+        for call in (
+            lambda: lbb.files.content("abc"),
+            lambda: lbb.files.pages(SHA, from_=3, to=1),
+            lambda: lbb.files.pages(SHA, from_=-1),
+            lambda: lbb.files.delete("z" * 64),
+        ):
+            with self.assertRaises(ValueError):
+                call()
+        self.assertEqual(captured, [])
+
+    def test_a_missing_file_raises_the_server_error(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                json_answer(
+                    {
+                        "error": {
+                            "type": "not_found_error",
+                            "code": "file_not_parsed",
+                            "message": "not parsed yet",
+                        }
+                    },
+                    404,
+                )
+            ],
+        )
+        with self.assertRaises(LbbError) as raised:
+            lbb.files.pages(SHA)
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertEqual(raised.exception.code, "file_not_parsed")
+
+    def test_graph_namespace_scopes_the_files(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(captured, [json_answer({"files": []})])
+        lbb.graph("other").files.list()
+        self.assertEqual(captured[0].url.params["graph"], "other")
+
+
+class FilesAsync(unittest.TestCase):
+    def test_async_files_await_their_answers(self) -> None:
+        captured: list[httpx.Request] = []
+
+        async def run() -> tuple[Any, bytes, Any]:
+            async with AsyncLbbClient(
+                "http://h",
+                graph="docs",
+                retry_delay=0,
+                transport=transport(
+                    captured,
+                    [
+                        json_answer({"file": RECORD, "created": True}),
+                        httpx.Response(
+                            200, content=PDF, headers={"content-type": "application/pdf"}
+                        ),
+                        json_answer(PAGES),
+                    ],
+                ),
+            ) as lbb:
+                uploaded = await lbb.files.upload(PDF, name="room-book.pdf")
+                content = await lbb.files.content(SHA)
+                pages = await lbb.graph("docs").files.pages(SHA, to=2)
+                return uploaded, content, pages
+
+        uploaded, content, pages = asyncio.run(run())
+        self.assertTrue(uploaded["created"])
+        self.assertEqual(content, PDF)
+        self.assertEqual(pages["page_count"], 3)
+        self.assertEqual(captured[0].content, PDF)
+        self.assertEqual(dict(captured[2].url.params), {"graph": "docs", "sha256": SHA, "to": "2"})
+
+
+class EntityRefs(unittest.TestCase):
+    def test_entity_ref_addresses_the_entity_by_its_id(self) -> None:
+        self.assertEqual(ENTITY_IRI_NAMESPACE, "https://littlebigbrain.com/e/")
+        self.assertEqual(ENTITY_ID_KEY_SENTINEL, "\u0000lbb-eid:")
+        self.assertEqual(entity_id_from_iri(ENTRY_IRI), ENTRY_ID)
+        self.assertEqual(entity_id_from_iri(ENTITY_IRI_NAMESPACE + ENTRY_ID.upper()), ENTRY_ID)
+        self.assertEqual(
+            entity_ref(ENTRY_IRI, "DocEntry"),
+            {"type": "DocEntry", "name": ENTRY_ID, "key": f"\u0000lbb-eid:{ENTRY_ID}"},
+        )
+        self.assertEqual(entity_ref(ENTRY_IRI, "DocEntry", "S 1.1")["name"], "S 1.1")
+        self.assertIn('"key": "\\u0000lbb-eid:', json.dumps(entity_ref(ENTRY_IRI, "DocEntry")))
+
+    def test_entity_ref_refuses_other_iris(self) -> None:
+        for iri in (
+            "https://example.org/e/0123456789abcdef0123456789abcdef",
+            "https://littlebigbrain.com/class/docentry",
+            f"{ENTRY_IRI}0",
+            "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdeg",
+        ):
+            with self.assertRaises(ValueError, msg=iri):
+                entity_ref(iri, "DocEntry")
+        with self.assertRaises(ValueError):
+            entity_ref(ENTRY_IRI, " ")
+
+    def test_a_commit_carries_the_reference_as_a_subject(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = LbbClient("http://h", graph="docs", transport=transport(captured, []))
+        lbb.commit(
+            {
+                "entity_properties": [
+                    {**entity_ref(ENTRY_IRI, "DocEntry", "S 1.1"), "properties": {"width_cm": 60}}
+                ],
+                "replace_owned": {
+                    "subjects": [entity_ref(ENTRY_IRI, "DocEntry")],
+                    "properties": ["width_cm"],
+                },
+            }
+        )
+        body = json.loads(captured[0].content)
+        self.assertEqual(
+            body["replace_owned"]["subjects"][0]["key"], f"\u0000lbb-eid:{ENTRY_ID}"
+        )
+        self.assertEqual(body["entity_properties"][0]["name"], "S 1.1")
+
+
+if __name__ == "__main__":
+    unittest.main()

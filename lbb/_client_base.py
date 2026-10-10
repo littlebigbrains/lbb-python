@@ -20,6 +20,8 @@ from __future__ import annotations
 import codecs
 import enum
 import json
+import mimetypes
+import os
 import random
 import re
 import time
@@ -760,8 +762,14 @@ def _retry_delay_seconds(
 
 
 def _raw_response(
-    response: httpx.Response, *, attempts: int = 1, elapsed_ms: float = 0.0
+    response: httpx.Response,
+    *,
+    attempts: int = 1,
+    elapsed_ms: float = 0.0,
+    binary: bool = False,
 ) -> RawLbbResponse:
+    """The response as a :class:`RawLbbResponse`. ``binary`` keeps a 2xx body
+    as bytes, whatever its content type (a file's content)."""
     request_id = response.headers.get("x-request-id")
     if response.status_code // 100 != 2:
         raise _parse_error(
@@ -771,7 +779,7 @@ def _raw_response(
             response.headers.get("retry-after"),
         )
     try:
-        data = _decode_response_data(response)
+        data = response.content if binary else _decode_response_data(response)
     except ValueError as error:
         request = f" (request {request_id})" if request_id else ""
         raise ValueError(
@@ -789,7 +797,442 @@ def _raw_response(
     )
 
 
-class _BaseLbbClient:
+def _triggered_workflow_body(
+    starter: str,
+    name: str | None,
+    class_: str | None,
+    fields: Sequence[str | Mapping[str, Any]] | None,
+    exclude: Sequence[str] | None,
+    params: Mapping[str, Any] | None,
+    gate: float | None,
+    budget_usd_per_month: float | None,
+    workflow: Mapping[str, Any] | None,
+    owns: Mapping[str, Any] | None,
+    batch: int | None,
+) -> dict[str, Any]:
+    """The body that creates or previews a triggered workflow.
+
+    ``class_``, ``fields`` and ``exclude`` form the wire field ``watch``.
+    """
+    body: dict[str, Any] = {"starter": starter}
+    if name is not None:
+        body["name"] = name
+    if class_ is not None:
+        watch: dict[str, Any] = {"class": class_}
+        if fields is not None:
+            watch["fields"] = [
+                field if isinstance(field, str) else dict(field) for field in fields
+            ]
+        if exclude is not None:
+            watch["exclude"] = [str(item) for item in exclude]
+        body["watch"] = watch
+    elif fields is not None or exclude is not None:
+        raise ValueError("fields and exclude need class_ (the watched class)")
+    if params is not None:
+        body["params"] = dict(params)
+    if gate is not None:
+        body["gate"] = {"below": gate}
+    if budget_usd_per_month is not None:
+        body["budget_usd_per_month"] = budget_usd_per_month
+    if workflow is not None:
+        body["workflow"] = dict(workflow)
+    if owns is not None:
+        body["owns"] = dict(owns)
+    if batch is not None:
+        body["batch"] = batch
+    return body
+
+
+_REASON_TIMEOUT_SECONDS: Final = 300.0
+
+
+def _activity_body(
+    body: dict[str, Any], effect_id: str | None, label: str | None
+) -> dict[str, Any]:
+    """A workflow activity's body with its optional ``effect_id`` and ``label``."""
+    if effect_id is not None:
+        body["effect_id"] = effect_id
+    if label is not None:
+        body["label"] = label
+    return body
+
+
+def _activity_options(
+    effect_id: str | None, extra: RequestOptions | None = None
+) -> RequestOptions:
+    """With an effect id a repeat returns the kept answer, so a ``5xx`` and a
+    transport failure are retried; without one only a ``429`` the server
+    returns before it runs the request is."""
+    options: RequestOptions = {"retry": True if effect_id is not None else "rate_limited"}
+    options.update(extra or {})
+    return options
+
+
+class _WorkflowActivityMethods:
+    """Workflow activities: LBB's own model calls for a workflow's code.
+
+    ``reason_activity``, ``decide_activity`` and ``embed_activity`` call
+    ``POST /v1/workflows/activities/{reason,decide,embed}``. LBB meters each
+    call against the stack's model budget for workflows
+    (``429 workflow_budget_exceeded`` past it) and writes it to the call
+    log under ``label``. With ``effect_id`` (a durable step's effect id) the
+    server keeps the first answer: the same request again returns it with
+    ``cached: True`` at no cost, and another request under the same
+    ``effect_id`` fails with ``409 activity_effect_conflict``. A request the
+    model cannot answer fails with ``422 activity_request_refused``: split
+    it. A call with ``effect_id`` retries a ``5xx`` and a transport failure;
+    one without retries only a ``429`` the server returns before it runs
+    the request.
+
+    :class:`LbbClient`, :class:`AsyncLbbClient` and ``graph(name)`` have
+    these methods; on ``graph(name)`` they address that graph. Each returns
+    the JSON answer (an awaitable on :class:`AsyncLbbClient`).
+    """
+
+    def _workflows_client(self) -> _BaseLbbClient:
+        """The client that sends the requests."""
+        raise NotImplementedError
+
+    def _workflows_scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """The query parameters, with the graph these methods address."""
+        raise NotImplementedError
+
+    def reason_activity(
+        self,
+        prompt: str,
+        schema: Mapping[str, Any],
+        *,
+        system: str | None = None,
+        max_tokens: int | None = None,
+        effect_id: str | None = None,
+        label: str | None = None,
+    ) -> Any:
+        """The reasoning model answers ``prompt`` with JSON that follows
+        ``schema``, a JSON Schema object
+        (``POST /v1/workflows/activities/reason``).
+
+        ``system`` is the system prompt; ``prompt`` and ``system`` hold at
+        most 200,000 characters together. ``max_tokens`` is 1 to 32,000
+        (default 8,000). The answer has ``value``, ``model``,
+        ``tokens_in``, ``tokens_out``, ``cost_micro_usd`` and ``cached``.
+        Validate it with ``models.ReasonActivityResponse``. One attempt
+        waits up to 5 minutes.
+        """
+        body: dict[str, Any] = {"prompt": prompt, "schema": dict(schema)}
+        if system is not None:
+            body["system"] = system
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/activities/reason",
+            params=self._workflows_scope(),
+            body=_activity_body(body, effect_id, label),
+            options=_activity_options(effect_id, {"timeout": _REASON_TIMEOUT_SECONDS}),
+        )
+
+    def decide_activity(
+        self,
+        state: Any,
+        questions: Mapping[str, Mapping[str, Any]],
+        *,
+        effect_id: str | None = None,
+        label: str | None = None,
+    ) -> Any:
+        """The decision model answers each choice question about ``state``
+        (``POST /v1/workflows/activities/decide``).
+
+        ``questions`` maps a question id to ``{"instructions": ...,
+        "criteria": {option id: what the option means}}``: 1 to 64
+        questions of 2 to 64 options each. ``state`` is any JSON, at most
+        200,000 characters. The answer's ``answers`` maps each question id
+        to ``choice``, ``confidence`` and ``probabilities``; a question the
+        model did not answer is missing. Validate it with
+        ``models.DecideActivityResponse``.
+        """
+        body: dict[str, Any] = {
+            "state": state,
+            "questions": {key: dict(question) for key, question in questions.items()},
+        }
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/activities/decide",
+            params=self._workflows_scope(),
+            body=_activity_body(body, effect_id, label),
+            options=_activity_options(effect_id),
+        )
+
+    def embed_activity(
+        self,
+        texts: Sequence[str],
+        *,
+        effect_id: str | None = None,
+        label: str | None = None,
+    ) -> Any:
+        """The server's embedding model embeds ``texts``: 1 to 256, each at
+        most 8,000 characters (``POST /v1/workflows/activities/embed``).
+
+        The answer has ``vectors`` (one per text, in order), ``model``,
+        ``dim``, ``tokens_in``, ``cost_micro_usd`` and ``cached``. Validate
+        it with ``models.EmbedActivityResponse``. The call also counts
+        against the stack's embedding budget.
+        """
+        if isinstance(texts, str):
+            raise TypeError("texts is a sequence of strings, not one string")
+        body: dict[str, Any] = {"texts": [str(text) for text in texts]}
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/activities/embed",
+            params=self._workflows_scope(),
+            body=_activity_body(body, effect_id, label),
+            options=_activity_options(effect_id),
+        )
+
+
+class _StarterWorkflowMethods(_WorkflowActivityMethods):
+    """Starter workflows and the triggered workflows created from them.
+
+    A starter workflow is a template in the server's catalog
+    (``search.embed``, ``ontology.fit``, ``workflow`` and others). A
+    triggered workflow is a workflow created from one on a graph, under a
+    name. It has a watch (a class and the fields whose change marks an
+    instance dirty) and parameters. It gets the instances that each
+    published generation adds or changes.
+
+    Embeddings on classes (``search.embed``) and fit sources
+    (``ontology.fit``) are triggered workflows: ``client.embeddings`` and
+    ``client.ontology.fit_sources`` read and write the same documents. A
+    triggered workflow of ``workflow`` sends the instances to a workflow of
+    your worker as messages. Your code writes the facts it owns with a
+    commit that carries ``replace_owned``. Ontology starters (base
+    ontologies) are ``client.ontology.starters``.
+
+    :class:`LbbClient`, :class:`AsyncLbbClient` and ``graph(name)`` have
+    these methods; on ``graph(name)`` they address that graph. Each returns
+    the JSON answer (an awaitable on :class:`AsyncLbbClient`).
+    """
+
+    def workflow_starters(self) -> Any:
+        """The starter workflows of this server (``GET /v1/workflows/starters``).
+
+        Each one has its watch rule, its parameters, its group on the
+        Workflows page, the graph kinds it supports, and whether it can run
+        here (``available``, with ``unavailable_reason`` when it cannot).
+        Validate the answer with ``models.StarterWorkflowCatalog``.
+        """
+        return self._workflows_client()._request(
+            "GET", "/v1/workflows/starters", params=self._workflows_scope()
+        )
+
+    def try_workflow_starter(
+        self, starter: str, *, params: Mapping[str, Any] | None = None
+    ) -> Any:
+        """Try a starter workflow on its samples
+        (``POST /v1/workflows/starters/try``, SaaS mode).
+
+        The server creates a new graph ``try-<starter>-<hex>`` in this
+        environment, loads the starter workflow's samples, and creates the
+        workflow there with its defaults; ``params`` replace them key by
+        key. The answer names the graph (``graph``) and its workflows. Each
+        call makes a new graph, so it is never retried. Delete the graph
+        when done.
+        """
+        body: dict[str, Any] = {"starter": starter}
+        if params is not None:
+            body["params"] = dict(params)
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/starters/try",
+            params=self._workflows_scope(),
+            body=body,
+        )
+
+    def use_workflow_starter(
+        self,
+        starter: str,
+        *,
+        name: str | None = None,
+        class_: str | None = None,
+        fields: Sequence[str | Mapping[str, Any]] | None = None,
+        exclude: Sequence[str] | None = None,
+        params: Mapping[str, Any] | None = None,
+        gate: float | None = None,
+        budget_usd_per_month: float | None = None,
+        workflow: Mapping[str, Any] | None = None,
+        owns: Mapping[str, Any] | None = None,
+        batch: int | None = None,
+    ) -> Any:
+        """Create a workflow from a starter workflow, or change one
+        (``PUT /v1/workflows/triggered``). Returns the triggered workflow.
+
+        ``starter`` is the catalog id (``"search.embed"``,
+        ``"ontology.fit@v1"``). ``class_`` and ``fields`` form the watch
+        (the wire field ``watch``): the class, and its fields in the path
+        syntax of embeddings (``"transcript"``, ``"about/label"``). Without
+        ``fields`` the starter workflow's default fields apply. ``exclude``
+        names fields to leave out. ``fields`` or ``exclude`` without
+        ``class_`` raises ``ValueError`` before a request.
+
+        ``params`` holds the starter workflow's own settings: ``model``,
+        ``dim`` and ``title`` for ``search.embed``, ``context`` for
+        ``ontology.fit``. ``gate`` sends outputs below that confidence to
+        review. ``workflow``, ``owns`` and ``batch`` are for the
+        ``workflow`` starter workflow. Without ``name`` the server takes the
+        class's local name. The same request again changes nothing, so a
+        failed call is retried.
+        """
+        return self._workflows_client()._request(
+            "PUT",
+            "/v1/workflows/triggered",
+            params=self._workflows_scope(),
+            body=_triggered_workflow_body(
+                starter,
+                name,
+                class_,
+                fields,
+                exclude,
+                params,
+                gate,
+                budget_usd_per_month,
+                workflow,
+                owns,
+                batch,
+            ),
+            options={"retry": True},
+        )
+
+    def triggered_workflows(self) -> Any:
+        """Every triggered workflow of the graph with its status, by starter,
+        then name (``GET /v1/workflows/triggered``). The answer lists them in
+        ``starters``; validate it with ``models.TriggeredWorkflowList``."""
+        return self._workflows_client()._request(
+            "GET", "/v1/workflows/triggered", params=self._workflows_scope()
+        )
+
+    def triggered_workflow(self, starter: str, name: str) -> Any:
+        """One triggered workflow (``GET /v1/workflows/triggered`` with
+        ``starter`` and ``name``).
+
+        The answer has its resolved watch, its settings, its status (state,
+        lag, counters, spend, last error) and the workflow's own status in
+        ``details``. An unknown name answers
+        ``404 triggered_workflow_not_found``.
+        """
+        return self._workflows_client()._request(
+            "GET",
+            "/v1/workflows/triggered",
+            params=self._workflows_scope({"starter": starter, "name": name}),
+        )
+
+    def preview_triggered_workflow(
+        self,
+        starter: str,
+        *,
+        name: str | None = None,
+        class_: str | None = None,
+        fields: Sequence[str | Mapping[str, Any]] | None = None,
+        exclude: Sequence[str] | None = None,
+        params: Mapping[str, Any] | None = None,
+        gate: float | None = None,
+        budget_usd_per_month: float | None = None,
+        workflow: Mapping[str, Any] | None = None,
+        owns: Mapping[str, Any] | None = None,
+        batch: int | None = None,
+        sample: int | None = None,
+        iris: Sequence[str] | None = None,
+        propose: bool = False,
+    ) -> Any:
+        """What creating or changing a triggered workflow would do
+        (``POST /v1/workflows/triggered/preview``). Writes nothing.
+
+        Takes the arguments of :meth:`use_workflow_starter`. The answer has
+        the resolved watch, the instance count, and the starter workflow's
+        own preview in ``details``. ``sample`` is the number of instances to
+        show; ``iris`` shows these instances instead of a sample. With
+        ``propose=True`` the starter workflow's models run on the sample (a
+        dry run of ``ontology.fit``) and spend model budget, so that call is
+        not retried. Past the budget it answers
+        ``429 workflow_budget_exceeded``.
+        """
+        body = _triggered_workflow_body(
+            starter,
+            name,
+            class_,
+            fields,
+            exclude,
+            params,
+            gate,
+            budget_usd_per_month,
+            workflow,
+            owns,
+            batch,
+        )
+        if sample is not None:
+            body["sample"] = sample
+        if iris is not None:
+            body["iris"] = [str(iri) for iri in iris]
+        if propose:
+            body["propose"] = True
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/triggered/preview",
+            params=self._workflows_scope(),
+            body=body,
+            options={"retry": not propose},
+        )
+
+    def refresh_triggered_workflow(self, starter: str, name: str) -> Any:
+        """Ask a triggered workflow's job to run now
+        (``POST /v1/workflows/triggered/refresh``).
+
+        Answers at once with the triggered workflow (in ``starter``) and
+        ``queued``; read :meth:`triggered_workflow` for the progress.
+        """
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/triggered/refresh",
+            params=self._workflows_scope({"starter": starter, "name": name}),
+        )
+
+    def pause_triggered_workflow(
+        self, starter: str, name: str, paused: bool = True
+    ) -> Any:
+        """Pause (``paused=True``, the default) or resume (``paused=False``) a
+        triggered workflow (``POST /v1/workflows/triggered/pause``).
+
+        A paused workflow reads and sends nothing; a resumed one catches up
+        from where it stopped. ``search.embed`` and ``ontology.fit`` answer
+        ``400 workflow_pause_unsupported`` to a pause. Returns the triggered
+        workflow. The same call again changes nothing, so a failed call is
+        retried.
+        """
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/triggered/pause",
+            params=self._workflows_scope({"starter": starter, "name": name}),
+            body={"paused": paused},
+            options={"retry": True},
+        )
+
+    def delete_triggered_workflow(self, starter: str, name: str) -> Any:
+        """Delete a triggered workflow (``DELETE /v1/workflows/triggered``);
+        the client repeats the name as ``confirm``.
+
+        Deleting ``search.embed`` deletes the embedding and its vectors.
+        The suggestions an ``ontology.fit`` filed stay in the inbox. A
+        ``workflow`` keeps its workflow instance ``starter.<name>`` and the
+        facts its code wrote.
+        """
+        return self._workflows_client()._request(
+            "DELETE",
+            "/v1/workflows/triggered",
+            params=self._workflows_scope(
+                {"starter": starter, "name": name, "confirm": name}
+            ),
+        )
+
+
+class _BaseLbbClient(_StarterWorkflowMethods):
     """Shared configuration and the route method table.
 
     Each route method returns ``self._request(...)``; in :class:`LbbClient`
@@ -953,6 +1396,13 @@ class _BaseLbbClient:
     def graph(self, name: str) -> _GraphNamespace:
         return _GraphNamespace(self, name)
 
+    def _workflows_client(self) -> _BaseLbbClient:
+        return self
+
+    def _workflows_scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        # The client adds its own graph to every request.
+        return dict(params or {})
+
     def raw_request(
         self,
         method: str,
@@ -1008,7 +1458,13 @@ class _BaseLbbClient:
         )
 
     def commit(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        """Commit triplets and optional entity embeddings."""
+        """Commit triplets and optional entity embeddings.
+
+        The body is sent as given, so ``replace_owned`` (``subjects``,
+        ``relations``, ``properties``, ``retract_entities``) replaces a
+        writer's owned edges and fields on its subjects in the same commit;
+        the answer reports what it removed in ``owned``.
+        """
         return self._request(
             "POST",
             "/v1/graph/commit",
@@ -1088,6 +1544,7 @@ class _BaseLbbClient:
         batch: int | None = None,
         strict: bool | None = None,
         observed_at: str | None = None,
+        expected_graph_epoch: str | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-ingest a dataset as NDJSON.
@@ -1114,6 +1571,7 @@ class _BaseLbbClient:
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
+                "expected_graph_epoch": expected_graph_epoch,
             },
             content=ndjson,
             content_type="application/x-ndjson",
@@ -1221,7 +1679,10 @@ class _BaseLbbClient:
             idempotency_key=idempotency_key or self.idempotency_key("import-rdf"),
         )
 
-    def retract(self, body: Body, *, idempotency_key: str | None = None) -> Any:
+    def retract(
+        self, body: Body, *, idempotency_key: str | None = None,
+        expected_graph_epoch: str | None = None,
+    ) -> Any:
         """Retract specific edges and/or every edge touching given entities.
 
         Appends superseding retract events rather than deleting — history stays
@@ -1232,6 +1693,7 @@ class _BaseLbbClient:
             "POST",
             "/v1/graph/retract",
             body=body,
+            params={"expected_graph_epoch": expected_graph_epoch},
             idempotency_key=idempotency_key or self.idempotency_key("retract"),
         )
 
@@ -1828,6 +2290,18 @@ class _BaseLbbClient:
     ) -> Any:
         raise NotImplementedError
 
+    def _bytes_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """A request whose 2xx body is returned as bytes (a file's content);
+        the async client returns an awaitable."""
+        raise NotImplementedError
+
     def _page_request(self, row_model: type[RowT], payload: Any) -> Any:
         raise NotImplementedError
 
@@ -1850,12 +2324,20 @@ class _BaseLbbClient:
         raise NotImplementedError
 
 
-class _GraphNamespace:
+class _GraphNamespace(_StarterWorkflowMethods):
     def __init__(self, client: _BaseLbbClient, graph: str) -> None:
         self._client = client
         self._graph = graph
         self.facts = _FactsNamespace(client, graph)
         self.ontology = _OntologyNamespace(client, graph)
+        # Files of this graph and their parsed pages.
+        self.files = _FilesNamespace(client, graph)
+
+    def _workflows_client(self) -> _BaseLbbClient:
+        return self._client
+
+    def _workflows_scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        return _graph_scoped(self._graph, params)
 
     def delete(self, *, confirm: str) -> models.GraphDeleteResponse:
         """Delete and deregister this whole graph."""
@@ -1950,25 +2432,29 @@ class _GraphNamespace:
             retry_after = status.retry.retry_after_ms / 1000
             time.sleep(min(max(poll_interval, retry_after), deadline - now))
 
-    def retract(self, body: Body, *, idempotency_key: str | None = None) -> Any:
+    def retract(
+        self, body: Body, *, idempotency_key: str | None = None,
+        expected_graph_epoch: str | None = None,
+    ) -> Any:
         """Retract edges/entities from the scoped graph. See :meth:`LbbClient.retract`."""
         return self._client._request(
             "POST",
             "/v1/graph/retract",
-            params={"graph": self._graph},
+            params={"graph": self._graph, "expected_graph_epoch": expected_graph_epoch},
             body=body,
             idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
         )
 
     def retract_model(
-        self, body: Body, *, idempotency_key: str | None = None
+        self, body: Body, *, idempotency_key: str | None = None,
+        expected_graph_epoch: str | None = None,
     ) -> models.GraphRetractResponse:
         """Retract and validate the response as ``GraphRetractResponse``."""
         return self._client._model_request(
             models.GraphRetractResponse,
             "POST",
             "/v1/graph/retract",
-            params={"graph": self._graph},
+            params={"graph": self._graph, "expected_graph_epoch": expected_graph_epoch},
             body=body,
             idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
         )
@@ -2012,6 +2498,7 @@ class _FactsNamespace:
         batch: int | None = None,
         strict: bool | None = None,
         observed_at: str | None = None,
+        expected_graph_epoch: str | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
         """Bulk-load a dataset as NDJSON. See :meth:`LbbClient.import_ndjson`."""
@@ -2028,6 +2515,7 @@ class _FactsNamespace:
                 "batch": batch,
                 "strict": strict,
                 "observed_at": observed_at,
+                "expected_graph_epoch": expected_graph_epoch,
             },
             content=ndjson,
             content_type="application/x-ndjson",
@@ -2328,6 +2816,133 @@ class _FitSourcesNamespace:
             "DELETE",
             "/v1/ontology/fit-sources",
             params=self._scope({"name": name, "confirm": name}),
+        )
+
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+FileData = bytes | bytearray | memoryview | str | os.PathLike[str]
+"""What ``files.upload`` takes: the bytes, or the path of a file to read."""
+
+
+def _sha256_of(sha256: str) -> str:
+    """A file's SHA-256 as the routes take it: 64 hex characters, lower case."""
+    value = sha256.strip().lower()
+    if not _SHA256.fullmatch(value):
+        raise ValueError(f"sha256 must be 64 hexadecimal characters, got {sha256!r}")
+    return value
+
+
+def _page_index(value: int | None, name: str) -> None:
+    if value is not None and (isinstance(value, bool) or value < 0):
+        raise ValueError(f"{name} must be a page index (0 or more)")
+
+
+class _FilesNamespace:
+    """Files of a records graph (``/v1/files*``).
+
+    A file is a document the graph holds: its bytes, stored once under their
+    SHA-256, and a ``Document`` entity the graph's facts can point at. The
+    document workflows read files: ``documents.parse`` reads the text layer
+    of each PDF into pages, with every line and word and its box on the
+    page, and ``documents.link`` links the codes the documents mention to the
+    entries that define them. The methods return the JSON answers (an
+    awaitable on :class:`AsyncLbbClient`); validate one with
+    ``models.FileUploadResponse``, ``models.FileList`` or ``models.FilePages``.
+    """
+
+    def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
+        self._client = client
+        self._graph = graph
+
+    def _scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        return _graph_scoped(self._graph, params)
+
+    def upload(
+        self,
+        data: FileData,
+        *,
+        name: str | None = None,
+        content_type: str | None = None,
+    ) -> Any:
+        """Upload a file (``POST /v1/files?name=``, at most 64 MiB).
+
+        ``data`` is the bytes, or the path of a file to read (``str`` or a
+        path object). ``name`` is the name the graph lists; a path's own file
+        name by default. ``content_type`` defaults to the type the path's
+        extension names, else ``application/octet-stream``; the server
+        recognizes a PDF by its bytes. The server stores the bytes once and
+        commits a ``Document`` entity for them. The same bytes under the
+        same name again change nothing (``created`` is false), so a failed
+        call is retried.
+        """
+        if isinstance(data, (str, os.PathLike)):
+            path = os.fspath(data)
+            with open(path, "rb") as handle:
+                content = handle.read()
+            name = name if name is not None else os.path.basename(path)
+            if content_type is None:
+                content_type = mimetypes.guess_type(path)[0]
+        else:
+            content = bytes(data)
+        if not name or not name.strip():
+            raise ValueError("files.upload needs the file's name")
+        return self._client._request(
+            "POST",
+            "/v1/files",
+            params=self._scope({"name": name}),
+            content=content,
+            content_type=content_type or "application/octet-stream",
+            options={"retry": True},
+        )
+
+    def list(self) -> Any:
+        """The graph's files, the newest upload first, with what the parse
+        made of each (``parse``: ``status``, ``page_count``, ``parser``)."""
+        return self._client._request("GET", "/v1/files", params=self._scope())
+
+    def content(self, sha256: str) -> Any:
+        """A file's bytes (``GET /v1/files/content``), as ``bytes``."""
+        return self._client._bytes_request(
+            "GET",
+            "/v1/files/content",
+            params=self._scope({"sha256": _sha256_of(sha256)}),
+        )
+
+    def pages(
+        self, sha256: str, *, from_: int | None = None, to: int | None = None
+    ) -> Any:
+        """The parsed pages ``from_`` to ``to`` of a file
+        (``GET /v1/files/pages``), 0-based; ``to`` is the first page not
+        returned (default ``from_ + 10``, at most 50 pages per call).
+
+        Each page has its size in PDF points and its lines, each line with
+        its id (``p1-l114``), text, ``box`` and words. A box is
+        ``[x0, y0, x1, y1]`` normalized to the page (0 to 1, origin top
+        left). A file that ``documents.parse`` has not read answers
+        ``404 file_not_parsed``.
+        """
+        _page_index(from_, "from_")
+        _page_index(to, "to")
+        if from_ is not None and to is not None and to < from_:
+            raise ValueError("to must not be below from_")
+        return self._client._request(
+            "GET",
+            "/v1/files/pages",
+            params=self._scope({"sha256": _sha256_of(sha256), "from": from_, "to": to}),
+        )
+
+    def delete(self, sha256: str) -> Any:
+        """Remove a file from the list and retract its ``Document`` entity;
+        the client repeats the SHA-256 as ``confirm``. The bytes and what the
+        document workflows stored stay in storage; a ``documents.link``
+        workflow retracts the entries and mentions it wrote for the
+        document."""
+        sha = _sha256_of(sha256)
+        return self._client._request(
+            "DELETE",
+            "/v1/files",
+            params=self._scope({"sha256": sha, "confirm": sha}),
         )
 
 

@@ -23,6 +23,7 @@ from .client import (
     RetryEvent,
     SparqlResults,
 )
+from .entities import entity_id_from_iri, entity_ref
 from .local import LbbCommandError, LbbLocalClient
 
 __all__ = [
@@ -38,6 +39,8 @@ __all__ = [
     "QueryAskResult",
     "QueryAskStreamEvent",
     "RESET",
+    "entity_ref",
+    "entity_id_from_iri",
     "LbbLocalClient",
     "LbbCommandError",
 ]

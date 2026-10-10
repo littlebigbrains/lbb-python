@@ -48,6 +48,7 @@ from ._client_base import (
     _error_body_field,
     _EvalsNamespace,
     _FactsNamespace,
+    _FilesNamespace,
     _GraphNamespace,
     _jittered_backoff,
     _ModelSwitchesNamespace,
@@ -65,6 +66,7 @@ from ._client_base import (
     _SchemaNamespace,
     _sse_decoder,
     _SseParser,
+    _StarterWorkflowMethods,
     _trial_settled,
     _trial_timeout,
 )
@@ -81,10 +83,13 @@ from .integrations import (
     IntegrationCdcStatusAnswer,
     IntegrationConnectionAnswer,
     IntegrationConnectorsAnswer,
+    IntegrationConnectSessionAnswer,
+    IntegrationConnectSessionCreateAnswer,
     IntegrationCreateAnswer,
     IntegrationDeleteAnswer,
     IntegrationEraseAnswer,
     IntegrationListAnswer,
+    IntegrationProviderAppsAnswer,
     IntegrationRefAnswer,
     IntegrationsNamespace,
     IntegrationStatusAnswer,
@@ -534,7 +539,141 @@ class _AsyncSchemaNamespace(_SchemaNamespace):
         )
 
 
-class _AsyncGraphNamespace(_GraphNamespace):
+class _AsyncStarterWorkflowMethods(_StarterWorkflowMethods):
+    """The starter workflow, triggered workflow and workflow activity
+    methods, awaited."""
+
+    async def reason_activity(
+        self,
+        prompt: str,
+        schema: Mapping[str, Any],
+        *,
+        system: str | None = None,
+        max_tokens: int | None = None,
+        effect_id: str | None = None,
+        label: str | None = None,
+    ) -> Any:
+        return await super().reason_activity(
+            prompt,
+            schema,
+            system=system,
+            max_tokens=max_tokens,
+            effect_id=effect_id,
+            label=label,
+        )
+
+    async def decide_activity(
+        self,
+        state: Any,
+        questions: Mapping[str, Mapping[str, Any]],
+        *,
+        effect_id: str | None = None,
+        label: str | None = None,
+    ) -> Any:
+        return await super().decide_activity(
+            state, questions, effect_id=effect_id, label=label
+        )
+
+    async def embed_activity(
+        self,
+        texts: Sequence[str],
+        *,
+        effect_id: str | None = None,
+        label: str | None = None,
+    ) -> Any:
+        return await super().embed_activity(texts, effect_id=effect_id, label=label)
+
+    async def workflow_starters(self) -> Any:
+        return await super().workflow_starters()
+
+    async def try_workflow_starter(
+        self, starter: str, *, params: Mapping[str, Any] | None = None
+    ) -> Any:
+        return await super().try_workflow_starter(starter, params=params)
+
+    async def use_workflow_starter(
+        self,
+        starter: str,
+        *,
+        name: str | None = None,
+        class_: str | None = None,
+        fields: Sequence[str | Mapping[str, Any]] | None = None,
+        exclude: Sequence[str] | None = None,
+        params: Mapping[str, Any] | None = None,
+        gate: float | None = None,
+        budget_usd_per_month: float | None = None,
+        workflow: Mapping[str, Any] | None = None,
+        owns: Mapping[str, Any] | None = None,
+        batch: int | None = None,
+    ) -> Any:
+        return await super().use_workflow_starter(
+            starter,
+            name=name,
+            class_=class_,
+            fields=fields,
+            exclude=exclude,
+            params=params,
+            gate=gate,
+            budget_usd_per_month=budget_usd_per_month,
+            workflow=workflow,
+            owns=owns,
+            batch=batch,
+        )
+
+    async def triggered_workflows(self) -> Any:
+        return await super().triggered_workflows()
+
+    async def triggered_workflow(self, starter: str, name: str) -> Any:
+        return await super().triggered_workflow(starter, name)
+
+    async def preview_triggered_workflow(
+        self,
+        starter: str,
+        *,
+        name: str | None = None,
+        class_: str | None = None,
+        fields: Sequence[str | Mapping[str, Any]] | None = None,
+        exclude: Sequence[str] | None = None,
+        params: Mapping[str, Any] | None = None,
+        gate: float | None = None,
+        budget_usd_per_month: float | None = None,
+        workflow: Mapping[str, Any] | None = None,
+        owns: Mapping[str, Any] | None = None,
+        batch: int | None = None,
+        sample: int | None = None,
+        iris: Sequence[str] | None = None,
+        propose: bool = False,
+    ) -> Any:
+        return await super().preview_triggered_workflow(
+            starter,
+            name=name,
+            class_=class_,
+            fields=fields,
+            exclude=exclude,
+            params=params,
+            gate=gate,
+            budget_usd_per_month=budget_usd_per_month,
+            workflow=workflow,
+            owns=owns,
+            batch=batch,
+            sample=sample,
+            iris=iris,
+            propose=propose,
+        )
+
+    async def refresh_triggered_workflow(self, starter: str, name: str) -> Any:
+        return await super().refresh_triggered_workflow(starter, name)
+
+    async def pause_triggered_workflow(
+        self, starter: str, name: str, paused: bool = True
+    ) -> Any:
+        return await super().pause_triggered_workflow(starter, name, paused)
+
+    async def delete_triggered_workflow(self, starter: str, name: str) -> Any:
+        return await super().delete_triggered_workflow(starter, name)
+
+
+class _AsyncGraphNamespace(_AsyncStarterWorkflowMethods, _GraphNamespace):
     facts: _AsyncFactsNamespace
     ontology: _AsyncOntologyNamespace
 
@@ -599,11 +738,15 @@ class _AsyncGraphNamespace(_GraphNamespace):
             await asyncio.sleep(min(max(poll_interval, retry_after), deadline - now))
 
     async def retract_model(
-        self, body: Body, *, idempotency_key: str | None = None
+        self, body: Body, *, idempotency_key: str | None = None,
+        expected_graph_epoch: str | None = None,
     ) -> models.GraphRetractResponse:
         return cast(
             models.GraphRetractResponse,
-            await super().retract_model(body, idempotency_key=idempotency_key),
+            await super().retract_model(
+                body, idempotency_key=idempotency_key,
+                expected_graph_epoch=expected_graph_epoch,
+            ),
         )
 
 
@@ -649,6 +792,24 @@ class _AsyncIntegrationsNamespace(IntegrationsNamespace):
 
     async def connectors(self) -> IntegrationConnectorsAnswer:
         return cast(IntegrationConnectorsAnswer, await super().connectors())
+
+    async def provider_apps(self) -> IntegrationProviderAppsAnswer:
+        return cast(IntegrationProviderAppsAnswer, await super().provider_apps())
+
+    async def create_connect_session(
+        self, *, app_id: str, graph: str, return_url: str,
+        connection_id: str | None = None,
+    ) -> IntegrationConnectSessionCreateAnswer:
+        return cast(
+            IntegrationConnectSessionCreateAnswer,
+            await super().create_connect_session(
+                app_id=app_id, graph=graph, return_url=return_url,
+                connection_id=connection_id,
+            ),
+        )
+
+    async def get_connect_session(self, id: str) -> IntegrationConnectSessionAnswer:
+        return cast(IntegrationConnectSessionAnswer, await super().get_connect_session(id))
 
     async def create(
         self,
@@ -926,7 +1087,7 @@ class _AsyncModelsNamespace:
         self.switches = _AsyncModelSwitchesNamespace(client)
 
 
-class AsyncLbbClient(_BaseLbbClient):
+class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
     """Asynchronous client. Usable as an async context manager."""
 
     entities: _AsyncEntityNamespace
@@ -975,6 +1136,8 @@ class AsyncLbbClient(_BaseLbbClient):
         # Model trials of other models on the graph's uses, and switches.
         self.models = _AsyncModelsNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
+        # Files of the graph. Each method returns an awaitable here.
+        self.files = _FilesNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
         self.integrations = _AsyncIntegrationsNamespace(self)
         self._http = httpx.AsyncClient(
@@ -1359,6 +1522,7 @@ class AsyncLbbClient(_BaseLbbClient):
         idempotency_key: str | None = None,
         options: RequestOptions | None = None,
         scoped: bool = True,
+        binary: bool = False,
     ) -> RawLbbResponse:
         request_options = options or {}
         kwargs = self._request_kwargs(
@@ -1434,6 +1598,7 @@ class AsyncLbbClient(_BaseLbbClient):
             response,
             attempts=attempts,
             elapsed_ms=(loop.time() - started_at) * 1000,
+            binary=binary,
         )
 
     async def _event_stream(
@@ -1561,6 +1726,24 @@ class AsyncLbbClient(_BaseLbbClient):
                 options=options,
             ),
         )
+
+    async def _bytes_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        options: RequestOptions | None = None,
+    ) -> bytes:
+        response = await self._send(
+            method,
+            path,
+            f"{self._base_url}{path}",
+            params=params,
+            options=options,
+            binary=True,
+        )
+        return cast(bytes, response.data)
 
     async def _page_request(
         self, row_model: type[RowT], payload: Any

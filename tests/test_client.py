@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import unittest
 from typing import Any
@@ -281,6 +282,77 @@ def capturing_transport(
         return httpx.Response(status, json=item.get("json", {}), headers=headers)
 
     return httpx.MockTransport(handler)
+
+
+# The request each starter workflow method sends, in the order that
+# ``call_each_starter_workflow_method`` calls them.
+STARTER_WORKFLOW_ROUTES = [
+    ("GET", "/v1/workflows/starters"),
+    ("GET", "/v1/workflows/triggered"),
+    ("GET", "/v1/workflows/triggered"),
+    ("PUT", "/v1/workflows/triggered"),
+    ("POST", "/v1/workflows/triggered/preview"),
+    ("POST", "/v1/workflows/triggered/refresh"),
+    ("POST", "/v1/workflows/triggered/pause"),
+    ("DELETE", "/v1/workflows/triggered"),
+]
+USE_FIT_BODY = {
+    "starter": "ontology.fit",
+    "watch": {"class": "Interview", "fields": ["transcript"]},
+    "params": {"context": "employee interviews"},
+}
+PREVIEW_EMBED_BODY = {
+    "starter": "search.embed",
+    "watch": {"class": "Ticket"},
+    "sample": 3,
+    "iris": ["https://x.test/e/1"],
+}
+
+
+def call_each_starter_workflow_method(target: Any) -> None:
+    """Call each starter workflow method of a client or a ``graph(name)``."""
+    target.workflow_starters()
+    target.triggered_workflows()
+    target.triggered_workflow("ontology.fit", "interview")
+    target.use_workflow_starter(
+        "ontology.fit",
+        class_="Interview",
+        fields=["transcript"],
+        params={"context": "employee interviews"},
+    )
+    target.preview_triggered_workflow(
+        "search.embed", class_="Ticket", sample=3, iris=["https://x.test/e/1"]
+    )
+    target.refresh_triggered_workflow("ontology.fit", "interview")
+    target.pause_triggered_workflow("workflow", "notes")
+    target.delete_triggered_workflow("ontology.fit", "interview")
+
+
+def assert_starter_workflow_requests(
+    test: unittest.TestCase, seen: list[httpx.Request], graph: str
+) -> None:
+    """Check the requests of ``call_each_starter_workflow_method``."""
+    test.assertEqual(
+        [(request.method, request.url.path) for request in seen],
+        STARTER_WORKFLOW_ROUTES,
+    )
+    fit = {"graph": graph, "starter": "ontology.fit", "name": "interview"}
+    test.assertEqual(
+        [dict(request.url.params) for request in seen],
+        [
+            {"graph": graph},
+            {"graph": graph},
+            fit,
+            {"graph": graph},
+            {"graph": graph},
+            fit,
+            {"graph": graph, "starter": "workflow", "name": "notes"},
+            {**fit, "confirm": "interview"},
+        ],
+    )
+    test.assertEqual(json.loads(seen[3].content), USE_FIT_BODY)
+    test.assertEqual(json.loads(seen[4].content), PREVIEW_EMBED_BODY)
+    test.assertEqual(json.loads(seen[6].content), {"paused": True})
 
 
 class SyncClientTests(unittest.TestCase):
@@ -1422,6 +1494,22 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(dict(request.url.params)["graph"], "research")
         self.assertIn("idempotency-key", request.headers)
 
+    def test_import_and_retract_preserve_exact_graph_epoch(self) -> None:
+        seen: list[httpx.Request] = []
+        epoch = "18446744073709551615"
+        with LbbClient(
+            "http://h", graph="research",
+            transport=capturing_transport(seen, {"json": {}}),
+        ) as client:
+            client.import_ndjson([], expected_graph_epoch=epoch)
+            client.retract({"entities": []}, expected_graph_epoch=epoch)
+            client.graph("research").facts.import_ndjson([], expected_graph_epoch=epoch)
+            client.graph("research").retract({"entities": []}, expected_graph_epoch=epoch)
+        self.assertEqual(len(seen), 4)
+        for request in seen:
+            self.assertEqual(request.url.params["expected_graph_epoch"], epoch)
+            self.assertEqual(request.url.params["graph"], "research")
+
     def test_fork_graph_pins_confirm_to_destination_and_is_typed(self) -> None:
         seen: list[httpx.Request] = []
         payload = {
@@ -1735,6 +1823,124 @@ class SyncClientTests(unittest.TestCase):
             {"class": "https://example.org/class/interview", "propose": True},
         )
         self.assertEqual(seen[5].url.params["confirm"], "interview")
+
+    def test_starter_workflow_methods_map_to_their_routes(self) -> None:
+        seen: list[httpx.Request] = []
+        ontology_starters = {
+            "graph": {"tenant_id": "default", "graph_id": "crm", "branch_id": "main"},
+            "starters": [],
+        }
+        with LbbClient(
+            "http://h",
+            graph="crm",
+            transport=capturing_transport(
+                seen, [{"json": {}}] * 8 + [{"json": ontology_starters}]
+            ),
+        ) as client:
+            call_each_starter_workflow_method(client)
+            # Ontology starters keep their own namespace and routes.
+            client.ontology.starters.list()
+        assert_starter_workflow_requests(self, seen[:8], "crm")
+        self.assertEqual(
+            (seen[8].method, seen[8].url.path), ("GET", "/v1/ontology/starters")
+        )
+
+    def test_graph_scope_sends_each_starter_workflow_method_to_its_graph(
+        self,
+    ) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen)
+        ) as client:
+            call_each_starter_workflow_method(client.graph("sales"))
+        assert_starter_workflow_requests(self, seen, "sales")
+
+    def test_use_workflow_starter_sends_every_setting_and_needs_a_class_for_fields(
+        self,
+    ) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient("http://h", transport=capturing_transport(seen)) as client:
+            client.use_workflow_starter(
+                "workflow",
+                name="rooms",
+                class_="DocMention",
+                fields=["span", {"path": "label", "name": "title", "max": 4}],
+                exclude=["notes"],
+                gate=0.8,
+                budget_usd_per_month=5.0,
+                workflow={"workflow_type": "roombook.assemble", "version": "v1"},
+                owns={"classes": ["Component"], "relations": ["HAS_COMPONENT"]},
+                batch=16,
+            )
+            with self.assertRaises(ValueError):
+                client.use_workflow_starter("search.embed", fields=["label"])
+            with self.assertRaises(ValueError):
+                client.graph("sales").preview_triggered_workflow(
+                    "search.embed", exclude=["notes"]
+                )
+        self.assertEqual(len(seen), 1, "no request without the watched class")
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {
+                "starter": "workflow",
+                "name": "rooms",
+                "watch": {
+                    "class": "DocMention",
+                    "fields": ["span", {"path": "label", "name": "title", "max": 4}],
+                    "exclude": ["notes"],
+                },
+                "gate": {"below": 0.8},
+                "budget_usd_per_month": 5.0,
+                "workflow": {"workflow_type": "roombook.assemble", "version": "v1"},
+                "owns": {"classes": ["Component"], "relations": ["HAS_COMPONENT"]},
+                "batch": 16,
+            },
+        )
+
+    def test_try_workflow_starter_posts_once_with_its_params(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            graph="main",
+            max_retries=2,
+            retry_delay=0,
+            transport=capturing_transport(seen, [BUSY]),
+        ) as client:
+            with self.assertRaises(LbbError):
+                client.try_workflow_starter("infer.llm", params={"gate": 0.7})
+        self.assertEqual(len(seen), 1, "a try makes a new graph, so it is sent once")
+        self.assertEqual(seen[0].method, "POST")
+        self.assertEqual(seen[0].url.path, "/v1/workflows/starters/try")
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"starter": "infer.llm", "params": {"gate": 0.7}},
+        )
+
+    def test_use_and_a_plain_preview_retry_and_a_propose_preview_does_not(
+        self,
+    ) -> None:
+        seen: list[httpx.Request] = []
+        responses = [BUSY, {"json": {}}, BUSY, {"json": {}}, BUSY]
+        with LbbClient(
+            "http://h",
+            max_retries=1,
+            retry_delay=0,
+            transport=capturing_transport(seen, responses),
+        ) as client:
+            client.use_workflow_starter("search.embed", class_="Ticket")
+            client.preview_triggered_workflow("search.embed", class_="Ticket")
+            with self.assertRaises(LbbError) as raised:
+                client.preview_triggered_workflow(
+                    "ontology.fit", class_="Interview", propose=True
+                )
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("PUT", "/v1/workflows/triggered")] * 2
+            + [("POST", "/v1/workflows/triggered/preview")] * 3,
+        )
+        self.assertNotIn("propose", json.loads(seen[3].content))
+        self.assertEqual(json.loads(seen[4].content)["propose"], True)
 
     def test_retries_idempotent_whole_graph_delete(self) -> None:
         seen: list[httpx.Request] = []
@@ -3032,6 +3238,79 @@ class AsyncModelTrialsTests(unittest.IsolatedAsyncioTestCase):
                 "/v1/models/switches",
             ],
         )
+
+
+class AsyncStarterWorkflowTests(unittest.IsolatedAsyncioTestCase):
+    async def await_each_starter_workflow_method(self, target: Any) -> list[Any]:
+        """Await each starter workflow method, in the order of
+        ``STARTER_WORKFLOW_ROUTES``, and return the answers."""
+        for name in (
+            "workflow_starters",
+            "use_workflow_starter",
+            "triggered_workflows",
+            "triggered_workflow",
+            "preview_triggered_workflow",
+            "refresh_triggered_workflow",
+            "pause_triggered_workflow",
+            "delete_triggered_workflow",
+        ):
+            self.assertTrue(
+                inspect.iscoroutinefunction(getattr(target, name)), name
+            )
+        return [
+            await target.workflow_starters(),
+            await target.triggered_workflows(),
+            await target.triggered_workflow("ontology.fit", "interview"),
+            await target.use_workflow_starter(
+                "ontology.fit",
+                class_="Interview",
+                fields=["transcript"],
+                params={"context": "employee interviews"},
+            ),
+            await target.preview_triggered_workflow(
+                "search.embed", class_="Ticket", sample=3, iris=["https://x.test/e/1"]
+            ),
+            await target.refresh_triggered_workflow("ontology.fit", "interview"),
+            await target.pause_triggered_workflow("workflow", "notes"),
+            await target.delete_triggered_workflow("ontology.fit", "interview"),
+        ]
+
+    async def test_async_client_awaits_each_starter_workflow_method(self) -> None:
+        seen: list[httpx.Request] = []
+        triggered = {"starter": "ontology.fit", "name": "interview"}
+        answers: list[Any] = [
+            {"starters": []},
+            {"starters": [triggered]},
+            triggered,
+            triggered,
+            {"starter": "ontology.fit", "name": "interview", "instance_count": 4},
+            {"starter": triggered, "queued": True},
+            {"starter": "workflow", "name": "notes"},
+            {"deleted": True},
+        ]
+        async with AsyncLbbClient(
+            "http://h",
+            graph="crm",
+            transport=capturing_transport(
+                seen, [{"json": answer} for answer in answers]
+            ),
+        ) as client:
+            results = await self.await_each_starter_workflow_method(client)
+        self.assertEqual(results, answers)
+        assert_starter_workflow_requests(self, seen, "crm")
+
+    async def test_async_graph_scope_awaits_each_starter_workflow_method(
+        self,
+    ) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen)
+        ) as client:
+            results = await self.await_each_starter_workflow_method(
+                client.graph("sales")
+            )
+        self.assertEqual(results, [{}] * 8)
+        assert_starter_workflow_requests(self, seen, "sales")
 
 
 class AsyncModelChecksAndTuningTests(unittest.IsolatedAsyncioTestCase):
