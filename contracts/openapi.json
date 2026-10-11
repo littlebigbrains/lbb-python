@@ -28169,7 +28169,7 @@
             "type": "boolean"
           },
           "code": {
-            "description": "The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/` (`documents-link`,\n`values-from-text`, `fit-from-text`). Null when there is none\n(`search.embed` and `documents.parse` run in LBB only, and `workflow`\nis the developer's own code).",
+            "description": "The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/`, the catalog id with dashes\n(`documents-link`, `values-extract`, `ontology-fit`). Null when there\nis none (`search.embed` and `documents.parse` run in LBB only, and\n`workflow` is the developer's own code).",
             "type": [
               "string",
               "null"
@@ -28321,7 +28321,7 @@
             "description": "Parameters over the sample defaults, an object: each key replaces the\ndefault of that key. The starter workflow's own `params` keys apply."
           },
           "starter": {
-            "description": "The catalog id, with or without the version (`infer.llm`,\n`infer.llm@v1`).",
+            "description": "The catalog id, with or without the version (`values.extract`,\n`values.extract@v1`). The former id `infer.llm` reads as\n`values.extract`.",
             "type": "string"
           }
         },
@@ -29693,7 +29693,7 @@
             "description": "The starter workflow's parameters, an object. `search.embed`:\n`model`, `dim`, `title`. `ontology.fit`: `context`."
           },
           "starter": {
-            "description": "The catalog id, with or without the version (`search.embed`,\n`search.embed@v1`).",
+            "description": "The catalog id, with or without the version (`search.embed`,\n`search.embed@v1`). The former id `infer.llm` reads as\n`values.extract`.",
             "type": "string"
           },
           "watch": {
@@ -93795,7 +93795,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create a workflow from a starter workflow, or change one. `search.embed` and `ontology.fit` write the same documents as `/v1/embeddings` and `/v1/ontology/fit-sources`; `workflow` sends the watched instances to a workflow of your worker; `documents.parse`, `documents.link` and `infer.llm` run in LBB and write the facts they own (409 `workflow_cycle`, 409 `workflow_owns_conflict`, 400 `rdf_native_graph`, 503 `workflows_disabled`, 503 `parser_unavailable`)",
+        "summary": "Create a workflow from a starter workflow, or change one. `search.embed` and `ontology.fit` write the same documents as `/v1/embeddings` and `/v1/ontology/fit-sources`; `workflow` sends the watched instances to a workflow of your worker; `documents.parse`, `documents.link` and `values.extract` run in LBB and write the facts they own (409 `workflow_cycle`, 409 `workflow_owns_conflict`, 400 `rdf_native_graph`, 503 `workflows_disabled`, 503 `parser_unavailable`)",
         "tags": [
           "workflows"
         ]
