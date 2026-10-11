@@ -12598,7 +12598,8 @@
           "training",
           "rerank",
           "rewrite",
-          "trial"
+          "trial",
+          "workflows"
         ],
         "type": "string"
       },
@@ -12830,6 +12831,13 @@
             },
             "type": "array"
           },
+          "by_workflow": {
+            "description": "The `workflows` feature per workflow and job. A server from before\n2026-10-11 sends none.",
+            "items": {
+              "$ref": "#/components/schemas/ModelActivityWorkflow"
+            },
+            "type": "array"
+          },
           "managed": {
             "items": {
               "$ref": "#/components/schemas/ModelActivityManaged"
@@ -12965,6 +12973,74 @@
           "errors",
           "last_at_ms",
           "graphs"
+        ],
+        "type": "object"
+      },
+      "ModelActivityWorkflow": {
+        "description": "One workflow, job and model on one graph over the month: the calls of the\n`workflows` feature, per workflow and job. `workflow` is the triggered\nworkflow's name, `@activities` for the workflow activities (a developer\nworkflow's code calls them without naming its workflow), or `*` (with\n`graph` `*`) for the workflows past the ledger's bound. Added\n2026-10-11: a month recorded before has no rows.",
+        "properties": {
+          "calls": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "feature": {
+            "$ref": "#/components/schemas/ModelActivityFeature"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "items": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job": {
+            "$ref": "#/components/schemas/ModelJob",
+            "description": "The call log's job of the calls (`define`, `resolve`, `reason`, `embed`)."
+          },
+          "last_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "tokens_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflow": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "feature",
+          "provider",
+          "model",
+          "graph",
+          "workflow",
+          "job",
+          "calls",
+          "items",
+          "tokens_estimate",
+          "cost_micro_usd",
+          "errors",
+          "last_at_ms"
         ],
         "type": "object"
       },
@@ -13973,7 +14049,8 @@
           "resolve",
           "infer",
           "reason",
-          "decide"
+          "decide",
+          "map"
         ],
         "type": "string"
       },
@@ -63620,7 +63697,7 @@
             "bearer": []
           }
         ],
-        "summary": "What each managed model did for the stack in one month: totals, by day and by graph per feature (index, search, fit, judge, training, rewrite) and model, the months with activity, and the model each feature uses now. A stack read; the answering node adds the calls it has not written to the ledger yet",
+        "summary": "What each managed model did for the stack in one month: totals, by day and by graph per feature (index, search, fit, judge, training, rerank, rewrite, trial, workflows) and model, the workflows' calls per workflow and job, the months with activity, and the model each feature uses now. A stack read; the answering node adds the calls it has not written to the ledger yet",
         "tags": [
           "system"
         ]

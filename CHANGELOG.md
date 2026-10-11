@@ -7,6 +7,8 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 - The starter workflow Values from text is `values.extract` (formerly
   `infer.llm`; the server still accepts the former id and answers with
   `values.extract`).
+- `ModelJob` gains `map` (the decisions of `documents.map`) and
+  `ModelActivityFeature` gains `workflows`.
 
 ## 0.23.0 (2026-10-11)
 
