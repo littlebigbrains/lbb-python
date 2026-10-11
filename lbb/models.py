@@ -7086,7 +7086,7 @@ class StarterWorkflowTryRequest(BaseModel):
     starter: Annotated[
         str,
         Field(
-            description='The catalog id, with or without the version (`infer.llm`,\n`infer.llm@v1`).'
+            description='The catalog id, with or without the version (`values.extract`,\n`values.extract@v1`). The former id `infer.llm` reads as\n`values.extract`.'
         ),
     ]
 
@@ -12825,7 +12825,7 @@ class TriggeredWorkflowRequest(BaseModel):
     starter: Annotated[
         str,
         Field(
-            description='The catalog id, with or without the version (`search.embed`,\n`search.embed@v1`).'
+            description='The catalog id, with or without the version (`search.embed`,\n`search.embed@v1`). The former id `infer.llm` reads as\n`values.extract`.'
         ),
     ]
     watch: WorkflowWatch | None = None
@@ -14712,7 +14712,7 @@ class StarterWorkflow(BaseModel):
     code: Annotated[
         str | None,
         Field(
-            description="The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/` (`documents-link`,\n`values-from-text`, `fit-from-text`). Null when there is none\n(`search.embed` and `documents.parse` run in LBB only, and `workflow`\nis the developer's own code)."
+            description="The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/`, the catalog id with dashes\n(`documents-link`, `values-extract`, `ontology-fit`). Null when there\nis none (`search.embed` and `documents.parse` run in LBB only, and\n`workflow` is the developer's own code)."
         ),
     ] = None
     fixed_watch: WorkflowWatch | None = None

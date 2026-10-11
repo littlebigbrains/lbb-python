@@ -1907,13 +1907,13 @@ class SyncClientTests(unittest.TestCase):
             transport=capturing_transport(seen, [BUSY]),
         ) as client:
             with self.assertRaises(LbbError):
-                client.try_workflow_starter("infer.llm", params={"gate": 0.7})
+                client.try_workflow_starter("values.extract", params={"gate": 0.7})
         self.assertEqual(len(seen), 1, "a try makes a new graph, so it is sent once")
         self.assertEqual(seen[0].method, "POST")
         self.assertEqual(seen[0].url.path, "/v1/workflows/starters/try")
         self.assertEqual(
             json.loads(seen[0].content),
-            {"starter": "infer.llm", "params": {"gate": 0.7}},
+            {"starter": "values.extract", "params": {"gate": 0.7}},
         )
 
     def test_use_and_a_plain_preview_retry_and_a_propose_preview_does_not(
