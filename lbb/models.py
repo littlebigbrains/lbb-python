@@ -2439,6 +2439,7 @@ class ModelActivityFeature(Enum):
     rerank = 'rerank'
     rewrite = 'rewrite'
     trial = 'trial'
+    workflows = 'workflows'
 
 
 class ModelActivityGraph(BaseModel):
@@ -2851,6 +2852,7 @@ class ModelJob(Enum):
     infer = 'infer'
     reason = 'reason'
     decide = 'decide'
+    map = 'map'
 
 
 class ModelJobQuality(BaseModel):
@@ -10308,21 +10310,33 @@ class ModelActivityDay(BaseModel):
     ] = None
 
 
-class ModelActivityResponse(BaseModel):
+class ModelActivityWorkflow(BaseModel):
     """
-    `GET /v1/models/activity?month=<yyyy-mm>`: the stack's model activity in
-    one month, with the model each feature uses now. The answering node adds
-    the calls it has not written to the ledger yet.
+    One workflow, job and model on one graph over the month: the calls of the
+    `workflows` feature, per workflow and job. `workflow` is the triggered
+    workflow's name, `@activities` for the workflow activities (a developer
+    workflow's code calls them without naming its workflow), or `*` (with
+    `graph` `*`) for the workflows past the ledger's bound. Added
+    2026-10-11: a month recorded before has no rows.
     """
 
-    by_day: list[ModelActivityDay]
-    by_graph: list[ModelActivityGraph]
-    managed: list[ModelActivityManaged]
-    month: Annotated[str, Field(description='`yyyy-mm` (UTC).')]
-    months: Annotated[
-        list[str], Field(description='The months with activity, oldest first.')
+    calls: Annotated[int, Field(ge=0)]
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    errors: Annotated[int, Field(ge=0)]
+    feature: ModelActivityFeature
+    graph: str
+    items: Annotated[int, Field(ge=0)]
+    job: Annotated[
+        ModelJob,
+        Field(
+            description="The call log's job of the calls (`define`, `resolve`, `reason`, `embed`)."
+        ),
     ]
-    totals: list[ModelActivityTotal]
+    last_at_ms: int
+    model: str
+    provider: str
+    tokens_estimate: Annotated[int, Field(ge=0)]
+    workflow: str
 
 
 class ModelCall(BaseModel):
@@ -13862,6 +13876,29 @@ class IssuedWorkerCredential(BaseModel):
         ),
     ]
     token: str
+
+
+class ModelActivityResponse(BaseModel):
+    """
+    `GET /v1/models/activity?month=<yyyy-mm>`: the stack's model activity in
+    one month, with the model each feature uses now. The answering node adds
+    the calls it has not written to the ledger yet.
+    """
+
+    by_day: list[ModelActivityDay]
+    by_graph: list[ModelActivityGraph]
+    by_workflow: Annotated[
+        list[ModelActivityWorkflow] | None,
+        Field(
+            description='The `workflows` feature per workflow and job. A server from before\n2026-10-11 sends none.'
+        ),
+    ] = None
+    managed: list[ModelActivityManaged]
+    month: Annotated[str, Field(description='`yyyy-mm` (UTC).')]
+    months: Annotated[
+        list[str], Field(description='The months with activity, oldest first.')
+    ]
+    totals: list[ModelActivityTotal]
 
 
 class ModelCallRow(BaseModel):
