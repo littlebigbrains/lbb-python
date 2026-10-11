@@ -20795,7 +20795,7 @@
         "type": "object"
       },
       "ReplaceOwnedInput": {
-        "description": "The outputs a writer owns, replaced by one commit (`replace_owned`).\n\nIn one commit, under one head CAS, for each subject: every current\nout-edge whose relation is in `relations` and that the commit does not\nassert again is retracted, and every field in `properties` that the commit\ndoes not set on the subject is removed. Every entity in\n`retract_entities` loses its current edges and fields, except the ones the\ncommit writes again. Then the commit's triplets and properties apply.\nOwnership is by relation and field: a retraction of (source, relation,\ntarget) retracts every copy of that edge, whoever wrote it.",
+        "description": "The outputs a writer owns, replaced by one commit (`replace_owned`).\n\nIn one commit, under one head CAS, for each subject: every current\nout-edge whose relation is in `relations` and that the commit does not\nassert again is retracted, and every field in `properties` that the commit\ndoes not set on the subject is removed. Every entity in\n`retract_entities` loses its current edges and fields, except the ones the\ncommit writes again. Then the commit's triplets and properties apply.\nOwnership is by relation and field: a retraction of (source, relation,\ntarget) retracts every copy of that edge, whoever wrote it. On an\nRDF-native graph a writer removes only the owned statements it wrote, and\n`retract_entities` removes every statement of the entity.",
         "properties": {
           "properties": {
             "description": "Owned property fields of the subjects.",
@@ -28571,7 +28571,7 @@
         "type": "object"
       },
       "SuggestedFacts": {
-        "description": "Graph facts a review item proposes. Accepting commits them through the\nordinary triplet commit, after any evolve operations; dismissing writes\nnothing. At most 200 triplets plus entity property rows, and 64 KiB of\nJSON. Records graphs only: an RDF-native graph refuses the accept.",
+        "description": "Graph facts a review item proposes. Accepting commits them through the\nordinary triplet commit, after any evolve operations; dismissing writes\nnothing. At most 200 triplets plus entity property rows, and 64 KiB of\nJSON. On an RDF-native graph the accept writes them as RDF, the\nstatements a records graph shows for them.",
         "properties": {
           "entity_properties": {
             "items": {
@@ -29921,7 +29921,7 @@
               },
               {
                 "$ref": "#/components/schemas/ReplaceOwnedInput",
-                "description": "The outputs this writer owns on `subjects`. The same commit removes\nthe owned facts it does not write again, so a rerun replaces them. See\n[`ReplaceOwnedInput`]. Records graphs only."
+                "description": "The outputs this writer owns on `subjects`. The same commit removes\nthe owned facts it does not write again, so a rerun replaces them. See\n[`ReplaceOwnedInput`]. On an RDF-native graph the commit writes the\nstatements a records graph shows for its facts and removes the owned\nstatements this writer wrote before and does not write again."
               }
             ]
           },

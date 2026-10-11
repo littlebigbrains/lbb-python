@@ -4838,7 +4838,9 @@ class ReplaceOwnedInput(BaseModel):
     `retract_entities` loses its current edges and fields, except the ones the
     commit writes again. Then the commit's triplets and properties apply.
     Ownership is by relation and field: a retraction of (source, relation,
-    target) retracts every copy of that edge, whoever wrote it.
+    target) retracts every copy of that edge, whoever wrote it. On an
+    RDF-native graph a writer removes only the owned statements it wrote, and
+    `retract_entities` removes every statement of the entity.
     """
 
     properties: Annotated[
@@ -15326,7 +15328,8 @@ class SuggestedFacts(BaseModel):
     Graph facts a review item proposes. Accepting commits them through the
     ordinary triplet commit, after any evolve operations; dismissing writes
     nothing. At most 200 triplets plus entity property rows, and 64 KiB of
-    JSON. Records graphs only: an RDF-native graph refuses the accept.
+    JSON. On an RDF-native graph the accept writes them as RDF, the
+    statements a records graph shows for them.
     """
 
     entity_properties: list[EntityPropertiesInput] | None = None
