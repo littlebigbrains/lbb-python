@@ -7423,6 +7423,20 @@ class SuggestionShownV1(BaseModel):
     v: Annotated[int, Field(ge=0)]
 
 
+class SuggestionSourceSummary(BaseModel):
+    """
+    Where a suggestion's evidence comes from, for a list row: the first
+    evidence sample that names a document.
+    """
+
+    confidence: Annotated[
+        float | None,
+        Field(description="The sample's `confidence` (or `probability`), from 0 to 1."),
+    ] = None
+    document: Annotated[str, Field(description="The document's name.")]
+    page: Annotated[int | None, Field(description='The page, from 1.', ge=0)] = None
+
+
 class SuggestionStatusCounts(BaseModel):
     """
     Suggestions per status, over the whole graph (not only the listed page).
@@ -14332,8 +14346,15 @@ class OntologyChangeSuggestionSummary(BaseModel):
             description='Whether the last dry run can be published; absent before any dry run.'
         ),
     ] = None
+    rationale: Annotated[
+        str | None,
+        Field(
+            description='The start of the rationale, at most 300 characters (cut at a word,\nwith `…`); the suggestion holds all of it.'
+        ),
+    ] = None
     records: Annotated[int | None, Field(ge=0)] = None
     revision: Annotated[int, Field(ge=0)]
+    source: SuggestionSourceSummary | None = None
     status: OntologyChangeSuggestionStatus
     suggestion_id: str
     title: str

@@ -16050,6 +16050,10 @@
               "null"
             ]
           },
+          "rationale": {
+            "description": "The start of the rationale, at most 300 characters (cut at a word,\nwith `…`); the suggestion holds all of it.",
+            "type": "string"
+          },
           "records": {
             "format": "int64",
             "minimum": 0,
@@ -16062,6 +16066,17 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SuggestionSourceSummary",
+                "description": "Where the evidence comes from, when a sample names a document."
+              }
+            ]
           },
           "status": {
             "$ref": "#/components/schemas/OntologyChangeSuggestionStatus"
@@ -29213,6 +29228,36 @@
           "prefix",
           "text",
           "rank"
+        ],
+        "type": "object"
+      },
+      "SuggestionSourceSummary": {
+        "description": "Where a suggestion's evidence comes from, for a list row: the first\nevidence sample that names a document.",
+        "properties": {
+          "confidence": {
+            "description": "The sample's `confidence` (or `probability`), from 0 to 1.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "document": {
+            "description": "The document's name.",
+            "type": "string"
+          },
+          "page": {
+            "description": "The page, from 1.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "document"
         ],
         "type": "object"
       },
