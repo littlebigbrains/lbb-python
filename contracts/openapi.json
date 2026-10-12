@@ -93965,6 +93965,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "`true` adds each workflow's own status (`details`) to the list; absent or `false`, the list leaves it out",
+            "in": "query",
+            "name": "details",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -94190,7 +94199,7 @@
             "bearer": []
           }
         ],
-        "summary": "Every triggered workflow of the graph (a workflow created from a starter workflow) in one status shape: embeddings, fit sources and the rest; `starter` and `name` for one (returns TriggeredWorkflow)",
+        "summary": "Every triggered workflow of the graph (a workflow created from a starter workflow) in one status shape: embeddings, fit sources and the rest; `starter` and `name` for one (returns TriggeredWorkflow). The list is light: each workflow's status (with `outputs`) without its own status in `details`, which the read of one workflow carries; `details=true` adds it to the list",
         "tags": [
           "workflows"
         ]
