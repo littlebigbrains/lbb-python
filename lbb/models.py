@@ -1847,6 +1847,58 @@ class FitSourceStepAction(Enum):
     incremental = 'incremental'
 
 
+class FitTextPages(BaseModel):
+    """
+    Pages of a document, 1-based and inclusive.
+    """
+
+    from_: Annotated[int, Field(alias='from', ge=0)]
+    to: Annotated[int, Field(ge=0)]
+
+
+class FitTextRequest(BaseModel):
+    """
+    Run the fit once on a text (`POST /v1/ontology/fit-text`): pasted text,
+    or the parsed pages of an uploaded file. Exactly one of `text` and
+    `document`.
+    """
+
+    context: Annotated[
+        str | None, Field(description='A sentence about the text, for the models.')
+    ] = None
+    document: Annotated[
+        str | None,
+        Field(
+            description='The SHA-256 of an uploaded file whose pages `documents.parse` parsed.'
+        ),
+    ] = None
+    dry_run: Annotated[
+        bool | None,
+        Field(description='Run the models and the checks, and file nothing.'),
+    ] = None
+    name: Annotated[
+        str | None,
+        Field(
+            description="The source name in the suggestion keys (`fit:<name>/…`),\n`[a-z0-9][a-z0-9-]{0,62}`. Default `text-<first 8 hex of the blake3\nof the text, or of the file's SHA-256>`."
+        ),
+    ] = None
+    pages: FitTextPages | None = None
+    text: Annotated[str | None, Field(description='The pasted text.')] = None
+
+
+class FitTextSpend(BaseModel):
+    """
+    The spend of one fit-text call.
+    """
+
+    calls: Annotated[
+        int, Field(description='Model calls (reasoning and decision).', ge=0)
+    ]
+    cost_micro_usd: Annotated[
+        int, Field(description='In millionths of a US dollar.', ge=0)
+    ]
+
+
 class ForeignKeyMapping(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -13778,6 +13830,51 @@ class FitSourceRefreshResponse(BaseModel):
             description='The steps the call ran itself. Empty from\n`POST /v1/ontology/fit-sources/refresh`, which only asks the fit job\nto run (`queued`).'
         ),
     ] = None
+
+
+class FitTextResponse(BaseModel):
+    chars: Annotated[
+        int, Field(description='Characters of text the models read.', ge=0)
+    ]
+    chunks: Annotated[
+        int,
+        Field(
+            description='Chunks the text was cut into (one reasoning-model call each).',
+            ge=0,
+        ),
+    ]
+    failed_chunks: Annotated[
+        int | None,
+        Field(
+            description='Chunks the reasoning model gave no answer for (a refusal, an error,\nor the 120 s limit).',
+            ge=0,
+        ),
+    ] = None
+    filed: Annotated[
+        int, Field(description='Suggestions filed new; 0 with `dry_run`.', ge=0)
+    ]
+    name: str
+    pages: FitTextPages | None = None
+    proposals: Annotated[
+        list[FitProposal],
+        Field(
+            description='Every proposal, the dropped ones included, with what the checks made\nof it.'
+        ),
+    ]
+    spend: FitTextSpend
+    truncated: Annotated[
+        bool,
+        Field(
+            description='The call did not read all of the text: past 60,000 characters, or\npast 50 pages.'
+        ),
+    ]
+    updated: Annotated[
+        int,
+        Field(
+            description="Suggestions that got this text's evidence (open ones, and dismissed\nones it reopened); 0 with `dry_run`.",
+            ge=0,
+        ),
+    ]
 
 
 class GraphActivityResponse(BaseModel):
