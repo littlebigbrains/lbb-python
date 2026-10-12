@@ -15501,6 +15501,17 @@
               }
             ]
           },
+          "facts_written": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SuggestionFactsWritten",
+                "description": "What the producer wrote after the accept, when it writes the facts\nitself (the `review` workflow)."
+              }
+            ]
+          },
           "graph": {
             "$ref": "#/components/schemas/GraphKey"
           },
@@ -15547,6 +15558,17 @@
             "type": [
               "array",
               "null"
+            ]
+          },
+          "proposed_facts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SuggestedFacts",
+                "description": "The facts as the producer proposed them, kept when a person left\nsome out before accepting (`facts` then holds the accepted ones)."
+              }
             ]
           },
           "proposed_identities": {
@@ -15636,6 +15658,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "facts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SuggestedFacts",
+                "description": "The facts to commit, when a person left some out: each triplet and\neach `entity_properties` row must be one of the proposed facts,\nexactly as proposed (any other fact is refused with 400: an accept\nnever adds a fact), and the rows that `required` names must stay.\nThe other fields come from the proposed facts. Absent commits every\nproposed fact."
+              }
             ]
           },
           "identities": {
@@ -20905,6 +20938,26 @@
         },
         "required": [
           "subjects"
+        ],
+        "type": "object"
+      },
+      "RequiredFactRow": {
+        "description": "A row of a suggestion's facts that an accept must keep.",
+        "properties": {
+          "reason": {
+            "description": "Why the other facts need it, for the refusal: for example \"a new\ninstance needs its type\". 1 to 200 characters.",
+            "type": "string"
+          },
+          "row": {
+            "description": "The index of the row in `entity_properties`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row",
+          "reason"
         ],
         "type": "object"
       },
@@ -28648,7 +28701,7 @@
         "type": "object"
       },
       "SuggestedFacts": {
-        "description": "Graph facts a review item proposes. Accepting commits them through the\nordinary triplet commit, after any evolve operations; dismissing writes\nnothing. At most 200 triplets plus entity property rows, and 64 KiB of\nJSON. On an RDF-native graph the accept writes them as RDF, the\nstatements a records graph shows for them.",
+        "description": "Graph facts a review item proposes. Accepting commits them through the\nordinary triplet commit, after any evolve operations; dismissing writes\nnothing. At most 200 triplets plus entity property rows, and 64 KiB of\nJSON. On an RDF-native graph the accept writes them as RDF, the\nstatements a records graph shows for them. A person can leave facts out\nof the accept (`OntologyChangeSuggestionAcceptRequest::facts`), except\nthe rows `required` names.",
         "properties": {
           "entity_properties": {
             "items": {
@@ -28666,6 +28719,13 @@
                 "description": "The outputs the producer owns on the facts' subjects; the accept\nreplaces them (see `ReplaceOwnedInput`)."
               }
             ]
+          },
+          "required": {
+            "description": "The `entity_properties` rows an accept must keep when it leaves other\nfacts out: the other facts need them (the type of a new instance). An\naccept that leaves one out is refused; dismiss the suggestion instead.",
+            "items": {
+              "$ref": "#/components/schemas/RequiredFactRow"
+            },
+            "type": "array"
           },
           "summary": {
             "description": "One line about the facts for a reviewer. At most 500 characters.",
@@ -28877,13 +28937,51 @@
             ]
           },
           "request_id": {
-            "description": "The commit's idempotency key: `ontology-suggestion:<id>:facts:r<revision>`.",
+            "description": "The commit's idempotency key: `ontology-suggestion:<id>:facts:r<revision>`,\nwith `:k<hash>` of the kept facts when a person left some out.",
             "type": "string"
           }
         },
         "required": [
           "commit_seq",
           "request_id"
+        ],
+        "type": "object"
+      },
+      "SuggestionFactsWritten": {
+        "description": "What the producer wrote after the accept, for facts it writes itself:\nthe item of the `review` workflow commits the proposals' status on\naccept, and the workflow then writes the facts. Absent until the\nproducer has written them.",
+        "properties": {
+          "at": {
+            "description": "RFC 3339 time of the last change.",
+            "type": "string"
+          },
+          "dismissed": {
+            "description": "Facts the person left out, or that a dismissed item took with it.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "refused": {
+            "description": "Facts the graph refused.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waiting": {
+            "description": "Facts that wait for another review item: a link to an instance that\nthe other item makes.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "written": {
+            "description": "Facts written, or held by the graph already.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at",
+          "written"
         ],
         "type": "object"
       },
