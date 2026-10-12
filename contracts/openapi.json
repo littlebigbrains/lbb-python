@@ -193,7 +193,8 @@
           "import",
           "export",
           "fork",
-          "index_upgrade"
+          "index_upgrade",
+          "workflow"
         ],
         "type": "string"
       },
@@ -242,7 +243,16 @@
           "bytes",
           "entities",
           "commits",
-          "tables"
+          "tables",
+          "documents",
+          "pages",
+          "mentions",
+          "links",
+          "proposals",
+          "instances",
+          "questions",
+          "messages",
+          "items"
         ],
         "type": "string"
       },
@@ -30107,6 +30117,49 @@
         ],
         "type": "object"
       },
+      "TriggeredWorkflowRunning": {
+        "description": "The step a workflow runs now in the starters job: a phase in plain\nwords and how far it got. The job writes it every few seconds while the\nstep runs (and at least every 15 s), so it reads the same on every node.",
+        "properties": {
+          "done": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "heartbeat_at": {
+            "description": "When the job last wrote this progress (RFC 3339).",
+            "type": "string"
+          },
+          "phase": {
+            "description": "What the step does now, in plain words: `reading documents`,\n`reading pages`, `linking mentions`, `asking the decision model`,\n`writing facts`, `filing review items`, `sending messages`, ….",
+            "type": "string"
+          },
+          "started_at": {
+            "description": "When the step started (RFC 3339). A step that goes on in the job's\nnext round keeps its start.",
+            "type": "string"
+          },
+          "total": {
+            "description": "Absent when the step does not know it.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "unit": {
+            "$ref": "#/components/schemas/ActivityUnit",
+            "description": "What `done` and `total` count."
+          }
+        },
+        "required": [
+          "phase",
+          "done",
+          "unit",
+          "started_at",
+          "heartbeat_at"
+        ],
+        "type": "object"
+      },
       "TriggeredWorkflowSpend": {
         "description": "Model spend of one month.",
         "properties": {
@@ -30221,6 +30274,17 @@
             "type": [
               "integer",
               "null"
+            ]
+          },
+          "running": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TriggeredWorkflowRunning",
+                "description": "The step the workflow runs now; absent while it does not run."
+              }
             ]
           },
           "spend": {
