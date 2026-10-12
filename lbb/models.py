@@ -4860,6 +4860,22 @@ class ReplaceOwnedInput(BaseModel):
     ]
 
 
+class RequiredFactRow(BaseModel):
+    """
+    A row of a suggestion's facts that an accept must keep.
+    """
+
+    reason: Annotated[
+        str,
+        Field(
+            description='Why the other facts need it, for the refusal: for example "a new\ninstance needs its type". 1 to 200 characters.'
+        ),
+    ]
+    row: Annotated[
+        int, Field(description='The index of the row in `entity_properties`.', ge=0)
+    ]
+
+
 class ResolutionAlternative(BaseModel):
     confidence: float
     id: str
@@ -7300,8 +7316,39 @@ class SuggestionFactsCommit(BaseModel):
     request_id: Annotated[
         str,
         Field(
-            description="The commit's idempotency key: `ontology-suggestion:<id>:facts:r<revision>`."
+            description="The commit's idempotency key: `ontology-suggestion:<id>:facts:r<revision>`,\nwith `:k<hash>` of the kept facts when a person left some out."
         ),
+    ]
+
+
+class SuggestionFactsWritten(BaseModel):
+    """
+    What the producer wrote after the accept, for facts it writes itself:
+    the item of the `review` workflow commits the proposals' status on
+    accept, and the workflow then writes the facts. Absent until the
+    producer has written them.
+    """
+
+    at: Annotated[str, Field(description='RFC 3339 time of the last change.')]
+    dismissed: Annotated[
+        int | None,
+        Field(
+            description='Facts the person left out, or that a dismissed item took with it.',
+            ge=0,
+        ),
+    ] = None
+    refused: Annotated[
+        int | None, Field(description='Facts the graph refused.', ge=0)
+    ] = None
+    waiting: Annotated[
+        int | None,
+        Field(
+            description='Facts that wait for another review item: a link to an instance that\nthe other item makes.',
+            ge=0,
+        ),
+    ] = None
+    written: Annotated[
+        int, Field(description='Facts written, or held by the graph already.', ge=0)
     ]
 
 
@@ -14143,54 +14190,6 @@ class NeighborResponse(BaseModel):
     snapshot: SnapshotView
 
 
-class OntologyChangeSuggestionAcceptRequest(BaseModel):
-    """
-    Accept a suggestion: apply its change to the current ontology, then link
-    its identities.
-    """
-
-    author: str | None = None
-    change: Annotated[
-        list[
-            Annotated[
-                WidenRelationOp
-                | AddEntityTypeOp
-                | AddSuperTypesOp
-                | AddRelationOp
-                | AddPropertyOp
-                | SetPropertyConstraintOp
-                | RenameEntityTypeOp
-                | RenameRelationOp
-                | SetRelationInverseOp
-                | SetRelationCardinalityOp
-                | NarrowRelationOp
-                | RemoveEntityTypeOp
-                | RemoveRelationOp,
-                Field(discriminator='op'),
-            ]
-        ]
-        | None,
-        Field(
-            description='An edited change that replaces the proposed one ("edit, then accept").'
-        ),
-    ] = None
-    change_sources: Annotated[
-        list[ChangeSource | None] | None,
-        Field(
-            description='With `change`: for each of its ops, the index of the proposed op it was\nedited from, or null for an added op. Same length as `change`; each\nindex at most once.'
-        ),
-    ] = None
-    comment: Annotated[
-        str | None, Field(description='Added to the discussion with the acceptance.')
-    ] = None
-    identities: Annotated[
-        list[SuggestedIdentity] | None,
-        Field(
-            description='The identities to link, when a person removed some or some members:\neach must be a subset of a proposed identity, with at least two\nmembers. Absent links every proposed identity.'
-        ),
-    ] = None
-
-
 class OntologyChangeSuggestionSummary(BaseModel):
     """
     One row of a suggestion list: everything but the evidence samples, the
@@ -15366,11 +15365,19 @@ class SuggestedFacts(BaseModel):
     ordinary triplet commit, after any evolve operations; dismissing writes
     nothing. At most 200 triplets plus entity property rows, and 64 KiB of
     JSON. On an RDF-native graph the accept writes them as RDF, the
-    statements a records graph shows for them.
+    statements a records graph shows for them. A person can leave facts out
+    of the accept (`OntologyChangeSuggestionAcceptRequest::facts`), except
+    the rows `required` names.
     """
 
     entity_properties: list[EntityPropertiesInput] | None = None
     replace_owned: ReplaceOwnedInput | None = None
+    required: Annotated[
+        list[RequiredFactRow] | None,
+        Field(
+            description='The `entity_properties` rows an accept must keep when it leaves other\nfacts out: the other facts need them (the type of a new instance). An\naccept that leaves one out is refused; dismiss the suggestion instead.'
+        ),
+    ] = None
     summary: Annotated[
         str | None,
         Field(
@@ -15599,6 +15606,7 @@ class OntologyChangeSuggestion(BaseModel):
     evidence: SuggestionEvidence | None = None
     facts: SuggestedFacts | None = None
     facts_commit: SuggestionFactsCommit | None = None
+    facts_written: SuggestionFactsWritten | None = None
     graph: GraphKey
     identities: Annotated[
         list[SuggestedIdentity] | None,
@@ -15648,6 +15656,7 @@ class OntologyChangeSuggestion(BaseModel):
             description='The operations as the producer proposed them, kept when a person edited\n`change` before accepting.'
         ),
     ] = None
+    proposed_facts: SuggestedFacts | None = None
     proposed_identities: Annotated[
         list[SuggestedIdentity] | None,
         Field(
@@ -15666,6 +15675,55 @@ class OntologyChangeSuggestion(BaseModel):
     suggestion_id: Annotated[str, Field(description='Stable id, derived from `key`.')]
     title: str
     updated_at: str
+
+
+class OntologyChangeSuggestionAcceptRequest(BaseModel):
+    """
+    Accept a suggestion: apply its change to the current ontology, then link
+    its identities.
+    """
+
+    author: str | None = None
+    change: Annotated[
+        list[
+            Annotated[
+                WidenRelationOp
+                | AddEntityTypeOp
+                | AddSuperTypesOp
+                | AddRelationOp
+                | AddPropertyOp
+                | SetPropertyConstraintOp
+                | RenameEntityTypeOp
+                | RenameRelationOp
+                | SetRelationInverseOp
+                | SetRelationCardinalityOp
+                | NarrowRelationOp
+                | RemoveEntityTypeOp
+                | RemoveRelationOp,
+                Field(discriminator='op'),
+            ]
+        ]
+        | None,
+        Field(
+            description='An edited change that replaces the proposed one ("edit, then accept").'
+        ),
+    ] = None
+    change_sources: Annotated[
+        list[ChangeSource | None] | None,
+        Field(
+            description='With `change`: for each of its ops, the index of the proposed op it was\nedited from, or null for an added op. Same length as `change`; each\nindex at most once.'
+        ),
+    ] = None
+    comment: Annotated[
+        str | None, Field(description='Added to the discussion with the acceptance.')
+    ] = None
+    facts: SuggestedFacts | None = None
+    identities: Annotated[
+        list[SuggestedIdentity] | None,
+        Field(
+            description='The identities to link, when a person removed some or some members:\neach must be a subset of a proposed identity, with at least two\nmembers. Absent links every proposed identity.'
+        ),
+    ] = None
 
 
 class OntologyChangeSuggestionCreateRequest(BaseModel):
