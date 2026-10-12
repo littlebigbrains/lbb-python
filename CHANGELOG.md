@@ -2,13 +2,17 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.24.0 (2026-10-12)
 
 - The starter workflow Values from text is `values.extract` (formerly
   `infer.llm`; the server still accepts the former id and answers with
   `values.extract`).
 - `ModelJob` gains `map` (the decisions of `documents.map`) and
   `ModelActivityFeature` gains `workflows`.
+- Review items group by instance (`review` workflow): `SuggestedFacts`
+  gains `required`, the rows an accept must keep (the type of a new
+  instance); the accept request gains `facts`, the subset of the proposed
+  facts to keep; a suggestion gains `proposed_facts` and `facts_written`.
 
 ## 0.23.0 (2026-10-11)
 
