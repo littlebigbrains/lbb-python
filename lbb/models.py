@@ -43,6 +43,7 @@ class ActivityKind(Enum):
     export = 'export'
     fork = 'fork'
     index_upgrade = 'index_upgrade'
+    workflow = 'workflow'
 
 
 class ActivityState(Enum):
@@ -62,6 +63,15 @@ class ActivityUnit(Enum):
     entities = 'entities'
     commits = 'commits'
     tables = 'tables'
+    documents = 'documents'
+    pages = 'pages'
+    mentions = 'mentions'
+    links = 'links'
+    proposals = 'proposals'
+    instances = 'instances'
+    questions = 'questions'
+    messages = 'messages'
+    items = 'items'
 
 
 class ActivityWriteLimit(BaseModel):
@@ -7706,6 +7716,35 @@ class TriggeredWorkflowRef(BaseModel):
     starter: str
 
 
+class TriggeredWorkflowRunning(BaseModel):
+    """
+    The step a workflow runs now in the starters job: a phase in plain
+    words and how far it got. The job writes it every few seconds while the
+    step runs (and at least every 15 s), so it reads the same on every node.
+    """
+
+    done: Annotated[int, Field(ge=0)]
+    heartbeat_at: Annotated[
+        str, Field(description='When the job last wrote this progress (RFC 3339).')
+    ]
+    phase: Annotated[
+        str,
+        Field(
+            description='What the step does now, in plain words: `reading documents`,\n`reading pages`, `linking mentions`, `asking the decision model`,\n`writing facts`, `filing review items`, `sending messages`, ….'
+        ),
+    ]
+    started_at: Annotated[
+        str,
+        Field(
+            description="When the step started (RFC 3339). A step that goes on in the job's\nnext round keeps its start."
+        ),
+    ]
+    total: Annotated[
+        int | None, Field(description='Absent when the step does not know it.', ge=0)
+    ] = None
+    unit: Annotated[ActivityUnit, Field(description='What `done` and `total` count.')]
+
+
 class TriggeredWorkflowSpend(BaseModel):
     """
     Model spend of one month.
@@ -7755,6 +7794,7 @@ class TriggeredWorkflowStatus(BaseModel):
     ] = None
     processed_through_seq: Annotated[int | None, Field(ge=0)] = None
     published_seq: Annotated[int | None, Field(ge=0)] = None
+    running: TriggeredWorkflowRunning | None = None
     spend: TriggeredWorkflowSpend | None = None
     state: TriggeredWorkflowState
 
