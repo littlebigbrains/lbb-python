@@ -9249,6 +9249,170 @@
         ],
         "type": "string"
       },
+      "FitTextPages": {
+        "description": "Pages of a document, 1-based and inclusive.",
+        "properties": {
+          "from": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "to": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "FitTextRequest": {
+        "description": "Run the fit once on a text (`POST /v1/ontology/fit-text`): pasted text,\nor the parsed pages of an uploaded file. Exactly one of `text` and\n`document`.",
+        "properties": {
+          "context": {
+            "description": "A sentence about the text, for the models.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "document": {
+            "description": "The SHA-256 of an uploaded file whose pages `documents.parse` parsed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "description": "Run the models and the checks, and file nothing.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "The source name in the suggestion keys (`fit:<name>/…`),\n`[a-z0-9][a-z0-9-]{0,62}`. Default `text-<first 8 hex of the blake3\nof the text, or of the file's SHA-256>`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pages": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FitTextPages",
+                "description": "Documents only: the pages to read (default: all, from page 1)."
+              }
+            ]
+          },
+          "text": {
+            "description": "The pasted text.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "FitTextResponse": {
+        "properties": {
+          "chars": {
+            "description": "Characters of text the models read.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "chunks": {
+            "description": "Chunks the text was cut into (one reasoning-model call each).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed_chunks": {
+            "description": "Chunks the reasoning model gave no answer for (a refusal, an error,\nor the 120 s limit).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "filed": {
+            "description": "Suggestions filed new; 0 with `dry_run`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pages": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FitTextPages",
+                "description": "Documents only: the pages read, 1-based and inclusive."
+              }
+            ]
+          },
+          "proposals": {
+            "description": "Every proposal, the dropped ones included, with what the checks made\nof it.",
+            "items": {
+              "$ref": "#/components/schemas/FitProposal"
+            },
+            "type": "array"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/FitTextSpend"
+          },
+          "truncated": {
+            "description": "The call did not read all of the text: past 60,000 characters, or\npast 50 pages.",
+            "type": "boolean"
+          },
+          "updated": {
+            "description": "Suggestions that got this text's evidence (open ones, and dismissed\nones it reopened); 0 with `dry_run`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "chars",
+          "chunks",
+          "truncated",
+          "proposals",
+          "filed",
+          "updated",
+          "spend"
+        ],
+        "type": "object"
+      },
+      "FitTextSpend": {
+        "description": "The spend of one fit-text call.",
+        "properties": {
+          "calls": {
+            "description": "Model calls (reasoning and decision).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "description": "In millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "cost_micro_usd"
+        ],
+        "type": "object"
+      },
       "FlatPropertyValue": {
         "anyOf": [
           {
@@ -76216,6 +76380,277 @@
           }
         ],
         "summary": "Ask the fit job to run now (`queued: true`) and return the source's status at once; it calls no model. 429 `fit_budget_exceeded` when the stack's monthly fit budget is spent, 503 `fit_models_unavailable` without the models",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/v1/ontology/fit-text": {
+      "post": {
+        "operationId": "post_v1_ontology_fit_text",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FitTextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FitTextResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run the fit once on a text: pasted `text`, or the parsed pages of an uploaded file (`document`, its SHA-256; `pages` 1-based and inclusive). The same pipeline as a fit source reads it: chunks of 4,500 characters (at most 16, about 60,000 characters; `truncated` past them), the reasoning model's proposals with verbatim quotes, the quote check, the check against the current ontology, and the decision model's support score. The kept proposals are filed as suggestions under `fit:<name>/…`, with the quote and, for a file, the page and line as evidence; `dry_run: true` files nothing. 400 `fit_text_invalid`, 404 `file_not_found`, 409 `document_not_parsed`, 429 `fit_budget_exceeded`, 503 `fit_models_unavailable`",
         "tags": [
           "ontology"
         ]
