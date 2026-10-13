@@ -251,6 +251,36 @@ class _AsyncOntologyNamespace(_OntologyNamespace):
             ),
         )
 
+    async def suggestion_patterns(
+        self,
+        *,
+        status: str | None = None,
+        origin_id: str | None = None,
+        kind: str | None = None,
+    ) -> models.OntologySuggestionPatternList:
+        return cast(
+            models.OntologySuggestionPatternList,
+            await super().suggestion_patterns(
+                status=status, origin_id=origin_id, kind=kind
+            ),
+        )
+
+    async def suggestions_accept_batch(
+        self, body: Body
+    ) -> models.OntologySuggestionBatchResponse:
+        return cast(
+            models.OntologySuggestionBatchResponse,
+            await super().suggestions_accept_batch(body),
+        )
+
+    async def suggestions_dismiss_batch(
+        self, body: Body
+    ) -> models.OntologySuggestionBatchResponse:
+        return cast(
+            models.OntologySuggestionBatchResponse,
+            await super().suggestions_dismiss_batch(body),
+        )
+
     async def suggestion_get(
         self, suggestion_id: str
     ) -> models.OntologyChangeSuggestion:

@@ -207,7 +207,7 @@ the server.
 
 ```python
 # The IRI of a name, the person before a document with the name.
-found = lbb.query.names("Summarize David Korn's deals")
+found = lbb.query.names("Summarize Mara Lindqvist's deals")
 # The classes and properties a question needs: how many instances hold each
 # property, and the values of small classes such as stages.
 described = lbb.query.describe(question="Which deals moved stage?")

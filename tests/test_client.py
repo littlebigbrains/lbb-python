@@ -34,6 +34,8 @@ from lbb.models import (
     OntologyChangeSuggestionList,
     OntologyDraft,
     OntologyEvolveRequest,
+    OntologySuggestionBatchResponse,
+    OntologySuggestionPatternList,
     SchemaBundleView,
     SearchFeedbackExportResponse,
     SearchFeedbackSummaryResponse,
@@ -1296,6 +1298,66 @@ class SyncClientTests(unittest.TestCase):
             json.loads(seen[5].content), {"reason": "not now", "author": "ana"}
         )
         self.assertEqual(json.loads(seen[7].content), {"text": "why?"})
+
+    def test_ontology_suggestion_patterns_and_batches_are_typed(self) -> None:
+        seen: list[httpx.Request] = []
+        patterns = {
+            "graph": GRAPH,
+            "ontology_version": 7,
+            "counts": {"open": 3, "accepted": 0, "dismissed": 0, "superseded": 0},
+            "kind_counts": {"facts": 0, "links": 3, "ontology": 0, "other": 0},
+            "total": 3,
+            "patterns": [
+                {
+                    "pattern": {"key": "pt_links", "label": "Link"},
+                    "origin": {"kind": "agent", "id": "starter:documents-link"},
+                    "kind": "links",
+                    "count": 3,
+                    "confidence": {"min": 0.5, "max": 0.7},
+                    "samples": [],
+                    "suggestion_ids": ["sg_1", "sg_2", "sg_3"],
+                    "members": [
+                        {"suggestion_id": "sg_1", "title": "Link 1", "confidence": 0.5},
+                        {"suggestion_id": "sg_2", "title": "Link 2", "confidence": 0.6},
+                        {"suggestion_id": "sg_3", "title": "Link 3", "confidence": 0.7},
+                    ],
+                }
+            ],
+            "truncated": False,
+        }
+        batch = {
+            "batch_id": "batch_1",
+            "accepted": 2,
+            "dismissed": 0,
+            "skipped": 1,
+            "results": [
+                {"suggestion_id": "sg_1", "outcome": "accepted", "status": "accepted"},
+                {"suggestion_id": "sg_2", "outcome": "accepted", "status": "accepted"},
+                {"suggestion_id": "sg_3", "outcome": "skipped", "reason": "not found"},
+            ],
+        }
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen, [{"json": patterns}, {"json": batch}, {"json": batch}]
+            ),
+        ) as client:
+            listed = client.ontology.suggestion_patterns(status="open", kind="links")
+            accepted = client.ontology.suggestions_accept_batch(
+                {"suggestion_ids": ["sg_1", "sg_2", "sg_3"], "shown": ["sg_1"]}
+            )
+            dismissed = client.ontology.suggestions_dismiss_batch(
+                {"suggestion_ids": ["sg_1"], "reason": "not now"}
+            )
+        self.assertIsInstance(listed, OntologySuggestionPatternList)
+        self.assertEqual(listed.patterns[0].count, 3)
+        self.assertIsInstance(accepted, OntologySuggestionBatchResponse)
+        self.assertIsInstance(dismissed, OntologySuggestionBatchResponse)
+        self.assertEqual(seen[0].url.path, "/v1/ontology/suggestions/patterns")
+        self.assertEqual(seen[0].url.params["type"], "links")
+        self.assertEqual(seen[1].url.path, "/v1/ontology/suggestions/accept-batch")
+        self.assertEqual(json.loads(seen[1].content)["shown"], ["sg_1"])
+        self.assertEqual(seen[2].url.path, "/v1/ontology/suggestions/dismiss-batch")
 
     def test_durable_trainer_submit_and_poll_are_typed(self) -> None:
         seen: list[httpx.Request] = []
@@ -2700,6 +2762,25 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
         self.assertIs(search["rerank"], True)
         self.assertEqual(self._body(seen[9]), {"rerank": False})
 
+    def test_a_search_sends_the_apps_cut_for_its_eval_trace(self) -> None:
+        seen: list[httpx.Request] = []
+        with self._client(seen) as client:
+            client.embeddings.search(
+                "triple stores",
+                request="triple stores",
+                rerank=True,
+                shown={"min_score": 0.3, "min_relevance": 0.3},
+            )
+        self.assertEqual(
+            self._body(seen[0]),
+            {
+                "text": "triple stores",
+                "request": "triple stores",
+                "rerank": True,
+                "shown": {"min_score": 0.3, "min_relevance": 0.3},
+            },
+        )
+
     def test_a_plain_search_sends_only_the_text(self) -> None:
         seen: list[httpx.Request] = []
         with self._client(seen) as client:
@@ -2743,6 +2824,43 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
         self.assertEqual(
             self._body(seen[2]), {"valid": False, "sparql": "ASK { ?s ?p ?o }"}
         )
+
+    def test_evals_label_names_the_route_of_a_question(self) -> None:
+        seen: list[httpx.Request] = []
+        with self._client(seen) as client:
+            client.evals.label("t1", valid=True, route="aggregate")
+        self.assertEqual(self._body(seen[0]), {"valid": True, "route": "aggregate"})
+
+    def test_evals_run_answers_sends_the_apps_answers(self) -> None:
+        seen: list[httpx.Request] = []
+        route = {"kind": "lookup", "confidence": 0.75, "by": "router"}
+        with self._client(seen) as client:
+            client.evals.run_answers(
+                [
+                    {"golden": "g1", "sparql": "ASK {}", "route": route},
+                    {"golden": "g2", "error": "the model timed out"},
+                ],
+                runner="my-agent",
+                consistency="strong",
+            )
+            client.evals.results(runner="my-agent", limit=2)
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("POST", "/v1/evals/run/answers"), ("GET", "/v1/evals/results")],
+        )
+        self.assertEqual(seen[0].url.params["consistency"], "strong")
+        self.assertEqual(
+            self._body(seen[0]),
+            {
+                "answers": [
+                    {"golden": "g1", "sparql": "ASK {}", "route": route},
+                    {"golden": "g2", "error": "the model timed out"},
+                ],
+                "runner": "my-agent",
+            },
+        )
+        self.assertEqual(seen[1].url.params["runner"], "my-agent")
+        self.assertEqual(seen[1].url.params["limit"], "2")
 
 
 CALL_ID = "00000001790000000000-n1-0000000001-0"

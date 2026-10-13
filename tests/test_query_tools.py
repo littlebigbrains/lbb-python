@@ -23,10 +23,10 @@ def transport(seen: list[httpx.Request], responses: list[dict[str, Any]]) -> htt
     return httpx.MockTransport(handler)
 
 
-KORN = {
-    "text": "David Korn",
-    "iri": "https://x.test/e/korn",
-    "label": "David Korn",
+LINDQVIST = {
+    "text": "Mara Lindqvist",
+    "iri": "https://x.test/e/lindqvist",
+    "label": "Mara Lindqvist",
     "class": "https://x.test/class/Person",
     "score": 1.0,
     "by": "exact",
@@ -51,19 +51,19 @@ class QueryToolTests(unittest.TestCase):
     def test_names_describe_and_commit_at(self) -> None:
         seen: list[httpx.Request] = []
         responses = [
-            {"json": {"candidates": [KORN], "index_ready": True, "index_names": 8, "commit_seq": 4, "ms": 3}},
+            {"json": {"candidates": [LINDQVIST], "index_ready": True, "index_names": 8, "commit_seq": 4, "ms": 3}},
             {"json": {"commit_seq": 4, "partial": False, "classes": [], "properties": [], "statements": [], "prefixes": {}, "text": "", "age_ms": 1}},
             {"json": {"moment": "2026-06-19T00:00:00Z", "as_of_commit_seq": 5, "resolved_by": "commit_time"}},
         ]
         with LbbClient("http://h", graph="crm", transport=transport(seen, responses)) as client:
-            found = client.query.names("Summarize David Korn's deals", limit=3)
+            found = client.query.names("Summarize Mara Lindqvist's deals", limit=3)
             described = client.query.describe(
                 question="Which clubs are active?", classes=["https://x.test/class/Club"]
             )
             at = client.query.commit_at(date="2026-06-18")
             with self.assertRaises(ValueError):
                 client.query.commit_at()
-        self.assertEqual(found["candidates"][0]["iri"], KORN["iri"])
+        self.assertEqual(found["candidates"][0]["iri"], LINDQVIST["iri"])
         self.assertEqual(described["commit_seq"], 4)
         self.assertEqual(at["as_of_commit_seq"], 5)
         self.assertEqual(
@@ -74,7 +74,7 @@ class QueryToolTests(unittest.TestCase):
                 ("GET", "/v1/graph/commit-at"),
             ],
         )
-        self.assertEqual(json.loads(seen[0].content), {"text": "Summarize David Korn's deals", "limit": 3})
+        self.assertEqual(json.loads(seen[0].content), {"text": "Summarize Mara Lindqvist's deals", "limit": 3})
         self.assertEqual(
             json.loads(seen[1].content),
             {"question": "Which clubs are active?", "classes": ["https://x.test/class/Club"]},
@@ -110,12 +110,12 @@ class AsyncQueryToolTests(unittest.IsolatedAsyncioTestCase):
     async def test_async_names_and_compare(self) -> None:
         seen: list[httpx.Request] = []
         responses = [
-            {"json": {"candidates": [KORN], "index_ready": True, "commit_seq": 4, "ms": 3}},
+            {"json": {"candidates": [LINDQVIST], "index_ready": True, "commit_seq": 4, "ms": 3}},
             {"json": COMPARED},
         ]
         async with AsyncLbbClient("http://h", transport=transport(seen, responses)) as client:
-            found = await client.query.names("David Korn")
+            found = await client.query.names("Mara Lindqvist")
             compared = await client.query.compare("SELECT ?c WHERE { ?c ?p ?o }", before={"as_of_commit_seq": 1})
         self.assertTrue(found["index_ready"])
         self.assertEqual(compared["after"]["as_of_commit_seq"], 2)
-        self.assertEqual(json.loads(seen[0].content), {"text": "David Korn"})
+        self.assertEqual(json.loads(seen[0].content), {"text": "Mara Lindqvist"})

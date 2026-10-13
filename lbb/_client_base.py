@@ -2845,8 +2845,8 @@ class _FilesNamespace:
     SHA-256, and a ``Document`` entity the graph's facts can point at. The
     document workflows read files: ``documents.parse`` reads the text layer
     of each PDF into pages, with every line and word and its box on the
-    page, and ``documents.link`` links the codes the documents mention to the
-    entries that define them. The methods return the JSON answers (an
+    page, and ``documents.link`` connects mentions of the same thing across
+    the documents. The methods return the JSON answers (an
     awaitable on :class:`AsyncLbbClient`); validate one with
     ``models.FileUploadResponse``, ``models.FileList`` or ``models.FilePages``.
     """
@@ -3116,6 +3116,59 @@ class _OntologyNamespace:
                     "limit": limit,
                 }
             ),
+        )
+
+    def suggestion_patterns(
+        self,
+        *,
+        status: str | None = None,
+        origin_id: str | None = None,
+        kind: str | None = None,
+    ) -> models.OntologySuggestionPatternList:
+        """The suggestions grouped by pattern, the largest first.
+
+        A pattern holds the suggestions that ask one decision: per pattern
+        the count, the confidence range, three samples and every id. ``kind``
+        (the route's ``type``) is ``facts``, ``links``, ``ontology`` or
+        ``other``.
+        """
+        return self._client._model_request(
+            models.OntologySuggestionPatternList,
+            "GET",
+            "/v1/ontology/suggestions/patterns",
+            params=self._scope(
+                {"status": status, "origin_id": origin_id, "type": kind}
+            ),
+        )
+
+    def suggestions_accept_batch(
+        self, body: Body
+    ) -> models.OntologySuggestionBatchResponse:
+        """Accept up to 500 suggestions, each as ``suggestion_accept`` does.
+
+        ``body`` holds ``suggestion_ids`` and optionally ``reason``,
+        ``author``, ``shown`` (the samples a person saw) and ``pattern``.
+        """
+        return self._client._model_request(
+            models.OntologySuggestionBatchResponse,
+            "POST",
+            "/v1/ontology/suggestions/accept-batch",
+            body=body,
+            options=_read_options(),
+            params=self._scope(),
+        )
+
+    def suggestions_dismiss_batch(
+        self, body: Body
+    ) -> models.OntologySuggestionBatchResponse:
+        """Dismiss up to 500 suggestions, each as ``suggestion_dismiss`` does."""
+        return self._client._model_request(
+            models.OntologySuggestionBatchResponse,
+            "POST",
+            "/v1/ontology/suggestions/dismiss-batch",
+            body=body,
+            options=_read_options(),
+            params=self._scope(),
         )
 
     def suggestion_get(self, suggestion_id: str) -> models.OntologyChangeSuggestion:
@@ -3760,6 +3813,7 @@ class _EvalsNamespace:
         note: str | None = None,
         source: str | None = None,
         sparql: str | None = None,
+        route: str | None = None,
     ) -> Any:
         """Thumbs up or down on a trace.
 
@@ -3771,7 +3825,10 @@ class _EvalsNamespace:
         `valid=True` makes the trace's query the golden query of the question;
         `valid=False` with `sparql` gives the right query, which becomes the
         golden query (the server checks and runs it once); `valid=False`
-        alone marks the answer wrong."""
+        alone marks the answer wrong. `route` with an answer label that
+        names the query (`valid=True`, or `valid=False` with `sparql`) sets
+        the route the question expects; `valid=True` alone takes the
+        trace's route."""
         body: dict[str, Any] = {}
         if item is not None:
             body["item"] = item
@@ -3787,6 +3844,8 @@ class _EvalsNamespace:
             body["source"] = source
         if sparql is not None:
             body["sparql"] = sparql
+        if route is not None:
+            body["route"] = route
         return self._client._request(
             "POST", "/v1/evals/label", params={"trace": trace_id}, body=body
         )
@@ -3834,9 +3893,37 @@ class _EvalsNamespace:
             "POST", "/v1/evals/run", params={"consistency": consistency}
         )
 
-    def results(self, *, limit: int | None = None) -> Any:
+    def run_answers(
+        self,
+        answers: list[Mapping[str, Any]],
+        *,
+        runner: str | None = None,
+        consistency: str | None = None,
+    ) -> Any:
+        """Check your app's own answers to the question goldens.
+
+        Ask each golden's `request` with your own loop, then send one answer
+        per golden: `{"golden": id, "sparql": ..., "route": ...}`, with the
+        query whose rows hold the answer and the `route` of
+        `query.ask(question, mode="route")`. Leave out `sparql` when the app
+        found the question unanswerable; send `error` when it failed. The
+        server runs each query and checks it as it checks Ask's answer.
+        `runner` names your app (default `app`); its runs are a series of
+        their own: `results(runner=...)`."""
+        body: dict[str, Any] = {"answers": [dict(answer) for answer in answers]}
+        if runner is not None:
+            body["runner"] = runner
         return self._client._request(
-            "GET", "/v1/evals/results", params={"limit": limit}
+            "POST",
+            "/v1/evals/run/answers",
+            params={"consistency": consistency},
+            body=body,
+        )
+
+    def results(self, *, limit: int | None = None, runner: str | None = None) -> Any:
+        """The runs, newest first: the server's, or one app's (`runner`)."""
+        return self._client._request(
+            "GET", "/v1/evals/results", params={"limit": limit, "runner": runner}
         )
 
     def settings(self) -> Any:
@@ -4382,6 +4469,7 @@ class _EmbeddingsNamespace:
         request: str | None = None,
         explain: bool = False,
         rerank: bool | None = None,
+        shown: Mapping[str, Any] | None = None,
     ) -> Any:
         """Search by meaning (``POST /v1/search``).
 
@@ -4397,7 +4485,11 @@ class _EmbeddingsNamespace:
         ``explain=True`` returns the plan without a model call. ``rerank=True``
         orders the best hits by the managed rerank model (each hit then
         carries its ``relevance``), ``rerank=False`` keeps the similarity
-        order; without it the graph's search setting decides.
+        order; without it the graph's search setting decides. With
+        ``request``, ``shown`` is the app's cut, for the eval trace:
+        ``{"min_score": 0.3, "min_relevance": 0.3, "limit": 10}`` (each
+        optional); the trace marks each hit shown or not, and a golden of the
+        search checks only the hits the app shows. It changes no hit.
         """
         body: dict[str, Any] = {"text": text}
         if embedding is not None:
@@ -4416,6 +4508,8 @@ class _EmbeddingsNamespace:
             body["explain"] = True
         if rerank is not None:
             body["rerank"] = rerank
+        if shown is not None:
+            body["shown"] = dict(shown)
         return self._client._request("POST", "/v1/search", body=body)
 
     def search_settings(self) -> Any:
