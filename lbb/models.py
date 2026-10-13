@@ -1463,6 +1463,7 @@ class EvalVia(Enum):
     ask = 'ask'
     query = 'query'
     search = 'search'
+    app = 'app'
 
 
 class EvidenceCompleteness(Enum):
@@ -2698,6 +2699,292 @@ class ModelCadenceResponse(BaseModel):
     trained_at_commit_seq: Annotated[int | None, Field(ge=0)] = None
 
 
+class ModelCalibrationAnswerValue(Enum):
+    """
+    A person's answer to "Is the judge right?".
+    """
+
+    yes = 'yes'
+    no = 'no'
+    cant_tell = 'cant_tell'
+
+
+class ModelCalibrationApplied(BaseModel):
+    """
+    The threshold a person applied from a session.
+    """
+
+    at_ms: int
+    by: str
+    threshold: float
+
+
+class ModelCalibrationApplyRequest(BaseModel):
+    """
+    `POST /v1/models/calibration/apply?graph&id`: apply a threshold, by
+    default the session's proposal.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    threshold: Annotated[float | None, Field(description='0.5 to 0.99.')] = None
+
+
+class ModelCalibrationBandAccuracy(BaseModel):
+    """
+    The model's accuracy in one confidence band, against the ground truth.
+    """
+
+    accuracy: float | None = None
+    correct: Annotated[int, Field(description='Known units the model got right.', ge=0)]
+    high: float
+    known: Annotated[
+        int, Field(description='Sampled units whose ground truth is known.', ge=0)
+    ]
+    low: float
+    population: Annotated[
+        int, Field(description='Units of the window in the band.', ge=0)
+    ]
+    sampled: Annotated[int, Field(ge=0)]
+
+
+class ModelCalibrationBandCount(BaseModel):
+    """
+    One confidence band of the population: `[low, high)`, the last
+    `[0.9, 1]`. A band holds two strata: the units no check disputes, and
+    the disputed units (their check shows the judge picking another option).
+    """
+
+    disputed_sampled: Annotated[
+        int | None, Field(description='Disputed units the session sampled.', ge=0)
+    ] = None
+    disputed_units: Annotated[
+        int | None, Field(description='Disputed units of the window in the band.', ge=0)
+    ] = None
+    high: float
+    low: float
+    sampled: Annotated[int, Field(description='Those units the session sampled.', ge=0)]
+    units: Annotated[
+        int,
+        Field(
+            description='Units of the window in the band that no check disputes.', ge=0
+        ),
+    ]
+
+
+class ModelCalibrationGateSide(BaseModel):
+    """
+    The decisions on one side of a workflow's gate.
+    """
+
+    correct: Annotated[int, Field(description='Known units the model got right.', ge=0)]
+    estimated_accuracy: Annotated[
+        float | None, Field(description='Weighted by stratum, as the thresholds are.')
+    ] = None
+    known: Annotated[
+        int, Field(description='Sampled units whose ground truth is known.', ge=0)
+    ]
+    population: Annotated[
+        int, Field(description='Units of the window on this side.', ge=0)
+    ]
+    sampled: Annotated[int, Field(ge=0)]
+
+
+class ModelCalibrationJudgeCall(BaseModel):
+    """
+    One judge call of a session and what it cost.
+    """
+
+    call: str
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    outcome: Annotated[
+        str,
+        Field(
+            description="`right`, `partly` or `wrong` (the check's verdict), `skipped_refused`\nor `failed`."
+        ),
+    ]
+
+
+class ModelCalibrationJudgePick(BaseModel):
+    """
+    The judge's pick of a question, from its check.
+    """
+
+    key: str
+    label: str
+    probability: Annotated[
+        float, Field(description="The judge's probability of its pick.")
+    ]
+    reason: Annotated[str, Field(description="The judge's reason, from its check.")]
+
+
+class ModelCalibrationJudging(BaseModel):
+    """
+    How the judging of a session's sample went.
+    """
+
+    calls: Annotated[int, Field(description='Distinct calls of the sample.', ge=0)]
+    checked_before: Annotated[
+        int, Field(description='Calls that had a check before the session.', ge=0)
+    ]
+    failed: Annotated[int, Field(ge=0)]
+    judged: Annotated[
+        int, Field(description="Calls the session's judge checked.", ge=0)
+    ]
+    not_judged: Annotated[
+        int,
+        Field(description='Calls left without a check when the judging stopped.', ge=0),
+    ]
+    refused: Annotated[int, Field(ge=0)]
+    stopped: Annotated[
+        str | None,
+        Field(description='Why the judging stopped early: `budget` or `time`.'),
+    ] = None
+
+
+class ModelCalibrationModelPick(BaseModel):
+    """
+    The model's pick of a question.
+    """
+
+    confidence: Annotated[
+        float,
+        Field(
+            description="The number the job's threshold compares: for `route` the pick's\nprobability (else the answer's confidence), for `fit` the answer's\nconfidence (else the pick's probability), for a workflow job the\nvalue its gate compares."
+        ),
+    ]
+    key: str
+    label: str
+
+
+class ModelCalibrationOption(BaseModel):
+    """
+    One option of a choice question.
+    """
+
+    key: str
+    label: str
+
+
+class ModelCalibrationOptions(BaseModel):
+    """
+    What a calibration session runs with, set at its start.
+    """
+
+    budget_micro_usd: Annotated[
+        int, Field(description='The judge cost the session may spend.', ge=0)
+    ]
+    max_questions: Annotated[int, Field(ge=0)]
+    sample_per_band: Annotated[int, Field(ge=0)]
+    since_days: Annotated[int, Field(ge=0)]
+    target_precision: float
+
+
+class ModelCalibrationPopulation(BaseModel):
+    """
+    The units a session read from the call log. A unit is one choice question
+    of one logged call; for a workflow job, one gate decision a workflow
+    noted on its call (`ModelCall::gates`).
+    """
+
+    above_gate: Annotated[
+        int | None,
+        Field(
+            description="For a workflow job: units at or above the workflow's gate, which\nwere written without a person.",
+            ge=0,
+        ),
+    ] = None
+    bands: list[ModelCalibrationBandCount]
+    batches: Annotated[int, Field(description='Call log batches read.', ge=0)]
+    calls: Annotated[int, Field(description='Calls with at least one unit.', ge=0)]
+    disputed: Annotated[
+        int,
+        Field(
+            description='Units whose check shows the judge picking another option.',
+            ge=0,
+        ),
+    ]
+    limited: Annotated[
+        bool,
+        Field(description='The read bounds stopped before the start of the window.'),
+    ]
+    units: Annotated[int, Field(ge=0)]
+    without_confidence: Annotated[
+        int,
+        Field(
+            description='Answers without a confidence, or for a workflow job without a gate\ndecision: left out.',
+            ge=0,
+        ),
+    ]
+
+
+class ModelCalibrationProposal(BaseModel):
+    """
+    The threshold a session proposes.
+    """
+
+    automatic_share: float
+    estimated_accuracy: float
+    known: Annotated[int, Field(ge=0)]
+    threshold: float
+
+
+class ModelCalibrationStatus(Enum):
+    """
+    Where a calibration session is.
+    """
+
+    queued = 'queued'
+    running = 'running'
+    asking = 'asking'
+    validated = 'validated'
+    applied = 'applied'
+    failed = 'failed'
+
+
+class ModelCalibrationThresholdOutcome(Enum):
+    """
+    What the walk says about one candidate threshold. The walk goes through
+    the candidates from 0.95 down, with the rule of the workflow gates
+    measured from inbox decisions.
+    """
+
+    pass_ = 'pass'
+    needs_units = 'needs_units'
+    fails = 'fails'
+    not_reached = 'not_reached'
+
+
+class ModelCalibrationValidation(Enum):
+    """
+    Whether people validated a session's figures.
+    """
+
+    validated = 'validated'
+    not_validated = 'not_validated'
+
+
+class ModelCalibrationWorkflow(BaseModel):
+    """
+    The workflow whose gate a session measures.
+    """
+
+    gate: Annotated[
+        float,
+        Field(
+            description='Its gate when the session started: decisions at or above it were\nwritten without a person.'
+        ),
+    ]
+    name: Annotated[str, Field(description="The workflow's name.")]
+    starter: Annotated[
+        str,
+        Field(
+            description='Its starter: `documents.link`, `values.extract` or `review`.'
+        ),
+    ]
+
+
 class ModelCallCheckResponse(BaseModel):
     """
     `POST /v1/models/calls/check`: the call is queued for a check by the
@@ -2705,6 +2992,25 @@ class ModelCallCheckResponse(BaseModel):
     """
 
     queued: bool
+
+
+class ModelCallGate(BaseModel):
+    """
+    A gate decision a workflow made from one answer of a logged choice call.
+    """
+
+    pick: Annotated[
+        str,
+        Field(
+            description='The option the decision states: the entry a `documents.link`\nmention names (`none_of_these` for no link), the option a\n`documents.map` answer chose, `supported` for a value of\n`values.extract`.'
+        ),
+    ]
+    value: Annotated[
+        float,
+        Field(
+            description="The value the workflow's gate compares, 0 to 1: at or above the gate\nthe decision is written without a person."
+        ),
+    ]
 
 
 class ModelCallOrigin(BaseModel):
@@ -2998,6 +3304,29 @@ class ModelSwitchRequest(BaseModel):
         extra='forbid',
     )
     trial: str
+
+
+class ModelThreshold(BaseModel):
+    """
+    The applied threshold of one job.
+    """
+
+    at_ms: int
+    by: str
+    session: Annotated[str, Field(description='The session it came from.')]
+    threshold: float
+    validated: Annotated[
+        bool, Field(description='People validated the session when it was applied.')
+    ]
+
+
+class ModelThresholdsResponse(BaseModel):
+    """
+    `GET /v1/models/thresholds?graph`: the graph's applied thresholds of the
+    `route` and `fit` jobs. A workflow's gate is its own setting.
+    """
+
+    jobs: dict[str, ModelThreshold]
 
 
 class ModelTrainingConfig(BaseModel):
@@ -3696,6 +4025,38 @@ class OntologyStarterUpdateResponse(BaseModel):
             description="The suggestion's id; null when the graph already holds the starter."
         ),
     ] = None
+
+
+class OntologySuggestionBatchRequest(BaseModel):
+    """
+    `POST /v1/ontology/suggestions/accept-batch` and `/dismiss-batch`: one
+    decision for many suggestions, each decided as the single route decides
+    it.
+    """
+
+    author: str | None = None
+    pattern: Annotated[
+        str | None,
+        Field(
+            description='The pattern the person decided (`SuggestionPattern::key`), recorded\non each suggestion.'
+        ),
+    ] = None
+    reason: Annotated[
+        str | None,
+        Field(
+            description="Dismiss: the reason, at most 1,000 characters (absent: a reason that\nnames the batch). Accept: added to each suggestion's discussion."
+        ),
+    ] = None
+    shown: Annotated[
+        list[str] | None,
+        Field(
+            description='The ids of the samples the person saw before deciding; recorded on\neach suggestion (`SuggestionBatchDecision::shown`). At most 500.'
+        ),
+    ] = None
+    suggestion_ids: Annotated[
+        list[str],
+        Field(description='1 to 500 suggestion ids; a repeated id counts once.'),
+    ]
 
 
 class OntologyTermView(BaseModel):
@@ -5727,6 +6088,31 @@ class SearchSettingsRequest(BaseModel):
     ] = None
 
 
+class SearchShown(BaseModel):
+    """
+    The hits an app shows of a search: in the returned order, the hits at or
+    above `min_score` and, when the search reranked, at or above
+    `min_relevance`, at most `limit` of them. A field left out does not cut.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    limit: Annotated[
+        int | None, Field(description='The most hits the app shows, at least 1.', ge=0)
+    ] = None
+    min_relevance: Annotated[
+        float | None,
+        Field(
+            description='The lowest rerank `relevance` the app shows, 0 to 1. A hit without a\nrelevance (the search did not rerank) passes.'
+        ),
+    ] = None
+    min_score: Annotated[
+        float | None,
+        Field(description='The lowest similarity (`score`) the app shows, -1 to 1.'),
+    ] = None
+
+
 class SearchSignalWeights(BaseModel):
     bm25: float | None = None
     graph: float | None = None
@@ -7029,63 +7415,6 @@ class SparqlTerm2(BaseModel):
     ]
 
 
-class SparqlTextRequest(BaseModel):
-    """
-    Run a SPARQL 1.1 query supplied as **text** (SELECT or ASK) through the
-    conformant engine over the live graph, returning SPARQL 1.1 Query Results
-    JSON. Distinct from [`SparqlSelectRequest`] (the structured-request form);
-    this is the raw-text dialect. CONSTRUCT/DESCRIBE are rejected (they yield an
-    RDF graph, not a results table).
-    """
-
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    as_of_commit_seq: CommitSeq | None = None
-    cursor: Annotated[
-        str | None,
-        Field(
-            description='Opt into snapshot-bound keyset pagination: empty string starts a page,\notherwise echo `next_cursor` with the identical query. Requires one\nsupported indexed ordered LIMIT (1..10000), OFFSET 0, and no transport\n`limit`/`offset`. An unavailable snapshot expires the cursor explicitly.'
-        ),
-    ] = None
-    entailment: Annotated[
-        SparqlEntailment | None,
-        Field(
-            description="Entailment regime. `None` (default) matches asserted triples only.\n`Rdfs` applies the practical RDFS core at query time, `Subclass` the\nclass-only subset, and `Owl` the OWL profile on top of `Rdfs`. All\nderive the closure from the pinned generation's asserted schema\ntriples."
-        ),
-    ] = None
-    limit: Annotated[
-        int | None,
-        Field(
-            description='Return at most this many result rows. Applied to SELECT bindings after the\nconformant engine has produced the complete result document.',
-            ge=0,
-        ),
-    ] = None
-    offset: Annotated[
-        int | None,
-        Field(description='Skip this many result rows before `limit`.', ge=0),
-    ] = None
-    profile: Annotated[
-        bool | None,
-        Field(
-            description='Return what the server measured while it answered this request in\n`profile`. A profiled request never reads or fills the result cache,\nso the profile always describes an execution.'
-        ),
-    ] = None
-    query: Annotated[str, Field(description='The SPARQL query text (SELECT or ASK).')]
-    reason: Annotated[
-        bool | None,
-        Field(
-            description="Not available on the published SPARQL surface: a graph's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error."
-        ),
-    ] = None
-    request: Annotated[
-        str | None,
-        Field(
-            description="The user's words behind this query, when the caller has them. When\npresent the server records an eval trace and returns its `trace_id`,\nso the caller can label the result valid or not (managed evals)."
-        ),
-    ] = None
-
-
 class SparqlValue1(BaseModel):
     """
     A literal constant operand in a FILTER. Scalars compare by typed value;
@@ -7324,6 +7653,67 @@ class SuggestionAnchorKind(Enum):
     relation = 'relation'
 
 
+class SuggestionBatchDecision(BaseModel):
+    """
+    How a batch decided a suggestion: the batch, its size, the pattern a
+    person decided, and whether the person saw this suggestion as a sample.
+    """
+
+    id: Annotated[
+        str,
+        Field(
+            description="The batch's id (`batch_` and 24 hex characters), the same on every\nsuggestion one call decided."
+        ),
+    ]
+    pattern: Annotated[
+        str | None,
+        Field(
+            description='The pattern key the request named (`SuggestionPattern::key`).'
+        ),
+    ] = None
+    shown: Annotated[
+        bool | None,
+        Field(
+            description="Whether the request's `shown` named this suggestion: the person saw\nit as a sample before deciding. Absent when the request named no\nsamples."
+        ),
+    ] = None
+    size: Annotated[
+        int, Field(description='How many suggestions the call named.', ge=0)
+    ]
+
+
+class SuggestionBatchOutcome(Enum):
+    """
+    What a batch did with one suggestion.
+    """
+
+    accepted = 'accepted'
+    dismissed = 'dismissed'
+    skipped = 'skipped'
+
+
+class SuggestionBatchResult(BaseModel):
+    """
+    One suggestion of a batch.
+    """
+
+    outcome: SuggestionBatchOutcome
+    reason: Annotated[
+        str | None,
+        Field(
+            description='Why it was skipped, or that it was decided before (`accepted\nalready`).'
+        ),
+    ] = None
+    status: OntologyChangeSuggestionStatus | None = None
+    suggestion_id: str
+    superseded_by: Annotated[
+        str | None,
+        Field(
+            description='For a superseded suggestion: the suggestion its producer named in\nits place, when it named one.'
+        ),
+    ] = None
+
+
 class SuggestionCommentKind(Enum):
     """
     A discussion entry. `event` entries are written by the server when the
@@ -7332,6 +7722,15 @@ class SuggestionCommentKind(Enum):
 
     comment = 'comment'
     event = 'event'
+
+
+class SuggestionConfidenceRange(BaseModel):
+    """
+    The lowest and the highest confidence of a pattern's suggestions.
+    """
+
+    max: float
+    min: float
 
 
 class SuggestionEvidence(BaseModel):
@@ -7414,6 +7813,86 @@ class SuggestionFactsWritten(BaseModel):
     ]
 
 
+class SuggestionKind(Enum):
+    """
+    What a suggestion asks a person to decide: facts to review (the review
+    items of `review`, the values of `values.extract`, any facts without a
+    change), links (the link reviews of `documents.link`), an ontology
+    change, or something else (records to link as one identity).
+    """
+
+    facts = 'facts'
+    links = 'links'
+    ontology = 'ontology'
+    other = 'other'
+
+
+class SuggestionKindCounts(BaseModel):
+    """
+    Suggestions per kind.
+    """
+
+    facts: Annotated[int, Field(ge=0)]
+    links: Annotated[int, Field(ge=0)]
+    ontology: Annotated[int, Field(ge=0)]
+    other: Annotated[int, Field(ge=0)]
+
+
+class SuggestionLinkDecision(Enum):
+    """
+    What a link review of `documents.link` asks: link a mention to an entry
+    (a link below the gate), or the model chose no entry and the facts link
+    each mention to its best candidate.
+    """
+
+    link = 'link'
+    no_entry = 'no_entry'
+
+
+class SuggestionLinkSummary(BaseModel):
+    """
+    A link review in brief, from its first fact and evidence sample: the
+    mention it goes from, the entry it goes to, and the model's answer.
+    """
+
+    best_probability: Annotated[
+        float | None,
+        Field(
+            description='For no entry: the probability the model gave its best candidate.'
+        ),
+    ] = None
+    confidence: Annotated[
+        float | None,
+        Field(
+            description="The link's confidence; for no entry, the confidence of that answer."
+        ),
+    ] = None
+    decision: SuggestionLinkDecision
+    document: Annotated[
+        str | None, Field(description="The mention's document, page (from 1) and line.")
+    ] = None
+    line: str | None = None
+    line_id: str | None = None
+    mentions: Annotated[
+        int, Field(description='The mentions the review holds (its facts).', ge=0)
+    ]
+    page: Annotated[int | None, Field(ge=0)] = None
+    relation: Annotated[
+        str,
+        Field(
+            description='`REFERS_TO` (the span names the entry) or `SAME_ITEM_AS` (the same\nitem).'
+        ),
+    ]
+    span: Annotated[str, Field(description='The text of the mention.')]
+    target: Annotated[
+        str,
+        Field(
+            description="The entry's identifier, and its key (`entry:<sha256>:<identifier>`,\nthe sha-256 of its defining document)."
+        ),
+    ]
+    target_key: str | None = None
+
+
 class SuggestionOriginKind(Enum):
     """
     Who produced a suggestion.
@@ -7422,6 +7901,39 @@ class SuggestionOriginKind(Enum):
     integration = 'integration'
     agent = 'agent'
     person = 'person'
+
+
+class SuggestionPattern(BaseModel):
+    """
+    The pattern of a suggestion: the suggestions that ask one decision a
+    person can make from a few samples (the same producer, document, kind of
+    fact and shape of text). Derived when the suggestion is read, from its
+    stored fields.
+    """
+
+    key: Annotated[
+        str,
+        Field(
+            description="Stable: `pt_` and 20 hex characters of the pattern's parts."
+        ),
+    ]
+    label: Annotated[
+        str,
+        Field(
+            description='The pattern in words, for example `Link "#.#.#" in manual.pdf to\nSection #.#.# (REFERS_TO)`. At most 200 characters.'
+        ),
+    ]
+
+
+class SuggestionPatternMember(BaseModel):
+    """
+    One suggestion of a pattern, for the list a person picks from.
+    """
+
+    confidence: float | None = None
+    link: SuggestionLinkSummary | None = None
+    suggestion_id: str
+    title: str
 
 
 class SuggestionShownV1(BaseModel):
@@ -8097,6 +8609,145 @@ class WorkflowGate(BaseModel):
     """
 
     below: float
+    target_precision: Annotated[
+        float | None,
+        Field(
+            description='The precision a lower gate measured from the inbox decisions must\nreach, 0.5 to 0.999 (`GET /v1/workflows/triggered/calibration`).\nAbsent: 0.95. A change of it alone reads no instance again.'
+        ),
+    ] = None
+
+
+class WorkflowGateApplyRequest(BaseModel):
+    """
+    `POST /v1/workflows/triggered/calibration/apply`: set a gated workflow's
+    gate from its measurement. The labels are read again; the request is
+    refused without a proposal (409 `calibration_no_proposal`).
+    """
+
+    gate: Annotated[
+        float | None,
+        Field(
+            description="The gate to set: from the proposal's gate up to below the current\ngate. Absent: the proposal's gate."
+        ),
+    ] = None
+    name: str
+    starter: Annotated[str, Field(description="The starter workflow's catalog id.")]
+
+
+class WorkflowGateBand(BaseModel):
+    """
+    One confidence band of a gate's report: the labels whose gate value lies
+    in `[low, high)` (the last band of the scale includes 1). A band that
+    reaches above the gate is cut at the gate.
+    """
+
+    below_gate: Annotated[
+        bool,
+        Field(
+            description='The band lies below the gate. A band at or above the gate holds\nanswers written without a person: inbox decisions do not measure it\n(calibration sessions with a judge do).'
+        ),
+    ]
+    correct: Annotated[
+        int, Field(description='Labels that say the answer was right.', ge=0)
+    ]
+    high: float
+    low: float
+    n: Annotated[int, Field(description='Labels in the band.', ge=0)]
+    precision: Annotated[
+        float | None, Field(description='`correct / n`; absent without labels.')
+    ] = None
+    wilson_high: float | None = None
+    wilson_low: Annotated[
+        float | None,
+        Field(
+            description='The 95% Wilson interval of the precision; absent without labels.'
+        ),
+    ] = None
+
+
+class WorkflowGateCandidateOutcome(Enum):
+    """
+    What the rule says about one candidate gate.
+    """
+
+    pass_ = 'pass'
+    needs_labels = 'needs_labels'
+    fails = 'fails'
+    not_reached = 'not_reached'
+
+
+class WorkflowGateLabels(BaseModel):
+    """
+    What the labels of a gate are made of.
+    """
+
+    batch: Annotated[
+        int,
+        Field(
+            description='Labels from the other batch decisions. They fill the bands only with\n`include_batch=true`.',
+            ge=0,
+        ),
+    ]
+    batch_seen: Annotated[
+        int,
+        Field(
+            description='Labels from a batch decision on an item the person saw: they fill\nthe bands.',
+            ge=0,
+        ),
+    ]
+    decided_items: Annotated[
+        int,
+        Field(
+            description='Items of the workflow that a person accepted or dismissed.',
+            ge=0,
+        ),
+    ]
+    excluded: Annotated[
+        int,
+        Field(
+            description='Labels left out: the value the gate compared is at or above the\ngate now, or the item does not keep it.',
+            ge=0,
+        ),
+    ]
+    open_items: Annotated[
+        int, Field(description='Items of the workflow that wait for a person.', ge=0)
+    ]
+    single: Annotated[
+        int,
+        Field(
+            description='Labels from a decision on one item: they fill the bands.', ge=0
+        ),
+    ]
+
+
+class WorkflowGateProposal(BaseModel):
+    """
+    A lower gate the labels support.
+    """
+
+    gate: Annotated[
+        float,
+        Field(
+            description='The proposed gate: the lowest candidate that passes, walking down\nfrom the current gate.'
+        ),
+    ]
+    n: Annotated[int, Field(ge=0)]
+    precision: Annotated[
+        float,
+        Field(
+            description='The precision of the labels from the proposed gate to the current\none, with the low end of its 95% Wilson interval and their count.'
+        ),
+    ]
+    wilson_low: float
+
+
+class WorkflowGateSource(Enum):
+    """
+    What a person applied a gate from.
+    """
+
+    inbox = 'inbox'
+    session = 'session'
 
 
 class WorkflowHeartbeatRequest(BaseModel):
@@ -8176,6 +8827,71 @@ class WorkflowInstanceStatus(Enum):
     paused = 'paused'
 
 
+class WorkflowMessageOrigin(BaseModel):
+    """
+    Where a message came from. One origin per message: a message of several
+    instances holds the union of their fields. Every field but `kind` is
+    optional, and the whole origin is at most 1 KiB.
+
+    The engine stores it with the turn, beside the message. It is no part
+    of the message's identity: a repeated message id with the same message
+    answers the first turn and keeps the first origin.
+    """
+
+    actor: Annotated[
+        str | None, Field(description='Who asked, when a person or a named client did.')
+    ] = None
+    attempt: Annotated[
+        int | None,
+        Field(description='How many times the item was sent before (a requeue).', ge=0),
+    ] = None
+    event: Annotated[
+        str | None, Field(description='The event of the data plane that sent it.')
+    ] = None
+    fields: Annotated[
+        list[str] | None,
+        Field(
+            description='The fields (predicate IRIs or names) whose change caused it.'
+        ),
+    ] = None
+    from_seq: Annotated[
+        int | None,
+        Field(description='The first commit of the range that caused it.', ge=0),
+    ] = None
+    kind: Annotated[
+        str, Field(description='One of [`WORKFLOW_ORIGIN_KINDS`], or `continuation`.')
+    ]
+    message_id: Annotated[
+        str | None,
+        Field(description='A continuation: the message id of the turn that continued.'),
+    ] = None
+    note: Annotated[
+        str | None, Field(description='A short note, at most 280 characters.')
+    ] = None
+    reason: Annotated[
+        str | None,
+        Field(description="The sender's own reason word (`changed`, `refresh`, …)."),
+    ] = None
+    requests: Annotated[
+        list[str] | None,
+        Field(description='The request ids of the commits that caused it.'),
+    ] = None
+    target_seq: Annotated[
+        int | None,
+        Field(description='The commit a pass over a class reads up to.', ge=0),
+    ] = None
+    to_seq: Annotated[
+        int | None,
+        Field(description='The last commit of the range that caused it.', ge=0),
+    ] = None
+    trigger: Annotated[str | None, Field(description='The trigger that sent it.')] = (
+        None
+    )
+    turn: Annotated[
+        int | None, Field(description='A continuation: the turn that continued.', ge=0)
+    ] = None
+
+
 class WorkflowMessageRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -8187,6 +8903,7 @@ class WorkflowMessageRequest(BaseModel):
         ),
     ]
     message: Any
+    origin: WorkflowMessageOrigin | None = None
     workflow_id: str
 
 
@@ -8206,6 +8923,35 @@ class WorkflowOwns(BaseModel):
     classes: list[str] | None = None
     properties: list[str] | None = None
     relations: list[str] | None = None
+
+
+class WorkflowProgress(BaseModel):
+    """
+    What a running step of a message workflow does now, read from its
+    operation progress details. The same shape as the Running line of a
+    triggered workflow (`TriggeredWorkflowRunning`), with a free `unit`.
+    """
+
+    done: Annotated[int, Field(ge=0)]
+    heartbeat_at: Annotated[
+        str, Field(description='When the worker last reported progress (RFC 3339).')
+    ]
+    phase: Annotated[
+        str,
+        Field(description='What the step does now, in plain words: `reading pages`.'),
+    ]
+    started_at: Annotated[
+        str, Field(description="When the step's operation started (RFC 3339).")
+    ]
+    total: Annotated[
+        int | None, Field(description='Absent when the step does not know it.', ge=0)
+    ] = None
+    unit: Annotated[
+        str | None,
+        Field(
+            description='What `done` and `total` count: one of the `ActivityUnit` words\n(`documents`, `pages`, `mentions`, `links`, `proposals`,\n`instances`, `questions`, `messages`, `items`) or another short word.'
+        ),
+    ] = None
 
 
 class WorkflowRunsIn(Enum):
@@ -9489,13 +10235,16 @@ class EvalLabelRequest(BaseModel):
     `items` labels the answer as a whole: `true` makes the trace's query the
     golden query of the question; `false` with `sparql` makes that query the
     golden query (the server checks and runs it once); `false` alone marks
-    the answer wrong.
+    the answer wrong. `route` with `valid: true`, or with `valid: false` and
+    `sparql`, names the question's route; `valid: true` alone takes the
+    trace's route.
     """
 
     by: str | None = None
     item: str | None = None
     items: list[EvalItemLabelInput] | None = None
     note: str | None = None
+    route: QueryRoute | None = None
     source: EvalLabelSource | None = None
     sparql: Annotated[
         str | None,
@@ -9504,6 +10253,31 @@ class EvalLabelRequest(BaseModel):
         ),
     ] = None
     valid: bool | None = None
+
+
+class EvalRouteCheck(BaseModel):
+    """
+    The route check of an `ask` golden: the router's pick for the question
+    against the route the golden expects. It scores the router and does not
+    change the verdict: the answer loop may take another route, and an
+    answer stands on its rows.
+    """
+
+    expected: Annotated[QueryRoute, Field(description='The route the golden expects.')]
+    probability: Annotated[
+        float, Field(description="The router's probability of its pick.")
+    ]
+    right: Annotated[bool, Field(description='`router == expected`.')]
+    router: Annotated[QueryRoute, Field(description="The router's pick this time.")]
+
+
+class EvalShown(BaseModel):
+    """
+    The hits an app showed of a search.
+    """
+
+    count: Annotated[int, Field(description='The hits that passed it.', ge=0)]
+    cut: Annotated[SearchShown, Field(description="The app's cut.")]
 
 
 class EvidenceInput1(BaseModel):
@@ -9794,6 +10568,8 @@ class Golden(BaseModel):
     origin: GoldenOrigin
     query_type: EvalQueryType | None = None
     request: str | None = None
+    route: QueryRoute | None = None
+    shown: SearchShown | None = None
     sparql: str
     surface: EvalSurface | None = None
     top_k: Annotated[int | None, Field(ge=0)] = None
@@ -10492,6 +11268,229 @@ class ModelActivityWorkflow(BaseModel):
     workflow: str
 
 
+class ModelCalibrationAnswer(BaseModel):
+    """
+    An answer to one question.
+    """
+
+    answer: ModelCalibrationAnswerValue
+    at_ms: int
+    by: Annotated[
+        str, Field(description='Who answered: `account:<id>`, `key:<key id>`, `token`.')
+    ]
+    note: str | None = None
+    right: Annotated[
+        str | None, Field(description="The right option's key, given with `no`.")
+    ] = None
+
+
+class ModelCalibrationAnswerRequest(BaseModel):
+    """
+    `POST /v1/models/calibration/answer?graph&id`: answer one question. A
+    later answer replaces the earlier one. `right` only with `no`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    answer: ModelCalibrationAnswerValue
+    note: Annotated[str | None, Field(description='At most 2,000 characters.')] = None
+    question: Annotated[str, Field(description="The question's id (`q1`).")]
+    right: Annotated[
+        str | None,
+        Field(description="The right option's key, one of the question's options."),
+    ] = None
+
+
+class ModelCalibrationBrief(BaseModel):
+    """
+    One session in the list.
+    """
+
+    agreement: float | None = None
+    answered: Annotated[int, Field(ge=0)]
+    applied_threshold: float | None = None
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    created_at_ms: int
+    finished_at_ms: int | None = None
+    id: str
+    job: ModelJob
+    proposed_threshold: float | None = None
+    questions: Annotated[int, Field(ge=0)]
+    status: ModelCalibrationStatus
+    workflow: Annotated[
+        str | None, Field(description="For a workflow job: the workflow's name.")
+    ] = None
+
+
+class ModelCalibrationGateReport(BaseModel):
+    """
+    A workflow's gate in a session's report: how often the decisions it
+    wrote without a person are right, and how often the ones it sent to a
+    person are.
+    """
+
+    above: Annotated[
+        ModelCalibrationGateSide,
+        Field(description='At or above the gate: written without a person.'),
+    ]
+    below: Annotated[
+        ModelCalibrationGateSide,
+        Field(description='Below the gate: sent to a person (or dropped).'),
+    ]
+    gate: Annotated[
+        float,
+        Field(
+            description="The gate the sides split at: the workflow's gate when the session\nstarted."
+        ),
+    ]
+
+
+class ModelCalibrationListResponse(BaseModel):
+    """
+    `GET /v1/models/calibration?graph`: the sessions, newest first.
+    """
+
+    sessions: list[ModelCalibrationBrief]
+
+
+class ModelCalibrationQuestion(BaseModel):
+    """
+    One yes or no question of a session: is the judge right about this unit?
+    """
+
+    above_gate: Annotated[
+        bool | None,
+        Field(
+            description="For a workflow job: the decision is at or above the workflow's gate,\nso it was written without a person."
+        ),
+    ] = None
+    answer: ModelCalibrationAnswer | None = None
+    band: Annotated[
+        int, Field(description="The confidence band of the model's pick, 0 to 3.", ge=0)
+    ]
+    call: Annotated[str, Field(description='The call id.')]
+    disputed: Annotated[
+        bool,
+        Field(
+            description="The judge's check picked another option than the model before the\nsession."
+        ),
+    ]
+    id: Annotated[
+        str, Field(description='`q1`, `q2`, … in the order the questions are asked.')
+    ]
+    instructions: Annotated[
+        str, Field(description="The question's instructions, at most 500 characters.")
+    ]
+    judge: ModelCalibrationJudgePick
+    model: ModelCalibrationModelPick
+    options: Annotated[
+        list[ModelCalibrationOption],
+        Field(description='The options a correction picks from.'),
+    ]
+    options_truncated: Annotated[
+        bool | None,
+        Field(description='The call had more options than the question keeps.'),
+    ] = None
+    question: Annotated[str, Field(description="The question's id in the call.")]
+
+
+class ModelCalibrationStartRequest(BaseModel):
+    """
+    `POST /v1/models/calibration?graph`: start a calibration session of one
+    choice job. `route` and `fit` measure the threshold of the Ask router and
+    the ontology fit. `resolve`, `infer` and `map` measure the gate of a
+    workflow and name it in `workflow`: a `documents.link` workflow for
+    `resolve`, a `values.extract` workflow for `infer`, and for `map` the
+    `review` workflow that gates the proposals of `documents.map`. Every
+    field but `job` (and `workflow` for a workflow job) has a default.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    budget_usd: Annotated[
+        float | None,
+        Field(
+            description='The judge cost the session may spend, 0 to 100 US dollars; default 10.'
+        ),
+    ] = None
+    job: ModelJob
+    max_questions: Annotated[
+        int | None,
+        Field(
+            description='Answers after which the session stops asking, 1 to 120; default 40.',
+            ge=0,
+        ),
+    ] = None
+    sample_per_band: Annotated[
+        int | None,
+        Field(
+            description='Units sampled per confidence band, 1 to 30; default 15.', ge=0
+        ),
+    ] = None
+    since_days: Annotated[
+        int | None,
+        Field(
+            description='Days of the call log the session reads, 1 to 90; default 30.',
+            ge=0,
+        ),
+    ] = None
+    target_precision: Annotated[
+        float | None,
+        Field(
+            description="The accuracy a proposed threshold must reach, 0.5 to 0.999. Default:\n0.99 for `route` and `fit`; for a workflow job the workflow's\n`gate.target_precision` (0.95 when it names none), the target of its\ninbox measurement."
+        ),
+    ] = None
+    workflow: Annotated[
+        str | None,
+        Field(
+            description='The workflow whose gate a session of `resolve`, `infer` or `map`\nmeasures, by name.'
+        ),
+    ] = None
+
+
+class ModelCalibrationThresholdEstimate(BaseModel):
+    """
+    The estimated accuracy of the model's picks at or above one threshold,
+    and what the walk says about it.
+    """
+
+    automatic_share: Annotated[
+        float,
+        Field(description='The share of the population at or above the threshold.'),
+    ]
+    estimated_accuracy: Annotated[
+        float | None,
+        Field(
+            description="Weighted by stratum (the band, and whether a check disputed the\nunit): each known unit counts its stratum's population divided by the\nstratum's known sampled units."
+        ),
+    ] = None
+    interval_low: Annotated[
+        float | None,
+        Field(
+            description="The low end of the estimate's 95% Wilson interval, at the effective\nsample size of the weights."
+        ),
+    ] = None
+    known: Annotated[
+        int, Field(description='Known sampled units at or above the threshold.', ge=0)
+    ]
+    outcome: ModelCalibrationThresholdOutcome
+    tail_accuracy: float | None = None
+    tail_high: Annotated[
+        float,
+        Field(
+            description='The tail: the units from the threshold up to 0.1 above it (the\ntail that reaches 1 includes 1). Its units, its known sampled units\nand their estimated accuracy.'
+        ),
+    ]
+    tail_known: Annotated[int, Field(ge=0)]
+    tail_units: Annotated[int, Field(ge=0)]
+    threshold: float
+    why: Annotated[
+        str | None, Field(description='Why it does not pass, in one sentence.')
+    ] = None
+
+
 class ModelCall(BaseModel):
     """
     One logged model call.
@@ -10505,6 +11504,12 @@ class ModelCall(BaseModel):
     ]
     effort: str | None = None
     error: str | None = None
+    gates: Annotated[
+        dict[str, ModelCallGate] | None,
+        Field(
+            description='The gate decisions a workflow made from the call\'s answers, by\nquestion id: what the decision states and the value its gate\ncompares. A calibration session of a workflow job reads them\n(`docs/architecture/calibration.md`, "Sessions of a workflow\ngate"). Choice calls of `documents.link`, `documents.map` and\n`values.extract` carry them; added 2026-10-12.'
+        ),
+    ] = None
     graph: str
     id: Annotated[
         str,
@@ -11047,6 +12052,33 @@ class OntologyStarterSummary(BaseModel):
     sources: list[str]
     status: OntologyStarterStatus
     version: str
+
+
+class OntologySuggestionBatchResponse(BaseModel):
+    """
+    The answer of a batch decision.
+    """
+
+    accepted: Annotated[int, Field(ge=0)]
+    batch_id: str
+    commits: Annotated[
+        list[CommitSeq] | None,
+        Field(
+            description='The commits the accept made for the facts and the links of its\nsuggestions, in order: one per chunk of at most 1,000 facts.'
+        ),
+    ] = None
+    dismissed: Annotated[int, Field(ge=0)]
+    ontology_version: Annotated[
+        int | None,
+        Field(
+            description="The ontology version the accept's one evolve produced.", ge=0
+        ),
+    ] = None
+    results: Annotated[
+        list[SuggestionBatchResult],
+        Field(description="One per suggestion id, in the request's order."),
+    ]
+    skipped: Annotated[int, Field(ge=0)]
 
 
 class OntologyView(BaseModel):
@@ -12273,6 +13305,7 @@ class SearchRequest(BaseModel):
             description="Order the best hits by how well each answers `text`, with the\nmanaged rerank model (`true`), or keep the similarity order\n(`false`). Without it the graph's search setting decides\n(`GET /v1/search/settings`)."
         ),
     ] = None
+    shown: SearchShown | None = None
     text: Annotated[
         str | None,
         Field(description="The query text; embedded with the serving version's model."),
@@ -12769,6 +13802,64 @@ class SparqlTerm3(BaseModel):
     ]
 
 
+class SparqlTextRequest(BaseModel):
+    """
+    Run a SPARQL 1.1 query supplied as **text** (SELECT or ASK) through the
+    conformant engine over the live graph, returning SPARQL 1.1 Query Results
+    JSON. Distinct from [`SparqlSelectRequest`] (the structured-request form);
+    this is the raw-text dialect. CONSTRUCT/DESCRIBE are rejected (they yield an
+    RDF graph, not a results table).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    as_of_commit_seq: CommitSeq | None = None
+    cursor: Annotated[
+        str | None,
+        Field(
+            description='Opt into snapshot-bound keyset pagination: empty string starts a page,\notherwise echo `next_cursor` with the identical query. Requires one\nsupported indexed ordered LIMIT (1..10000), OFFSET 0, and no transport\n`limit`/`offset`. An unavailable snapshot expires the cursor explicitly.'
+        ),
+    ] = None
+    entailment: Annotated[
+        SparqlEntailment | None,
+        Field(
+            description="Entailment regime. `None` (default) matches asserted triples only.\n`Rdfs` applies the practical RDFS core at query time, `Subclass` the\nclass-only subset, and `Owl` the OWL profile on top of `Rdfs`. All\nderive the closure from the pinned generation's asserted schema\ntriples."
+        ),
+    ] = None
+    limit: Annotated[
+        int | None,
+        Field(
+            description='Return at most this many result rows. Applied to SELECT bindings after the\nconformant engine has produced the complete result document.',
+            ge=0,
+        ),
+    ] = None
+    offset: Annotated[
+        int | None,
+        Field(description='Skip this many result rows before `limit`.', ge=0),
+    ] = None
+    profile: Annotated[
+        bool | None,
+        Field(
+            description='Return what the server measured while it answered this request in\n`profile`. A profiled request never reads or fills the result cache,\nso the profile always describes an execution.'
+        ),
+    ] = None
+    query: Annotated[str, Field(description='The SPARQL query text (SELECT or ASK).')]
+    reason: Annotated[
+        bool | None,
+        Field(
+            description="Not available on the published SPARQL surface: a graph's stored\ninference rules already run at publish time, folding derived facts into\nthe asserted dataset every query reads. Requesting `reason: true`\nreturns a typed, non-retryable error."
+        ),
+    ] = None
+    request: Annotated[
+        str | None,
+        Field(
+            description="The user's words behind this query, when the caller has them. When\npresent the server records an eval trace and returns its `trace_id`,\nso the caller can label the result valid or not (managed evals)."
+        ),
+    ] = None
+    route: QueryRouteDecision | None = None
+
+
 class SparqlTextResponse(BaseModel):
     """
     Result of a [`SparqlTextRequest`]: the SPARQL 1.1 Query Results JSON document,
@@ -12900,43 +13991,6 @@ class TrainModelJobStatusResponse(BaseModel):
     updated_at_micros: int
 
 
-class TriggeredWorkflow(BaseModel):
-    """
-    One triggered workflow (`GET /v1/workflows/triggered?starter=&name=`).
-    """
-
-    batch: Annotated[int | None, Field(ge=0)] = None
-    created_at: str | None = None
-    details: Annotated[
-        Any | None,
-        Field(
-            description="The workflow's own status: `EmbeddingStatus` for `search.embed`,\n`FitSourceStatus` for `ontology.fit`, `DeveloperWorkflowDetails` for\n`workflow`."
-        ),
-    ] = None
-    gate: WorkflowGate | None = None
-    name: str
-    owns: WorkflowOwns | None = None
-    params: Any | None = None
-    starter: Annotated[
-        str,
-        Field(description="The starter workflow's catalog id, without the version."),
-    ]
-    status: TriggeredWorkflowStatus
-    updated_at: str | None = None
-    version: str
-    watch: WorkflowWatchResolved | None = None
-    workflow: WorkflowTypeRef | None = None
-
-
-class TriggeredWorkflowList(BaseModel):
-    """
-    `GET /v1/workflows/triggered`: every triggered workflow of the graph,
-    ordered by starter, then name.
-    """
-
-    starters: list[TriggeredWorkflow]
-
-
 class TriggeredWorkflowPreview(BaseModel):
     """
     The answer of `POST /v1/workflows/triggered/preview`.
@@ -12952,15 +14006,6 @@ class TriggeredWorkflowPreview(BaseModel):
     name: str
     starter: str
     watch: WorkflowWatchResolved | None = None
-
-
-class TriggeredWorkflowRefreshResponse(BaseModel):
-    """
-    `POST /v1/workflows/triggered/refresh`.
-    """
-
-    queued: Annotated[bool, Field(description="The workflow's job was asked to run.")]
-    starter: TriggeredWorkflow
 
 
 class TriggeredWorkflowRequest(BaseModel):
@@ -13080,6 +14125,122 @@ class WorkflowClaimResponse(BaseModel):
     task: WorkflowTask | None = None
 
 
+class WorkflowGateCandidate(BaseModel):
+    """
+    One candidate gate below the current gate (0.50, 0.55, …), with the
+    labels from it up to the current gate and those of its tail.
+    """
+
+    correct: Annotated[int, Field(ge=0)]
+    gate: Annotated[float, Field(description='The candidate gate.')]
+    n: Annotated[
+        int,
+        Field(
+            description='The labels from the candidate up to the current gate, and their\nprecision with the low end of its 95% Wilson interval.',
+            ge=0,
+        ),
+    ]
+    outcome: WorkflowGateCandidateOutcome
+    pass_: Annotated[
+        bool, Field(alias='pass', description='The gate can go down to this candidate.')
+    ]
+    precision: float | None = None
+    tail_correct: Annotated[int, Field(ge=0)]
+    tail_high: Annotated[
+        float,
+        Field(
+            description='The tail: the labels from the candidate up to 0.1 above it (or the\ncurrent gate, when that is lower), and their precision.'
+        ),
+    ]
+    tail_n: Annotated[int, Field(ge=0)]
+    tail_precision: float | None = None
+    why: Annotated[
+        str | None, Field(description='Why it does not pass, in one sentence.')
+    ] = None
+    wilson_low: float | None = None
+
+
+class WorkflowGateMeasurement(BaseModel):
+    """
+    The labels of a gate at one time: the bands, the counts and the
+    proposal. A gate's calibration keeps the one it was applied from.
+    """
+
+    bands: list[WorkflowGateBand]
+    candidates: list[WorkflowGateCandidate] | None = None
+    labels: WorkflowGateLabels
+    measured_at: Annotated[
+        str, Field(description='When the labels were read (RFC 3339).')
+    ]
+    proposal: WorkflowGateProposal | None = None
+    target_precision: float
+
+
+class WorkflowInboxMessage(BaseModel):
+    """
+    One unfinished turn of an instance's inbox: a message that runs or
+    waits.
+    """
+
+    attempt: Annotated[int, Field(ge=0)]
+    error: Annotated[
+        str | None, Field(description='The error of the last failed attempt.')
+    ] = None
+    message: Annotated[
+        Any | None, Field(description='The message itself, only with `payloads=true`.')
+    ] = None
+    message_bytes: Annotated[
+        int, Field(description='The size of the message, serialized.', ge=0)
+    ]
+    message_id: str
+    origin: WorkflowMessageOrigin | None = None
+    progress: WorkflowProgress | None = None
+    ready_at_ms: Annotated[
+        int, Field(description='When a worker may claim it (a queued or waiting turn).')
+    ]
+    received_at_ms: Annotated[
+        int, Field(description='When the inbox admitted the message.')
+    ]
+    status: Annotated[
+        WorkflowTurnStatus,
+        Field(description='`queued`, `waiting`, `running` or `failed`.'),
+    ]
+    turn: Annotated[
+        int, Field(description='The turn number; turns run in this order.', ge=0)
+    ]
+
+
+class WorkflowInboxResponse(BaseModel):
+    """
+    `GET /v1/workflows/instances/inbox?id=&after=&limit=&payloads=`: the
+    unfinished turns of one instance, oldest first, from one read of the
+    instance object.
+    """
+
+    messages: list[WorkflowInboxMessage]
+    newest_received_at_ms: Annotated[
+        int | None,
+        Field(description='When the newest unfinished message was admitted.'),
+    ] = None
+    next_after: Annotated[
+        int | None,
+        Field(
+            description='The turn number to pass as `after` for the next page.', ge=0
+        ),
+    ] = None
+    oldest_received_at_ms: Annotated[
+        int | None,
+        Field(description='When the oldest unfinished message was admitted.'),
+    ] = None
+    pending_messages: Annotated[
+        int, Field(description='Every unfinished turn, on this page or not.', ge=0)
+    ]
+    status: WorkflowInstanceStatus
+    version: str
+    workflow_id: str
+    workflow_type: str
+
+
 class WorkflowScopeResponse(BaseModel):
     """
     Current graph incarnation and the durable write model it owns. The epoch
@@ -13164,6 +14325,8 @@ class WorkflowTurn(BaseModel):
     message_id: str
     number: Annotated[int, Field(ge=0)]
     operation: WorkflowTurnOperation | None = None
+    origin: WorkflowMessageOrigin | None = None
+    progress: WorkflowProgress | None = None
     ready_at_ms: int
     result: Any
     sequence: Annotated[int, Field(ge=0)]
@@ -13214,6 +14377,52 @@ class WorkflowTurnTask(BaseModel):
     state: Any
     token: str
     turn: WorkflowTurn
+    workflow_type: str
+
+
+class WorkflowTypeInboxEntry(BaseModel):
+    """
+    One instance in the inbox of a workflow type.
+    """
+
+    head: WorkflowInboxMessage | None = None
+    oldest_received_at_ms: Annotated[
+        int | None,
+        Field(description='When its oldest unfinished message was admitted.'),
+    ] = None
+    pending_messages: Annotated[int, Field(ge=0)]
+    status: WorkflowInstanceStatus
+    version: str
+    workflow_id: str
+
+
+class WorkflowTypeInboxResponse(BaseModel):
+    """
+    `GET /v1/workflows/inbox?workflow_type=&version=&after=&limit=`: the
+    instances of a type with unfinished turns, by id. The namespace index
+    names them; each listed instance is one read.
+    """
+
+    identities: Annotated[
+        int,
+        Field(
+            description='Instances of the type (and version) in the namespace index, idle\nones included. The index lags a write of another node by at most\nits poll interval.',
+            ge=0,
+        ),
+    ]
+    instances: list[WorkflowTypeInboxEntry]
+    next_after: Annotated[
+        str | None,
+        Field(description='The instance id to pass as `after` for the next page.'),
+    ] = None
+    version: str | None = None
+    with_messages: Annotated[
+        int,
+        Field(
+            description='Of them, the instances the index lists with an unfinished turn.',
+            ge=0,
+        ),
+    ]
     workflow_type: str
 
 
@@ -14099,6 +15308,80 @@ class ModelActivityResponse(BaseModel):
     totals: list[ModelActivityTotal]
 
 
+class ModelCalibrationReport(BaseModel):
+    """
+    A session's report, computed when it is read.
+    """
+
+    agreed: Annotated[int, Field(description='Answers `yes`.', ge=0)]
+    agreement: Annotated[
+        float | None,
+        Field(description="`agreed / answered`, the judge's agreement with people."),
+    ] = None
+    agreement_high: float | None = None
+    agreement_low: Annotated[
+        float | None, Field(description='The 95% Wilson interval of the agreement.')
+    ] = None
+    answered: Annotated[int, Field(description='Answers `yes` and `no`.', ge=0)]
+    bands: list[ModelCalibrationBandAccuracy]
+    budget_micro_usd: Annotated[int, Field(ge=0)]
+    cant_tell: Annotated[int, Field(ge=0)]
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    gate: ModelCalibrationGateReport | None = None
+    no_proposal: Annotated[
+        str | None, Field(description='Why there is no proposal.')
+    ] = None
+    proposal: ModelCalibrationProposal | None = None
+    stop_reached: Annotated[
+        bool,
+        Field(
+            description='The interval of the agreement is at most 0.1 on each side, or the\nanswers reached `max_questions`.'
+        ),
+    ]
+    thresholds: Annotated[
+        list[ModelCalibrationThresholdEstimate],
+        Field(
+            description='The candidate thresholds 0.50, 0.55, …, 0.95, from the lowest up.\nThe walk judges them from 0.95 down; the proposal is the lowest\nthat passes before the walk stops.'
+        ),
+    ]
+    validation: ModelCalibrationValidation
+
+
+class ModelCalibrationSession(BaseModel):
+    """
+    One calibration session.
+    """
+
+    applied: ModelCalibrationApplied | None = None
+    cost_micro_usd: Annotated[
+        int, Field(description='The judge cost the session spent.', ge=0)
+    ]
+    created_at_ms: int
+    error: str | None = None
+    finished_at_ms: int | None = None
+    id: str
+    job: ModelJob
+    judge_calls: list[ModelCalibrationJudgeCall] | None = None
+    judging: ModelCalibrationJudging | None = None
+    options: ModelCalibrationOptions
+    population: ModelCalibrationPopulation | None = None
+    questions: list[ModelCalibrationQuestion] | None = None
+    reason: Annotated[
+        str | None,
+        Field(
+            description='Why a failed session failed: `no_checker`, `no_calls`,\n`no_workflow`, `stale` or `error`.'
+        ),
+    ] = None
+    report: ModelCalibrationReport | None = None
+    started_at_ms: int | None = None
+    status: ModelCalibrationStatus
+    step: Annotated[
+        str | None, Field(description='`collect`, `judge` or `questions`.')
+    ] = None
+    workflow: ModelCalibrationWorkflow | None = None
+    workflow_turn: Annotated[int | None, Field(ge=0)] = None
+
+
 class ModelCallRow(BaseModel):
     """
     One row of `GET /v1/models/calls`.
@@ -14348,6 +15631,7 @@ class OntologyChangeSuggestionSummary(BaseModel):
     """
 
     anchor: SuggestionAnchor
+    batch: SuggestionBatchDecision | None = None
     change: list[
         Annotated[
             WidenRelationOp
@@ -14367,6 +15651,12 @@ class OntologyChangeSuggestionSummary(BaseModel):
         ]
     ]
     comment_count: Annotated[int, Field(ge=0)]
+    confidence: Annotated[
+        float | None,
+        Field(
+            description='The lowest confidence of its evidence samples (`confidence`,\n`support` or `probability`), from 0 to 1.'
+        ),
+    ] = None
     created_at: str
     fact_count: Annotated[
         int | None,
@@ -14379,7 +15669,10 @@ class OntologyChangeSuggestionSummary(BaseModel):
         int | None, Field(description='How many identities the suggestion links.', ge=0)
     ] = None
     key: str
+    kind: SuggestionKind | None = None
+    link: SuggestionLinkSummary | None = None
     origin: SuggestionOrigin
+    pattern: SuggestionPattern | None = None
     publishable: Annotated[
         bool | None,
         Field(
@@ -14971,6 +16264,39 @@ class StarterWorkflowCatalog(BaseModel):
     starters: list[StarterWorkflow]
 
 
+class SuggestionPatternGroup(BaseModel):
+    """
+    The suggestions of one pattern.
+    """
+
+    confidence: SuggestionConfidenceRange | None = None
+    count: Annotated[int, Field(ge=0)]
+    kind: SuggestionKind
+    members: Annotated[
+        list[SuggestionPatternMember],
+        Field(
+            description='Every suggestion of the pattern with its title and confidence, in\nthe order of `suggestion_ids`: a person can leave some out before a\nbatch decision.'
+        ),
+    ]
+    origin: Annotated[
+        SuggestionOrigin,
+        Field(description='The producer (every suggestion of a pattern has the same).'),
+    ]
+    pattern: SuggestionPattern
+    samples: Annotated[
+        list[OntologyChangeSuggestionSummary],
+        Field(
+            description='Up to 3 suggestions to check: the least confident, the middle one and\nthe most confident.'
+        ),
+    ]
+    suggestion_ids: Annotated[
+        list[str],
+        Field(
+            description='Every suggestion of the pattern, the least confident first.'
+        ),
+    ]
+
+
 class TriggeredWorkflowPreviewRequest(TriggeredWorkflowRequest):
     """
     `POST /v1/workflows/triggered/preview`: what creating or changing a
@@ -14995,6 +16321,81 @@ class TriggeredWorkflowPreviewRequest(TriggeredWorkflowRequest):
     ] = None
 
 
+class WorkflowGateCalibration(BaseModel):
+    """
+    Where a gate came from when a person applied it from a measurement: the
+    inbox decisions (`POST /v1/workflows/triggered/calibration/apply`) or a
+    calibration session (`POST /v1/models/calibration/apply`). A change of
+    the gate by `PUT /v1/workflows/triggered` removes it.
+    """
+
+    applied_at: Annotated[
+        str,
+        Field(
+            description='When (RFC 3339) and who: `account:<id>` for a console session,\n`token` in single mode.'
+        ),
+    ]
+    applied_by: str
+    gate: Annotated[
+        float, Field(description='The gate the apply set, and the gate before it.')
+    ]
+    measurement: WorkflowGateMeasurement | None = None
+    previous_gate: float
+    session_id: Annotated[
+        str | None,
+        Field(
+            description='For a session: its id (`GET /v1/models/calibration/get?id=`).'
+        ),
+    ] = None
+    source: Annotated[
+        WorkflowGateSource | None,
+        Field(
+            description='What the gate was applied from. Absent in a record from before the\nfield: `inbox`.'
+        ),
+    ] = None
+
+
+class WorkflowGateReport(BaseModel):
+    """
+    One gated workflow in `GET /v1/workflows/triggered/calibration`.
+    """
+
+    applied: WorkflowGateCalibration | None = None
+    bands: Annotated[
+        list[WorkflowGateBand],
+        Field(
+            description='The display bands, from 0 up: 0 to 0.5, then 0.1 wide up to 1.'
+        ),
+    ]
+    candidates: Annotated[
+        list[WorkflowGateCandidate] | None,
+        Field(
+            description='The candidate gates below the current gate (0.50, 0.55, …), from\nthe highest down: where the gate could go, and why not.'
+        ),
+    ] = None
+    gate: Annotated[
+        float, Field(description='The gate now: answers below it go to a person.')
+    ]
+    labels: WorkflowGateLabels
+    name: str
+    no_proposal: Annotated[
+        str | None, Field(description='Why there is no proposal, in one sentence.')
+    ] = None
+    proposal: WorkflowGateProposal | None = None
+    starter: Annotated[
+        str,
+        Field(
+            description="The starter workflow's catalog id: `documents.link`, `review` or\n`values.extract`."
+        ),
+    ]
+    target_precision: Annotated[
+        float,
+        Field(
+            description='The precision a proposal must reach (`gate.target_precision`, else\n0.95).'
+        ),
+    ]
+
+
 class WorkflowInstance(BaseModel):
     completed_turns: Annotated[int, Field(ge=0)]
     created_at_ms: int
@@ -15015,6 +16416,7 @@ class WorkflowInstance(BaseModel):
     ]
     id: str
     pending_messages: Annotated[int, Field(ge=0)]
+    progress: WorkflowProgress | None = None
     sequence: Annotated[int, Field(ge=0)]
     state: Any
     status: WorkflowInstanceStatus
@@ -15305,6 +16707,62 @@ class EntityPropertiesInput(BaseModel):
     type: str
 
 
+class EvalRunAnswer(BaseModel):
+    """
+    The app's answer to one `ask` golden.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    as_of_commit_seq: CommitSeq | None = None
+    cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description="What the app's models cost for this answer, in millionths of a US\ndollar.",
+            ge=0,
+        ),
+    ] = None
+    entailment: SparqlEntailment | None = None
+    error: Annotated[
+        str | None,
+        Field(description='Why the app has no answer: the verdict is an `error`.'),
+    ] = None
+    golden: Annotated[
+        str, Field(description="The golden's id (`GET /v1/evals/goldens`).")
+    ]
+    reply: QueryAnswer | None = None
+    route: QueryRouteDecision | None = None
+    sparql: Annotated[
+        str | None,
+        Field(
+            description='The `SELECT` or `ASK` query whose rows hold the answer. The server\nruns it. Absent: the app wrote no query (it found the question\nunanswerable), or it failed (`error`).'
+        ),
+    ] = None
+
+
+class EvalRunAnswersRequest(BaseModel):
+    """
+    The app's own answers to `ask` goldens (`POST /v1/evals/run/answers`):
+    the app asked each question with its own loop. The run checks these
+    goldens only, as it checks Ask's answers, and keeps the results in the
+    app's own series.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    answers: Annotated[
+        list[EvalRunAnswer], Field(description='One answer per golden, at most 2,000.')
+    ]
+    runner: Annotated[
+        str | None,
+        Field(
+            description='The app: lower-case letters, digits and `-`, at most 40 characters\n(default `app`). `GET /v1/evals/results?runner=` reads its runs.'
+        ),
+    ] = None
+
+
 class EvalTrace(BaseModel):
     answer: EvalLabel | None = None
     ask: EvalAskInput | None = None
@@ -15328,6 +16786,7 @@ class EvalTrace(BaseModel):
         str,
         Field(description="The user's words, as the caller passed them in `request`."),
     ]
+    rerank: SearchRerankReport | None = None
     results: EvalItems
     review: Annotated[
         dict[str, float] | None,
@@ -15335,10 +16794,12 @@ class EvalTrace(BaseModel):
             description='Results the judge looked at but left for a person, with its\nprobability (between the two thresholds).'
         ),
     ] = None
+    route: QueryRouteDecision | None = None
     served_at_seq: Annotated[
         int,
         Field(description='The commit of the graph the results were read at.', ge=0),
     ]
+    shown: EvalShown | None = None
     sparql: Annotated[
         str,
         Field(description='The SPARQL query, or the query text on the vector surface.'),
@@ -15366,7 +16827,7 @@ class EvalVerdictDetail(BaseModel):
     cost_micro_usd: Annotated[
         int | None,
         Field(
-            description='What the models of the replay cost, in millionths of a US dollar\n(`via: ask`).',
+            description='What the models of the replay cost, in millionths of a US dollar\n(`via: ask`), or what the app said its models cost (`via: app`).',
             ge=0,
         ),
     ] = None
@@ -15404,8 +16865,19 @@ class EvalVerdictDetail(BaseModel):
         ),
     ] = None
     route: QueryRoute | None = None
+    route_check: EvalRouteCheck | None = None
+    shown: Annotated[
+        int | None,
+        Field(
+            description='The hits the app would show this time, for a `search` golden with a\ncut: the result counts above count only these.',
+            ge=0,
+        ),
+    ] = None
     sparql: Annotated[
-        str | None, Field(description='The query Ask wrote this time (`via: ask`).')
+        str | None,
+        Field(
+            description="The query Ask wrote this time (`via: ask`), or the app's query\n(`via: app`)."
+        ),
     ] = None
     unknown_returned: Annotated[
         int | None, Field(description='Returned results nobody judged yet.', ge=0)
@@ -15499,7 +16971,42 @@ class OntologyChangeSuggestionList(BaseModel):
     ]
     suggestions: list[OntologyChangeSuggestionSummary]
     truncated: Annotated[
-        bool, Field(description='More suggestions matched than `limit` allowed.')
+        bool,
+        Field(
+            description='More suggestions matched than `limit` allowed, or this read did not\ncover every suggestion (more than 10,000, or some left to the next).'
+        ),
+    ]
+
+
+class OntologySuggestionPatternList(BaseModel):
+    """
+    `GET /v1/ontology/suggestions/patterns`: the suggestions grouped by
+    pattern, the largest first. One read of the same objects as the list.
+    """
+
+    counts: Annotated[
+        SuggestionStatusCounts,
+        Field(description='Suggestions per status, over every suggestion read.'),
+    ]
+    graph: GraphKey
+    kind_counts: Annotated[
+        SuggestionKindCounts,
+        Field(
+            description='Suggestions per kind, over the status and producer asked for.'
+        ),
+    ]
+    ontology_version: Annotated[
+        int, Field(description="The graph's current ontology version.", ge=0)
+    ]
+    patterns: list[SuggestionPatternGroup]
+    total: Annotated[
+        int, Field(description='How many suggestions the patterns hold.', ge=0)
+    ]
+    truncated: Annotated[
+        bool,
+        Field(
+            description='This read did not cover every suggestion: the graph holds more than\n10,000, or some are left to the next read.'
+        ),
     ]
 
 
@@ -15545,6 +17052,53 @@ class SuggestedFacts(BaseModel):
     triplets: list[TripletInput] | None = None
 
 
+class TriggeredWorkflow(BaseModel):
+    """
+    One triggered workflow (`GET /v1/workflows/triggered?starter=&name=`).
+    """
+
+    batch: Annotated[int | None, Field(ge=0)] = None
+    created_at: str | None = None
+    details: Annotated[
+        Any | None,
+        Field(
+            description="The workflow's own status: `EmbeddingStatus` for `search.embed`,\n`FitSourceStatus` for `ontology.fit`, `DeveloperWorkflowDetails` for\n`workflow`."
+        ),
+    ] = None
+    gate: WorkflowGate | None = None
+    gate_calibration: WorkflowGateCalibration | None = None
+    name: str
+    owns: WorkflowOwns | None = None
+    params: Any | None = None
+    starter: Annotated[
+        str,
+        Field(description="The starter workflow's catalog id, without the version."),
+    ]
+    status: TriggeredWorkflowStatus
+    updated_at: str | None = None
+    version: str
+    watch: WorkflowWatchResolved | None = None
+    workflow: WorkflowTypeRef | None = None
+
+
+class TriggeredWorkflowList(BaseModel):
+    """
+    `GET /v1/workflows/triggered`: every triggered workflow of the graph,
+    ordered by starter, then name.
+    """
+
+    starters: list[TriggeredWorkflow]
+
+
+class TriggeredWorkflowRefreshResponse(BaseModel):
+    """
+    `POST /v1/workflows/triggered/refresh`.
+    """
+
+    queued: Annotated[bool, Field(description="The workflow's job was asked to run.")]
+    starter: TriggeredWorkflow
+
+
 class TripletCommitFile(BaseModel):
     edge_idempotency: EdgeIdempotencyMode | None = None
     entity_embeddings: Annotated[
@@ -15574,6 +17128,34 @@ class TripletCommitFile(BaseModel):
             description='The edges to commit. Defaults to empty so a properties-only or\nembeddings-only commit needs no placeholder `"triplets": []`; the commit\nstill requires at least one triplet, embedding, or entity-property overall.'
         ),
     ] = None
+
+
+class WorkflowGateCalibrationReport(BaseModel):
+    """
+    `GET /v1/workflows/triggered/calibration`: the gated workflows of the
+    graph, ordered by starter, then name.
+    """
+
+    include_batch: Annotated[
+        bool,
+        Field(
+            description='The unseen batch labels fill the bands (`include_batch=true`).'
+        ),
+    ]
+    items_read: Annotated[
+        int,
+        Field(
+            description='Review items read. The read is bounded as the inbox list is: at most\n1,000 items.',
+            ge=0,
+        ),
+    ]
+    measured_at: Annotated[
+        str, Field(description='When the labels were read (RFC 3339).')
+    ]
+    truncated: Annotated[
+        bool, Field(description='The graph holds more review items than were read.')
+    ]
+    workflows: list[WorkflowGateReport]
 
 
 class WorkflowRun(BaseModel):
@@ -15663,6 +17245,25 @@ class EvalResults(BaseModel):
             description='Traces this run opened for results nobody judged yet.', ge=0
         ),
     ] = None
+    route_checked: Annotated[
+        int | None,
+        Field(
+            description='Goldens with a route check: the golden has a route and the router\nanswered.',
+            ge=0,
+        ),
+    ] = None
+    route_right: Annotated[
+        int | None,
+        Field(
+            description="Route checks where the router picked the golden's route.", ge=0
+        ),
+    ] = None
+    runner: Annotated[
+        str | None,
+        Field(
+            description="The app whose answers the run checked (`POST /v1/evals/run/answers`);\nabsent for a run of the server's own Ask. Each app's runs are a\nseries of their own."
+        ),
+    ] = None
     score: Annotated[
         float,
         Field(description='Share of goldens that pass; `1.0` for an empty suite.'),
@@ -15724,6 +17325,7 @@ class OntologyChangeSuggestion(BaseModel):
         Field(description='The ontology version the accepted change produced.', ge=0),
     ] = None
     anchor: SuggestionAnchor
+    batch: SuggestionBatchDecision | None = None
     change: Annotated[
         list[
             Annotated[

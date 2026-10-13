@@ -2,6 +2,25 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.25.0 (2026-10-13)
+
+- `evals.run_answers(answers, runner=, consistency=)` checks your own
+  agent's answers to the question goldens (`POST /v1/evals/run/answers`).
+  `evals.results(runner=)` reads one agent's runs, and
+  `evals.label(..., route=)` names the route a question expects.
+- The models gain `route` on `SparqlTextRequest`, `EvalLabelRequest`,
+  `EvalTrace` and `Golden`, `route_check` on a verdict, `runner`,
+  `route_checked` and `route_right` on `EvalResults`, and `EvalVia.app`.
+- `embeddings.search(..., shown=)` sends the app's cut for the eval trace
+  of a search with `request`; the models gain `SearchShown`, `EvalShown`,
+  `rerank` and `shown` on `EvalTrace`, and `shown` on `Golden` and a verdict.
+- Models for the workflow progress convention and the inbox routes:
+  `WorkflowProgress`, `WorkflowMessageOrigin`, `WorkflowInboxMessage`,
+  `WorkflowInboxResponse`, `WorkflowTypeInboxEntry` and
+  `WorkflowTypeInboxResponse`. `WorkflowInstance` and `WorkflowTurn` gain
+  `progress`, `WorkflowTurn` and `WorkflowMessageRequest` gain `origin`.
+  The Python SDK has no workflow worker.
+
 ## 0.24.0 (2026-10-12)
 
 - The starter workflow Values from text is `values.extract` (formerly
