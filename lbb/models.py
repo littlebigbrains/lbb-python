@@ -74,6 +74,38 @@ class ActivityUnit(Enum):
     items = 'items'
 
 
+class ActivityWorkflow(BaseModel):
+    """
+    The run of a workflow turn that an activity call belongs to
+    (`workflow` of `POST /v1/workflows/activities/*`). The TypeScript SDK
+    sets it from the step context. The server checks its shape only: the
+    work token names the graph only, so the instance object is not read.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    identity: Annotated[
+        str,
+        Field(
+            description='The engine identity whose turn makes the call (1 to 128 characters\nof `A-Z a-z 0-9 _ . -`).'
+        ),
+    ]
+    instance: Annotated[
+        str | None,
+        Field(
+            description="What the call works on: an instance IRI or a document's name, at\nmost 512 characters."
+        ),
+    ] = None
+    run_id: Annotated[
+        str | None,
+        Field(
+            description="The run's id (`run.id` of the claimed task's turn): it names the same\nidentity and turn."
+        ),
+    ] = None
+    turn: Annotated[int, Field(description="The turn's number, at least 1.", ge=0)]
+
+
 class ActivityWriteLimit(BaseModel):
     """
     The unpublished commits on the graph head against the write path's limits
@@ -819,6 +851,7 @@ class DecideActivityRequest(BaseModel):
             description='What the questions are about: any JSON, at most 200,000 characters.'
         ),
     ]
+    workflow: ActivityWorkflow | None = None
 
 
 class DecideActivityResponse(BaseModel):
@@ -887,6 +920,46 @@ class DecorationStatus(BaseModel):
         ),
     ]
     status: Annotated[str, Field(description='`enforced` | `advisory` | `reserved`.')]
+
+
+class DerivationKey(BaseModel):
+    """
+    What a derivation is of: one content, one workflow version, one set of
+    settings.
+    """
+
+    settings_digest: Annotated[
+        str,
+        Field(
+            description='A digest of the settings it ran with (for example the hex SHA-256 of\ntheir canonical JSON; `none` without settings): 1 to 128 of `A-Z`,\n`a-z`, `0-9`, `_` and `-`.'
+        ),
+    ]
+    sha256: Annotated[
+        str,
+        Field(
+            description="The content's SHA-256, 64 hexadecimal characters (stored lowercase)."
+        ),
+    ]
+    version: Annotated[str, Field(description='Its version, in the same characters.')]
+    workflow_type: Annotated[
+        str,
+        Field(
+            description='The workflow type that made it: 1 to 128 of `A-Z`, `a-z`, `0-9`,\n`_`, `.` and `-`.'
+        ),
+    ]
+
+
+class DerivationRecordRequest(DerivationKey):
+    """
+    `POST /v1/workflows/derivations/record`: record a derivation once.
+    """
+
+    outputs: Annotated[
+        Any | None, Field(description='What it made, at most 16 KiB of JSON.')
+    ] = None
+    run_id: Annotated[
+        str | None, Field(description='The run that made it, at most 256 characters.')
+    ] = None
 
 
 class DiscoveryApprovalReference(BaseModel):
@@ -983,6 +1056,7 @@ class EmbedActivityRequest(BaseModel):
             description='1 to 256 texts, each not empty and at most 8,000 characters.'
         ),
     ]
+    workflow: ActivityWorkflow | None = None
 
 
 class EmbedActivityResponse(BaseModel):
@@ -3013,25 +3087,6 @@ class ModelCallGate(BaseModel):
     ]
 
 
-class ModelCallOrigin(BaseModel):
-    """
-    Where a call came from.
-    """
-
-    request_id: Annotated[
-        str | None, Field(description='The HTTP request that made the call.')
-    ] = None
-    route: Annotated[
-        str,
-        Field(
-            description='The route that made the call (`/v1/search`, `integrations/fit`).'
-        ),
-    ]
-    trace_id: Annotated[
-        str | None, Field(description='The eval trace of the request, when it has one.')
-    ] = None
-
-
 class ModelCallReportResponse(BaseModel):
     accepted: Annotated[
         int,
@@ -3040,6 +3095,53 @@ class ModelCallReportResponse(BaseModel):
             ge=0,
         ),
     ]
+
+
+class ModelCallRowUsage(BaseModel):
+    """
+    What one call used, in a list row.
+    """
+
+    cost_micro_usd: Annotated[
+        int | None, Field(description='In millionths of a US dollar.', ge=0)
+    ] = None
+    ms: Annotated[
+        int | None, Field(description='How long the call took, in milliseconds.', ge=0)
+    ] = None
+    tokens_in: Annotated[int | None, Field(ge=0)] = None
+    tokens_out: Annotated[int | None, Field(ge=0)] = None
+
+
+class ModelCallRun(BaseModel):
+    """
+    The run of a workflow that made a call (`origin.run`): the identity and
+    turn of an engine run, the run summary's id, and what the call works on.
+    """
+
+    identity: Annotated[
+        str | None,
+        Field(
+            description='The engine identity (`starter.<name>` for a step of the Rust path).'
+        ),
+    ] = None
+    instance: Annotated[
+        str | None,
+        Field(
+            description="What the call works on: an instance IRI, or a document's name."
+        ),
+    ] = None
+    run_id: Annotated[
+        str | None,
+        Field(
+            description="The run summary's id (`GET /v1/workflows/named/runs/get`), when the\ncaller named it."
+        ),
+    ] = None
+    turn: Annotated[
+        int | None,
+        Field(
+            description="The turn's number; absent for a step of the Rust path.", ge=0
+        ),
+    ] = None
 
 
 class ModelCallShape(Enum):
@@ -5081,6 +5183,7 @@ class ReasonActivityRequest(BaseModel):
         str | None,
         Field(description='The system prompt: who the model is and how it answers.'),
     ] = None
+    workflow: ActivityWorkflow | None = None
 
 
 class ReasonActivityResponse(BaseModel):
@@ -8208,6 +8311,35 @@ class TrainModelResponse(BaseModel):
     weights: SearchSignalWeights | None = None
 
 
+class TriggeredDocumentPage(BaseModel):
+    """
+    `GET /v1/workflows/triggered/documents`: one page of the documents of a
+    `documents.link` or `documents.map` workflow. Each row has the fields
+    of a row of the workflow's `details.documents`.
+    """
+
+    documents: list[Any]
+    next_after: Annotated[
+        str | None,
+        Field(
+            description='Pass as `after` for the next page; absent on the last page.'
+        ),
+    ] = None
+    total: Annotated[
+        int, Field(description='The documents that match `q`, on every page.', ge=0)
+    ]
+
+
+class TriggeredDocumentSort(Enum):
+    """
+    The order of `GET /v1/workflows/triggered/documents`.
+    """
+
+    review = 'review'
+    name = 'name'
+    recent = 'recent'
+
+
 class TriggeredWorkflowBackfill(BaseModel):
     """
     How far a backfill got.
@@ -8319,6 +8451,12 @@ class TriggeredWorkflowStatus(BaseModel):
     outputs: SuggestionStatusCounts | None = None
     pending: Annotated[
         int | None, Field(description='Instances waiting to be read or sent.', ge=0)
+    ] = None
+    pending_since_ms: Annotated[
+        int | None,
+        Field(
+            description='When the queue last went from empty to not empty, in milliseconds\nsince the Unix epoch: the age of the oldest wait. Absent while\nnothing waits, and for `search.embed` and `ontology.fit`.'
+        ),
     ] = None
     processed_through_seq: Annotated[int | None, Field(ge=0)] = None
     published_seq: Annotated[int | None, Field(ge=0)] = None
@@ -8618,6 +8756,24 @@ class WorkflowCompleteRequest(BaseModel):
     token: str
 
 
+class WorkflowContentTrigger(BaseModel):
+    """
+    A content trigger: the uploads (`POST /v1/files`) whose media type is
+    one of `media_types`, read from the graph's content log as they arrive,
+    without a wait for a publication. Each message holds one content: its
+    `Document` in `instances`, and an origin of kind `content` with the
+    content's SHA-256, media type, upload time and request id. Messages are
+    routed to shards by the content's SHA-256.
+    """
+
+    media_types: Annotated[
+        list[str],
+        Field(
+            description='1 to 32 media types, `type/subtype` (`application/pdf`) or\n`type/*` (`image/*`), compared without case and without parameters.'
+        ),
+    ]
+
+
 class WorkflowGate(BaseModel):
     """
     Outputs whose confidence is below `below` go to the review inbox instead
@@ -8877,6 +9033,12 @@ class WorkflowMessageOrigin(BaseModel):
     kind: Annotated[
         str, Field(description='One of [`WORKFLOW_ORIGIN_KINDS`], or `continuation`.')
     ]
+    media_type: Annotated[
+        str | None,
+        Field(
+            description='A `content` origin: the media type the upload named\n(`application/pdf`).'
+        ),
+    ] = None
     message_id: Annotated[
         str | None,
         Field(description='A continuation: the message id of the turn that continued.'),
@@ -8899,6 +9061,12 @@ class WorkflowMessageOrigin(BaseModel):
         list[str] | None,
         Field(description='The request ids of the commits that caused it.'),
     ] = None
+    sha256: Annotated[
+        str | None,
+        Field(
+            description='A `content` origin: the SHA-256 of the content, lowercase hex.'
+        ),
+    ] = None
     target_seq: Annotated[
         int | None,
         Field(description='The commit a pass over a class reads up to.', ge=0),
@@ -8912,6 +9080,12 @@ class WorkflowMessageOrigin(BaseModel):
     )
     turn: Annotated[
         int | None, Field(description='A continuation: the turn that continued.', ge=0)
+    ] = None
+    uploaded_at_ms: Annotated[
+        int | None,
+        Field(
+            description="A `content` origin: when the upload was logged, in milliseconds since\nthe Unix epoch (the writing node's clock)."
+        ),
     ] = None
 
 
@@ -8975,6 +9149,102 @@ class WorkflowProgress(BaseModel):
             description='What `done` and `total` count: one of the `ActivityUnit` words\n(`documents`, `pages`, `mentions`, `links`, `proposals`,\n`instances`, `questions`, `messages`, `items`) or another short word.'
         ),
     ] = None
+
+
+class WorkflowRunHour(BaseModel):
+    """
+    One hour of a workflow's runs, each counted in the hour it started.
+    `queue_max` is the largest queue a run of the hour saw, `queue_last` the
+    queue after the hour's last run.
+    """
+
+    calls: Annotated[int | None, Field(ge=0)] = None
+    cost_micro_usd: Annotated[int | None, Field(ge=0)] = None
+    duration_ms_max: Annotated[int | None, Field(ge=0)] = None
+    duration_ms_sum: Annotated[int | None, Field(ge=0)] = None
+    errors: Annotated[int | None, Field(ge=0)] = None
+    failed: Annotated[
+        int | None, Field(description='Runs that ended `failed`.', ge=0)
+    ] = None
+    hour_start_ms: Annotated[
+        int,
+        Field(
+            description="The hour's start, in milliseconds since the Unix epoch (UTC)."
+        ),
+    ]
+    queue_last: Annotated[int | None, Field(ge=0)] = None
+    queue_max: Annotated[int | None, Field(ge=0)] = None
+    runs: Annotated[int | None, Field(ge=0)] = None
+    tokens: Annotated[
+        int | None, Field(description='Input and output tokens.', ge=0)
+    ] = None
+    units: Annotated[
+        int | None,
+        Field(description="What the runs finished, in the workflow's unit.", ge=0),
+    ] = None
+
+
+class WorkflowRunOutcome(Enum):
+    """
+    How a run ended.
+    """
+
+    done = 'done'
+    more = 'more'
+    failed = 'failed'
+    retried = 'retried'
+    budget = 'budget'
+    cancelled = 'cancelled'
+    paused = 'paused'
+
+
+class WorkflowRunPhase(BaseModel):
+    """
+    One phase of a run: each new `phase` value of the run's progress starts
+    one (`reading pages`, `asking the decision model`, …).
+    """
+
+    done: Annotated[int, Field(ge=0)]
+    ended_at_ms: int
+    phase: str
+    started_at_ms: int
+    total: Annotated[int | None, Field(ge=0)] = None
+    unit: str | None = None
+
+
+class WorkflowRunStats(BaseModel):
+    """
+    The last hours of a workflow's runs, oldest first, up to the current
+    hour. An hour without a run is all zeros.
+    """
+
+    hours: list[WorkflowRunHour]
+
+
+class WorkflowRunStep(BaseModel):
+    """
+    One step a run checkpointed.
+    """
+
+    at_ms: int
+    key: str
+
+
+class WorkflowRunUsage(BaseModel):
+    """
+    What a run's model calls used, added up.
+    """
+
+    calls: Annotated[int | None, Field(ge=0)] = None
+    cost_micro_usd: Annotated[
+        int | None, Field(description='In millionths of a US dollar.', ge=0)
+    ] = None
+    errors: Annotated[
+        int | None,
+        Field(description='Calls that failed or gave no usable answer.', ge=0),
+    ] = None
+    tokens_in: Annotated[int | None, Field(ge=0)] = None
+    tokens_out: Annotated[int | None, Field(ge=0)] = None
 
 
 class WorkflowRunsIn(Enum):
@@ -9142,6 +9412,7 @@ class WorkflowTurnFailRequest(BaseModel):
     non_retryable: bool | None = None
     token: str
     turn: Annotated[int, Field(ge=0)]
+    usage: WorkflowRunUsage | None = None
     workflow_id: str
 
 
@@ -9203,6 +9474,45 @@ class WorkflowTurnProgressRequest(BaseModel):
     token: str
     turn: Annotated[int, Field(ge=0)]
     workflow_id: str
+
+
+class WorkflowTurnRun(BaseModel):
+    """
+    What the engine keeps on a turn for its run summary while the turn
+    runs. Stored with the turn; the claim of a new attempt starts it again.
+    """
+
+    ended_at_ms: Annotated[
+        int | None,
+        Field(
+            description='When the attempt ended: completed, failed, cancelled or expired.'
+        ),
+    ] = None
+    id: Annotated[
+        str,
+        Field(
+            description="The run summary's id: `<started_at_ms:013>-<identity>-<turn>`. An\nactivity call names it in `workflow.run_id`."
+        ),
+    ]
+    phases: Annotated[
+        list[WorkflowRunPhase] | None,
+        Field(
+            description="The phases of the attempt's progress, oldest first, at most 32."
+        ),
+    ] = None
+    queue_after: Annotated[
+        int | None,
+        Field(description="The identity's unfinished turns after it ended.", ge=0),
+    ] = None
+    queue_before: Annotated[
+        int,
+        Field(
+            description="The identity's unfinished turns at the claim, this one included.",
+            ge=0,
+        ),
+    ]
+    started_at_ms: Annotated[int, Field(description='When the attempt was claimed.')]
+    usage: WorkflowRunUsage | None = None
 
 
 class WorkflowTurnSignal(BaseModel):
@@ -9808,6 +10118,44 @@ class CustomerOwnership(BaseModel):
     boundary: CustomerBoundary
     rules: list[CustomerRule1 | CustomerRule2 | CustomerRule3 | CustomerRule4]
     version: Annotated[int, Field(ge=0)]
+
+
+class Derivation(DerivationKey):
+    """
+    One derivation as the server keeps it.
+    """
+
+    outputs: Annotated[
+        Any | None,
+        Field(
+            description='What it made: stored pages, the commit sequence of its facts. At most\n16 KiB of JSON.'
+        ),
+    ] = None
+    recorded_at: Annotated[str, Field(description='When it was recorded, RFC 3339.')]
+    run_id: Annotated[
+        str | None,
+        Field(description='The run that made it (your own id: a turn, a message id).'),
+    ] = None
+
+
+class DerivationCheckResponse(BaseModel):
+    """
+    `POST /v1/workflows/derivations/check`: whether the key has a
+    derivation.
+    """
+
+    derivation: Derivation | None = None
+    exists: bool
+
+
+class DerivationRecordResponse(BaseModel):
+    """
+    The answer of a record: the derivation the server keeps, and whether
+    this request wrote it (`false`: the key had one, which is returned).
+    """
+
+    derivation: Derivation
+    recorded: bool
 
 
 class DiscoveryPhase2(BaseModel):
@@ -11514,53 +11862,24 @@ class ModelCalibrationThresholdEstimate(BaseModel):
     ] = None
 
 
-class ModelCall(BaseModel):
+class ModelCallOrigin(BaseModel):
     """
-    One logged model call.
+    Where a call came from.
     """
 
-    at_ms: Annotated[
-        int,
-        Field(
-            description='When the call was made, in milliseconds since the Unix epoch.'
-        ),
-    ]
-    effort: str | None = None
-    error: str | None = None
-    gates: Annotated[
-        dict[str, ModelCallGate] | None,
-        Field(
-            description='The gate decisions a workflow made from the call\'s answers, by\nquestion id: what the decision states and the value its gate\ncompares. A calibration session of a workflow job reads them\n(`docs/architecture/calibration.md`, "Sessions of a workflow\ngate"). Choice calls of `documents.link`, `documents.map` and\n`values.extract` carry them; added 2026-10-12.'
-        ),
+    request_id: Annotated[
+        str | None, Field(description='The HTTP request that made the call.')
     ] = None
-    graph: str
-    id: Annotated[
+    route: Annotated[
         str,
         Field(
-            description='`<at_ms:020>-<node>-<seq:010>-<n>`: the batch and the index in it.'
+            description='The route that made the call (`/v1/search`, `integrations/fit`).'
         ),
     ]
-    input: Annotated[
-        Any,
-        Field(
-            description='The provider-neutral request, at most 64 KiB of JSON. A long system\ntext is stored once and named by its hash (`{"grounding": "<hash>"}`).'
-        ),
-    ]
-    job: ModelJob
-    model: str
-    ok: bool
-    origin: ModelCallOrigin
-    output: Annotated[
-        Any, Field(description="The model's answer, at most 64 KiB of JSON.")
-    ]
-    provider: str
-    sampled: Annotated[
-        bool, Field(description='The sampler picked the call for a check.')
-    ]
-    truncated: Annotated[
-        bool | None, Field(description='A text or a list was cut to fit the bounds.')
+    run: ModelCallRun | None = None
+    trace_id: Annotated[
+        str | None, Field(description='The eval trace of the request, when it has one.')
     ] = None
-    usage: ModelCallUsage
 
 
 class ModelCallReport(BaseModel):
@@ -14338,6 +14657,97 @@ class WorkflowQueueShard(BaseModel):
     workflow_id: str
 
 
+class WorkflowRunSummary(BaseModel):
+    """
+    The run summary: the record of one run that a workflow keeps for 30
+    days.
+    """
+
+    attempts: Annotated[
+        int, Field(description='The attempt the run was (1 for the first).', ge=0)
+    ]
+    counters: Annotated[
+        dict[str, int] | None,
+        Field(
+            description="The turn result's `counters` (whole numbers by name, at most 32);\nfor a step of the Rust path what it added to the workflow's\ncounters."
+        ),
+    ] = None
+    ended_at_ms: int
+    error: Annotated[
+        str | None,
+        Field(description='Why it failed, at most 500 characters; `null` otherwise.'),
+    ] = None
+    id: Annotated[
+        str,
+        Field(
+            description='`<started_at_ms:013>-<identity>-<turn>` for an engine run: sortable\nby time and unique, since an identity runs one turn at a time. A\nstep of the Rust path keeps its own id,\n`<started_at_ms:013>-<node>-<seq:06>`.'
+        ),
+    ]
+    identity: Annotated[
+        str,
+        Field(
+            description='The engine identity (`starter.<name>` for a step of the Rust path).'
+        ),
+    ]
+    origin: WorkflowMessageOrigin | None = None
+    outcome: WorkflowRunOutcome
+    phases: Annotated[
+        list[WorkflowRunPhase] | None,
+        Field(description='The phases of its progress, oldest first, at most 32.'),
+    ] = None
+    queue_after: Annotated[
+        int | None,
+        Field(description='What waited after it, counted the same way.', ge=0),
+    ] = None
+    queue_before: Annotated[
+        int | None,
+        Field(
+            description="What waited when the run began. An engine run counts the identity's\nunfinished turns at the claim, its own included; a step of the Rust\npath the instances waiting after its own follow step.",
+            ge=0,
+        ),
+    ] = None
+    sample: Annotated[
+        list[str] | None,
+        Field(
+            description="At most 20 names of what the run processed: the turn result's\n`sample` (a list of text); for the document workflows of the Rust\npath the documents' names, else instance IRIs."
+        ),
+    ] = None
+    started_at_ms: int
+    steps: Annotated[
+        list[WorkflowRunStep] | None,
+        Field(description='The steps the run checkpointed, in order.'),
+    ] = None
+    turn: Annotated[
+        int | None,
+        Field(
+            description="The turn's number; absent for a step of the Rust path.", ge=0
+        ),
+    ] = None
+    unit: str | None = None
+    units: Annotated[
+        int | None,
+        Field(
+            description='What the run finished, in `unit`: the `done` of its last progress.',
+            ge=0,
+        ),
+    ] = None
+    usage: Annotated[
+        WorkflowRunUsage | None,
+        Field(
+            description="The sum of the run's model calls: what the SDK added up from the\nactivity responses and sent with the completion. The call log stays\nthe record that bills."
+        ),
+    ] = None
+    v: Annotated[int, Field(description='The format number, 1.', ge=0)]
+    version: str
+    workflow: Annotated[
+        str,
+        Field(
+            description='The folder the run is kept in: the named workflow of the identity,\nelse `instance:<identity>`.'
+        ),
+    ]
+    workflow_type: str
+
+
 class WorkflowScopeResponse(BaseModel):
     """
     Current graph incarnation and the durable write model it owns. The epoch
@@ -14368,10 +14778,12 @@ class WorkflowStep(BaseModel):
 
 class WorkflowTrigger(BaseModel):
     """
-    One trigger of a workflow. A trigger is a watch; a schedule (design
-    only) is refused with `400 workflow_trigger_unsupported`.
+    One trigger of a workflow: a watch or a content trigger, exactly one of
+    them. A schedule (design only) is refused with
+    `400 workflow_trigger_unsupported`.
     """
 
+    content: WorkflowContentTrigger | None = None
     id: Annotated[
         str | None,
         Field(
@@ -14435,12 +14847,13 @@ class WorkflowTriggerMessage(BaseModel):
 
 class WorkflowTriggerResolved(BaseModel):
     """
-    A trigger as the server resolved it.
+    A trigger as the server resolved it: a watch or a content trigger.
     """
 
+    content: WorkflowContentTrigger | None = None
     id: str
-    kind: Annotated[str, Field(description='`watch`.')]
-    watch: WorkflowWatchResolved
+    kind: Annotated[str, Field(description='`watch` or `content`.')]
+    watch: WorkflowWatchResolved | None = None
 
 
 class WorkflowTurn(BaseModel):
@@ -14458,6 +14871,7 @@ class WorkflowTurn(BaseModel):
     progress: WorkflowProgress | None = None
     ready_at_ms: int
     result: Any
+    run: WorkflowTurnRun | None = None
     sequence: Annotated[int, Field(ge=0)]
     signals: list[WorkflowTurnSignal] | None = None
     state_after: Any
@@ -14487,6 +14901,7 @@ class WorkflowTurnCompleteRequest(BaseModel):
     state: Any
     token: str
     turn: Annotated[int, Field(ge=0)]
+    usage: WorkflowRunUsage | None = None
     workflow_id: str
 
 
@@ -15511,6 +15926,55 @@ class ModelCalibrationSession(BaseModel):
     workflow_turn: Annotated[int | None, Field(ge=0)] = None
 
 
+class ModelCall(BaseModel):
+    """
+    One logged model call.
+    """
+
+    at_ms: Annotated[
+        int,
+        Field(
+            description='When the call was made, in milliseconds since the Unix epoch.'
+        ),
+    ]
+    effort: str | None = None
+    error: str | None = None
+    gates: Annotated[
+        dict[str, ModelCallGate] | None,
+        Field(
+            description='The gate decisions a workflow made from the call\'s answers, by\nquestion id: what the decision states and the value its gate\ncompares. A calibration session of a workflow job reads them\n(`docs/architecture/calibration.md`, "Sessions of a workflow\ngate"). Choice calls of `documents.link`, `documents.map` and\n`values.extract` carry them; added 2026-10-12.'
+        ),
+    ] = None
+    graph: str
+    id: Annotated[
+        str,
+        Field(
+            description='`<at_ms:020>-<node>-<seq:010>-<n>`: the batch and the index in it.'
+        ),
+    ]
+    input: Annotated[
+        Any,
+        Field(
+            description='The provider-neutral request, at most 64 KiB of JSON. A long system\ntext is stored once and named by its hash (`{"grounding": "<hash>"}`).'
+        ),
+    ]
+    job: ModelJob
+    model: str
+    ok: bool
+    origin: ModelCallOrigin
+    output: Annotated[
+        Any, Field(description="The model's answer, at most 64 KiB of JSON.")
+    ]
+    provider: str
+    sampled: Annotated[
+        bool, Field(description='The sampler picked the call for a check.')
+    ]
+    truncated: Annotated[
+        bool | None, Field(description='A text or a list was cut to fit the bounds.')
+    ] = None
+    usage: ModelCallUsage
+
+
 class ModelCallRow(BaseModel):
     """
     One row of `GET /v1/models/calls`.
@@ -15518,11 +15982,26 @@ class ModelCallRow(BaseModel):
 
     at_ms: int
     check: ModelCheckBrief | None = None
+    error: Annotated[
+        str | None, Field(description='Why the call failed, at most 160 characters.')
+    ] = None
     id: str
+    instance: Annotated[
+        str | None,
+        Field(
+            description="What the call works on: an instance IRI, or a document's name."
+        ),
+    ] = None
     job: ModelJob
     model: str
     ok: bool
     provider: str
+    run_id: Annotated[
+        str | None,
+        Field(
+            description="The run summary's id of the workflow run that made the call\n(`origin.run.run_id`)."
+        ),
+    ] = None
     sampled: bool
     skipped: Annotated[
         str | None,
@@ -15534,6 +16013,7 @@ class ModelCallRow(BaseModel):
             description='At most 160 characters: the search text, the question, the stream\nname.'
         ),
     ]
+    usage: ModelCallRowUsage | None = None
 
 
 class ModelCheck(BaseModel):
@@ -15799,14 +16279,17 @@ class NamedWorkflowRequest(BaseModel):
 
     batch: Annotated[
         int | None,
-        Field(description='Instances per message, 1 to 64 (default 16).', ge=0),
+        Field(
+            description='Instances per message, 1 to 64 (default 16). A content trigger sends\none content per message (`batch` 1 or absent).',
+            ge=0,
+        ),
     ] = None
     name: Annotated[str, Field(description='`[a-z0-9][a-z0-9-]{0,62}`.')]
     owns: WorkflowOwns | None = None
     route_by: Annotated[
         str | None,
         Field(
-            description='A field of the watched class (one step of the path syntax) whose\nvalue is the routing key: the changes of one key go to one shard, in\norder. Absent: the instance IRI.'
+            description="A field of the watched class (one step of the path syntax) whose\nvalue is the routing key: the changes of one key go to one shard, in\norder. Absent: the instance IRI. A content trigger routes by the\ncontent's SHA-256 and takes no `route_by`."
         ),
     ] = None
     shards: Annotated[
@@ -15818,7 +16301,9 @@ class NamedWorkflowRequest(BaseModel):
     ] = None
     triggers: Annotated[
         list[WorkflowTrigger],
-        Field(description='Exactly one watch trigger in this release.'),
+        Field(
+            description="Exactly one trigger in this release: a watch or a content trigger.\nA workflow keeps its trigger's kind; to change it, delete the\nworkflow and create it again."
+        ),
     ]
     window: Annotated[
         int | None,
@@ -16680,6 +17165,47 @@ class WorkflowInstance(BaseModel):
 class WorkflowInstanceListResponse(BaseModel):
     instances: list[WorkflowInstance]
     next_after: str | None = None
+
+
+class WorkflowRunDetail(BaseModel):
+    """
+    One run with its model calls, in time order.
+    """
+
+    calls: Annotated[
+        list[ModelCallRow],
+        Field(
+            description='At most 1,000. `GET /v1/models/calls/get` reads one call whole.'
+        ),
+    ]
+    calls_truncated: Annotated[
+        bool,
+        Field(
+            description='The run made more calls than `calls` holds, or the call log was read\nonly in part.'
+        ),
+    ]
+    run: WorkflowRunSummary
+
+
+class WorkflowRunList(BaseModel):
+    """
+    A page of a workflow's runs, newest first.
+    """
+
+    next_before: Annotated[
+        str | None,
+        Field(
+            description='Pass as `before` for the next page; absent on the last page.'
+        ),
+    ] = None
+    repaired: Annotated[
+        int | None,
+        Field(
+            description="Summaries this read wrote again from the engine's history (the\nfirst page only).",
+            ge=0,
+        ),
+    ] = None
+    runs: list[WorkflowRunSummary]
 
 
 class WorkflowStartRequest(BaseModel):

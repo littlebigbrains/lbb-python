@@ -869,7 +869,9 @@ def _activity_options(
 
 
 class _WorkflowActivityMethods:
-    """Workflow activities: LBB's own model calls for a workflow's code.
+    """Workflow activities: LBB's own model calls for a workflow's code, and
+    the derivations a workflow checks and records
+    (``check_derivation``, ``record_derivation``).
 
     ``reason_activity``, ``decide_activity`` and ``embed_activity`` call
     ``POST /v1/workflows/activities/{reason,decide,embed}``. LBB meters each
@@ -987,6 +989,76 @@ class _WorkflowActivityMethods:
             body=_activity_body(body, effect_id, label),
             options=_activity_options(effect_id),
         )
+
+
+    def check_derivation(
+        self,
+        sha256: str,
+        workflow_type: str,
+        version: str,
+        settings_digest: str = "none",
+    ) -> Any:
+        """Whether one version of a workflow made something of one content
+        with one set of settings (``POST /v1/workflows/derivations/check``).
+
+        The key is the content's SHA-256, your ``workflow_type`` and
+        ``version``, and a digest of the settings (``none`` without
+        settings). The answer has ``exists`` and, when it does,
+        ``derivation``. Check before you work on a content and skip it when
+        a derivation exists: identical bytes under two names are then worked
+        on once. A read, so a failure is retried.
+        """
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/derivations/check",
+            params=self._workflows_scope(),
+            body=_derivation_key(sha256, workflow_type, version, settings_digest),
+            options={"retry": True},
+        )
+
+    def record_derivation(
+        self,
+        sha256: str,
+        workflow_type: str,
+        version: str,
+        settings_digest: str = "none",
+        *,
+        run_id: str | None = None,
+        outputs: Any = None,
+    ) -> Any:
+        """Record a derivation once (``POST /v1/workflows/derivations/record``):
+        the key, ``run_id`` (your run's id) and ``outputs`` (at most 16 KiB
+        of JSON).
+
+        The answer has ``recorded`` and the ``derivation`` the server keeps.
+        A second record of the key answers the stored one with
+        ``recorded: False``, so a failure is retried. Validate it with
+        ``models.DerivationRecordResponse``.
+        """
+        body = _derivation_key(sha256, workflow_type, version, settings_digest)
+        if run_id is not None:
+            body["run_id"] = run_id
+        if outputs is not None:
+            body["outputs"] = outputs
+        return self._workflows_client()._request(
+            "POST",
+            "/v1/workflows/derivations/record",
+            params=self._workflows_scope(),
+            body=body,
+            options={"retry": True},
+        )
+
+
+def _derivation_key(
+    sha256: str, workflow_type: str, version: str, settings_digest: str
+) -> dict[str, Any]:
+    """The key of a derivation as the routes take it."""
+    return {
+        "sha256": sha256,
+        "workflow_type": workflow_type,
+        "version": version,
+        "settings_digest": settings_digest,
+    }
 
 
 class _StarterWorkflowMethods(_WorkflowActivityMethods):
@@ -1212,6 +1284,159 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
             params=self._workflows_scope({"starter": starter, "name": name}),
             body={"paused": paused},
             options={"retry": True},
+        )
+
+    def triggered_workflow_runs(
+        self,
+        starter: str,
+        name: str,
+        *,
+        before: str | None = None,
+        limit: int | None = None,
+        outcome: str | models.WorkflowRunOutcome | None = None,
+    ) -> Any:
+        """The runs of a triggered workflow, newest first
+        (``GET /v1/workflows/triggered/runs``): :meth:`named_workflow_runs`
+        by starter and name, the compatibility view. ``search.embed`` and
+        ``ontology.fit`` keep no runs (``400 workflow_param_invalid``).
+        Validate the answer with ``models.WorkflowRunList``.
+        """
+        return self._workflows_client()._request(
+            "GET",
+            "/v1/workflows/triggered/runs",
+            params=self._workflows_scope(
+                {
+                    "starter": starter,
+                    "name": name,
+                    "before": before,
+                    "limit": limit,
+                    "outcome": _enum_value(outcome),
+                }
+            ),
+        )
+
+    def triggered_workflow_run(self, starter: str, name: str, run: str) -> Any:
+        """One run with its model calls in time order
+        (``GET /v1/workflows/triggered/runs/get``): :meth:`named_workflow_run`
+        by starter and name. Validate the answer with
+        ``models.WorkflowRunDetail``."""
+        return self._workflows_client()._request(
+            "GET",
+            "/v1/workflows/triggered/runs/get",
+            params=self._workflows_scope(
+                {"starter": starter, "name": name, "run": run}
+            ),
+        )
+
+    def triggered_workflow_run_stats(
+        self, starter: str, name: str, *, hours: int | None = None
+    ) -> Any:
+        """The runs of a triggered workflow by hour
+        (``GET /v1/workflows/triggered/runs/stats``):
+        :meth:`named_workflow_run_stats` by starter and name. Validate the
+        answer with ``models.WorkflowRunStats``."""
+        return self._workflows_client()._request(
+            "GET",
+            "/v1/workflows/triggered/runs/stats",
+            params=self._workflows_scope(
+                {"starter": starter, "name": name, "hours": hours}
+            ),
+        )
+
+    def named_workflow_runs(
+        self,
+        name: str,
+        *,
+        before: str | None = None,
+        limit: int | None = None,
+        outcome: str | models.WorkflowRunOutcome | None = None,
+    ) -> Any:
+        """The runs of a named workflow, newest first
+        (``GET /v1/workflows/named/runs``).
+
+        A run is a turn of one of its shards (each attempt: one that failed
+        and runs again is ``retried``), or a step of LBB's own document,
+        values and review workflows: its origin, outcome, the queue before
+        and after, what it finished, a sample, its steps and phases, and the
+        usage of its model calls. Runs are kept 30 days. ``before`` is the
+        ``next_before`` of the previous page; ``limit`` is 1 to 200 (default
+        50); ``outcome`` keeps the runs that ended so (``done``, ``more``,
+        ``failed``, ``retried``, ``budget``, ``cancelled``, ``paused``).
+        Validate the answer with ``models.WorkflowRunList``.
+        """
+        return self._workflows_client()._request(
+            "GET",
+            "/v1/workflows/named/runs",
+            params=self._workflows_scope(
+                {
+                    "name": name,
+                    "before": before,
+                    "limit": limit,
+                    "outcome": _enum_value(outcome),
+                }
+            ),
+        )
+
+    def named_workflow_run(self, name: str, run: str) -> Any:
+        """One run of a named workflow with its model calls in time order,
+        at most 1,000 (``GET /v1/workflows/named/runs/get``). A node writes
+        its calls every 10 s, so the calls of a run that just ended can come
+        a little later. A run the workflow does not have answers
+        ``404 workflow_run_not_found``. Validate the answer with
+        ``models.WorkflowRunDetail``."""
+        return self._workflows_client()._request(
+            "GET",
+            "/v1/workflows/named/runs/get",
+            params=self._workflows_scope({"name": name, "run": run}),
+        )
+
+    def named_workflow_run_stats(self, name: str, *, hours: int | None = None) -> Any:
+        """The runs of a named workflow by hour, oldest first, up to the
+        current hour (``GET /v1/workflows/named/runs/stats``): runs, what
+        they finished, calls, errors, tokens, cost, failed runs, the largest
+        and the last queue, and the time the runs took. ``hours`` is 1 to
+        168 (default 24). Validate the answer with
+        ``models.WorkflowRunStats``."""
+        return self._workflows_client()._request(
+            "GET",
+            "/v1/workflows/named/runs/stats",
+            params=self._workflows_scope({"name": name, "hours": hours}),
+        )
+
+    def triggered_workflow_documents(
+        self,
+        starter: str,
+        name: str,
+        *,
+        q: str | None = None,
+        sort: str | models.TriggeredDocumentSort | None = None,
+        after: str | None = None,
+        limit: int | None = None,
+    ) -> Any:
+        """One page of the documents of a ``documents.link`` or
+        ``documents.map`` workflow (``GET /v1/workflows/triggered/documents``),
+        rows as in its ``details.documents``, which lists only the 20 with
+        the most review items.
+
+        ``q`` keeps the documents whose name holds the text (any case);
+        ``sort`` is ``review`` (the most review items first; the default),
+        ``name`` or ``recent``; ``after`` is the ``next_after`` of the
+        previous page; ``limit`` is 1 to 200 (default 50). Validate the
+        answer with ``models.TriggeredDocumentPage``.
+        """
+        return self._workflows_client()._request(
+            "GET",
+            "/v1/workflows/triggered/documents",
+            params=self._workflows_scope(
+                {
+                    "starter": starter,
+                    "name": name,
+                    "q": q,
+                    "sort": _enum_value(sort),
+                    "after": after,
+                    "limit": limit,
+                }
+            ),
         )
 
     def delete_triggered_workflow(self, starter: str, name: str) -> Any:

@@ -613,6 +613,36 @@ class _AsyncStarterWorkflowMethods(_StarterWorkflowMethods):
     ) -> Any:
         return await super().embed_activity(texts, effect_id=effect_id, label=label)
 
+    async def check_derivation(
+        self,
+        sha256: str,
+        workflow_type: str,
+        version: str,
+        settings_digest: str = "none",
+    ) -> Any:
+        return await super().check_derivation(
+            sha256, workflow_type, version, settings_digest
+        )
+
+    async def record_derivation(
+        self,
+        sha256: str,
+        workflow_type: str,
+        version: str,
+        settings_digest: str = "none",
+        *,
+        run_id: str | None = None,
+        outputs: Any = None,
+    ) -> Any:
+        return await super().record_derivation(
+            sha256,
+            workflow_type,
+            version,
+            settings_digest,
+            run_id=run_id,
+            outputs=outputs,
+        )
+
     async def workflow_starters(self) -> Any:
         return await super().workflow_starters()
 
@@ -698,6 +728,59 @@ class _AsyncStarterWorkflowMethods(_StarterWorkflowMethods):
         self, starter: str, name: str, paused: bool = True
     ) -> Any:
         return await super().pause_triggered_workflow(starter, name, paused)
+
+    async def triggered_workflow_runs(
+        self,
+        starter: str,
+        name: str,
+        *,
+        before: str | None = None,
+        limit: int | None = None,
+        outcome: str | models.WorkflowRunOutcome | None = None,
+    ) -> Any:
+        return await super().triggered_workflow_runs(
+            starter, name, before=before, limit=limit, outcome=outcome
+        )
+
+    async def triggered_workflow_run(self, starter: str, name: str, run: str) -> Any:
+        return await super().triggered_workflow_run(starter, name, run)
+
+    async def triggered_workflow_run_stats(
+        self, starter: str, name: str, *, hours: int | None = None
+    ) -> Any:
+        return await super().triggered_workflow_run_stats(starter, name, hours=hours)
+
+    async def named_workflow_runs(
+        self,
+        name: str,
+        *,
+        before: str | None = None,
+        limit: int | None = None,
+        outcome: str | models.WorkflowRunOutcome | None = None,
+    ) -> Any:
+        return await super().named_workflow_runs(
+            name, before=before, limit=limit, outcome=outcome
+        )
+
+    async def named_workflow_run(self, name: str, run: str) -> Any:
+        return await super().named_workflow_run(name, run)
+
+    async def named_workflow_run_stats(self, name: str, *, hours: int | None = None) -> Any:
+        return await super().named_workflow_run_stats(name, hours=hours)
+
+    async def triggered_workflow_documents(
+        self,
+        starter: str,
+        name: str,
+        *,
+        q: str | None = None,
+        sort: str | models.TriggeredDocumentSort | None = None,
+        after: str | None = None,
+        limit: int | None = None,
+    ) -> Any:
+        return await super().triggered_workflow_documents(
+            starter, name, q=q, sort=sort, after=after, limit=limit
+        )
 
     async def delete_triggered_workflow(self, starter: str, name: str) -> Any:
         return await super().delete_triggered_workflow(starter, name)
