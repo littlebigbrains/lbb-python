@@ -2,6 +2,17 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.26.0 (2026-10-14)
+
+- Models for workflows with triggers (`/v1/workflows/named`):
+  `NamedWorkflow`, `NamedWorkflowRequest`, `NamedWorkflowList`,
+  `NamedWorkflowShard`, `NamedWorkflowQueue`, `NamedWorkflowRunResponse`,
+  `NamedWorkflowPauseRequest`, `NamedWorkflowDeleteResponse`,
+  `WorkflowTrigger`, `WorkflowTriggerResolved`, and the queue models
+  `WorkflowQueueItem`, `WorkflowQueueShard`, `WorkflowQueuePass` and
+  `WorkflowQueueInFlight`. The Python SDK has no methods for these routes
+  yet.
+
 ## 0.25.0 (2026-10-13)
 
 - `evals.run_answers(answers, runner=, consistency=)` checks your own
