@@ -3539,6 +3539,22 @@ class NamedEntityInput(BaseModel):
     type: str
 
 
+class NamedWorkflowDeleteResponse(BaseModel):
+    """
+    `DELETE /v1/workflows/named`.
+    """
+
+    deleted: bool
+
+
+class NamedWorkflowPauseRequest(BaseModel):
+    """
+    `POST /v1/workflows/named/pause`: pause (`paused: true`) or resume.
+    """
+
+    paused: bool
+
+
 class Op4(Enum):
     narrow_relation = 'narrow_relation'
 
@@ -8867,6 +8883,13 @@ class WorkflowMessageOrigin(BaseModel):
     ] = None
     note: Annotated[
         str | None, Field(description='A short note, at most 280 characters.')
+    ] = None
+    ontology_version: Annotated[
+        int | None,
+        Field(
+            description='A `schema_changed` origin: the ontology version whose change of the\nwatched class started the pass.',
+            ge=0,
+        ),
     ] = None
     reason: Annotated[
         str | None,
@@ -14241,6 +14264,80 @@ class WorkflowInboxResponse(BaseModel):
     workflow_type: str
 
 
+class WorkflowQueueInFlight(BaseModel):
+    """
+    A message a watch wrote down and sends next.
+    """
+
+    id: str
+    instances: Annotated[int, Field(ge=0)]
+    origin: WorkflowMessageOrigin | None = None
+    reason: WorkflowTriggerReason
+    removed: Annotated[int, Field(ge=0)]
+
+
+class WorkflowQueueItem(BaseModel):
+    """
+    One item a watch has not sent yet.
+    """
+
+    iri: str
+    origin: Annotated[
+        WorkflowMessageOrigin,
+        Field(
+            description='Where it came from. An item queued before origins were kept shows\nthe origin its reason gives.'
+        ),
+    ]
+    reason: WorkflowTriggerReason
+    removed: Annotated[
+        bool | None,
+        Field(
+            description="The instance left the class: it goes in a message's `removed`."
+        ),
+    ] = None
+    shard: Annotated[int, Field(description='The shard it goes to.', ge=0)]
+
+
+class WorkflowQueuePass(BaseModel):
+    """
+    A pass over the class that has not reached its end.
+    """
+
+    cursor: Annotated[
+        str | None, Field(description='The last instance queued, in IRI order.')
+    ] = None
+    origin: WorkflowMessageOrigin | None = None
+    reason: WorkflowTriggerReason
+    scanned: Annotated[int, Field(ge=0)]
+    target_seq: Annotated[
+        int, Field(description='The published commit the pass reads at.', ge=0)
+    ]
+
+
+class WorkflowQueueShard(BaseModel):
+    """
+    One shard in the queue view: what the watch holds for it and the head
+    of its inbox.
+    """
+
+    in_flight: WorkflowQueueInFlight | None = None
+    index: Annotated[int, Field(ge=0)]
+    messages: Annotated[
+        list[WorkflowInboxMessage] | None,
+        Field(
+            description='The first unfinished turns, oldest first, with their origins (at\nmost 10; `GET /v1/workflows/instances/inbox` pages the rest).'
+        ),
+    ] = None
+    next_message: Annotated[int, Field(ge=0)]
+    pending_messages: Annotated[
+        int | None, Field(description='Its unfinished turns.', ge=0)
+    ] = None
+    running: WorkflowProgress | None = None
+    status: WorkflowInstanceStatus | None = None
+    waiting: Annotated[int, Field(description='Items waiting for this shard.', ge=0)]
+    workflow_id: str
+
+
 class WorkflowScopeResponse(BaseModel):
     """
     Current graph incarnation and the durable write model it owns. The epoch
@@ -14267,6 +14364,27 @@ class WorkflowStep(BaseModel):
     ] = None
     retry_delay_ms: Annotated[int | None, Field(ge=0)] = None
     timeout_ms: Annotated[int | None, Field(ge=0)] = None
+
+
+class WorkflowTrigger(BaseModel):
+    """
+    One trigger of a workflow. A trigger is a watch; a schedule (design
+    only) is refused with `400 workflow_trigger_unsupported`.
+    """
+
+    id: Annotated[
+        str | None,
+        Field(
+            description="`[a-z0-9][a-z0-9_-]{0,62}`. Default `watch`. Each message's origin\nnames it."
+        ),
+    ] = None
+    schedule: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description='Design only: a timer trigger. Refused in this release\n(`workflow_trigger_unsupported`).'
+        ),
+    ] = None
+    watch: WorkflowWatch | None = None
 
 
 class WorkflowTriggerInFlight(BaseModel):
@@ -14298,6 +14416,7 @@ class WorkflowTriggerMessage(BaseModel):
     instances: Annotated[
         list[str], Field(description='Instance IRIs to read and work on.')
     ]
+    origin: WorkflowMessageOrigin | None = None
     reason: WorkflowTriggerReason
     removed: Annotated[
         list[str],
@@ -14312,6 +14431,16 @@ class WorkflowTriggerMessage(BaseModel):
             description="The triggered workflow's name. Read as `starter` too: a message\nstored before the field was renamed still reads."
         ),
     ]
+
+
+class WorkflowTriggerResolved(BaseModel):
+    """
+    A trigger as the server resolved it.
+    """
+
+    id: str
+    kind: Annotated[str, Field(description='`watch`.')]
+    watch: WorkflowWatchResolved
 
 
 class WorkflowTurn(BaseModel):
@@ -15616,6 +15745,129 @@ class ModelTrialStartResponse(BaseModel):
 
     skipped: list[ModelTrialSkippedJob] | None = None
     trials: list[ModelTrial]
+
+
+class NamedWorkflowQueue(BaseModel):
+    """
+    `GET /v1/workflows/named/queue?name=&trigger=&after=&limit=`: what a
+    watch has not sent yet, with origins, the pass in progress, and per
+    shard its unfinished turns and its running turn's progress.
+    """
+
+    items: Annotated[
+        list[WorkflowQueueItem],
+        Field(
+            description='From position `after`, at most `limit` (1 to 100, default 50):\ninstances first, then removed instances, in send order.'
+        ),
+    ]
+    name: str
+    next_after: Annotated[
+        int | None,
+        Field(
+            description='The position to pass as `after` for the next page. The queue moves\nas it drains, so a page is a view at one time.',
+            ge=0,
+        ),
+    ] = None
+    pass_: Annotated[WorkflowQueuePass | None, Field(alias='pass')] = None
+    pending: Annotated[
+        int,
+        Field(
+            description='Items waiting to be sent (instances and removed instances), on this\npage or not. A workflow LBB runs reads its items from this queue\nitself.',
+            ge=0,
+        ),
+    ]
+    processed_through_seq: Annotated[
+        int | None,
+        Field(description='The published commit the watch read through.', ge=0),
+    ] = None
+    shards: Annotated[
+        list[WorkflowQueueShard] | None,
+        Field(
+            description="The shards of a workflow your worker runs; empty for LBB's own."
+        ),
+    ] = None
+    trigger: str
+
+
+class NamedWorkflowRequest(BaseModel):
+    """
+    Create a workflow with triggers, or change one (`PUT
+    /v1/workflows/named`). The same request again is a no-op. The target is
+    a workflow type of your worker; LBB's own types (`lbb.*`) are made from a
+    starter workflow (`PUT /v1/workflows/triggered`) in this release.
+    """
+
+    batch: Annotated[
+        int | None,
+        Field(description='Instances per message, 1 to 64 (default 16).', ge=0),
+    ] = None
+    name: Annotated[str, Field(description='`[a-z0-9][a-z0-9-]{0,62}`.')]
+    owns: WorkflowOwns | None = None
+    route_by: Annotated[
+        str | None,
+        Field(
+            description='A field of the watched class (one step of the path syntax) whose\nvalue is the routing key: the changes of one key go to one shard, in\norder. Absent: the instance IRI.'
+        ),
+    ] = None
+    shards: Annotated[
+        int | None,
+        Field(
+            description="Engine identities that receive the messages, 1 to 16. Default 1.\nA change needs every shard's inbox empty (`409 workflow_shards_busy`).",
+            ge=0,
+        ),
+    ] = None
+    triggers: Annotated[
+        list[WorkflowTrigger],
+        Field(description='Exactly one watch trigger in this release.'),
+    ]
+    window: Annotated[
+        int | None,
+        Field(
+            description="Messages the watch keeps queued per shard, 1 to 128. Default 4; the\nrest waits in the watch's queue.",
+            ge=0,
+        ),
+    ] = None
+    workflow: Annotated[
+        WorkflowTypeRef,
+        Field(description='The workflow type and version that receive the messages.'),
+    ]
+
+
+class NamedWorkflowShard(BaseModel):
+    """
+    One shard of a workflow: its engine identity, the watch's cursor for it,
+    and what the engine holds (when the server could read it).
+    """
+
+    in_flight: WorkflowTriggerInFlight | None = None
+    inbox_full_since: Annotated[
+        str | None,
+        Field(
+            description='The inbox was full (128 messages) at the last send, since this time.'
+        ),
+    ] = None
+    index: Annotated[int, Field(description='0 to `shards - 1`.', ge=0)]
+    next_message: Annotated[
+        int,
+        Field(
+            description='The number of the next message id (`starter-<name>-<n>`,\n`starter-<name>.<k>-<n>`).',
+            ge=0,
+        ),
+    ]
+    pending_messages: Annotated[
+        int | None, Field(description='Its unfinished turns.', ge=0)
+    ] = None
+    running: WorkflowProgress | None = None
+    status: WorkflowInstanceStatus | None = None
+    window_full_since: Annotated[
+        str | None,
+        Field(
+            description='The send-ahead window was full at the last run, since this time: the\nrest waits until a turn finishes.'
+        ),
+    ] = None
+    workflow_id: Annotated[
+        str, Field(description='`starter.<name>` (shard 0) or `starter.<name>.<k>`.')
+    ]
 
 
 class NeighborResponse(BaseModel):
@@ -16957,6 +17209,82 @@ class ModelCallListResponse(BaseModel):
             description='Pass as `after` for the next page; absent on the last page.'
         ),
     ] = None
+
+
+class NamedWorkflow(BaseModel):
+    """
+    One workflow with triggers (`GET /v1/workflows/named?name=`).
+    """
+
+    batch: Annotated[int | None, Field(ge=0)] = None
+    budget_usd_per_month: float | None = None
+    created_at: str | None = None
+    gate: WorkflowGate | None = None
+    name: str
+    owns: WorkflowOwns | None = None
+    params: Any | None = None
+    paused: bool
+    route_by: Annotated[
+        str | None,
+        Field(description='The routing field as given; absent: the instance IRI.'),
+    ] = None
+    runs_in: Annotated[
+        WorkflowRunsIn,
+        Field(
+            description='`worker`: your worker runs the turns. `lbb`: LBB runs the work in\nthe starters job (the Rust path of this release).'
+        ),
+    ]
+    shard_states: Annotated[
+        list[NamedWorkflowShard] | None,
+        Field(
+            description="The shards of a workflow your worker runs; empty for LBB's own."
+        ),
+    ] = None
+    shards: Annotated[int, Field(ge=0)]
+    starter: Annotated[
+        str,
+        Field(
+            description="The starter workflow it was made from: `workflow` for a workflow of\nyour worker, a catalog id (`documents.parse`, `values.extract`, …)\nfor LBB's own."
+        ),
+    ]
+    status: Annotated[
+        TriggeredWorkflowStatus,
+        Field(
+            description='The status shape of every workflow (as `/v1/workflows/triggered`).'
+        ),
+    ]
+    triggers: list[WorkflowTriggerResolved]
+    updated_at: str | None = None
+    window: Annotated[
+        int | None,
+        Field(
+            description='The send-ahead window; absent: the inbox limit (a workflow made\nthrough `/v1/workflows/triggered`).',
+            ge=0,
+        ),
+    ] = None
+    workflow: Annotated[
+        WorkflowTypeRef,
+        Field(
+            description="The target: the workflow type and version that receive the work.\nLBB's own are `lbb.*` types."
+        ),
+    ]
+
+
+class NamedWorkflowList(BaseModel):
+    """
+    `GET /v1/workflows/named`: the graph's workflows with triggers, by name.
+    """
+
+    workflows: list[NamedWorkflow]
+
+
+class NamedWorkflowRunResponse(BaseModel):
+    """
+    `POST /v1/workflows/named/run`: run now.
+    """
+
+    queued: Annotated[bool, Field(description='The starters job was asked to run.')]
+    workflow: NamedWorkflow
 
 
 class OntologyChangeSuggestionList(BaseModel):
