@@ -2,6 +2,27 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- `named_workflow_runs(name, *, before=, limit=, outcome=)`,
+  `named_workflow_run(name, run)` and `named_workflow_run_stats(name, *,
+  hours=)` read the run summaries of a named workflow
+  (`GET /v1/workflows/named/runs*`); `triggered_workflow_runs`,
+  `triggered_workflow_run` and `triggered_workflow_run_stats` read the same
+  by starter and name, and `triggered_workflow_documents` pages the
+  documents of `documents.link` and `documents.map`. The models are
+  `WorkflowRunList`, `WorkflowRunDetail`, `WorkflowRunStats` and
+  `TriggeredDocumentPage`.
+- `check_derivation(sha256, workflow_type, version, settings_digest)` and
+  `record_derivation(..., run_id=, outputs=)` on the client, `graph(name)`
+  and the async client (`/v1/workflows/derivations/*`): what one version of
+  a workflow made of one content with one set of settings.
+- The models gain `DerivationKey`, `Derivation`, `DerivationCheckResponse`,
+  `DerivationRecordRequest`, `DerivationRecordResponse` and
+  `WorkflowContentTrigger`; `WorkflowTrigger` and `WorkflowTriggerResolved`
+  gain `content`; `WorkflowMessageOrigin` gains `sha256`, `media_type` and
+  `uploaded_at_ms`.
+
 ## 0.26.0 (2026-10-14)
 
 - Models for workflows with triggers (`/v1/workflows/named`):
