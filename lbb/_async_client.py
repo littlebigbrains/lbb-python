@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import os
 from collections.abc import (
     AsyncGenerator,
     AsyncIterable,
@@ -21,6 +22,7 @@ import httpx
 from . import models
 from ._client_base import (
     _ASK_STREAM_ENDED,
+    _UPLOAD_CHUNK_BYTES,
     DEFAULT_BASE_URL,
     DEFAULT_INTEGRATIONS_URL,
     DEFAULT_MAX_RETRIES,
@@ -43,11 +45,13 @@ from ._client_base import (
     _BaseLbbClient,
     _body_marks_terminal,
     _ChecksNamespace,
+    _discard_download,
     _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
     _EvalsNamespace,
     _FactsNamespace,
+    _file_head,
     _FilesNamespace,
     _GraphNamespace,
     _jittered_backoff,
@@ -55,6 +59,7 @@ from ._client_base import (
     _ModelTrialsNamespace,
     _OntologyNamespace,
     _OntologyStartersNamespace,
+    _open_download,
     _parse_model,
     _QueryNamespace,
     _raw_response,
@@ -1200,6 +1205,26 @@ class _AsyncModelsNamespace:
         self.switches = _AsyncModelSwitchesNamespace(client)
 
 
+class _AsyncFileChunks:
+    """A file's bytes in chunks for the async client, read off the event loop
+    and again from the start each time they are iterated (a retry sends the
+    file again)."""
+
+    def __init__(self, path: str) -> None:
+        self._path = path
+
+    def __aiter__(self) -> AsyncIterator[bytes]:
+        return self._chunks()
+
+    async def _chunks(self) -> AsyncIterator[bytes]:
+        handle = await asyncio.to_thread(open, self._path, "rb")
+        try:
+            while chunk := await asyncio.to_thread(handle.read, _UPLOAD_CHUNK_BYTES):
+                yield chunk
+        finally:
+            handle.close()
+
+
 class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
     """Asynchronous client. Usable as an async context manager."""
 
@@ -1857,6 +1882,105 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
             binary=True,
         )
         return cast(bytes, response.data)
+
+    def _path_content(self, path: str) -> Any:
+        return _AsyncFileChunks(path)
+
+    async def _download_request(
+        self,
+        path: str,
+        dest: str | os.PathLike[str],
+        *,
+        params: Mapping[str, Any] | None = None,
+        options: RequestOptions | None = None,
+    ) -> int:
+        request_options = options or {}
+        kwargs = self._request_kwargs(
+            params=params,
+            body=None,
+            content=None,
+            content_type=None,
+            idempotency_key=None,
+            headers=request_options.get("headers"),
+        )
+        if "timeout" in request_options:
+            kwargs["timeout"] = request_options["timeout"]
+        max_retries = request_options.get("max_retries", self._max_retries)
+        if max_retries < 0:
+            raise ValueError("max_retries must be non-negative")
+        retry_budget_ms = request_options.get("retry_budget_ms", self._retry_budget_ms)
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        deadline = started_at + max(0.0, retry_budget_ms) / 1000.0
+        url = f"{self._base_url}{path}"
+        attempt = 0
+        while True:
+            delay: float | None = None
+            answered = False
+            try:
+                async with self._http.stream("GET", url, **kwargs) as response:
+                    answered = True
+                    if response.status_code // 100 == 2:
+                        handle, temp = _open_download(dest)
+                        written = 0
+                        try:
+                            with handle:
+                                async for chunk in response.aiter_bytes():
+                                    handle.write(chunk)
+                                    written += len(chunk)
+                            os.replace(temp, os.fspath(dest))
+                        except BaseException:
+                            _discard_download(temp)
+                            raise
+                        return written
+                    await response.aread()
+                    if (
+                        _retryable(response.status_code)
+                        and attempt < max_retries
+                        and not _body_marks_terminal(response)
+                    ):
+                        delay = _retry_delay_seconds(response, self._retry_delay, attempt)
+                        if loop.time() + delay > deadline:
+                            delay = None
+                    if delay is None:
+                        _raw_response(response)
+                        raise AssertionError("a non-2xx answer raises")
+                    self._emit_retry(
+                        "GET",
+                        path,
+                        attempt=attempt + 1,
+                        status_code=response.status_code,
+                        error_code=_error_body_field(response, "code"),
+                        delay_seconds=delay,
+                        elapsed_ms=(loop.time() - started_at) * 1000,
+                    )
+            except httpx.TransportError:
+                # Only a failure before the answer starts is retried. A
+                # transfer that broke raises, and leaves nothing at ``dest``.
+                if answered or attempt >= max_retries:
+                    raise
+                delay = _jittered_backoff(self._retry_delay, attempt)
+                if loop.time() + delay > deadline:
+                    raise
+            assert delay is not None
+            await asyncio.sleep(delay)
+            attempt += 1
+
+    async def _file_head_request(
+        self,
+        path: str,
+        sha256: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        response = await self._send(
+            "HEAD",
+            path,
+            f"{self._base_url}{path}",
+            params=params,
+            binary=True,
+        )
+        return _file_head(response.headers, sha256)
 
     async def _page_request(
         self, row_model: type[RowT], payload: Any

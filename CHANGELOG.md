@@ -4,6 +4,18 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Files of up to 1 GiB. `files.content(sha256, range=)` reads one byte
+  range: `(start, end)` with both bytes included, `(start, None)` to the
+  end, or `(None, n)` for the last `n` bytes. `files.download(sha256, path,
+  range=)` writes the bytes to `path` as they arrive and returns how many
+  it wrote, so a large file is never held whole. `files.head(sha256)`
+  returns `{"bytes", "content_type", "sha256"}` without the bytes. A range
+  with no byte of the file raises `LbbError` 416 `range_not_satisfiable`;
+  an upload above the server's limit raises 413 `file_too_large`. On the
+  client, `graph(name)` and the async client.
+- `files.upload(path)` sends the file in chunks of 1 MiB with its
+  `Content-Length`, so a file of 1 GiB is never held in memory; a retry
+  sends it again from the start. Bytes are sent as before.
 - `files.upload(data, name=, content_type=, language=, schema=)`: an
   upload can state the content's `language` (the natural language of the
   content, a BCP 47 tag such as `en` or `de-CH`, at most 64 characters) and

@@ -8779,7 +8779,7 @@
             "type": "string"
           },
           "language": {
-            "description": "The language of the content, as an upload stated it (`de`, `rust`).",
+            "description": "The natural language of the content, a BCP 47 tag such as `en` or\n`de-CH`.",
             "type": [
               "string",
               "null"
@@ -60207,7 +60207,7 @@
             }
           },
           {
-            "description": "the content's language (`de`, `rust`), at most 64 characters",
+            "description": "the natural language of the content, a BCP 47 tag such as `en` or `de-CH`",
             "in": "query",
             "name": "language",
             "required": false,
@@ -60234,7 +60234,7 @@
               }
             }
           },
-          "description": "The file's bytes, at most 64 MiB. `Content-Type` names its type; without one, a PDF is recognized by its bytes.",
+          "description": "The file's bytes, at most 1 GiB by default (`LBB_FILES_MAX_BYTES`); an empty body is an empty file. `Content-Type` names its type; without one, a PDF is recognized by its bytes.",
           "required": true
         },
         "responses": {
@@ -60460,7 +60460,7 @@
             "bearer": []
           }
         ],
-        "summary": "Upload a file: the raw request body (at most 64 MiB) is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. The same bytes under the same name change nothing",
+        "summary": "Upload a file: the raw request body is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. A file holds at most 1 GiB by default (the server setting `LBB_FILES_MAX_BYTES`); a larger body is refused with 413 `file_too_large` before it is read. An empty body is an empty file. The same bytes under the same name change nothing",
         "tags": [
           "files"
         ]
@@ -60469,6 +60469,348 @@
     "/v1/files/content": {
       "get": {
         "operationId": "get_v1_files_content",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "One byte range: `bytes=a-b`, `bytes=a-` or `bytes=-n` (RFC 9110)",
+            "in": "header",
+            "name": "Range",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the file's SHA-256, hex",
+            "in": "query",
+            "name": "sha256",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The file's bytes",
+            "headers": {
+              "Accept-Ranges": {
+                "description": "`bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "description": "The bytes of the body; for `HEAD`, the bytes a `GET` sends",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "ETag": {
+                "description": "The file's SHA-256 in quotes",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "206": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "One range of the file's bytes",
+            "headers": {
+              "Accept-Ranges": {
+                "description": "`bytes`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Length": {
+                "description": "The bytes of the body; for `HEAD`, the bytes a `GET` sends",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "Content-Range": {
+                "description": "`bytes <first>-<last>/<length>`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "The file's SHA-256 in quotes",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "416": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Range not satisfiable: no byte of the file is in it",
+            "headers": {
+              "Content-Range": {
+                "description": "`bytes */<length>`",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A file's bytes with its content type, streamed from storage. One `Range: bytes=a-b`, `bytes=a-` or `bytes=-n` answers 206 with `Content-Range`; a range with no byte of the file answers 416 `range_not_satisfiable` with `Content-Range: bytes */<length>`; several ranges answer the whole file. `ETag` is the SHA-256 in quotes; `Accept-Ranges: bytes`. 404 `file_not_found`",
+        "tags": [
+          "files"
+        ]
+      },
+      "head": {
+        "operationId": "head_v1_files_content",
         "parameters": [
           {
             "description": "Graph name (default `main`)",
@@ -60500,23 +60842,22 @@
         ],
         "responses": {
           "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": "OK",
+            "description": "The file's length, type and digest; no body",
             "headers": {
-              "Lbb-Version": {
-                "description": "API contract version used for the response",
+              "Accept-Ranges": {
+                "description": "`bytes`",
                 "schema": {
                   "type": "string"
                 }
               },
-              "X-Request-Id": {
-                "description": "Request correlation id",
+              "Content-Length": {
+                "description": "The bytes of the body; for `HEAD`, the bytes a `GET` sends",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "ETag": {
+                "description": "The file's SHA-256 in quotes",
                 "schema": {
                   "type": "string"
                 }
@@ -60721,7 +61062,7 @@
             "bearer": []
           }
         ],
-        "summary": "A file's bytes, with its content type. 404 `file_not_found`",
+        "summary": "A file's length (`Content-Length`), content type and SHA-256 (`ETag`, in quotes), with no body. 404 `file_not_found`",
         "tags": [
           "files"
         ]
