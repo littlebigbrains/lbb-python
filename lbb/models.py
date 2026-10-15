@@ -1617,6 +1617,30 @@ class FacetResult(BaseModel):
     missing: Annotated[int, Field(ge=0)]
 
 
+class FileCounts(BaseModel):
+    """
+    `GET /v1/files/counts`: the graph's files by parse status, counted over
+    the `Document` entities of the published generation.
+    """
+
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(
+            description="The commit the published generation holds: the counts are as of it.\nAbsent before the graph's first publication (all counts 0).",
+            ge=0,
+        ),
+    ] = None
+    by_parse_status: Annotated[
+        dict[str, int],
+        Field(
+            description='The files by `parse_status` (`parsed`, `unsupported`, `failed`), and\n`waiting` for a file with none yet.'
+        ),
+    ]
+    files: Annotated[
+        int, Field(description='The files: the `Document` entities.', ge=0)
+    ]
+
+
 class FileDeleteResponse(BaseModel):
     """
     `DELETE /v1/files`.
@@ -10740,10 +10764,16 @@ class FileLine(BaseModel):
 
 class FileList(BaseModel):
     """
-    `GET /v1/files`: the graph's files, newest upload first.
+    `GET /v1/files`: one page of the graph's files, newest upload first.
     """
 
     files: list[FileRecord]
+    next: Annotated[
+        str | None,
+        Field(
+            description='The cursor of the next page: pass it as `after`. Absent when the list\nended. A page can hold fewer than `limit` files while `next` is set.'
+        ),
+    ] = None
 
 
 class FilePage(BaseModel):

@@ -8590,6 +8590,43 @@
         ],
         "type": "object"
       },
+      "FileCounts": {
+        "description": "`GET /v1/files/counts`: the graph's files by parse status, counted over\nthe `Document` entities of the published generation.",
+        "properties": {
+          "as_of_commit_seq": {
+            "description": "The commit the published generation holds: the counts are as of it.\nAbsent before the graph's first publication (all counts 0).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "by_parse_status": {
+            "additionalProperties": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "The files by `parse_status` (`parsed`, `unsupported`, `failed`), and\n`waiting` for a file with none yet.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "files": {
+            "description": "The files: the `Document` entities.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "files",
+          "by_parse_status"
+        ],
+        "type": "object"
+      },
       "FileDeleteResponse": {
         "description": "`DELETE /v1/files`.",
         "properties": {
@@ -8638,13 +8675,20 @@
         "type": "object"
       },
       "FileList": {
-        "description": "`GET /v1/files`: the graph's files, newest upload first.",
+        "description": "`GET /v1/files`: one page of the graph's files, newest upload first.",
         "properties": {
           "files": {
             "items": {
               "$ref": "#/components/schemas/FileRecord"
             },
             "type": "array"
+          },
+          "next": {
+            "description": "The cursor of the next page: pass it as `after`. Absent when the list\nended. A page can hold fewer than `limit` files while `next` is set.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -59937,6 +59981,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "files per page, 1 to 1,000 (default 1,000)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next` cursor of the previous page",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -60162,7 +60224,7 @@
             "bearer": []
           }
         ],
-        "summary": "The graph's files, newest upload first, with what the parse workflow (`documents.parse`) made of each",
+        "summary": "One page of the graph's files, newest upload first, with what the parse workflow (`documents.parse`) made of each. Without `limit`, the newest 1,000. `next` is the cursor of the next page; a page can hold fewer than `limit` files while `next` is set. 400 for an invalid `limit` or `after`",
         "tags": [
           "files"
         ]
@@ -61068,6 +61130,258 @@
         ]
       }
     },
+    "/v1/files/counts": {
+      "get": {
+        "operationId": "get_v1_files_counts",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileCounts"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The graph's files by parse status: a SPARQL count over the `Document` entities of the published generation, with the commit it holds (`as_of_commit_seq`). A file with no parse yet counts as `waiting`",
+        "tags": [
+          "files"
+        ]
+      }
+    },
     "/v1/files/pages": {
       "get": {
         "operationId": "get_v1_files_pages",
@@ -61342,6 +61656,267 @@
           }
         ],
         "summary": "A parsed file's pages `from` (inclusive) to `to` (exclusive), 0-based, at most 50 (default 10): lines and words with boxes normalized to the page, origin top left. 404 `file_not_parsed` before the parse",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/v1/files/record": {
+      "get": {
+        "operationId": "get_v1_files_record",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the file's SHA-256, hex",
+            "in": "query",
+            "name": "sha256",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRecord"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One file's record, read from one object: its name, type, size, upload time, `Document` IRI and parse. 404 `file_not_found` for a SHA-256 the graph has no file for, or a deleted one",
         "tags": [
           "files"
         ]
