@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Callable, Generator, Iterable, Iterator, Mapping, Sequence
 from itertools import chain
@@ -39,6 +40,7 @@ from ._client_base import (
     _EntityNamespace,
     _error_body_field,
     _EvalsNamespace,
+    _file_head,
     _FilesNamespace,
     _jittered_backoff,
     _ModelSwitchesNamespace,
@@ -57,6 +59,7 @@ from ._client_base import (
     _SseParser,
     _trial_settled,
     _trial_timeout,
+    _write_chunks,
 )
 from .integrations import IntegrationsNamespace
 
@@ -814,6 +817,90 @@ class LbbClient(_BaseLbbClient):
             binary=True,
         )
         return cast(bytes, response.data)
+
+    def _download_request(
+        self,
+        path: str,
+        dest: str | os.PathLike[str],
+        *,
+        params: Mapping[str, Any] | None = None,
+        options: RequestOptions | None = None,
+    ) -> int:
+        request_options = options or {}
+        kwargs = self._request_kwargs(
+            params=params,
+            body=None,
+            content=None,
+            content_type=None,
+            idempotency_key=None,
+            headers=request_options.get("headers"),
+        )
+        if "timeout" in request_options:
+            kwargs["timeout"] = request_options["timeout"]
+        max_retries = request_options.get("max_retries", self._max_retries)
+        if max_retries < 0:
+            raise ValueError("max_retries must be non-negative")
+        retry_budget_ms = request_options.get("retry_budget_ms", self._retry_budget_ms)
+        started_at = time.monotonic()
+        deadline = started_at + max(0.0, retry_budget_ms) / 1000.0
+        url = f"{self._base_url}{path}"
+        attempt = 0
+        while True:
+            delay: float | None = None
+            answered = False
+            try:
+                with self._http.stream("GET", url, **kwargs) as response:
+                    answered = True
+                    if response.status_code // 100 == 2:
+                        return _write_chunks(response.iter_bytes(), dest)
+                    response.read()
+                    if (
+                        _retryable(response.status_code)
+                        and attempt < max_retries
+                        and not _body_marks_terminal(response)
+                    ):
+                        delay = _retry_delay_seconds(response, self._retry_delay, attempt)
+                        if time.monotonic() + delay > deadline:
+                            delay = None
+                    if delay is None:
+                        _raw_response(response)
+                        raise AssertionError("a non-2xx answer raises")
+                    self._emit_retry(
+                        "GET",
+                        path,
+                        attempt=attempt + 1,
+                        status_code=response.status_code,
+                        error_code=_error_body_field(response, "code"),
+                        delay_seconds=delay,
+                        elapsed_ms=(time.monotonic() - started_at) * 1000,
+                    )
+            except httpx.TransportError:
+                # Only a failure before the answer starts is retried. A
+                # transfer that broke raises, and leaves nothing at ``dest``.
+                if answered or attempt >= max_retries:
+                    raise
+                delay = _jittered_backoff(self._retry_delay, attempt)
+                if time.monotonic() + delay > deadline:
+                    raise
+            assert delay is not None
+            time.sleep(delay)
+            attempt += 1
+
+    def _file_head_request(
+        self,
+        path: str,
+        sha256: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        response = self._send(
+            "HEAD",
+            path,
+            f"{self._base_url}{path}",
+            params=params,
+            binary=True,
+        )
+        return _file_head(response.headers, sha256)
 
     def wait_for_published(
         self,

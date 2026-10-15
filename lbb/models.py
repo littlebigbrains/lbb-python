@@ -1656,7 +1656,7 @@ class FileRecord(BaseModel):
     language: Annotated[
         str | None,
         Field(
-            description='The language of the content, as an upload stated it (`de`, `rust`).'
+            description='The natural language of the content, a BCP 47 tag such as `en` or\n`de-CH`.'
         ),
     ] = None
     name: Annotated[

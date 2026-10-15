@@ -49,7 +49,7 @@ _CLIENT_MODULES = (
 # that build them).
 _REQUEST_CALL = re.compile(r'_request\(\s*"([A-Z]+)"\s*,\s*"([^"]+)"')
 
-_HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
+_HTTP_METHODS = {"get", "head", "post", "put", "patch", "delete"}
 
 # The SPARQL 1.1 Protocol endpoints the server serves outside the JSON contract
 # (docs/reference/server.md, "SPARQL Update and Graph Store Protocol"). Their

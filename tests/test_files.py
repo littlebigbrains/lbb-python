@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import httpx
 
@@ -219,6 +220,193 @@ class FilesSync(unittest.TestCase):
         lbb.graph("other").files.list()
         self.assertEqual(captured[0].url.params["graph"], "other")
 
+    def test_content_sends_one_byte_range(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                httpx.Response(206, content=b"789"),
+                httpx.Response(206, content=b"9"),
+                httpx.Response(206, content=b"23"),
+            ],
+        )
+        self.assertEqual(lbb.files.content(SHA, range=(None, 3)), b"789")
+        self.assertEqual(lbb.files.content(SHA, range=(9, None)), b"9")
+        self.assertEqual(lbb.files.content(SHA, range=(2, 3)), b"23")
+        self.assertEqual(
+            [request.headers["range"] for request in captured],
+            ["bytes=-3", "bytes=9-", "bytes=2-3"],
+        )
+        for bad in ((5, 2), (-1, None), (None, 0), (None, None), (True, None)):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                lbb.files.content(SHA, range=bad)  # type: ignore[arg-type]
+        self.assertEqual(len(captured), 3, "a bad range sends nothing")
+
+    def test_a_range_with_no_byte_raises_416(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                json_answer(
+                    {"error": {"code": "range_not_satisfiable", "message": "no byte"}},
+                    416,
+                )
+            ],
+        )
+        with self.assertRaises(LbbError) as raised:
+            lbb.files.content(SHA, range=(10, None))
+        self.assertEqual(raised.exception.status_code, 416)
+        self.assertEqual(raised.exception.code, "range_not_satisfiable")
+
+    def test_download_streams_to_the_path_and_retries_a_503(self) -> None:
+        captured: list[httpx.Request] = []
+        body = bytes(range(256)) * 1000
+        lbb = self.client(
+            captured,
+            [
+                json_answer({"error": {"code": "server_busy", "message": "busy"}}, 503),
+                httpx.Response(200, content=body),
+                httpx.Response(206, content=body[-1:]),
+            ],
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "room-book.pdf"
+            self.assertEqual(lbb.files.download(SHA, path), len(body))
+            self.assertEqual(path.read_bytes(), body)
+            self.assertEqual(lbb.files.download(SHA, str(path), range=(None, 1)), 1)
+            self.assertEqual(path.read_bytes(), body[-1:])
+            self.assertEqual(sorted(entry.name for entry in Path(folder).iterdir()), [path.name])
+        self.assertEqual(len(captured), 3, "the 503 was retried")
+        self.assertEqual(captured[2].headers["range"], "bytes=-1")
+
+    def test_a_failed_download_leaves_the_path_alone(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [json_answer({"error": {"code": "file_not_found", "message": "no file"}}, 404)],
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "kept.bin"
+            path.write_bytes(b"before")
+            with self.assertRaises(LbbError) as raised:
+                lbb.files.download(SHA, path)
+            self.assertEqual(raised.exception.code, "file_not_found")
+            self.assertEqual(path.read_bytes(), b"before")
+            self.assertEqual([entry.name for entry in Path(folder).iterdir()], ["kept.bin"])
+
+    def test_head_answers_the_length_type_and_digest(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                httpx.Response(
+                    200,
+                    headers={
+                        "content-type": "application/pdf",
+                        "content-length": "18510",
+                        "etag": f'"{SHA}"',
+                    },
+                )
+            ],
+        )
+        self.assertEqual(
+            lbb.files.head(SHA.upper()),
+            {"bytes": 18510, "content_type": "application/pdf", "sha256": SHA},
+        )
+        self.assertEqual(captured[0].method, "HEAD")
+        self.assertEqual(dict(captured[0].url.params), {"graph": "docs", "sha256": SHA})
+
+
+class ChunkRecorder(httpx.BaseTransport):
+    """A transport that reads each request body chunk by chunk, as the
+    connection would send it, and keeps the chunks."""
+
+    def __init__(self, answers: list[httpx.Response]) -> None:
+        self.answers = list(answers)
+        self.requests: list[tuple[httpx.Request, list[bytes]]] = []
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        assert isinstance(request.stream, httpx.SyncByteStream)
+        chunks = [bytes(chunk) for chunk in request.stream]
+        self.requests.append((request, chunks))
+        return self.answers.pop(0)
+
+
+class AsyncChunkRecorder(httpx.AsyncBaseTransport):
+    def __init__(self, answers: list[httpx.Response]) -> None:
+        self.answers = list(answers)
+        self.requests: list[tuple[httpx.Request, list[bytes]]] = []
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        assert isinstance(request.stream, httpx.AsyncByteStream)
+        chunks = [bytes(chunk) async for chunk in request.stream]
+        self.requests.append((request, chunks))
+        return self.answers.pop(0)
+
+
+class FilesUploadStreams(unittest.TestCase):
+    """An upload from a path sends the file in chunks with its length, and a
+    retry sends it again from the start."""
+
+    BODY = bytes(range(256)) * 40
+
+    def setUp(self) -> None:
+        self.folder = tempfile.TemporaryDirectory()
+        self.path = Path(self.folder.name) / "big.bin"
+        self.path.write_bytes(self.BODY)
+        patcher = mock.patch.multiple("lbb._client_base", _UPLOAD_CHUNK_BYTES=1000)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        async_patcher = mock.patch.multiple("lbb._async_client", _UPLOAD_CHUNK_BYTES=1000)
+        async_patcher.start()
+        self.addCleanup(async_patcher.stop)
+
+    def tearDown(self) -> None:
+        self.folder.cleanup()
+
+    def check(self, requests: list[tuple[httpx.Request, list[bytes]]]) -> None:
+        self.assertEqual(len(requests), 2, "the 503 was retried")
+        for request, chunks in requests:
+            self.assertEqual(request.headers["content-length"], str(len(self.BODY)))
+            self.assertNotIn("transfer-encoding", request.headers)
+            self.assertEqual(request.headers["content-type"], "application/octet-stream")
+            self.assertEqual(b"".join(chunks), self.BODY)
+            self.assertGreater(len(chunks), 1)
+            self.assertTrue(all(len(chunk) <= 1000 for chunk in chunks))
+
+    def answers(self) -> list[httpx.Response]:
+        return [
+            json_answer({"error": {"code": "server_busy", "message": "busy"}}, 503),
+            json_answer({"file": RECORD, "created": True}),
+        ]
+
+    def test_sync_upload_of_a_path_streams_the_file(self) -> None:
+        recorder = ChunkRecorder(self.answers())
+        lbb = LbbClient("http://h", graph="docs", retry_delay=0, transport=recorder)
+        self.assertTrue(lbb.files.upload(self.path)["created"])
+        self.check(recorder.requests)
+        self.assertEqual(recorder.requests[0][0].url.params["name"], "big.bin")
+
+    def test_async_upload_of_a_path_streams_the_file(self) -> None:
+        recorder = AsyncChunkRecorder(self.answers())
+
+        async def run() -> Any:
+            async with AsyncLbbClient(
+                "http://h", graph="docs", retry_delay=0, transport=recorder
+            ) as lbb:
+                return await lbb.files.upload(str(self.path))
+
+        self.assertTrue(asyncio.run(run())["created"])
+        self.check(recorder.requests)
+
+    def test_bytes_still_go_whole(self) -> None:
+        recorder = ChunkRecorder([json_answer({"file": RECORD, "created": True})])
+        lbb = LbbClient("http://h", graph="docs", retry_delay=0, transport=recorder)
+        lbb.files.upload(self.BODY, name="big.bin")
+        request, chunks = recorder.requests[0]
+        self.assertEqual(b"".join(chunks), self.BODY)
+        self.assertEqual(request.headers["content-length"], str(len(self.BODY)))
+
 
 class FilesAsync(unittest.TestCase):
     def test_async_files_await_their_answers(self) -> None:
@@ -251,6 +439,47 @@ class FilesAsync(unittest.TestCase):
         self.assertEqual(pages["page_count"], 3)
         self.assertEqual(captured[0].content, PDF)
         self.assertEqual(dict(captured[2].url.params), {"graph": "docs", "sha256": SHA, "to": "2"})
+
+    def test_async_range_download_and_head(self) -> None:
+        captured: list[httpx.Request] = []
+        body = bytes(range(256)) * 100
+
+        async def run(folder: str) -> tuple[bytes, int, Any]:
+            async with AsyncLbbClient(
+                "http://h",
+                graph="docs",
+                retry_delay=0,
+                transport=transport(
+                    captured,
+                    [
+                        httpx.Response(206, content=b"9"),
+                        json_answer({"error": {"code": "server_busy", "message": "busy"}}, 503),
+                        httpx.Response(200, content=body),
+                        httpx.Response(
+                            200,
+                            headers={
+                                "content-type": "text/plain",
+                                "content-length": "10",
+                                "etag": f'"{SHA}"',
+                            },
+                        ),
+                    ],
+                ),
+            ) as lbb:
+                last = await lbb.files.content(SHA, range=(None, 1))
+                written = await lbb.files.download(SHA, Path(folder) / "out.bin")
+                head = await lbb.files.head(SHA)
+                return last, written, head
+
+        with tempfile.TemporaryDirectory() as folder:
+            last, written, head = asyncio.run(run(folder))
+            self.assertEqual((Path(folder) / "out.bin").read_bytes(), body)
+        self.assertEqual(last, b"9")
+        self.assertEqual(written, len(body))
+        self.assertEqual(head, {"bytes": 10, "content_type": "text/plain", "sha256": SHA})
+        self.assertEqual(captured[0].headers["range"], "bytes=-1")
+        self.assertEqual(len(captured), 4, "the 503 before the download was retried")
+        self.assertEqual(captured[3].method, "HEAD")
 
 
 class EntityRefs(unittest.TestCase):

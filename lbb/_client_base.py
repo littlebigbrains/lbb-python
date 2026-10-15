@@ -18,20 +18,22 @@ For the local ``lbb-testctl`` shell-out wrapper (tests, notebooks), see
 from __future__ import annotations
 
 import codecs
+import contextlib
 import enum
 import json
 import mimetypes
 import os
 import random
 import re
+import tempfile
 import time
 import uuid
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Any, Final, Generic, Literal, TypedDict, TypeVar
+from typing import IO, Any, Final, Generic, Literal, TypedDict, TypeVar
 
 import httpx
 from pydantic import BaseModel, RootModel
@@ -1581,12 +1583,21 @@ class _BaseLbbClient(_StarterWorkflowMethods):
             "params": self._params(params, scoped=scoped),
             "headers": request_headers,
         }
-        if content is not None:
+        if isinstance(content, _PathUpload):
+            kwargs["content"] = self._path_content(content.path)
+            request_headers["content-length"] = str(content.size)
+            request_headers["content-type"] = content_type or "application/octet-stream"
+        elif content is not None:
             kwargs["content"] = content
             request_headers["content-type"] = content_type or "application/octet-stream"
         elif body is not None:
             kwargs["json"] = _coerce_body(body)
         return kwargs
+
+    def _path_content(self, path: str) -> Any:
+        """The chunks of a file an upload sends; the async client reads them
+        off the event loop."""
+        return _FileChunks(path)
 
     def _emit_retry(
         self,
@@ -2527,6 +2538,29 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         the async client returns an awaitable."""
         raise NotImplementedError
 
+    def _download_request(
+        self,
+        path: str,
+        dest: str | os.PathLike[str],
+        *,
+        params: Mapping[str, Any] | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """``GET`` ``path`` and write its 2xx body to ``dest`` as it arrives;
+        the number of bytes written (an awaitable on the async client)."""
+        raise NotImplementedError
+
+    def _file_head_request(
+        self,
+        path: str,
+        sha256: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+    ) -> Any:
+        """``HEAD`` ``path``: a file's length, type and digest (an awaitable
+        on the async client)."""
+        raise NotImplementedError
+
     def _page_request(self, row_model: type[RowT], payload: Any) -> Any:
         raise NotImplementedError
 
@@ -3049,6 +3083,113 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 FileData = bytes | bytearray | memoryview | str | os.PathLike[str]
 """What ``files.upload`` takes: the bytes, or the path of a file to read."""
 
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+"""The bytes ``files.upload`` reads from a file at a time while it sends it."""
+
+
+@dataclass(frozen=True)
+class _PathUpload:
+    """An upload body read from a file on disk while it is sent, so the file
+    is never held whole. The client turns it into chunks it can send again on
+    a retry."""
+
+    path: str
+    size: int
+
+
+class _FileChunks:
+    """A file's bytes in chunks, read again from the start each time they are
+    iterated (a retry sends the file again)."""
+
+    def __init__(self, path: str) -> None:
+        self._path = path
+
+    def __iter__(self) -> Iterator[bytes]:
+        with open(self._path, "rb") as handle:
+            while chunk := handle.read(_UPLOAD_CHUNK_BYTES):
+                yield chunk
+
+
+FileByteRange = tuple[int | None, int | None]
+"""One byte range of a file, 0-based, as HTTP names it: ``(start, end)``
+with both bytes included, ``(start, None)`` from ``start`` to the end, and
+``(None, n)`` for the last ``n`` bytes."""
+
+
+def _range_header(range_: FileByteRange) -> str:
+    """The ``Range`` header of a byte range: ``bytes=a-b``, ``bytes=a-`` or
+    ``bytes=-n``."""
+    start, end = range_
+
+    def index(value: int, name: str) -> None:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name} must be a byte index (0 or more)")
+
+    if start is None:
+        if end is None:
+            raise ValueError("a range needs a start, an end or both")
+        index(end, "the suffix length")
+        if end == 0:
+            raise ValueError("the suffix length must be 1 or more")
+        return f"bytes=-{end}"
+    index(start, "start")
+    if end is None:
+        return f"bytes={start}-"
+    index(end, "end")
+    if end < start:
+        raise ValueError("end must not be below start")
+    return f"bytes={start}-{end}"
+
+
+def _range_options(range_: FileByteRange | None) -> RequestOptions | None:
+    if range_ is None:
+        return None
+    return {"headers": {"range": _range_header(range_)}}
+
+
+def _open_download(dest: str | os.PathLike[str]) -> tuple[IO[bytes], str]:
+    """A temporary file beside ``dest`` for a download, and its path."""
+    directory = os.path.dirname(os.path.abspath(os.fspath(dest)))
+    descriptor, temp = tempfile.mkstemp(prefix=".lbb-download-", dir=directory)
+    return os.fdopen(descriptor, "wb"), temp
+
+
+def _discard_download(temp: str) -> None:
+    with contextlib.suppress(OSError):
+        os.unlink(temp)
+
+
+def _write_chunks(chunks: Iterable[bytes], dest: str | os.PathLike[str]) -> int:
+    """Write ``chunks`` to a temporary file beside ``dest``, then put it in
+    place of ``dest``; the number of bytes written."""
+    handle, temp = _open_download(dest)
+    written = 0
+    try:
+        with handle:
+            for chunk in chunks:
+                handle.write(chunk)
+                written += len(chunk)
+        os.replace(temp, os.fspath(dest))
+    except BaseException:
+        _discard_download(temp)
+        raise
+    return written
+
+
+def _file_head(headers: httpx.Headers, sha256: str) -> dict[str, Any]:
+    """What ``files.head`` answers, from the headers of ``HEAD
+    /v1/files/content``."""
+    try:
+        length = int(headers.get("content-length", "0"))
+    except ValueError:
+        length = 0
+    etag = headers.get("etag", "").removeprefix("W/").strip('"')
+    return {
+        "bytes": max(0, length),
+        "content_type": headers.get("content-type", "application/octet-stream"),
+        "sha256": etag or sha256,
+    }
+
 
 def _sha256_of(sha256: str) -> str:
     """A file's SHA-256 as the routes take it: 64 hex characters, lower case."""
@@ -3092,7 +3233,9 @@ class _FilesNamespace:
         language: str | None = None,
         schema: str | None = None,
     ) -> Any:
-        """Upload a file (``POST /v1/files?name=``, at most 64 MiB).
+        """Upload a file (``POST /v1/files?name=``, at most 1 GiB by default;
+        a larger file raises :class:`LbbError` 413 ``file_too_large``). An
+        empty file is a file.
 
         ``data`` is the bytes, or the path of a file to read (``str`` or a
         path object). ``name`` is the name the graph lists; a path's own file
@@ -3108,10 +3251,11 @@ class _FilesNamespace:
         the same name again change nothing (``created`` is false), so a
         failed call is retried.
         """
+        content: bytes | _PathUpload
         if isinstance(data, (str, os.PathLike)):
             path = os.fspath(data)
-            with open(path, "rb") as handle:
-                content = handle.read()
+            # Sent from the file in chunks: a file of 1 GiB is never in memory.
+            content = _PathUpload(path, os.path.getsize(path))
             name = name if name is not None else os.path.basename(path)
             if content_type is None:
                 content_type = mimetypes.guess_type(path)[0]
@@ -3138,12 +3282,46 @@ class _FilesNamespace:
         made of each (``parse``: ``status``, ``page_count``, ``parser``)."""
         return self._client._request("GET", "/v1/files", params=self._scope())
 
-    def content(self, sha256: str) -> Any:
-        """A file's bytes (``GET /v1/files/content``), as ``bytes``."""
+    def content(self, sha256: str, *, range: FileByteRange | None = None) -> Any:
+        """A file's bytes (``GET /v1/files/content``), as ``bytes``, or the
+        bytes of one ``range`` (:data:`FileByteRange`). A range past the end
+        ends at the end; a range with no byte of the file raises
+        :class:`LbbError` 416 ``range_not_satisfiable``. The answer is held
+        whole: write a large file to disk with :meth:`download`."""
         return self._client._bytes_request(
             "GET",
             "/v1/files/content",
             params=self._scope({"sha256": _sha256_of(sha256)}),
+            options=_range_options(range),
+        )
+
+    def download(
+        self,
+        sha256: str,
+        path: str | os.PathLike[str],
+        *,
+        range: FileByteRange | None = None,
+    ) -> Any:
+        """Write a file's bytes (or one ``range`` of them) to ``path`` as they
+        arrive, so a large file is never held whole, and return the number of
+        bytes written. The bytes go to a temporary file beside ``path``, which
+        replaces ``path`` once they are all there. A ``429`` or a ``5xx``
+        before the bytes start is retried; the transfer is not."""
+        return self._client._download_request(
+            "/v1/files/content",
+            path,
+            params=self._scope({"sha256": _sha256_of(sha256)}),
+            options=_range_options(range),
+        )
+
+    def head(self, sha256: str) -> Any:
+        """A file's length, content type and SHA-256 without its bytes
+        (``HEAD /v1/files/content``): ``{"bytes", "content_type",
+        "sha256"}``. A missing file raises :class:`LbbError` with status
+        404."""
+        sha = _sha256_of(sha256)
+        return self._client._file_head_request(
+            "/v1/files/content", sha, params=self._scope({"sha256": sha})
         )
 
     def pages(
