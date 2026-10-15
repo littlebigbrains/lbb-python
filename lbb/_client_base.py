@@ -3214,7 +3214,8 @@ class _FilesNamespace:
     page, and ``documents.link`` connects mentions of the same thing across
     the documents. The methods return the JSON answers (an
     awaitable on :class:`AsyncLbbClient`); validate one with
-    ``models.FileUploadResponse``, ``models.FileList`` or ``models.FilePages``.
+    ``models.FileUploadResponse``, ``models.FileList``, ``models.FileCounts``
+    or ``models.FilePages``.
     """
 
     def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
@@ -3277,10 +3278,41 @@ class _FilesNamespace:
             options={"retry": True},
         )
 
-    def list(self) -> Any:
-        """The graph's files, the newest upload first, with what the parse
-        made of each (``parse``: ``status``, ``page_count``, ``parser``)."""
-        return self._client._request("GET", "/v1/files", params=self._scope())
+    def list(self, *, limit: int | None = None, after: str | None = None) -> Any:
+        """One page of the graph's files (``GET /v1/files``), the newest
+        upload first, with what the parse made of each (``parse``:
+        ``status``, ``page_count``, ``parser``).
+
+        Without ``limit``, the newest 1,000 (``limit`` is 1 to 1,000). Pass
+        the answer's ``next`` as ``after`` for the next page; a page can
+        hold fewer than ``limit`` files while ``next`` is set, and the list
+        ends when no ``next`` comes back.
+        """
+        if limit is not None and (isinstance(limit, bool) or not 1 <= limit <= 1000):
+            raise ValueError("limit must be 1 to 1000")
+        return self._client._request(
+            "GET",
+            "/v1/files",
+            params=self._scope({"limit": limit, "after": after or None}),
+        )
+
+    def get(self, sha256: str) -> Any:
+        """One file's record (``GET /v1/files/record``), read from one
+        object: its name, type, size, upload time, ``Document`` IRI and
+        parse. A SHA-256 the graph has no file for, or a deleted file,
+        answers ``404 file_not_found``. Validate with ``models.FileRecord``."""
+        return self._client._request(
+            "GET",
+            "/v1/files/record",
+            params=self._scope({"sha256": _sha256_of(sha256)}),
+        )
+
+    def counts(self) -> Any:
+        """The graph's files by parse status (``GET /v1/files/counts``): a
+        count over the ``Document`` entities of the published generation,
+        with the commit it holds (``as_of_commit_seq``). A file with no parse
+        yet counts as ``waiting``. Validate with ``models.FileCounts``."""
+        return self._client._request("GET", "/v1/files/counts", params=self._scope())
 
     def content(self, sha256: str, *, range: FileByteRange | None = None) -> Any:
         """A file's bytes (``GET /v1/files/content``), as ``bytes``, or the

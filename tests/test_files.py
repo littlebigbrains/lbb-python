@@ -15,7 +15,7 @@ import httpx
 
 from lbb import AsyncLbbClient, LbbClient, LbbError, entity_id_from_iri, entity_ref
 from lbb.entities import ENTITY_ID_KEY_SENTINEL, ENTITY_IRI_NAMESPACE
-from lbb.models import FilePages, FileUploadResponse
+from lbb.models import FileCounts, FileList, FilePages, FileUploadResponse
 
 SHA = "ab" * 32
 RECORD = {
@@ -213,6 +213,50 @@ class FilesSync(unittest.TestCase):
             lbb.files.pages(SHA)
         self.assertEqual(raised.exception.status_code, 404)
         self.assertEqual(raised.exception.code, "file_not_parsed")
+
+    def test_list_pages_with_limit_and_after_and_counts(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                json_answer({"files": [RECORD], "next": "6162.0123456789abcdef"}),
+                json_answer({"files": []}),
+                json_answer(
+                    {
+                        "files": 3,
+                        "by_parse_status": {"parsed": 2, "waiting": 1},
+                        "as_of_commit_seq": 41,
+                    }
+                ),
+            ],
+        )
+        first = FileList.model_validate(lbb.files.list(limit=1))
+        self.assertEqual(first.next, "6162.0123456789abcdef")
+        rest = FileList.model_validate(lbb.files.list(limit=50, after=first.next))
+        self.assertIsNone(rest.next)
+        counts = FileCounts.model_validate(lbb.files.counts())
+        self.assertEqual((counts.files, counts.as_of_commit_seq), (3, 41))
+        self.assertEqual(counts.by_parse_status["parsed"], 2)
+        self.assertEqual(dict(captured[0].url.params), {"graph": "docs", "limit": "1"})
+        self.assertEqual(
+            dict(captured[1].url.params),
+            {"graph": "docs", "limit": "50", "after": "6162.0123456789abcdef"},
+        )
+        self.assertEqual(captured[2].url.path, "/v1/files/counts")
+        for limit in (0, 1001, True):
+            with self.assertRaises(ValueError):
+                lbb.files.list(limit=limit)
+        self.assertEqual(len(captured), 3)
+
+    def test_get_reads_one_file_by_its_sha256(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(captured, [json_answer(RECORD)])
+        self.assertEqual(lbb.files.get(SHA.upper())["name"], "room-book.pdf")
+        self.assertEqual(captured[0].url.path, "/v1/files/record")
+        self.assertEqual(dict(captured[0].url.params), {"graph": "docs", "sha256": SHA})
+        with self.assertRaises(ValueError):
+            lbb.files.get("xyz")
+        self.assertEqual(len(captured), 1)
 
     def test_graph_namespace_scopes_the_files(self) -> None:
         captured: list[httpx.Request] = []
