@@ -90,6 +90,23 @@ class FilesSync(unittest.TestCase):
         self.assertEqual(request.content, PDF)
         self.assertEqual(request.headers["content-type"], "application/pdf")
 
+    def test_upload_sends_the_language_and_schema_when_given(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                json_answer({"file": {**RECORD, "language": "de"}, "created": True}),
+                json_answer({"file": RECORD, "created": False}),
+            ],
+        )
+        lbb.files.upload(PDF, name="plan.pdf", language="de", schema="urn:x:plan")
+        lbb.files.upload(PDF, name="plan.pdf")
+        self.assertEqual(
+            dict(captured[0].url.params),
+            {"graph": "docs", "name": "plan.pdf", "language": "de", "schema": "urn:x:plan"},
+        )
+        self.assertEqual(dict(captured[1].url.params), {"graph": "docs", "name": "plan.pdf"})
+
     def test_upload_reads_a_path_and_retries_a_503(self) -> None:
         captured: list[httpx.Request] = []
         lbb = self.client(

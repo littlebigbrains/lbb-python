@@ -3089,6 +3089,8 @@ class _FilesNamespace:
         *,
         name: str | None = None,
         content_type: str | None = None,
+        language: str | None = None,
+        schema: str | None = None,
     ) -> Any:
         """Upload a file (``POST /v1/files?name=``, at most 64 MiB).
 
@@ -3096,10 +3098,15 @@ class _FilesNamespace:
         path object). ``name`` is the name the graph lists; a path's own file
         name by default. ``content_type`` defaults to the type the path's
         extension names, else ``application/octet-stream``; the server
-        recognizes a PDF by its bytes. The server stores the bytes once and
-        commits a ``Document`` entity for them. The same bytes under the
-        same name again change nothing (``created`` is false), so a failed
-        call is retried.
+        recognizes a PDF by its bytes. ``language`` (the natural language of
+        the content, a BCP 47 tag such as ``"en"`` or ``"de-CH"``, at most 64
+        characters) and ``schema`` (a name or a URL, at most 256) describe
+        the content further; the ``Document`` stores each one given,
+        and keeps the earlier upload's when a later one gives none. The
+        server stores the bytes once and commits a ``Document`` entity for
+        them, with a ``Content`` entity for the bytes. The same bytes under
+        the same name again change nothing (``created`` is false), so a
+        failed call is retried.
         """
         if isinstance(data, (str, os.PathLike)):
             path = os.fspath(data)
@@ -3112,10 +3119,15 @@ class _FilesNamespace:
             content = bytes(data)
         if not name or not name.strip():
             raise ValueError("files.upload needs the file's name")
+        params: dict[str, Any] = {"name": name}
+        if language is not None:
+            params["language"] = language
+        if schema is not None:
+            params["schema"] = schema
         return self._client._request(
             "POST",
             "/v1/files",
-            params=self._scope({"name": name}),
+            params=self._scope(params),
             content=content,
             content_type=content_type or "application/octet-stream",
             options={"retry": True},

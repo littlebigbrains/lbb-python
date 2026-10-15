@@ -1653,10 +1653,23 @@ class FileRecord(BaseModel):
         str,
         Field(description='The IRI of its `Document` entity (key `file:<sha256>`).'),
     ]
+    language: Annotated[
+        str | None,
+        Field(
+            description='The language of the content, as an upload stated it (`de`, `rust`).'
+        ),
+    ] = None
     name: Annotated[
         str, Field(description="The name it was uploaded under (the last upload's).")
     ]
     parse: FileParse | None = None
+    schema_: Annotated[
+        str | None,
+        Field(
+            alias='schema',
+            description='The schema the content follows, as an upload stated it (a name or\na URL).',
+        ),
+    ] = None
     sha256: Annotated[
         str,
         Field(
@@ -7988,7 +8001,10 @@ class SuggestionLinkSummary(BaseModel):
     ] = None
     decision: SuggestionLinkDecision
     document: Annotated[
-        str | None, Field(description="The mention's document, page (from 1) and line.")
+        str | None,
+        Field(
+            description="The mention's document, page (from 1) and line. The document is the\n`Document`'s IRI that the link's evidence names (without its\n`#page=` fragment), or the file name in evidence written before\ntyped content."
+        ),
     ] = None
     line: str | None = None
     line_id: str | None = None

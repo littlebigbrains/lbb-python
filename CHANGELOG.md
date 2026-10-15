@@ -4,6 +4,15 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `files.upload(data, name=, content_type=, language=, schema=)`: an
+  upload can state the content's `language` (the natural language of the
+  content, a BCP 47 tag such as `en` or `de-CH`, at most 64 characters) and
+  `schema` (at most 256), which the file's `Document` stores. `FileRecord`
+  gains `language` and `schema_` (`schema` in JSON). An upload also writes the file's
+  `Content` (`content:<sha256>`) and the edge `HAS_CONTENT`, and the
+  ontology gains `REPRESENTS`. `SuggestionLinkSummary.document` is the
+  `Document`'s IRI for a link written since, and the file's name for one
+  written before.
 - `named_workflow_runs(name, *, before=, limit=, outcome=)`,
   `named_workflow_run(name, run)` and `named_workflow_run_stats(name, *,
   hours=)` read the run summaries of a named workflow
