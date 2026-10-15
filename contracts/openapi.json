@@ -8778,6 +8778,13 @@
             "description": "The IRI of its `Document` entity (key `file:<sha256>`).",
             "type": "string"
           },
+          "language": {
+            "description": "The language of the content, as an upload stated it (`de`, `rust`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "name": {
             "description": "The name it was uploaded under (the last upload's).",
             "type": "string"
@@ -8790,6 +8797,13 @@
               {
                 "$ref": "#/components/schemas/FileParse"
               }
+            ]
+          },
+          "schema": {
+            "description": "The schema the content follows, as an upload stated it (a name or\na URL).",
+            "type": [
+              "string",
+              "null"
             ]
           },
           "sha256": {
@@ -31773,7 +31787,7 @@
             "$ref": "#/components/schemas/SuggestionLinkDecision"
           },
           "document": {
-            "description": "The mention's document, page (from 1) and line.",
+            "description": "The mention's document, page (from 1) and line. The document is the\n`Document`'s IRI that the link's evidence names (without its\n`#page=` fragment), or the file name in evidence written before\ntyped content.",
             "type": [
               "string",
               "null"
@@ -60191,6 +60205,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "the content's language (`de`, `rust`), at most 64 characters",
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the schema the content follows (a name or a URL), at most 256 characters",
+            "in": "query",
+            "name": "schema",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -60428,7 +60460,7 @@
             "bearer": []
           }
         ],
-        "summary": "Upload a file: the raw request body (at most 64 MiB) is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it. The same bytes under the same name change nothing. 400 `rdf_native_graph` on an RDF-native graph",
+        "summary": "Upload a file: the raw request body (at most 64 MiB) is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. The same bytes under the same name change nothing",
         "tags": [
           "files"
         ]
