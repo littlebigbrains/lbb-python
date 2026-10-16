@@ -1700,7 +1700,7 @@ class FileRecord(BaseModel):
     cited_by: Annotated[
         list[FileCitation] | None,
         Field(
-            description='The current facts whose evidence names this deleted file, at most\n[`FILE_CITATIONS_MAX`], read at the published generation. While one\nexists the reclaim keeps the bytes. Empty for a live file.'
+            description='With `deleted=true`: the current facts whose evidence names this\nfile, at most [`FILE_CITATIONS_MAX`], read at the published\ngeneration. A delete with `purge=true` retracts them; while one cites\na deleted file the reclaim keeps its bytes. Empty in every other\nanswer.'
         ),
     ] = None
     content_type: str
