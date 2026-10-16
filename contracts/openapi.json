@@ -8590,6 +8590,36 @@
         ],
         "type": "object"
       },
+      "FileCitation": {
+        "description": "One fact whose evidence names a file: the edge's statement node, the\nedge, and the evidence source (the file's `Document` IRI with the\nfragment of the place).",
+        "properties": {
+          "object": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "source": {
+            "description": "The evidence source, `<Document IRI>#<fragment>`.",
+            "type": "string"
+          },
+          "statement": {
+            "description": "The statement node (`https://littlebigbrain.com/s/…`).",
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "statement",
+          "subject",
+          "predicate",
+          "object",
+          "source"
+        ],
+        "type": "object"
+      },
       "FileCounts": {
         "description": "`GET /v1/files/counts`: the graph's files by parse status, counted over\nthe `Document` entities of the published generation.",
         "properties": {
@@ -8632,6 +8662,15 @@
         "properties": {
           "deleted": {
             "type": "boolean"
+          },
+          "purged_edges": {
+            "description": "With `purge=true`: the edges whose evidence names the file that the\ndelete retracted (at most [`FILE_PURGE_EDGES_MAX`]).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "sha256": {
             "type": "string"
@@ -8815,8 +8854,22 @@
             "minimum": 0,
             "type": "integer"
           },
+          "cited_by": {
+            "description": "The current facts whose evidence names this deleted file, at most\n[`FILE_CITATIONS_MAX`], read at the published generation. While one\nexists the reclaim keeps the bytes. Empty for a live file.",
+            "items": {
+              "$ref": "#/components/schemas/FileCitation"
+            },
+            "type": "array"
+          },
           "content_type": {
             "type": "string"
+          },
+          "deleted_at": {
+            "description": "RFC 3339 time of the delete. Only `GET /v1/files/record` with\n`deleted=true` answers a deleted file; every other answer holds live\nfiles and leaves this out.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "document": {
             "description": "The IRI of its `Document` entity (key `file:<sha256>`).",
@@ -59731,6 +59784,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "`true` also retracts the edges whose evidence names the file",
+            "in": "query",
+            "name": "purge",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -59956,7 +60018,7 @@
             "bearer": []
           }
         ],
-        "summary": "Remove a file from the list and retract its `Document` entity",
+        "summary": "Remove a file from the list and retract its `Document` entity. The facts whose evidence names the file stay, and keep its content from the reclaim, which deletes a deleted file's bytes, pages and derivations after a grace (30 days by default). With `purge=true` the delete also retracts the edges whose evidence names the file (`purged_edges`, at most 10,000, found at the published generation); a deleted file can be purged. 429 `file_reclaim_in_progress` while a reclaim pass holds the content",
         "tags": [
           "files"
         ]
@@ -60522,7 +60584,7 @@
             "bearer": []
           }
         ],
-        "summary": "Upload a file: the raw request body is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. A file holds at most 1 GiB by default (the server setting `LBB_FILES_MAX_BYTES`); a larger body is refused with 413 `file_too_large` before it is read. An empty body is an empty file. The same bytes under the same name change nothing",
+        "summary": "Upload a file: the raw request body is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. A file holds at most 1 GiB by default (the server setting `LBB_FILES_MAX_BYTES`); a larger body is refused with 413 `file_too_large` before it is read. An empty body is an empty file. The same bytes under the same name change nothing. 429 `file_reclaim_in_progress` while a reclaim pass deletes the same bytes of a deleted file (seconds)",
         "tags": [
           "files"
         ]
@@ -60563,6 +60625,15 @@
             "description": "the file's SHA-256, hex",
             "in": "query",
             "name": "sha256",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`true` also reads a deleted file whose content is not reclaimed yet",
+            "in": "query",
+            "name": "deleted",
             "required": false,
             "schema": {
               "type": "string"
@@ -61430,6 +61501,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "`true` also reads a deleted file whose content is not reclaimed yet",
+            "in": "query",
+            "name": "deleted",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -61691,6 +61771,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "`true` also answers a deleted file whose content is not reclaimed yet",
+            "in": "query",
+            "name": "deleted",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -61916,7 +62005,7 @@
             "bearer": []
           }
         ],
-        "summary": "One file's record, read from one object: its name, type, size, upload time, `Document` IRI and parse. 404 `file_not_found` for a SHA-256 the graph has no file for, or a deleted one",
+        "summary": "One file's record, read from one object: its name, type, size, upload time, `Document` IRI and parse. 404 `file_not_found` for a SHA-256 the graph has no file for, or a deleted one. With `deleted=true`, a deleted file whose content is not reclaimed yet answers too, with `deleted_at` and `cited_by`: the current facts whose evidence names the file (at most 20, at the published generation)",
         "tags": [
           "files"
         ]

@@ -15,7 +15,7 @@ import httpx
 
 from lbb import AsyncLbbClient, LbbClient, LbbError, entity_id_from_iri, entity_ref
 from lbb.entities import ENTITY_ID_KEY_SENTINEL, ENTITY_IRI_NAMESPACE
-from lbb.models import FileCounts, FileList, FilePages, FileUploadResponse
+from lbb.models import FileCounts, FileList, FilePages, FileRecord, FileUploadResponse
 
 SHA = "ab" * 32
 RECORD = {
@@ -257,6 +257,36 @@ class FilesSync(unittest.TestCase):
         with self.assertRaises(ValueError):
             lbb.files.get("xyz")
         self.assertEqual(len(captured), 1)
+
+    def test_delete_with_purge_and_a_deleted_record(self) -> None:
+        citation = {
+            "statement": "https://littlebigbrain.com/s/9f3c",
+            "subject": "https://littlebigbrain.com/e/1",
+            "predicate": "https://littlebigbrain.com/r/calls",
+            "object": "https://littlebigbrain.com/e/2",
+            "source": "https://littlebigbrain.com/e/41ab#page=3",
+        }
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                json_answer(
+                    {**RECORD, "deleted_at": "2026-10-15T09:00:00+00:00", "cited_by": [citation]}
+                ),
+                json_answer({"deleted": True, "sha256": SHA, "purged_edges": 1}),
+            ],
+        )
+        record = FileRecord.model_validate(lbb.files.get(SHA, deleted=True))
+        self.assertEqual(record.deleted_at, "2026-10-15T09:00:00+00:00")
+        self.assertEqual(record.cited_by[0].source, citation["source"])
+        self.assertEqual(lbb.files.delete(SHA, purge=True)["purged_edges"], 1)
+        self.assertEqual(
+            [dict(request.url.params) for request in captured],
+            [
+                {"graph": "docs", "sha256": SHA, "deleted": "true"},
+                {"graph": "docs", "sha256": SHA, "confirm": SHA, "purge": "true"},
+            ],
+        )
 
     def test_graph_namespace_scopes_the_files(self) -> None:
         captured: list[httpx.Request] = []

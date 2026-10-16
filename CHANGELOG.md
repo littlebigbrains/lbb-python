@@ -4,6 +4,13 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- A deleted file's bytes, pages and derivations are freed after a grace
+  (30 days by default), unless a fact's evidence still names the file.
+  `files.delete(sha256, purge=True)` also retracts those facts and answers
+  `purged_edges`. `files.get(sha256, deleted=True)` answers a deleted file
+  until its content is freed, with `deleted_at` and `cited_by` (the facts
+  that cite it, `FileCitation`). An upload of the same bytes during the
+  reclaim raises `LbbError` 429 `file_reclaim_in_progress`; retry it.
 - `files.list(*, limit=, after=)` reads one page of the graph's files,
   the newest upload first: `limit` is 1 to 1,000 (default 1,000), and the
   answer's `next` (`FileList.next`) is the `after` of the next page. A page
