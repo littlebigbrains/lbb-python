@@ -3938,6 +3938,13 @@
       "DerivationCheckResponse": {
         "description": "`POST /v1/workflows/derivations/check`: whether the key has a\nderivation.",
         "properties": {
+          "content_uploaded_at": {
+            "description": "The upload of the content's live file: its `uploaded_at`, RFC 3339.\nSend it back with the record. Then a run of a file deleted since the\ncheck records nothing. Absent when the file is not live: deleted,\nreclaimed, not written yet, or no file at all.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "derivation": {
             "oneOf": [
               {
@@ -3992,6 +3999,13 @@
           },
           {
             "properties": {
+              "content_uploaded_at": {
+                "description": "The upload the work was done for: the `content_uploaded_at` of the\ncheck. The record writes only while it is the file's live upload.\nWhen the file was deleted since, it records nothing and answers\n`409 derivation_upload_changed`. Without it, the record belongs to\nthe upload at the time of the record.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "outputs": {
                 "description": "What it made, at most 16 KiB of JSON."
               },
@@ -98214,7 +98228,7 @@
             "bearer": []
           }
         ],
-        "summary": "Whether one workflow version made something of one content with one set of settings: the key (`sha256`, `workflow_type`, `version`, `settings_digest`) answers `exists` and the derivation when there is one. A worker checks before it works on a content and skips it when it exists, so identical bytes under two names are worked on once. 400 `derivation_invalid` for a key outside its characters",
+        "summary": "Whether one workflow version made something of one content with one set of settings: the key (`sha256`, `workflow_type`, `version`, `settings_digest`) answers `exists` and the derivation when there is one. A worker checks before it works on a content and skips it when it exists, so identical bytes under two names are worked on once. The answer also names the upload of the content's live file (`content_uploaded_at`): send it back with the record. A file that is not live (deleted, or not written yet) has no derivation and no upload. 400 `derivation_invalid` for a key outside its characters",
         "tags": [
           "system"
         ]
@@ -98494,7 +98508,7 @@
             "bearer": []
           }
         ],
-        "summary": "Record a derivation once: the key, the run that made it (`run_id`, optional) and what it made (`outputs`, at most 16 KiB of JSON). A second record of the same key answers the stored one with `recorded: false`. Only LBB's own worker records LBB's `lbb.*` types (403 `reserved_workflow_type`); a work token records nothing else (403 `worker_credential_scope`). 400 `derivation_invalid`",
+        "summary": "Record a derivation once: the key, the run that made it (`run_id`, optional) and what it made (`outputs`, at most 16 KiB of JSON). A second record of the same key answers the stored one with `recorded: false`. With `content_uploaded_at` (the upload the check answered), the record writes only while that upload is the file's live one. When the file was deleted since, or deleted and uploaded again, nothing is written: 409 `derivation_upload_changed`, and the run of the current upload does the work. Only LBB's own worker records LBB's `lbb.*` types (403 `reserved_workflow_type`); a work token records nothing else (403 `worker_credential_scope`). 400 `derivation_invalid`",
         "tags": [
           "system"
         ]

@@ -954,6 +954,12 @@ class DerivationRecordRequest(DerivationKey):
     `POST /v1/workflows/derivations/record`: record a derivation once.
     """
 
+    content_uploaded_at: Annotated[
+        str | None,
+        Field(
+            description="The upload the work was done for: the `content_uploaded_at` of the\ncheck. The record writes only while it is the file's live upload.\nWhen the file was deleted since, it records nothing and answers\n`409 derivation_upload_changed`. Without it, the record belongs to\nthe upload at the time of the record."
+        ),
+    ] = None
     outputs: Annotated[
         Any | None, Field(description='What it made, at most 16 KiB of JSON.')
     ] = None
@@ -10227,6 +10233,12 @@ class DerivationCheckResponse(BaseModel):
     derivation.
     """
 
+    content_uploaded_at: Annotated[
+        str | None,
+        Field(
+            description="The upload of the content's live file: its `uploaded_at`, RFC 3339.\nSend it back with the record. Then a run of a file deleted since the\ncheck records nothing. Absent when the file is not live: deleted,\nreclaimed, not written yet, or no file at all."
+        ),
+    ] = None
     derivation: Derivation | None = None
     exists: bool
 

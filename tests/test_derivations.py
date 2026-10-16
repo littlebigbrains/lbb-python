@@ -10,8 +10,12 @@ from typing import Any
 
 import httpx
 
-from lbb import AsyncLbbClient, LbbClient
-from lbb.models import DerivationCheckResponse, DerivationRecordResponse
+from lbb import AsyncLbbClient, LbbClient, LbbError
+from lbb.models import (
+    DerivationCheckResponse,
+    DerivationRecordRequest,
+    DerivationRecordResponse,
+)
 
 SHA = "ab" * 32
 KEY = {
@@ -117,6 +121,54 @@ class DerivationTests(unittest.TestCase):
         self.assertTrue(checked["exists"])
         self.assertFalse(recorded["recorded"])
         self.assertEqual(json.loads(seen[1].content), KEY)
+
+    def test_a_record_names_the_upload_of_its_check(self) -> None:
+        upload = "2026-10-15T09:00:00.123456+00:00"
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(
+                seen,
+                [
+                    (200, {"exists": False, "content_uploaded_at": upload}),
+                    (
+                        409,
+                        {
+                            "error": {
+                                "code": "derivation_upload_changed",
+                                "message": "the file was deleted",
+                                "param": "content_uploaded_at",
+                                "retryable": False,
+                            }
+                        },
+                    ),
+                ],
+            ),
+            max_retries=2,
+            retry_delay=0,
+        ) as client:
+            checked = DerivationCheckResponse.model_validate(
+                client.check_derivation(SHA, "acme.parse", "v1")
+            )
+            self.assertEqual(checked.content_uploaded_at, upload)
+            with self.assertRaises(LbbError) as raised:
+                client.record_derivation(
+                    SHA,
+                    "acme.parse",
+                    "v1",
+                    outputs={"pages": 1},
+                    content_uploaded_at=checked.content_uploaded_at,
+                )
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(raised.exception.code, "derivation_upload_changed")
+        self.assertEqual(len(seen), 2, "a 409 is not retried")
+        sent = json.loads(seen[1].content)
+        self.assertEqual(
+            sent, {**KEY, "outputs": {"pages": 1}, "content_uploaded_at": upload}
+        )
+        self.assertEqual(
+            DerivationRecordRequest.model_validate(sent).content_uploaded_at, upload
+        )
 
 
 if __name__ == "__main__":

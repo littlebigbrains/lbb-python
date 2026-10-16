@@ -1008,7 +1008,9 @@ class _WorkflowActivityMethods:
         settings). The answer has ``exists`` and, when it does,
         ``derivation``. Check before you work on a content and skip it when
         a derivation exists: identical bytes under two names are then worked
-        on once. A read, so a failure is retried.
+        on once. ``content_uploaded_at`` names the upload of the content's
+        live file: pass it to ``record_derivation``. A deleted file has no
+        upload and no derivation. A read, so a failure is retried.
         """
         return self._workflows_client()._request(
             "POST",
@@ -1027,6 +1029,7 @@ class _WorkflowActivityMethods:
         *,
         run_id: str | None = None,
         outputs: Any = None,
+        content_uploaded_at: str | None = None,
     ) -> Any:
         """Record a derivation once (``POST /v1/workflows/derivations/record``):
         the key, ``run_id`` (your run's id) and ``outputs`` (at most 16 KiB
@@ -1036,12 +1039,20 @@ class _WorkflowActivityMethods:
         A second record of the key answers the stored one with
         ``recorded: False``, so a failure is retried. Validate it with
         ``models.DerivationRecordResponse``.
+
+        Pass the check's ``content_uploaded_at``: the upload the work was
+        done for. When the file was deleted since the check, nothing is
+        recorded and the call raises ``LbbError`` with status 409 and code
+        ``derivation_upload_changed``. End the run without an error: the run
+        of the current upload does the work.
         """
         body = _derivation_key(sha256, workflow_type, version, settings_digest)
         if run_id is not None:
             body["run_id"] = run_id
         if outputs is not None:
             body["outputs"] = outputs
+        if content_uploaded_at is not None:
+            body["content_uploaded_at"] = content_uploaded_at
         return self._workflows_client()._request(
             "POST",
             "/v1/workflows/derivations/record",
