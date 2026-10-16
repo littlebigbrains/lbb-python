@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.27.0 (2026-10-16)
 
 - `files.list(*, parse_status=, name=)` filters the list: `parse_status`
   (`parsed`, `unsupported`, `failed`, or `waiting` for a file without one)
