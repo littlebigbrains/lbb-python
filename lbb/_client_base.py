@@ -3278,7 +3278,14 @@ class _FilesNamespace:
             options={"retry": True},
         )
 
-    def list(self, *, limit: int | None = None, after: str | None = None) -> Any:
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        after: str | None = None,
+        parse_status: str | None = None,
+        name: str | None = None,
+    ) -> Any:
         """One page of the graph's files (``GET /v1/files``), the newest
         upload first, with what the parse made of each (``parse``:
         ``status``, ``page_count``, ``parser``).
@@ -3287,13 +3294,26 @@ class _FilesNamespace:
         the answer's ``next`` as ``after`` for the next page; a page can
         hold fewer than ``limit`` files while ``next`` is set, and the list
         ends when no ``next`` comes back.
+
+        ``parse_status`` (``parsed``, ``unsupported``, ``failed``, or
+        ``waiting`` for a file without one) and ``name`` (a part of the
+        name, in any case) filter the list: the server reads the
+        ``Document`` facts of the published generation for the page, and
+        ``as_of_commit_seq`` names the commit it read.
         """
         if limit is not None and (isinstance(limit, bool) or not 1 <= limit <= 1000):
             raise ValueError("limit must be 1 to 1000")
         return self._client._request(
             "GET",
             "/v1/files",
-            params=self._scope({"limit": limit, "after": after or None}),
+            params=self._scope(
+                {
+                    "limit": limit,
+                    "after": after or None,
+                    "parse_status": parse_status or None,
+                    "name": name or None,
+                }
+            ),
         )
 
     def get(self, sha256: str, *, deleted: bool = False) -> Any:

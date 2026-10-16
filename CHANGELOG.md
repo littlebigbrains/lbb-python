@@ -4,6 +4,20 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `files.list(*, parse_status=, name=)` filters the list: `parse_status`
+  (`parsed`, `unsupported`, `failed`, or `waiting` for a file without one)
+  and `name` (a part of the name, in any case). The server reads the
+  `Document` facts of the published generation for the page, and
+  `FileList.as_of_commit_seq` names the commit it read. `limit` and
+  `after` page it as they page the plain list.
+- `SuggestionLinkSummary.document_name` names the file of a link review:
+  the `Document`'s name for a `document` IRI, the name itself for evidence
+  written before typed content.
+- An upload without a type (or with `application/octet-stream`) gets the
+  type the server detects: PNG, JPEG, GIF, WebP, the Office types of
+  `.xlsx`, `.docx` and `.pptx`, and `text/csv`, `text/tab-separated-values`,
+  `text/markdown`, `application/json` and `text/plain` for UTF-8 text with
+  those names, beside the PDF it detected before.
 - The starter workflow catalog lists `rows` and `sections`, the templates
   your worker runs on files. `StarterWorkflow.media_types` names the media
   types of their content trigger, and their `watch` is `none`. A request to
