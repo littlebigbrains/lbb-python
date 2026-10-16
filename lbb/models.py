@@ -17021,7 +17021,7 @@ class StarterWorkflow(BaseModel):
     code: Annotated[
         str | None,
         Field(
-            description="The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/`, the catalog id with dashes\n(`documents-link`, `values-extract`, `ontology-fit`). Null when there\nis none (`search.embed` and `documents.parse` run in LBB only, and\n`workflow` is the developer's own code)."
+            description="The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/`, the catalog id with dashes\n(`documents-link`, `values-extract`, `ontology-fit`, `rows`). Null\nwhen there is none (`search.embed` and `documents.parse` run in LBB\nonly, and `workflow` is the developer's own code)."
         ),
     ] = None
     fixed_watch: WorkflowWatch | None = None
@@ -17032,20 +17032,31 @@ class StarterWorkflow(BaseModel):
         ),
     ]
     id: Annotated[
-        str, Field(description='`search.embed`, `ontology.fit`, `workflow`, …')
+        str, Field(description='`search.embed`, `ontology.fit`, `workflow`, `rows`, …')
     ]
+    media_types: Annotated[
+        list[str] | None,
+        Field(
+            description="The media types of the content trigger that feeds its workflow, for\na template your worker runs on files (`rows`, `sections`; `watch` is\n`none`): `type/subtype`, `type/*` or `*/*`. Its workflow is created\nwith `PUT /v1/workflows/named` and this content trigger, as the\ntemplate's `trigger()` makes it. Empty for a starter workflow that\nwatches a class."
+        ),
+    ] = None
     owns: Annotated[
         WorkflowOwns | None,
         Field(
             description='The outputs it owns when they are fixed. A developer workflow\ndeclares its own when it is created.'
         ),
     ] = None
-    params: list[StarterWorkflowParam] | None = None
+    params: Annotated[
+        list[StarterWorkflowParam] | None,
+        Field(
+            description="The parameters it takes in `params`. For a template your worker runs\non files, the settings of the template's code (`defaults` in its\n`workflow.ts`): no route takes them."
+        ),
+    ] = None
     runs_in: WorkflowRunsIn
     samples: Annotated[
         list[str] | None,
         Field(
-            description="The names of the sample files that Try on samples loads\n(`POST /v1/workflows/starters/try`), as the template's `samples/`\nfolder names them. Empty for `workflow`."
+            description="The names of the sample files that Try on samples loads\n(`POST /v1/workflows/starters/try`), as the template's `samples/`\nfolder names them. For a template your worker runs on files, the\nfiles its own `npm run try` loads. Empty for `workflow`."
         ),
     ] = None
     shortcut: Annotated[
@@ -17065,7 +17076,7 @@ class StarterWorkflow(BaseModel):
     try_on_samples: Annotated[
         bool | None,
         Field(
-            description='Whether this server can run Try on samples for it now: SaaS mode, a\nsample set, and the models (and for the document starter workflows,\nthe parser) the run needs.'
+            description='Whether this server can run Try on samples for it now: SaaS mode, a\nsample set, a version LBB runs, and the models (and for the document\nstarter workflows, the parser) the run needs. Always false for a\ntemplate your worker runs on files.'
         ),
     ] = None
     unavailable_reason: Annotated[

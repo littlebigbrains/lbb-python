@@ -4,6 +4,12 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- The starter workflow catalog lists `rows` and `sections`, the templates
+  your worker runs on files. `StarterWorkflow.media_types` names the media
+  types of their content trigger, and their `watch` is `none`. A request to
+  create one through the triggered workflow routes answers `400
+  template_runs_in_worker`: create its workflow on the named workflow
+  routes, as the template's `trigger()` does.
 - `files.get(sha256, deleted=True)` names the facts that cite a live file
   too (`cited_by`, at most 20): what `delete(sha256, purge=True)` would
   retract.

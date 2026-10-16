@@ -31027,7 +31027,7 @@
             "type": "boolean"
           },
           "code": {
-            "description": "The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/`, the catalog id with dashes\n(`documents-link`, `values-extract`, `ontology-fit`). Null when there\nis none (`search.embed` and `documents.parse` run in LBB only, and\n`workflow` is the developer's own code).",
+            "description": "The template a developer can copy to run this work in their own\nworker: a folder of `sdk/templates/`, the catalog id with dashes\n(`documents-link`, `values-extract`, `ontology-fit`, `rows`). Null\nwhen there is none (`search.embed` and `documents.parse` run in LBB\nonly, and `workflow` is the developer's own code).",
             "type": [
               "string",
               "null"
@@ -31048,14 +31048,22 @@
             "type": "string"
           },
           "id": {
-            "description": "`search.embed`, `ontology.fit`, `workflow`, …",
+            "description": "`search.embed`, `ontology.fit`, `workflow`, `rows`, …",
             "type": "string"
+          },
+          "media_types": {
+            "description": "The media types of the content trigger that feeds its workflow, for\na template your worker runs on files (`rows`, `sections`; `watch` is\n`none`): `type/subtype`, `type/*` or `*/*`. Its workflow is created\nwith `PUT /v1/workflows/named` and this content trigger, as the\ntemplate's `trigger()` makes it. Empty for a starter workflow that\nwatches a class.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "owns": {
             "$ref": "#/components/schemas/WorkflowOwns",
             "description": "The outputs it owns when they are fixed. A developer workflow\ndeclares its own when it is created."
           },
           "params": {
+            "description": "The parameters it takes in `params`. For a template your worker runs\non files, the settings of the template's code (`defaults` in its\n`workflow.ts`): no route takes them.",
             "items": {
               "$ref": "#/components/schemas/StarterWorkflowParam"
             },
@@ -31065,7 +31073,7 @@
             "$ref": "#/components/schemas/WorkflowRunsIn"
           },
           "samples": {
-            "description": "The names of the sample files that Try on samples loads\n(`POST /v1/workflows/starters/try`), as the template's `samples/`\nfolder names them. Empty for `workflow`.",
+            "description": "The names of the sample files that Try on samples loads\n(`POST /v1/workflows/starters/try`), as the template's `samples/`\nfolder names them. For a template your worker runs on files, the\nfiles its own `npm run try` loads. Empty for `workflow`.",
             "items": {
               "type": "string"
             },
@@ -31092,7 +31100,7 @@
             "type": "array"
           },
           "try_on_samples": {
-            "description": "Whether this server can run Try on samples for it now: SaaS mode, a\nsample set, and the models (and for the document starter workflows,\nthe parser) the run needs.",
+            "description": "Whether this server can run Try on samples for it now: SaaS mode, a\nsample set, a version LBB runs, and the models (and for the document\nstarter workflows, the parser) the run needs. Always false for a\ntemplate your worker runs on files.",
             "type": "boolean"
           },
           "unavailable_reason": {
