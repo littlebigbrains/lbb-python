@@ -3301,9 +3301,10 @@ class _FilesNamespace:
         object: its name, type, size, upload time, ``Document`` IRI and
         parse. A SHA-256 the graph has no file for, or a deleted file,
         answers ``404 file_not_found``. With ``deleted=True`` a deleted file
-        answers until its content is reclaimed, with ``deleted_at`` and
-        ``cited_by``: the facts whose evidence still names it. Validate with
-        ``models.FileRecord``."""
+        answers until its content is reclaimed (``deleted_at``), and every
+        answer names the facts whose evidence cites the file (``cited_by``,
+        at most 20): what ``delete(sha256, purge=True)`` retracts. Validate
+        with ``models.FileRecord``."""
         return self._client._request(
             "GET",
             "/v1/files/record",
