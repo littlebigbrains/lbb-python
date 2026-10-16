@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.28.0 (2026-10-16)
 
 - A derivation belongs to one upload of its file. `check_derivation`
   names the upload of the live file as `content_uploaded_at`. A deleted
