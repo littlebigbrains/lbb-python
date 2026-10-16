@@ -2,6 +2,18 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- A derivation belongs to one upload of its file. `check_derivation`
+  names the upload of the live file as `content_uploaded_at`. A deleted
+  file has no upload there, and no derivation. Pass it to
+  `record_derivation(..., content_uploaded_at=)`. Say the file was deleted
+  since the check, or deleted and uploaded again. Then the record writes
+  nothing. It raises `LbbError` with status 409 and code
+  `derivation_upload_changed`. Then the run of the new upload does the
+  work. `models.DerivationCheckResponse` and
+  `models.DerivationRecordRequest` have the field.
+
 ## 0.27.0 (2026-10-16)
 
 - `files.list(*, parse_status=, name=)` filters the list: `parse_status`

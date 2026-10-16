@@ -638,6 +638,7 @@ class _AsyncStarterWorkflowMethods(_StarterWorkflowMethods):
         *,
         run_id: str | None = None,
         outputs: Any = None,
+        content_uploaded_at: str | None = None,
     ) -> Any:
         return await super().record_derivation(
             sha256,
@@ -646,6 +647,7 @@ class _AsyncStarterWorkflowMethods(_StarterWorkflowMethods):
             settings_digest,
             run_id=run_id,
             outputs=outputs,
+            content_uploaded_at=content_uploaded_at,
         )
 
     async def workflow_starters(self) -> Any:
