@@ -248,6 +248,21 @@ class FilesSync(unittest.TestCase):
                 lbb.files.list(limit=limit)
         self.assertEqual(len(captured), 3)
 
+    def test_list_filters_by_parse_status_and_name(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [json_answer({"files": [RECORD], "as_of_commit_seq": 12})],
+        )
+        page = FileList.model_validate(
+            lbb.files.list(limit=50, parse_status="failed", name="Q3 report")
+        )
+        self.assertEqual(page.as_of_commit_seq, 12)
+        self.assertEqual(
+            dict(captured[0].url.params),
+            {"graph": "docs", "limit": "50", "parse_status": "failed", "name": "Q3 report"},
+        )
+
     def test_get_reads_one_file_by_its_sha256(self) -> None:
         captured: list[httpx.Request] = []
         lbb = self.client(captured, [json_answer(RECORD)])

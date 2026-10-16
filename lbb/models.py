@@ -8067,6 +8067,12 @@ class SuggestionLinkSummary(BaseModel):
             description="The mention's document, page (from 1) and line. The document is the\n`Document`'s IRI that the link's evidence names (without its\n`#page=` fragment), or the file name in evidence written before\ntyped content."
         ),
     ] = None
+    document_name: Annotated[
+        str | None,
+        Field(
+            description="The file's name: for a `document` IRI, its `Document`'s `name` at\nthe published generation (absent before the generation holds the\nfile, or after its delete); for evidence written before typed\ncontent, the name the evidence holds."
+        ),
+    ] = None
     line: str | None = None
     line_id: str | None = None
     mentions: Annotated[
@@ -10804,6 +10810,13 @@ class FileList(BaseModel):
     `GET /v1/files`: one page of the graph's files, newest upload first.
     """
 
+    as_of_commit_seq: Annotated[
+        int | None,
+        Field(
+            description="With `parse_status` or `name`: the commit of the published\ngeneration whose `Document` facts the filter read. A file uploaded,\nrenamed or parsed after it matches once a generation holds the\nchange. Absent for the plain list, and before the graph's first\npublication (a filtered list is then empty).",
+            ge=0,
+        ),
+    ] = None
     files: list[FileRecord]
     next: Annotated[
         str | None,

@@ -8716,6 +8716,15 @@
       "FileList": {
         "description": "`GET /v1/files`: one page of the graph's files, newest upload first.",
         "properties": {
+          "as_of_commit_seq": {
+            "description": "With `parse_status` or `name`: the commit of the published\ngeneration whose `Document` facts the filter read. A file uploaded,\nrenamed or parsed after it matches once a generation holds the\nchange. Absent for the plain list, and before the graph's first\npublication (a filtered list is then empty).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "files": {
             "items": {
               "$ref": "#/components/schemas/FileRecord"
@@ -31893,6 +31902,13 @@
           },
           "document": {
             "description": "The mention's document, page (from 1) and line. The document is the\n`Document`'s IRI that the link's evidence names (without its\n`#page=` fragment), or the file name in evidence written before\ntyped content.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "document_name": {
+            "description": "The file's name: for a `document` IRI, its `Document`'s `name` at\nthe published generation (absent before the generation holds the\nfile, or after its delete); for evidence written before typed\ncontent, the name the evidence holds.",
             "type": [
               "string",
               "null"
@@ -60062,9 +60078,27 @@
             }
           },
           {
-            "description": "the `next` cursor of the previous page",
+            "description": "the `next` cursor of the previous page of the same list",
             "in": "query",
             "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "only the files of this parse status: `parsed`, `unsupported`, `failed`, or `waiting` for a file without one",
+            "in": "query",
+            "name": "parse_status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "only the files whose name contains this text, in any case (at most 255 characters)",
+            "in": "query",
+            "name": "name",
             "required": false,
             "schema": {
               "type": "string"
@@ -60294,7 +60328,7 @@
             "bearer": []
           }
         ],
-        "summary": "One page of the graph's files, newest upload first, with what the parse workflow (`documents.parse`) made of each. Without `limit`, the newest 1,000. `next` is the cursor of the next page; a page can hold fewer than `limit` files while `next` is set. 400 for an invalid `limit` or `after`",
+        "summary": "One page of the graph's files, newest upload first, with what the parse workflow (`documents.parse`) made of each. Without `limit`, the newest 1,000. `next` is the cursor of the next page; a page can hold fewer than `limit` files while `next` is set. With `parse_status` or `name`, one SPARQL read of the `Document` facts at the published generation finds the page, and `as_of_commit_seq` names the commit it read; a file whose record no longer matches (a rename or a parse since) is left out. 400 for an invalid `limit`, `after`, `parse_status` or `name`",
         "tags": [
           "files"
         ]
@@ -60366,7 +60400,7 @@
               }
             }
           },
-          "description": "The file's bytes, at most 1 GiB by default (`LBB_FILES_MAX_BYTES`); an empty body is an empty file. `Content-Type` names its type; without one, a PDF is recognized by its bytes.",
+          "description": "The file's bytes, at most 1 GiB by default (`LBB_FILES_MAX_BYTES`); an empty body is an empty file. `Content-Type` names its type; without one (or with `application/octet-stream`), the server detects PDF, PNG, JPEG, GIF and WebP by their bytes, `.xlsx`, `.docx` and `.pptx` files by the ZIP signature and the name, and UTF-8 text named `.csv`, `.tsv`, `.md`, `.json` or `.txt` by the name.",
           "required": true
         },
         "responses": {
