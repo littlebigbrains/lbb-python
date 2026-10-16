@@ -3296,15 +3296,20 @@ class _FilesNamespace:
             params=self._scope({"limit": limit, "after": after or None}),
         )
 
-    def get(self, sha256: str) -> Any:
+    def get(self, sha256: str, *, deleted: bool = False) -> Any:
         """One file's record (``GET /v1/files/record``), read from one
         object: its name, type, size, upload time, ``Document`` IRI and
         parse. A SHA-256 the graph has no file for, or a deleted file,
-        answers ``404 file_not_found``. Validate with ``models.FileRecord``."""
+        answers ``404 file_not_found``. With ``deleted=True`` a deleted file
+        answers until its content is reclaimed, with ``deleted_at`` and
+        ``cited_by``: the facts whose evidence still names it. Validate with
+        ``models.FileRecord``."""
         return self._client._request(
             "GET",
             "/v1/files/record",
-            params=self._scope({"sha256": _sha256_of(sha256)}),
+            params=self._scope(
+                {"sha256": _sha256_of(sha256), "deleted": "true" if deleted else None}
+            ),
         )
 
     def counts(self) -> Any:
@@ -3379,17 +3384,21 @@ class _FilesNamespace:
             params=self._scope({"sha256": _sha256_of(sha256), "from": from_, "to": to}),
         )
 
-    def delete(self, sha256: str) -> Any:
+    def delete(self, sha256: str, *, purge: bool = False) -> Any:
         """Remove a file from the list and retract its ``Document`` entity;
-        the client repeats the SHA-256 as ``confirm``. The bytes and what the
-        document workflows stored stay in storage; a ``documents.link``
+        the client repeats the SHA-256 as ``confirm``. A ``documents.link``
         workflow retracts the entries and mentions it wrote for the
-        document."""
+        document. The bytes and what the workflows stored stay for the
+        grace (30 days by default), then the reclaim frees them, unless a
+        fact's evidence still names the file. ``purge=True`` also retracts
+        those facts (``purged_edges``); a deleted file can be purged."""
         sha = _sha256_of(sha256)
         return self._client._request(
             "DELETE",
             "/v1/files",
-            params=self._scope({"sha256": sha, "confirm": sha}),
+            params=self._scope(
+                {"sha256": sha, "confirm": sha, "purge": "true" if purge else None}
+            ),
         )
 
 

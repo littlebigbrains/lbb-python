@@ -1617,6 +1617,24 @@ class FacetResult(BaseModel):
     missing: Annotated[int, Field(ge=0)]
 
 
+class FileCitation(BaseModel):
+    """
+    One fact whose evidence names a file: the edge's statement node, the
+    edge, and the evidence source (the file's `Document` IRI with the
+    fragment of the place).
+    """
+
+    object: str
+    predicate: str
+    source: Annotated[
+        str, Field(description='The evidence source, `<Document IRI>#<fragment>`.')
+    ]
+    statement: Annotated[
+        str, Field(description='The statement node (`https://littlebigbrain.com/s/…`).')
+    ]
+    subject: str
+
+
 class FileCounts(BaseModel):
     """
     `GET /v1/files/counts`: the graph's files by parse status, counted over
@@ -1647,6 +1665,13 @@ class FileDeleteResponse(BaseModel):
     """
 
     deleted: bool
+    purged_edges: Annotated[
+        int | None,
+        Field(
+            description='With `purge=true`: the edges whose evidence names the file that the\ndelete retracted (at most [`FILE_PURGE_EDGES_MAX`]).',
+            ge=0,
+        ),
+    ] = None
     sha256: str
 
 
@@ -1672,7 +1697,19 @@ class FileRecord(BaseModel):
     """
 
     bytes: Annotated[int, Field(ge=0)]
+    cited_by: Annotated[
+        list[FileCitation] | None,
+        Field(
+            description='The current facts whose evidence names this deleted file, at most\n[`FILE_CITATIONS_MAX`], read at the published generation. While one\nexists the reclaim keeps the bytes. Empty for a live file.'
+        ),
+    ] = None
     content_type: str
+    deleted_at: Annotated[
+        str | None,
+        Field(
+            description='RFC 3339 time of the delete. Only `GET /v1/files/record` with\n`deleted=true` answers a deleted file; every other answer holds live\nfiles and leaves this out.'
+        ),
+    ] = None
     document: Annotated[
         str,
         Field(description='The IRI of its `Document` entity (key `file:<sha256>`).'),
