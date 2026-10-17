@@ -20,6 +20,7 @@ from typing import Any, Literal, cast
 import httpx
 
 from . import models
+from ._catalog import AccessNamespace, CatalogNamespace
 from ._client_base import (
     _ASK_STREAM_ENDED,
     _UPLOAD_CHUNK_BYTES,
@@ -1242,6 +1243,7 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         *,
         api_key: str | None = None,
         graph: str | None = None,
+        environment: str | None = None,
         api_version: str = "2026-07-23",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
@@ -1257,6 +1259,7 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
             base_url,
             api_key=api_key,
             graph=graph,
+            environment=environment,
             api_version=api_version,
             max_retries=max_retries,
             retry_delay=retry_delay,
@@ -1278,6 +1281,8 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         self.embeddings = _EmbeddingsNamespace(self)
         # Files of the graph. Each method returns an awaitable here.
         self.files = _FilesNamespace(self)
+        self.catalog = CatalogNamespace(self)
+        self.access = AccessNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
         self.integrations = _AsyncIntegrationsNamespace(self)
         self._http = httpx.AsyncClient(

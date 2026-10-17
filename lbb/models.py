@@ -527,6 +527,98 @@ class CardType(BaseModel):
     name: str
 
 
+class CatalogBindingState(Enum):
+    preparing = 'preparing'
+    ready = 'ready'
+
+
+class CatalogGraphAdoptRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_graph_epoch: Annotated[
+        str,
+        Field(
+            description='Must match the existing live graph. Adoption never creates graph truth.'
+        ),
+    ]
+    external_key: str | None = None
+    owner_id: Annotated[
+        str | None, Field(description='Omit to use the implicit environment root.')
+    ] = None
+
+
+class CatalogIndexKind(Enum):
+    graphs = 'graphs'
+    namespaces = 'namespaces'
+
+
+class CatalogIndexRepairRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    cursor: str | None = None
+    kind: CatalogIndexKind
+    limit: Annotated[int | None, Field(ge=1, le=100)] = None
+
+
+class CatalogIndexRepairResponse(BaseModel):
+    """
+    A page checks derived directories against authoritative catalog records.
+    Continue through empty pages until next_cursor is null.
+    """
+
+    indexed: Annotated[int, Field(ge=0)]
+    next_cursor: str | None = None
+    scanned: Annotated[int, Field(ge=0)]
+
+
+class CatalogNamespaceCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    external_key: str | None = None
+    name: str
+    parent_id: Annotated[
+        str | None, Field(description='Omit to use the implicit environment root.')
+    ] = None
+
+
+class CatalogNamespaceIdentity(BaseModel):
+    authority_revision: Annotated[int, Field(ge=0)]
+    id: str
+    incarnation: str
+
+
+class CatalogOperationKind(Enum):
+    namespace = 'namespace'
+    graph = 'graph'
+
+
+class CatalogOperationRepairRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    operation_id: str
+
+
+class CatalogOperationRepairResponse(BaseModel):
+    completed: bool
+    operation_id: str
+    target: str
+
+
+class CatalogPendingOperation(BaseModel):
+    """
+    Summary of a durable pending request. Private request fingerprints and
+    idempotency keys are not part of the public inventory.
+    """
+
+    kind: CatalogOperationKind
+    operation_id: str
+    target: str
+
+
 class CdcApplyClaimRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -5305,6 +5397,32 @@ class ReasonActivityResponse(BaseModel):
     ]
 
 
+class ReferenceDatasetSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    as_of_commit_seq: CommitSeq | None = None
+    expected_graph_epoch: str
+    graph_id: str
+    name: Annotated[
+        str, Field(description='Absolute IRI used by GRAPH in this request only.')
+    ]
+
+
+class ReferenceDatasetVersion(BaseModel):
+    commit_seq: Annotated[int, Field(ge=0)]
+    generation: Annotated[int, Field(ge=0)]
+    graph_epoch: str
+    graph_id: str
+    name: Annotated[
+        str | None,
+        Field(
+            description='Absent for the primary default graph; reference names match the request.'
+        ),
+    ] = None
+    snapshot_token: str
+
+
 class RegionAnchorInput(BaseModel):
     """
     A page-region provenance anchor on a fact's evidence (region provenance
@@ -5807,6 +5925,46 @@ class SchemaWriteEnforcementTiming(Enum):
     write_time = 'write_time'
     write_time_full_scan = 'write_time_full_scan'
     after_publication = 'after_publication'
+
+
+class ScopedGraphGrantKind(Enum):
+    graph = 'graph'
+
+
+class ScopedNamespaceGrantKind(Enum):
+    namespace = 'namespace'
+
+
+class ScopedTokenResponse(BaseModel):
+    credential_id: str
+    expires_at_ms: int
+    operations: Annotated[
+        list[str],
+        Field(
+            description='The initial release supports only `read` on its documented route set.'
+        ),
+    ]
+    token: Annotated[
+        str, Field(description='Secret bearer value, returned only by issuance.')
+    ]
+
+
+class ScopedTokenRevokeRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    credential_id: str
+
+
+class ScopedTokenRevokeResponse(BaseModel):
+    credential_id: str
+    effective_at_ms: Annotated[
+        int,
+        Field(
+            description='Revocation stops new admissions. It does not retract an already returned\nresponse or cancel a request admitted before this time.'
+        ),
+    ]
+    revoked: bool
 
 
 class ScoredCandidateInput(BaseModel):
@@ -9880,6 +10038,51 @@ class CaptureReceipt(BaseModel):
     sequence: Annotated[int, Field(ge=0)]
 
 
+class CatalogGraph(BaseModel):
+    ancestors: list[CatalogNamespaceIdentity]
+    binding_revision: Annotated[int, Field(ge=0)]
+    external_key: str | None = None
+    graph_epoch: str
+    graph_id: str
+    owner: CatalogNamespaceIdentity
+    state: CatalogBindingState
+
+
+class CatalogGraphPage(BaseModel):
+    items: list[CatalogGraph]
+    next_cursor: str | None = None
+    scanned: Annotated[int, Field(ge=0)]
+
+
+class CatalogNamespace(BaseModel):
+    """
+    Stable ownership metadata. Paths are optional addresses, not storage keys.
+    """
+
+    ancestors: list[CatalogNamespaceIdentity]
+    external_key: str | None = None
+    identity: CatalogNamespaceIdentity
+    name: str
+    parent: CatalogNamespaceIdentity | None = None
+
+
+class CatalogNamespacePage(BaseModel):
+    items: list[CatalogNamespace]
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Opaque continuation; an empty page may still have a continuation.'
+        ),
+    ] = None
+    scanned: Annotated[int, Field(ge=0)]
+
+
+class CatalogOperationPage(BaseModel):
+    items: list[CatalogPendingOperation]
+    next_cursor: str | None = None
+    scanned: Annotated[int, Field(ge=0)]
+
+
 class CdcApplyNext(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -13268,6 +13471,53 @@ class RdfSchemaSummaryResponse(BaseModel):
     type_counts: list[RdfSchemaTermCount]
 
 
+class ReferenceDatasetRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    as_of_commit_seq: CommitSeq | None = None
+    expected_graph_epoch: Annotated[
+        str,
+        Field(
+            description='The primary graph is selected by the usual graph query parameter.'
+        ),
+    ]
+    query: Annotated[
+        str,
+        Field(
+            description="SELECT or ASK. Sources come only from this request's explicit selection."
+        ),
+    ]
+    references: Annotated[
+        list[ReferenceDatasetSource],
+        Field(
+            description='At most four reference graphs in the initial HTTP contract.'
+        ),
+    ]
+
+
+class ReferenceDatasetResponse(BaseModel):
+    charged_read_bytes: Annotated[
+        int,
+        Field(
+            description='Aggregate logical read bytes charged across metadata and all sources.',
+            ge=0,
+        ),
+    ]
+    results: Annotated[
+        str,
+        Field(
+            description='Standard SPARQL Results JSON serialized as a string, as in sparql-text.'
+        ),
+    ]
+    sources: Annotated[
+        list[ReferenceDatasetVersion],
+        Field(
+            description='Independently pinned versions, not an atomic cross-graph snapshot.'
+        ),
+    ]
+
+
 class RelationSearchResult(BaseModel):
     name: str
     relation_id: Annotated[int, Field(ge=0)]
@@ -13429,6 +13679,45 @@ class SchemaWriteEnforcement(BaseModel):
             description='True when no root shape has a blocker. An RDF-native graph accepts\n`reject` mode only for such a shape set.'
         ),
     ]
+
+
+class ScopedGrantRequest1(BaseModel):
+    """
+    An environment administrator selects resources; the server resolves their
+    current incarnations and authority revisions before signing the credential.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    graph_id: str
+    kind: ScopedGraphGrantKind
+
+
+class ScopedGrantRequest2(BaseModel):
+    """
+    An environment administrator selects resources; the server resolves their
+    current incarnations and authority revisions before signing the credential.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: ScopedNamespaceGrantKind
+    namespace_id: str
+
+
+class ScopedTokenRequest(BaseModel):
+    """
+    Mint a short-lived, read-only credential. Issuing credentials requires an
+    environment administrator; a scoped token cannot mint another token.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    grants: list[ScopedGrantRequest1 | ScopedGrantRequest2]
+    ttl_seconds: Annotated[int | None, Field(ge=1, le=900)] = None
 
 
 class ScoredEntityView(BaseModel):

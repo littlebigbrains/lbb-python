@@ -12,6 +12,7 @@ from typing import Any, cast
 import httpx
 
 from . import models
+from ._catalog import AccessNamespace, CatalogNamespace
 from ._client_base import (
     _ASK_STREAM_ENDED,
     DEFAULT_BASE_URL,
@@ -210,7 +211,7 @@ class _SyncQueryNamespace(_QueryNamespace):
         description the models read in ``response["grounding"]["text"]``.
 
         Each call uses model tokens, so a failed call is not retried unless
-        ``options={"retry": True}``. A ``429 rewrite_limit`` means the stack
+        ``options={"retry": True}``. A ``429 rewrite_limit`` means the environment
         used its questions of the day.
         """
         return QueryAskResult.from_response(
@@ -396,6 +397,7 @@ class LbbClient(_BaseLbbClient):
         *,
         api_key: str | None = None,
         graph: str | None = None,
+        environment: str | None = None,
         api_version: str = "2026-07-23",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
@@ -411,6 +413,7 @@ class LbbClient(_BaseLbbClient):
             base_url,
             api_key=api_key,
             graph=graph,
+            environment=environment,
             api_version=api_version,
             max_retries=max_retries,
             retry_delay=retry_delay,
@@ -431,6 +434,8 @@ class LbbClient(_BaseLbbClient):
         self.embeddings = _EmbeddingsNamespace(self)
         # Files of the graph: upload, list, bytes, parsed pages, delete.
         self.files = _FilesNamespace(self)
+        self.catalog = CatalogNamespace(self)
+        self.access = AccessNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
         self.integrations = IntegrationsNamespace(self)
         self._http = httpx.Client(
@@ -1025,7 +1030,7 @@ class LbbClient(_BaseLbbClient):
         ``search:similarTo`` triple searches by meaning inside the query, and
         the result's ``search`` reports how that search ran.
 
-        Note: this uses ``/v1/query/sparql-text``. A standalone stack also serves
+        Note: this uses ``/v1/query/sparql-text``. A standalone server also serves
         the native SPARQL 1.1 *Protocol* at ``/sparql`` for off-the-shelf SPARQL
         clients (YASGUI, Protégé, RDFLib) with ``Accept``-negotiated
         JSON/XML/CSV/TSV; this SDK method returns parsed JSON rows.

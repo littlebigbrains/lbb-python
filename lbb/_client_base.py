@@ -1,6 +1,6 @@
 """HTTP client for a little big brain graph server.
 
-Talks to ``lbb-server`` over HTTP with a stack API key
+Talks to ``lbb-server`` over HTTP with an environment API key
 (``lbb_sk_test_…`` / ``lbb_sk_live_…``) or
 single-mode token as a bearer credential — the same surface the TypeScript SDK,
 CLI, and MCP server use. Request/response shapes are available as Pydantic
@@ -138,9 +138,9 @@ class LbbCapabilityError(RuntimeError):
 
 def _endpoint_migration_hint(code: str | None) -> str | None:
     if code == "stack_endpoint_required":
-        return "Copy endpoint_url from the stack's Connect page and use it as base_url."
+        return "Copy endpoint_url from the environment's Connect page and use it as base_url."
     if code == "stack_endpoint_mismatch":
-        return "Use the endpoint_url and API key from the same stack."
+        return "Use the endpoint_url and API key from the same environment."
     return None
 
 
@@ -877,7 +877,7 @@ class _WorkflowActivityMethods:
 
     ``reason_activity``, ``decide_activity`` and ``embed_activity`` call
     ``POST /v1/workflows/activities/{reason,decide,embed}``. LBB meters each
-    call against the stack's model budget for workflows
+    call against the environment's model budget for workflows
     (``429 workflow_budget_exceeded`` past it) and writes it to the call
     log under ``label``. With ``effect_id`` (a durable step's effect id) the
     server keeps the first answer: the same request again returns it with
@@ -979,7 +979,7 @@ class _WorkflowActivityMethods:
         The answer has ``vectors`` (one per text, in order), ``model``,
         ``dim``, ``tokens_in``, ``cost_micro_usd`` and ``cached``. Validate
         it with ``models.EmbedActivityResponse``. The call also counts
-        against the stack's embedding budget.
+        against the environment's embedding budget.
         """
         if isinstance(texts, str):
             raise TypeError("texts is a sequence of strings, not one string")
@@ -1483,6 +1483,7 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         *,
         api_key: str | None = None,
         graph: str | None = None,
+        environment: str | None = None,
         api_version: str = "2026-07-23",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
@@ -1497,6 +1498,7 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         ).rstrip("/")
         self._api_key = api_key
         self._graph = graph
+        self._environment = environment
         self._api_version = api_version
         self._max_retries = max_retries
         self._retry_delay = retry_delay
@@ -1533,6 +1535,9 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         params: dict[str, Any] = {}
         if scoped and self._graph is not None:
             params["graph"] = self._graph
+        if scoped and self._environment is not None:
+            # Keep the deployed wire contract while using environment in the SDK.
+            params["stack"] = self._environment
         if extra:
             for key, value in extra.items():
                 if value is not None:
@@ -1586,8 +1591,8 @@ class _BaseLbbClient(_StarterWorkflowMethods):
     ) -> dict[str, Any]:
         """Build identical request options for the sync and async transports.
 
-        ``scoped=False`` leaves out the client's graph: the integrations routes
-        name their graph themselves."""
+        ``scoped=False`` leaves out the client's graph and environment: the
+        integrations routes name their graph and use the credential's scope."""
         request_headers = self._headers(idempotency_key)
         request_headers.update(headers or {})
         kwargs: dict[str, Any] = {
@@ -2214,6 +2219,19 @@ class _BaseLbbClient(_StarterWorkflowMethods):
             models.SparqlSelectResponse, "POST", "/v1/query/sparql", body=body
         )
 
+    def sparql_dataset(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+        """Query exact primary/reference epochs; return results and source versions.
+
+        Async clients return an awaitable. This preview requires a managed
+        environment with reference datasets enabled and a grant for every source.
+        """
+        return self._request(
+            "POST",
+            "/v1/query/dataset",
+            body=body,
+            options={"retry": "rate_limited", **(options or {})},
+        )
+
     def _sparql_text_envelope(
         self,
         query: str,
@@ -2453,12 +2471,12 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         return self._request("GET", "/v1/managed-models")
 
     def model_activity(self, month: str | None = None) -> Any:
-        """What each managed model did for the stack in one month.
+        """What each managed model did for the environment in one month.
 
         ``month`` is ``yyyy-mm`` (UTC); the current month by default. The
         answer holds totals, by day and by graph per feature (``index``,
         ``search``, ``fit``, ``judge``, ``training``) and model, the months
-        with activity, and the model each feature uses now. A stack read:
+        with activity, and the model each feature uses now. An environment read:
         the graph scope is not used.
         """
         params = {"month": month} if month is not None else None
@@ -3011,7 +3029,7 @@ class _FitSourcesNamespace:
         return body
 
     def list(self) -> Any:
-        """Every fit source of the graph with its status, and the stack's budget."""
+        """Every fit source of the graph with its status, and the environment's budget."""
         return self._client._request(
             "GET", "/v1/ontology/fit-sources", params=self._scope()
         )
