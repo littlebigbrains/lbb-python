@@ -4,6 +4,15 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Release 2 adds sync/async `client.workflow_turn_reader(task)` for bounded
+  SELECT/ASK with a separately issued execution credential. Keep lease
+  heartbeat, checkpoints and completion on the control client. Readers refresh
+  before first use and according to the next read budget, using monotonic
+  elapsed time and the server's `issued_at_ms`/`expires_at_ms` lifetime. Missing
+  lifetime or an elapsed refresh fails retryably without sending a query;
+  upgrade older servers before using this helper. No query automatically replays,
+  and no file/parser/import execution or snapshot retention is added.
+
 - Environment selectors are trimmed and case-insensitive, including the legacy
   `stack` alias. A selector supplied with an environment API key must match that
   key's environment; a leftover selector for another environment now returns 403

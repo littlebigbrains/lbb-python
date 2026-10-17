@@ -9021,6 +9021,14 @@ class WorkflowContentTrigger(BaseModel):
     ]
 
 
+class WorkflowExecutionOperation(Enum):
+    """
+    One explicit operation of a workflow execution credential.
+    """
+
+    sparql_read = 'sparql_read'
+
+
 class WorkflowGate(BaseModel):
     """
     Outputs whose confidence is below `below` go to the review inbox instead
@@ -14864,6 +14872,62 @@ class WorkflowClaimResponse(BaseModel):
     task: WorkflowTask | None = None
 
 
+class WorkflowExecutionCredential(BaseModel):
+    """
+    Short-lived data-plane authority for one validated workflow turn attempt.
+    The bearer is distinct from the original workflow control credential and
+    contains no raw turn lease secret. Do not persist it in workflow state or
+    checkpoints. Every execution still freshly validates the live lease.
+    """
+
+    attempt: Annotated[int, Field(ge=0)]
+    expires_at_ms: Annotated[
+        int,
+        Field(
+            description='Unix milliseconds; at most the current lease deadline and 60 seconds\nafter issue. Refresh uses the original control client and lease request.'
+        ),
+    ]
+    graph_epoch: Annotated[
+        str,
+        Field(
+            description='Exact main-branch incarnation; send as expected_graph_epoch with reads.'
+        ),
+    ]
+    graph_id: str
+    issued_at_ms: Annotated[
+        int | None,
+        Field(
+            description='Server issue time. Together with expiry this provides a clock-independent\nlifetime; optional when decoding responses from older servers.'
+        ),
+    ] = None
+    operations: Annotated[
+        list[WorkflowExecutionOperation],
+        Field(
+            description='Exactly one explicitly requested operation; no general read/write grant.'
+        ),
+    ]
+    run_id: str
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
+class WorkflowExecutionCredentialRequest(BaseModel):
+    """
+    Issue or refresh one operation credential using the original control bearer.
+    Omitted operation preserves the SELECT/ASK contract. This is deliberately
+    distinct from heartbeat/checkpoint lease requests.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    operation: WorkflowExecutionOperation | None = None
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
+
+
 class WorkflowGateCandidate(BaseModel):
     """
     One candidate gate below the current gate (0.50, 0.55, …), with the
@@ -15284,6 +15348,12 @@ class WorkflowTurnClaimRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+    include_execution_credential: Annotated[
+        bool | None,
+        Field(
+            description='Request a short-lived SELECT/ASK execution credential for the claimed\nturn. Disabled servers refuse this opt-in before changing a claim.\nOrdinary workflow control and SDK defaults remain unchanged.'
+        ),
+    ] = None
     wait_ms: Annotated[int | None, Field(ge=0)] = None
     worker: str
     workflows: list[WorkflowWorkerType]
@@ -15314,6 +15384,7 @@ class WorkflowTurnTask(BaseModel):
             description='Stable across attempt retries and recovery; SDK appends the named step key.'
         ),
     ]
+    execution_credential: WorkflowExecutionCredential | None = None
     lease_ms: Annotated[int, Field(ge=0)]
     state: Any
     token: str
