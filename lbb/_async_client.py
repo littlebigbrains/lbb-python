@@ -76,6 +76,7 @@ from ._client_base import (
     _trial_settled,
     _trial_timeout,
 )
+from ._workflow_execution import AsyncWorkflowTurnReader
 from .integrations import (
     _DEFAULT,
     IntegrationAcceptResult,
@@ -1607,6 +1608,14 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         return cast(
             models.ModelActivityResponse, await super().model_activity_model(month)
         )
+
+    def workflow_turn_reader(self, task: Body) -> AsyncWorkflowTurnReader:
+        """Bind SELECT/ASK to a task claimed with include_execution_credential.
+
+        Requires its issued execution credential; never falls back to this
+        client's API key for reads. Keep heartbeats/checkpoints on this client.
+        """
+        return AsyncWorkflowTurnReader(self, task)
 
     async def raw_request(
         self,

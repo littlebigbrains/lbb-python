@@ -40,6 +40,7 @@ _CLIENT_MODULES = (
     _CLIENT_PACKAGE / "_client_base.py",
     _CLIENT_PACKAGE / "_sync_client.py",
     _CLIENT_PACKAGE / "_async_client.py",
+    _CLIENT_PACKAGE / "_workflow_execution.py",
     _CLIENT_PACKAGE / "integrations.py",
 )
 
@@ -70,7 +71,15 @@ def _spec_operations() -> set[tuple[str, str]]:
 
 def _client_routes() -> set[tuple[str, str]]:
     source = "\n".join(path.read_text() for path in _CLIENT_MODULES if path.is_file())
-    return set(_REQUEST_CALL.findall(source))
+    routes = set(_REQUEST_CALL.findall(source))
+    workflow = (_CLIENT_PACKAGE / "_workflow_execution.py").read_text()
+    routes.update(
+        ("POST", path)
+        for path in re.findall(
+            r'(?:_active_read|_read)\(\s*"sparql_read"\s*,\s*"([^"]+)"', workflow
+        )
+    )
+    return routes
 
 
 class ContractRouteCoverage(unittest.TestCase):

@@ -34821,6 +34821,102 @@
         ],
         "type": "object"
       },
+      "WorkflowExecutionCredential": {
+        "description": "Short-lived data-plane authority for one validated workflow turn attempt.\nThe bearer is distinct from the original workflow control credential and\ncontains no raw turn lease secret. Do not persist it in workflow state or\ncheckpoints. Every execution still freshly validates the live lease.",
+        "properties": {
+          "attempt": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expires_at_ms": {
+            "description": "Unix milliseconds; at most the current lease deadline and 60 seconds\nafter issue. Refresh uses the original control client and lease request.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "graph_epoch": {
+            "description": "Exact main-branch incarnation; send as expected_graph_epoch with reads.",
+            "type": "string"
+          },
+          "graph_id": {
+            "type": "string"
+          },
+          "issued_at_ms": {
+            "description": "Server issue time. Together with expiry this provides a clock-independent\nlifetime; optional when decoding responses from older servers.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "operations": {
+            "description": "Exactly one explicitly requested operation; no general read/write grant.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowExecutionOperation"
+            },
+            "type": "array"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "turn": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at_ms",
+          "graph_id",
+          "graph_epoch",
+          "workflow_id",
+          "turn",
+          "attempt",
+          "run_id",
+          "operations"
+        ],
+        "type": "object"
+      },
+      "WorkflowExecutionCredentialRequest": {
+        "additionalProperties": false,
+        "description": "Issue or refresh one operation credential using the original control bearer.\nOmitted operation preserves the SELECT/ASK contract. This is deliberately\ndistinct from heartbeat/checkpoint lease requests.",
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/WorkflowExecutionOperation"
+          },
+          "token": {
+            "type": "string"
+          },
+          "turn": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "turn",
+          "token"
+        ],
+        "type": "object"
+      },
+      "WorkflowExecutionOperation": {
+        "description": "One explicit operation of a workflow execution credential.",
+        "enum": [
+          "sparql_read"
+        ],
+        "type": "string"
+      },
       "WorkflowGate": {
         "description": "Outputs whose confidence is below `below` go to the review inbox instead\nof the graph.",
         "properties": {
@@ -37315,6 +37411,10 @@
       "WorkflowTurnClaimRequest": {
         "additionalProperties": false,
         "properties": {
+          "include_execution_credential": {
+            "description": "Request a short-lived SELECT/ASK execution credential for the claimed\nturn. Disabled servers refuse this opt-in before changing a claim.\nOrdinary workflow control and SDK defaults remain unchanged.",
+            "type": "boolean"
+          },
           "wait_ms": {
             "format": "int64",
             "minimum": 0,
@@ -37773,6 +37873,17 @@
           "effect_prefix": {
             "description": "Stable across attempt retries and recovery; SDK appends the named step key.",
             "type": "string"
+          },
+          "execution_credential": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowExecutionCredential",
+                "description": "Present only for an explicit supported execution opt-in. The engine\nitself leaves this absent; the authenticated server issues it."
+              }
+            ]
           },
           "lease_ms": {
             "format": "int64",
@@ -99393,6 +99504,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation for workflow execution credentials only; it must equal their claimed epoch. A mismatch returns 409 graph_epoch_changed. Ordinary credentials do not support this URL precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -99478,6 +99598,30 @@
               }
             }
           },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Billing quota exceeded; the workflow execution lease remains valid",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "403": {
             "content": {
               "application/json": {
@@ -99535,6 +99679,30 @@
               }
             },
             "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Workflow execution query body exceeds 1 MiB",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -120166,7 +120334,7 @@
             "bearer": []
           }
         ],
-        "summary": "Message workflows: claim_turn",
+        "summary": "Message workflows: claim_turn; include_execution_credential opts into a short-lived SELECT/ASK bearer and is refused before claim mutation when disabled",
         "tags": [
           "system"
         ]
@@ -120466,6 +120634,305 @@
           }
         ],
         "summary": "Message workflows: complete_turn. `usage` (optional): what the turn's model calls used, which its run summary keeps; it is no part of the completion's identity, so a repeat with other usage is the same completion",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/workflows/turns/execution-credential": {
+      "post": {
+        "operationId": "post_v1_workflows_turns_execution_credential",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowExecutionCredentialRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowExecutionCredential"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Issue or refresh a SELECT/ASK credential for the exact live turn attempt. Requires the original control credential and lease token; execution bearers cannot refresh or control workflows.",
         "tags": [
           "system"
         ]

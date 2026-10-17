@@ -9,6 +9,7 @@ responses.
 """
 
 from ._version import __version__ as __version__
+from ._workflow_execution import AsyncWorkflowTurnReader, WorkflowExecutionError, WorkflowTurnReader
 from .client import (
     RESET,
     AsyncLbbClient,
@@ -28,6 +29,9 @@ from .local import LbbCommandError, LbbLocalClient
 
 __all__ = [
     "LbbClient",
+    "WorkflowTurnReader",
+    "AsyncWorkflowTurnReader",
+    "WorkflowExecutionError",
     "AsyncLbbClient",
     "LbbError",
     "LbbCapabilityError",

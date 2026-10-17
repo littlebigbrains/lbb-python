@@ -62,6 +62,7 @@ from ._client_base import (
     _trial_timeout,
     _write_chunks,
 )
+from ._workflow_execution import WorkflowTurnReader
 from .integrations import IntegrationsNamespace
 
 ImportItem = Mapping[str, Any] | str | bytes
@@ -535,6 +536,14 @@ class LbbClient(_BaseLbbClient):
             if deadline is not None and time.monotonic() >= deadline:
                 raise TimeoutError(f"timed out waiting for durable import job {job_id}")
             time.sleep(poll_interval)
+
+    def workflow_turn_reader(self, task: Body) -> WorkflowTurnReader:
+        """Bind SELECT/ASK to a task claimed with include_execution_credential.
+
+        Requires its issued execution credential; never falls back to this
+        client's API key for reads. Keep heartbeats/checkpoints on this client.
+        """
+        return WorkflowTurnReader(self, task)
 
     def raw_request(
         self,

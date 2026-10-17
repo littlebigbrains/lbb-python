@@ -360,3 +360,37 @@ a non-null `next_cursor`; continue until that cursor is null.
 
 These helpers do not move graph ownership, grant writes, or create an atomic
 cross-graph snapshot. See [How to model your app](https://docs.littlebigbrain.com/start/model-your-app/).
+
+
+## Optional workflow execution reads
+
+On a server with workflow execution and batch admission enabled, claim an
+ordinary workflow turn with `include_execution_credential=True`. Bind its returned
+task to the same control client:
+
+```python
+# task is the task from an authenticated claim with include_execution_credential.
+reader = client.workflow_turn_reader(task)
+try:
+    answer = reader.sparql(
+        "SELECT ?s WHERE { ?s a <urn:Document> } LIMIT 20", timeout=10.0
+    )
+    # Acknowledge a small materialized result through the workflow checkpoint API.
+finally:
+    reader.close()
+```
+
+`AsyncLbbClient` provides the same helper with `await reader.sparql(...)`.
+Heartbeat, checkpoint and complete through the original control API; the reader
+does not maintain the lease. Close it on lease loss. Reads refresh before first
+use and whenever remaining lifetime is at most the next read's timeout (capped
+at 30 seconds) plus one second. Monotonic elapsed time from refresh request start
+accounts for transport delay without comparing server time to the worker clock.
+A shorter lease still caps the query timeout.
+
+The server must return `issued_at_ms` and `expires_at_ms`. Missing lifetime raises
+`RuntimeError` with an upgrade message; elapsed lifetime raises `TimeoutError`.
+These are transient/compatibility failures, not `WorkflowExecutionError` argument
+or identity refusals. No query is sent in either case and no query automatically
+replays on 401/403 or uses the control bearer. Acknowledged materialized checkpoints
+supply stable retry inputs; this helper does not pin a snapshot or add file reads.
