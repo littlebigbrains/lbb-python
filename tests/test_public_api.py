@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 import lbb
 import lbb.client
+from lbb import models
 
 
 def test_public_exports_are_explicit_and_stable() -> None:
@@ -56,3 +57,17 @@ def test_client_module_keeps_the_documented_import_surface() -> None:
     assert lbb.client.QueryAskStreamEvent is lbb.QueryAskStreamEvent
     assert lbb.client.RESET is lbb.RESET
     assert repr(lbb.RESET) == "RESET"
+
+
+def test_feedback_kind_enum_names_survive_new_application_schemas() -> None:
+    # These generated names were already importable before application grants.
+    # A new anonymous `kind` enum must not silently change their meanings.
+    existing = (
+        (models.Kind14, "entity", models.SearchFeedbackTarget1),
+        (models.Kind15, "assertion", models.SearchFeedbackTarget2),
+        (models.Kind16, "observation", models.SearchFeedbackTarget3),
+        (models.Kind17, "concept", models.SearchFeedbackTarget4),
+    )
+    for enum_type, value, target in existing:
+        assert enum_type(value).value == value
+        assert target.model_fields["kind"].annotation is enum_type

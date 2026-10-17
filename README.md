@@ -22,12 +22,12 @@ The package is installed as `littlebigbrain` and imported as `lbb`.
 
 ## Load facts and run a query
 
-Create a stack in the [console](https://cloud.littlebigbrain.com) and open
-**Connect**. Copy its complete endpoint and a stack API key:
+Create an environment in the [console](https://cloud.littlebigbrain.com) and open
+**Connect**. Copy its complete endpoint and an environment API key:
 
 ```sh
-export LBB_URL="https://<your-complete-stack-host>"
-export LBB_API_KEY="<your-stack-api-key>"
+export LBB_URL="https://<your-complete-environment-host>"
+export LBB_API_KEY="<your-environment-api-key>"
 ```
 
 This example creates a graph named `quickstart` on its first write. It stores
@@ -231,7 +231,7 @@ with `query.sparql(..., as_of_commit_seq=...)`.
 `reason_activity`, `decide_activity` and `embed_activity` call LBB's own
 models: the reasoning model answers a prompt with JSON that follows a
 schema, the decision model answers choice questions about a state, and the
-embedding model embeds texts. The calls count against the stack's model
+embedding model embeds texts. The calls count against the environment's model
 budget for workflows and appear in the call log under `label`. Pass the
 same `effect_id` when a step repeats, and the server returns the first
 answer (`cached: True`) at no cost.
@@ -271,7 +271,7 @@ a graph; a graph first written through RDF import does not accept
 SharePoint or Google Drive to a graph of their own. Its routes are on the
 integrations API, `https://api.littlebigbrain.com` by default
 (`integrations_url`). They take the
-same stack API key. An operator turns on developer access per stack; ask us
+same environment API key. An operator turns on developer access per environment; ask us
 first. `AsyncLbbClient` has the same methods, with `await`.
 
 ```python
@@ -333,3 +333,30 @@ python3 -m venv .venv
 ## License
 
 [Apache-2.0](LICENSE).
+
+## Environment scope
+
+An environment API key already selects its environment. For an account-scoped
+session token, pass `environment="production"` to the client. This uses the
+existing `stack` query parameter and does not change the endpoint or grant access.
+
+## Optional application catalog and reference reads
+
+Start with a graph and an environment API key. Your backend chooses the graph
+for an authorized user; the environment key can access every graph in its environment.
+Catalog ownership and short-lived delegated read tokens are optional. They require
+separately enabled `application_catalog_v1` and `scoped_graph_reads_v1` support.
+The `reference_dataset_reads_v1` capability adds explicit SELECT/ASK reads over one
+primary graph and up to four authorized reference graphs in the same environment.
+Capabilities describe support, not whether a deployment enabled the feature.
+
+Use `client.catalog` to create namespaces, adopt an existing graph at its exact
+`expected_graph_epoch`, page membership, and inspect or repair pending operations.
+Use `client.access.create_read_token` and `revoke_token` to manage delegated reads.
+`client.sparql_dataset` takes the primary epoch and explicit references; its `sources`
+vector identifies the independently pinned versions. Keep epochs as decimal strings.
+Async clients expose the same helpers with `await`. Catalog pages can be empty with
+a non-null `next_cursor`; continue until that cursor is null.
+
+These helpers do not move graph ownership, grant writes, or create an atomic
+cross-graph snapshot. See [How to model your app](https://docs.littlebigbrain.com/start/model-your-app/).
