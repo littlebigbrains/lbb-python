@@ -117,3 +117,34 @@ def test_catalog_recovery_and_reference_dataset_keep_exact_selection() -> None:
             assert await client.sparql_dataset(body) == reply
 
     asyncio.run(run())
+
+
+def test_saved_dataset_views_preserve_exact_epochs_in_sync_and_async_clients() -> None:
+    seen: list[httpx.Request] = []
+    definition = {"primary_graph_id": "project", "expected_graph_epoch": "18446744073709551615", "references": []}
+    revision = "a" * 64
+    reply = {"revision": revision, "definition": definition}
+    body = {"query": "ASK {}", "expected_graph_epoch": "18446744073709551615", "references": [], "view_revision": revision}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=reply)
+
+    with LbbClient(base_url="https://example.test", graph="project", transport=httpx.MockTransport(handle)) as client:
+        assert client.save_dataset_view(definition) == reply
+        assert client.get_dataset_view(revision) == reply
+        client.sparql_dataset(body)
+
+    async def run() -> None:
+        async with AsyncLbbClient(base_url="https://example.test", graph="project", transport=httpx.MockTransport(handle)) as client:
+            assert await client.save_dataset_view(definition) == reply
+            assert await client.get_dataset_view(revision) == reply
+            await client.sparql_dataset(body)
+
+    asyncio.run(run())
+    for offset in (0, 3):
+        assert seen[offset].url.path == "/v1/catalog/views"
+        assert json.loads(seen[offset].content) == definition
+        assert seen[offset + 1].url.params["revision"] == revision
+        assert json.loads(seen[offset + 2].content) == body
+        assert seen[offset + 2].url.params["graph"] == "project"

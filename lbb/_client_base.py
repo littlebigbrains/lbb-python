@@ -2219,6 +2219,17 @@ class _BaseLbbClient(_StarterWorkflowMethods):
             models.SparqlSelectResponse, "POST", "/v1/query/sparql", body=body
         )
 
+    def save_dataset_view(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+        """Publish an immutable source selection as an environment administrator.
+
+        The view grants no source access. Async clients return an awaitable.
+        """
+        return self._request("POST", "/v1/catalog/views", body=body, options=options)
+
+    def get_dataset_view(self, revision: str, *, options: RequestOptions | None = None) -> Any:
+        """Read an immutable saved source selection as an environment administrator."""
+        return self._request("GET", "/v1/catalog/view", params={"revision": revision}, options=options)
+
     def sparql_dataset(self, body: Body, *, options: RequestOptions | None = None) -> Any:
         """Query exact primary/reference epochs; return results and source versions.
 

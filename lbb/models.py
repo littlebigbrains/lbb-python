@@ -5727,6 +5727,20 @@ class RowPage(BaseModel):
     total: Annotated[int, Field(ge=0)]
 
 
+class SavedDatasetViewDefinition(BaseModel):
+    """
+    Optional reusable source selection. Names are query aliases, never grants.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    as_of_commit_seq: CommitSeq | None = None
+    expected_graph_epoch: str
+    primary_graph_id: str
+    references: list[ReferenceDatasetSource]
+
+
 class SchemaAuditResult(BaseModel):
     component: str
     details: Annotated[
@@ -13499,9 +13513,15 @@ class ReferenceDatasetRequest(BaseModel):
     references: Annotated[
         list[ReferenceDatasetSource],
         Field(
-            description='At most four reference graphs in the initial HTTP contract.'
+            description='At most four references; use an empty array with a saved immutable view.'
         ),
     ]
+    view_revision: Annotated[
+        str | None,
+        Field(
+            description='Optional immutable dataset definition. It grants no source access.'
+        ),
+    ] = None
 
 
 class ReferenceDatasetResponse(BaseModel):
@@ -13603,6 +13623,14 @@ class RoutingIndexRef(BaseModel):
     object: RoutingObject
     prefix: str
     value_bytes: Annotated[int, Field(ge=0)]
+
+
+class SavedDatasetView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    definition: SavedDatasetViewDefinition
+    revision: str
 
 
 class SchemaAuditReport(BaseModel):
