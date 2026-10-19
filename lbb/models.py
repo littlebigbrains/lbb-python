@@ -2560,6 +2560,17 @@ class GraphSummary(BaseModel):
     graph_id: str
 
 
+class GraphWorkflowCleanup(BaseModel):
+    job_ids: list[str]
+    pending: Annotated[
+        bool,
+        Field(
+            description='At least one exact source-cleanup job has not succeeded. This does not\nassert physical closure of every late immutable payload publication.'
+        ),
+    ]
+    retains_source_terminals: bool
+
+
 class GroundabilityRecommendation(Enum):
     narrow_finetune = 'narrow+finetune'
     narrow = 'narrow'
@@ -9760,7 +9771,7 @@ class WorkflowTurnRun(BaseModel):
     id: Annotated[
         str,
         Field(
-            description="The run summary's id: `<started_at_ms:013>-<identity>-<turn>`. An\nactivity call names it in `workflow.run_id`."
+            description="The run summary's id: `<started_at_ms:013>-<identity>-<turn>`, with\n`~<64-hex-incarnation>` for a selected source lifetime. Activity calls\nuse this exact value in `workflow.run_id`."
         ),
     ]
     phases: Annotated[
@@ -11418,6 +11429,7 @@ class GraphDeleteResponse(BaseModel):
             description="The background passes that reclaim the deleted graph's storage, one\nper branch. Empty when reclaim is turned off on the server."
         ),
     ] = None
+    workflow_cleanup: GraphWorkflowCleanup | None = None
 
 
 class GraphEdgeRow(BaseModel):
@@ -15169,7 +15181,7 @@ class WorkflowRunSummary(BaseModel):
     id: Annotated[
         str,
         Field(
-            description='`<started_at_ms:013>-<identity>-<turn>` for an engine run: sortable\nby time and unique, since an identity runs one turn at a time. A\nstep of the Rust path keeps its own id,\n`<started_at_ms:013>-<node>-<seq:06>`.'
+            description='`<started_at_ms:013>-<identity>-<turn>` for an engine run: sortable\nby time. Selected source lifetimes append `~<64-hex-incarnation>`;\nuse the exact ID returned by the claimed task. A step of the Rust path keeps its own id,\n`<started_at_ms:013>-<node>-<seq:06>`.'
         ),
     ]
     identity: Annotated[
