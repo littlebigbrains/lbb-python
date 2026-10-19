@@ -11473,6 +11473,17 @@
               "$ref": "#/components/schemas/GraphReclaimSchedule"
             },
             "type": "array"
+          },
+          "workflow_cleanup": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GraphWorkflowCleanup",
+                "description": "Selected-profile workflow payload cleanup runs on maintenance workers.\nIts source-key terminals remain as explicit anti-resurrection metadata."
+              }
+            ]
           }
         },
         "required": [
@@ -12810,6 +12821,29 @@
           "object_gets",
           "full_text_loaded",
           "embedding_spaces_loaded"
+        ],
+        "type": "object"
+      },
+      "GraphWorkflowCleanup": {
+        "properties": {
+          "job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "pending": {
+            "description": "At least one exact source-cleanup job has not succeeded. This does not\nassert physical closure of every late immutable payload publication.",
+            "type": "boolean"
+          },
+          "retains_source_terminals": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pending",
+          "job_ids",
+          "retains_source_terminals"
         ],
         "type": "object"
       },
@@ -36588,7 +36622,7 @@
             ]
           },
           "id": {
-            "description": "`<started_at_ms:013>-<identity>-<turn>` for an engine run: sortable\nby time and unique, since an identity runs one turn at a time. A\nstep of the Rust path keeps its own id,\n`<started_at_ms:013>-<node>-<seq:06>`.",
+            "description": "`<started_at_ms:013>-<identity>-<turn>` for an engine run: sortable\nby time. Selected source lifetimes append `~<64-hex-incarnation>`;\nuse the exact ID returned by the claimed task. A step of the Rust path keeps its own id,\n`<started_at_ms:013>-<node>-<seq:06>`.",
             "type": "string"
           },
           "identity": {
@@ -37808,7 +37842,7 @@
             ]
           },
           "id": {
-            "description": "The run summary's id: `<started_at_ms:013>-<identity>-<turn>`. An\nactivity call names it in `workflow.run_id`.",
+            "description": "The run summary's id: `<started_at_ms:013>-<identity>-<turn>`, with\n`~<64-hex-incarnation>` for a selected source lifetime. Activity calls\nuse this exact value in `workflow.run_id`.",
             "type": "string"
           },
           "phases": {
