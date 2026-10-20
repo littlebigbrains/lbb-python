@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from ._client_base import Body, RequestOptions, _BaseLbbClient
+
+
+CatalogUsageProfile = Literal["registered-request-resource-v1", "raw-resource-receipts-v1"]
 
 
 class CatalogNamespace:
@@ -50,6 +53,32 @@ class CatalogNamespace:
             "GET",
             "/v1/catalog/namespaces",
             params={"cursor": cursor, "limit": limit, "parent_id": parent_id},
+            options=options,
+        )
+
+    def usage(
+        self,
+        *,
+        owner_id: str,
+        owner_incarnation: str,
+        period_start_micros: int,
+        profile: CatalogUsageProfile | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """One owner page; async clients return an awaitable. Never add profiles together."""
+        return self._client._request(
+            "GET",
+            "/v1/catalog/usage",
+            params={
+                "owner_id": owner_id,
+                "owner_incarnation": owner_incarnation,
+                "period_start_micros": period_start_micros,
+                "profile": profile,
+                "cursor": cursor,
+                "limit": limit,
+            },
             options=options,
         )
 
