@@ -395,6 +395,13 @@
             "description": "Advisory required flag recorded on the field (not enforced on commit).",
             "type": "boolean"
           },
+          "unit": {
+            "description": "Optional unit of an `i64` or `f64` field: the symbol of a known\nunit (`mm`, `cm`, `dm`, `m`, `km`, `mm2`, `cm2`, `dm2`, `m2`, `ml`,\n`cl`, `dl`, `l`, `cm3`, `dm3`, `m3`, `mg`, `g`, `kg`, `t`, `w`,\n`kw`, `wh`, `kwh`, `s`, `min`, `h`). Metadata: commits are not\nconverted. Writers that read text convert to it. Use\n`set_property_unit` to change it on an existing field.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "value_type": {
             "description": "`bool` | `i64` | `f64` | `date_time` | `keyword` | `text` (default) |\n`bytes`. The commit path rejects values whose type doesn't match.",
             "type": [
@@ -19508,6 +19515,7 @@
             "rename_entity_type": "#/components/schemas/RenameEntityTypeOp",
             "rename_relation": "#/components/schemas/RenameRelationOp",
             "set_property_constraint": "#/components/schemas/SetPropertyConstraintOp",
+            "set_property_unit": "#/components/schemas/SetPropertyUnitOp",
             "set_relation_cardinality": "#/components/schemas/SetRelationCardinalityOp",
             "set_relation_inverse": "#/components/schemas/SetRelationInverseOp",
             "widen_relation": "#/components/schemas/WidenRelationOp"
@@ -19532,6 +19540,9 @@
           },
           {
             "$ref": "#/components/schemas/SetPropertyConstraintOp"
+          },
+          {
+            "$ref": "#/components/schemas/SetPropertyUnitOp"
           },
           {
             "$ref": "#/components/schemas/RenameEntityTypeOp"
@@ -19661,6 +19672,13 @@
           },
           "required": {
             "type": "boolean"
+          },
+          "unit": {
+            "description": "The unit an `i64` or `f64` field holds its numbers in (`mm`, `cm`,\n`kg`, `m2`, …), absent when none is declared. Writers that read text,\nsuch as `values.extract`, convert a number to this unit.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "value_type": {
             "description": "Lowercase value type: bool | i64 | f64 | datetime | keyword | text |\nbytes | vector_f32 | keyword_set | i64_set. The `*_set` types hold a\nsorted, deduplicated member set filterable by membership\n(`overlaps`/`contains_all`/`not_overlaps`).",
@@ -29262,6 +29280,33 @@
           "property": {
             "description": "Name of the existing property field to constrain.",
             "type": "string"
+          }
+        },
+        "required": [
+          "property",
+          "op"
+        ],
+        "type": "object"
+      },
+      "SetPropertyUnitOp": {
+        "description": "Set (or clear, with no `unit`) the unit of an **existing** `i64` or\n`f64` property field. Metadata only: stored values are not converted,\nso change a unit only to state what the values already are. Errors\non an unknown field, a field that is not a number, or a unit LBB does\nnot know. Bumps the ontology version.",
+        "properties": {
+          "op": {
+            "enum": [
+              "set_property_unit"
+            ],
+            "type": "string"
+          },
+          "property": {
+            "description": "Name of the existing property field.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "The unit's symbol (see `add_property`); absent clears it.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [

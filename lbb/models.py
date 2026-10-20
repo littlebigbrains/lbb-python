@@ -190,6 +190,12 @@ class AddPropertyOp(BaseModel):
             description='Advisory required flag recorded on the field (not enforced on commit).'
         ),
     ] = None
+    unit: Annotated[
+        str | None,
+        Field(
+            description='Optional unit of an `i64` or `f64` field: the symbol of a known\nunit (`mm`, `cm`, `dm`, `m`, `km`, `mm2`, `cm2`, `dm2`, `m2`, `ml`,\n`cl`, `dl`, `l`, `cm3`, `dm3`, `m3`, `mg`, `g`, `kg`, `t`, `w`,\n`kw`, `wh`, `kwh`, `s`, `min`, `h`). Metadata: commits are not\nconverted. Writers that read text convert to it. Use\n`set_property_unit` to change it on an existing field.'
+        ),
+    ] = None
     value_type: Annotated[
         str | None,
         Field(
@@ -4069,6 +4075,12 @@ class OntologyPropertyView(BaseModel):
     ] = None
     name: str
     required: bool
+    unit: Annotated[
+        str | None,
+        Field(
+            description='The unit an `i64` or `f64` field holds its numbers in (`mm`, `cm`,\n`kg`, `m2`, …), absent when none is declared. Writers that read text,\nsuch as `values.extract`, convert a number to this unit.'
+        ),
+    ] = None
     value_type: Annotated[
         str,
         Field(
@@ -6841,6 +6853,27 @@ class SetPropertyConstraintOp(BaseModel):
 
 
 class Op32(Enum):
+    set_property_unit = 'set_property_unit'
+
+
+class SetPropertyUnitOp(BaseModel):
+    """
+    Set (or clear, with no `unit`) the unit of an **existing** `i64` or
+    `f64` property field. Metadata only: stored values are not converted,
+    so change a unit only to state what the values already are. Errors
+    on an unknown field, a field that is not a number, or a unit LBB does
+    not know. Bumps the ontology version.
+    """
+
+    op: Literal['set_property_unit']
+    property: Annotated[str, Field(description='Name of the existing property field.')]
+    unit: Annotated[
+        str | None,
+        Field(description="The unit's symbol (see `add_property`); absent clears it."),
+    ] = None
+
+
+class Op33(Enum):
     set_relation_cardinality = 'set_relation_cardinality'
 
 
@@ -6857,7 +6890,7 @@ class SetRelationCardinalityOp(BaseModel):
     relation: str
 
 
-class Op33(Enum):
+class Op34(Enum):
     set_relation_inverse = 'set_relation_inverse'
 
 
@@ -8959,7 +8992,7 @@ class WalCompactResponse(BaseModel):
     snapshot: SnapshotView
 
 
-class Op34(Enum):
+class Op35(Enum):
     widen_relation = 'widen_relation'
 
 
@@ -12695,6 +12728,7 @@ class OntologyEvolveRequest(BaseModel):
             | AddRelationOp
             | AddPropertyOp
             | SetPropertyConstraintOp
+            | SetPropertyUnitOp
             | RenameEntityTypeOp
             | RenameRelationOp
             | SetRelationInverseOp
@@ -12796,6 +12830,7 @@ class OntologyStarterDocument(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
@@ -16138,6 +16173,7 @@ class FitProposal(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
@@ -17000,6 +17036,7 @@ class OntologyChangeSuggestionSummary(BaseModel):
             | AddRelationOp
             | AddPropertyOp
             | SetPropertyConstraintOp
+            | SetPropertyUnitOp
             | RenameEntityTypeOp
             | RenameRelationOp
             | SetRelationInverseOp
@@ -17076,6 +17113,7 @@ class OntologyDraft(BaseModel):
             | AddRelationOp
             | AddPropertyOp
             | SetPropertyConstraintOp
+            | SetPropertyUnitOp
             | RenameEntityTypeOp
             | RenameRelationOp
             | SetRelationInverseOp
@@ -17131,6 +17169,7 @@ class OntologyStarterApplyResponse(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
@@ -17186,6 +17225,7 @@ class OntologyStarterDetail(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
@@ -17971,6 +18011,7 @@ class CdcSourceRoutingPrepareRequest(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
@@ -18823,6 +18864,7 @@ class OntologyChangeSuggestion(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
@@ -18889,6 +18931,7 @@ class OntologyChangeSuggestion(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
@@ -18941,6 +18984,7 @@ class OntologyChangeSuggestionAcceptRequest(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
@@ -18994,6 +19038,7 @@ class OntologyChangeSuggestionCreateRequest(BaseModel):
                 | AddRelationOp
                 | AddPropertyOp
                 | SetPropertyConstraintOp
+                | SetPropertyUnitOp
                 | RenameEntityTypeOp
                 | RenameRelationOp
                 | SetRelationInverseOp
