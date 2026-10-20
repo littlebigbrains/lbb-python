@@ -619,6 +619,36 @@ class CatalogPendingOperation(BaseModel):
     target: str
 
 
+class CatalogRawUsageProvenance(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    event_timestamp_micros: int
+    receipt_id: str
+    source_evidence: Annotated[
+        str,
+        Field(
+            description='Opaque content evidence; never an object key or native ETag.'
+        ),
+    ]
+
+
+class CatalogUsageTotals(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    cpu_nanos: Annotated[
+        str,
+        Field(
+            description='Exact unsigned integer decimal string; never a floating-point estimate.'
+        ),
+    ]
+    invalid: bool
+    memory_byte_nanos: str
+    operation_count: Annotated[int, Field(ge=0)]
+    work_byte_nanos: str
+
+
 class CdcApplyClaimRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -10114,6 +10144,91 @@ class CatalogOperationPage(BaseModel):
     items: list[CatalogPendingOperation]
     next_cursor: str | None = None
     scanned: Annotated[int, Field(ge=0)]
+
+
+class CatalogRawUsagePage(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    complete_through_micros: Annotated[
+        int | None, Field(description='Always null for raw historical projection.')
+    ] = None
+    end_micros: int
+    gaps: list[str]
+    matching_executions: Annotated[int, Field(ge=0)]
+    next_cursor: str | None = None
+    page_totals: CatalogUsageTotals
+    profile: Annotated[
+        str,
+        Field(
+            description='raw-resource-receipts-v1; never add this to registered-profile totals.'
+        ),
+    ]
+    provenance: list[CatalogRawUsageProvenance]
+    scanned: Annotated[int, Field(ge=0)]
+    start_micros: int
+    status: Annotated[
+        str,
+        Field(
+            description='Always partial or unavailable; discovery cannot prove all traffic.'
+        ),
+    ]
+    time_basis: Annotated[
+        str, Field(description='execution_completion_time; pages select one UTC day.')
+    ]
+
+
+class CatalogRegisteredUsagePage(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    admission_count: Annotated[int, Field(ge=0)]
+    complete_through_micros: Annotated[
+        int | None,
+        Field(
+            description="Selected interval's end when its frozen denominator is fully proven.\nThis is not a global or contiguous historical watermark."
+        ),
+    ] = None
+    completion_evidence: str | None = None
+    end_micros: int
+    gaps: list[str]
+    historical_projection_status: str
+    matching_executions: Annotated[int, Field(ge=0)]
+    next_cursor: str | None = None
+    page_totals: Annotated[
+        CatalogUsageTotals,
+        Field(
+            description='Totals for this page, not the entire interval. Follow every next_cursor.'
+        ),
+    ]
+    profile: Annotated[
+        str,
+        Field(
+            description='registered-request-resource-v1; excludes raw historical and other lanes.'
+        ),
+    ]
+    scanned: Annotated[int, Field(ge=0)]
+    start_micros: int
+    status: Annotated[
+        str,
+        Field(
+            description='unavailable, open, closing, partial or complete for this interval only.'
+        ),
+    ]
+    time_basis: Annotated[
+        str,
+        Field(description='admission_time; late outcomes retain the original hour.'),
+    ]
+    totals_scope: Annotated[
+        str,
+        Field(
+            description='returned_owner_index_page: native inventory is not a total-completeness proof.'
+        ),
+    ]
+
+
+class CatalogUsagePage(RootModel[CatalogRegisteredUsagePage | CatalogRawUsagePage]):
+    root: CatalogRegisteredUsagePage | CatalogRawUsagePage
 
 
 class CdcApplyNext(BaseModel):

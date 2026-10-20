@@ -12,6 +12,7 @@ from lbb import models
 def test_public_exports_are_explicit_and_stable() -> None:
     assert lbb.__all__ == [
         "LbbClient",
+        "CatalogUsageProfile",
         "WorkflowTurnReader",
         "AsyncWorkflowTurnReader",
         "WorkflowExecutionError",

@@ -73,12 +73,20 @@ def test_async_catalog_and_tokens_use_the_same_contract() -> None:
 
 def test_catalog_recovery_and_reference_dataset_keep_exact_selection() -> None:
     seen: list[httpx.Request] = []
-    reply = {"results": "{}", "sources": [{"graph_epoch": "18446744073709551615"}], "charged_read_bytes": 128}
+    reply = {
+        "results": "{}",
+        "sources": [{"graph_epoch": "18446744073709551615"}],
+        "charged_read_bytes": 128,
+    }
     body = {
         "query": "ASK {}",
         "expected_graph_epoch": "18446744073709551615",
         "references": [
-            {"name": "urn:standards", "graph_id": "standards", "expected_graph_epoch": "9007199254740993"}
+            {
+                "name": "urn:standards",
+                "graph_id": "standards",
+                "expected_graph_epoch": "9007199254740993",
+            }
         ],
     }
 
@@ -119,24 +127,161 @@ def test_catalog_recovery_and_reference_dataset_keep_exact_selection() -> None:
     asyncio.run(run())
 
 
+def test_owner_usage_preserves_profile_exact_timestamp_and_continuation_in_both_transports() -> (
+    None
+):
+    seen: list[httpx.Request] = []
+    cpu = "340282366920938463463374607431768211455"
+    reply = {
+        "profile": "raw-resource-receipts-v1",
+        "status": "partial",
+        "page_totals": {"cpu_nanos": cpu},
+        "next_cursor": "opaque+/=",
+        "complete_through_micros": None,
+    }
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        assert request.method == "GET"
+        assert request.content == b""
+        return httpx.Response(200, json=reply)
+
+    with LbbClient(
+        base_url="https://example.test",
+        environment="prod",
+        api_key="environment-key",
+        transport=httpx.MockTransport(handle),
+    ) as client:
+        first = client.catalog.usage(
+            owner_id="ns_customer",
+            owner_incarnation="inc_original",
+            period_start_micros=1800000000000000,
+            limit=1,
+        )
+        assert first["page_totals"]["cpu_nanos"] == cpu
+
+    async def run() -> None:
+        async with AsyncLbbClient(
+            base_url="https://example.test",
+            environment="prod",
+            api_key="environment-key",
+            transport=httpx.MockTransport(handle),
+        ) as client:
+            assert (
+                await client.catalog.usage(
+                    owner_id="ns_customer",
+                    owner_incarnation="inc_original",
+                    period_start_micros=9007200000000000,
+                    profile="raw-resource-receipts-v1",
+                    cursor=first["next_cursor"],
+                    limit=2,
+                )
+                == reply
+            )
+
+    asyncio.run(run())
+    assert "profile" not in seen[0].url.params
+    assert seen[0].url.params["period_start_micros"] == "1800000000000000"
+    assert seen[1].url.params["period_start_micros"] == "9007200000000000"
+    assert seen[1].url.params["profile"] == "raw-resource-receipts-v1"
+    assert seen[1].url.params["cursor"] == "opaque+/="
+    assert seen[1].url.params["limit"] == "2"
+    for request in seen:
+        assert request.url.path == "/v1/catalog/usage"
+        assert request.url.params["owner_id"] == "ns_customer"
+        assert request.url.params["owner_incarnation"] == "inc_original"
+        assert request.url.params["stack"] == "prod"
+        assert request.headers["authorization"] == "Bearer environment-key"
+
+
+def test_completed_execution_reporting_handoff_refusal_is_not_replayed_by_either_transport() -> (
+    None
+):
+    from lbb import LbbError
+
+    seen: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        assert request.method == "POST"
+        assert request.url.path == "/v1/query/dataset"
+        return httpx.Response(
+            503,
+            json={
+                "error": {
+                    "code": "application_usage_handoff_unconfirmed",
+                    "retryable": False,
+                    "message": "Execution completed; check operation state before retry.",
+                }
+            },
+        )
+
+    body = {
+        "query": "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1",
+        "expected_graph_epoch": "0",
+        "references": [],
+    }
+    with LbbClient(
+        base_url="https://example.test", transport=httpx.MockTransport(handle)
+    ) as client:
+        try:
+            client.sparql_dataset(body)
+        except LbbError as error:
+            assert error.status_code == 503
+            assert error.code == "application_usage_handoff_unconfirmed"
+            assert error.retryable is False
+        else:
+            raise AssertionError("handoff refusal must be surfaced")
+    assert len(seen) == 1
+
+    async def run() -> None:
+        async with AsyncLbbClient(
+            base_url="https://example.test", transport=httpx.MockTransport(handle)
+        ) as client:
+            try:
+                await client.sparql_dataset(body)
+            except LbbError as error:
+                assert error.status_code == 503
+                assert error.code == "application_usage_handoff_unconfirmed"
+                assert error.retryable is False
+            else:
+                raise AssertionError("handoff refusal must be surfaced")
+
+    asyncio.run(run())
+    assert len(seen) == 2, "each original request must execute once without automatic replay"
+
+
 def test_saved_dataset_views_preserve_exact_epochs_in_sync_and_async_clients() -> None:
     seen: list[httpx.Request] = []
-    definition = {"primary_graph_id": "project", "expected_graph_epoch": "18446744073709551615", "references": []}
+    definition = {
+        "primary_graph_id": "project",
+        "expected_graph_epoch": "18446744073709551615",
+        "references": [],
+    }
     revision = "a" * 64
     reply = {"revision": revision, "definition": definition}
-    body = {"query": "ASK {}", "expected_graph_epoch": "18446744073709551615", "references": [], "view_revision": revision}
+    body = {
+        "query": "ASK {}",
+        "expected_graph_epoch": "18446744073709551615",
+        "references": [],
+        "view_revision": revision,
+    }
 
     def handle(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         return httpx.Response(200, json=reply)
 
-    with LbbClient(base_url="https://example.test", graph="project", transport=httpx.MockTransport(handle)) as client:
+    with LbbClient(
+        base_url="https://example.test", graph="project", transport=httpx.MockTransport(handle)
+    ) as client:
         assert client.save_dataset_view(definition) == reply
         assert client.get_dataset_view(revision) == reply
         client.sparql_dataset(body)
 
     async def run() -> None:
-        async with AsyncLbbClient(base_url="https://example.test", graph="project", transport=httpx.MockTransport(handle)) as client:
+        async with AsyncLbbClient(
+            base_url="https://example.test", graph="project", transport=httpx.MockTransport(handle)
+        ) as client:
             assert await client.save_dataset_view(definition) == reply
             assert await client.get_dataset_view(revision) == reply
             await client.sparql_dataset(body)

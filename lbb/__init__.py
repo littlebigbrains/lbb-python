@@ -8,6 +8,7 @@ methods also expose ``*_model`` and ``*_page`` helpers for validated Pydantic
 responses.
 """
 
+from ._catalog import CatalogUsageProfile
 from ._version import __version__ as __version__
 from ._workflow_execution import AsyncWorkflowTurnReader, WorkflowExecutionError, WorkflowTurnReader
 from .client import (
@@ -29,6 +30,7 @@ from .local import LbbCommandError, LbbLocalClient
 
 __all__ = [
     "LbbClient",
+    "CatalogUsageProfile",
     "WorkflowTurnReader",
     "AsyncWorkflowTurnReader",
     "WorkflowExecutionError",

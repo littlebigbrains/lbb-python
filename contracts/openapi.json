@@ -1928,6 +1928,236 @@
         ],
         "type": "object"
       },
+      "CatalogRawUsagePage": {
+        "additionalProperties": false,
+        "properties": {
+          "complete_through_micros": {
+            "description": "Always null for raw historical projection.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "end_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "matching_executions": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page_totals": {
+            "$ref": "#/components/schemas/CatalogUsageTotals"
+          },
+          "profile": {
+            "description": "raw-resource-receipts-v1; never add this to registered-profile totals.",
+            "type": "string"
+          },
+          "provenance": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogRawUsageProvenance"
+            },
+            "type": "array"
+          },
+          "scanned": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "start_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "description": "Always partial or unavailable; discovery cannot prove all traffic.",
+            "type": "string"
+          },
+          "time_basis": {
+            "description": "execution_completion_time; pages select one UTC day.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile",
+          "time_basis",
+          "start_micros",
+          "end_micros",
+          "status",
+          "scanned",
+          "matching_executions",
+          "page_totals",
+          "gaps",
+          "provenance"
+        ],
+        "type": "object"
+      },
+      "CatalogRawUsageProvenance": {
+        "additionalProperties": false,
+        "properties": {
+          "event_timestamp_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "receipt_id": {
+            "type": "string"
+          },
+          "source_evidence": {
+            "description": "Opaque content evidence; never an object key or native ETag.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "source_evidence",
+          "event_timestamp_micros"
+        ],
+        "type": "object"
+      },
+      "CatalogRegisteredUsagePage": {
+        "additionalProperties": false,
+        "properties": {
+          "admission_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "complete_through_micros": {
+            "description": "Selected interval's end when its frozen denominator is fully proven.\nThis is not a global or contiguous historical watermark.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "completion_evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "end_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "historical_projection_status": {
+            "type": "string"
+          },
+          "matching_executions": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page_totals": {
+            "$ref": "#/components/schemas/CatalogUsageTotals",
+            "description": "Totals for this page, not the entire interval. Follow every next_cursor."
+          },
+          "profile": {
+            "description": "registered-request-resource-v1; excludes raw historical and other lanes.",
+            "type": "string"
+          },
+          "scanned": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "start_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "description": "unavailable, open, closing, partial or complete for this interval only.",
+            "type": "string"
+          },
+          "time_basis": {
+            "description": "admission_time; late outcomes retain the original hour.",
+            "type": "string"
+          },
+          "totals_scope": {
+            "description": "returned_owner_index_page: native inventory is not a total-completeness proof.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile",
+          "time_basis",
+          "start_micros",
+          "end_micros",
+          "status",
+          "admission_count",
+          "scanned",
+          "matching_executions",
+          "page_totals",
+          "totals_scope",
+          "gaps",
+          "historical_projection_status"
+        ],
+        "type": "object"
+      },
+      "CatalogUsagePage": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CatalogRegisteredUsagePage"
+          },
+          {
+            "$ref": "#/components/schemas/CatalogRawUsagePage"
+          }
+        ]
+      },
+      "CatalogUsageTotals": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_nanos": {
+            "description": "Exact unsigned integer decimal string; never a floating-point estimate.",
+            "type": "string"
+          },
+          "invalid": {
+            "type": "boolean"
+          },
+          "memory_byte_nanos": {
+            "type": "string"
+          },
+          "operation_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "work_byte_nanos": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_count",
+          "cpu_nanos",
+          "memory_byte_nanos",
+          "work_byte_nanos",
+          "invalid"
+        ],
+        "type": "object"
+      },
       "CdcActivateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -41998,6 +42228,331 @@
         ]
       }
     },
+    "/v1/catalog/usage": {
+      "get": {
+        "operationId": "get_v1_catalog_usage",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required exact catalog namespace ID captured with the operation",
+            "in": "query",
+            "name": "owner_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required exact owner incarnation; names are not identities",
+            "in": "query",
+            "name": "owner_incarnation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required integer UTC hour start for registered profile, or UTC day start for raw profile",
+            "in": "query",
+            "name": "period_start_micros",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "registered-request-resource-v1 (default) or raw-resource-receipts-v1; do not add these domains together",
+            "in": "query",
+            "name": "profile",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque page continuation bound to owner, environment and selected period",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page work bound: registered profile 1..4 (default4), raw profile 1..32 (default16); totals are page totals",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogUsagePage"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Owner reporting page rate limit: application_usage_rate_limited, Retry-After: 1. Per environment burst 8, refill 2 requests/second.",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read bounded owner usage in an explicit evidence domain (environment administrator only)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/v1/catalog/view": {
       "get": {
         "operationId": "get_v1_catalog_view",
@@ -43405,12 +43960,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -45416,12 +45994,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -47156,12 +47757,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -54606,12 +55230,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -56400,12 +57047,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -67365,12 +68035,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -69460,12 +70153,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -72149,12 +72865,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -73427,12 +74166,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -75702,12 +76464,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -76001,12 +76786,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -89208,12 +90016,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -90960,12 +91791,35 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  },
+                  "reporting_handoff": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_handoff_unconfirmed",
+                        "message": "The request ran, but its usage reporting handoff is unconfirmed. Check the operation state before retrying; repeating it may execute and charge again.",
+                        "retryable": false,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -98654,12 +99508,25 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -100083,12 +100950,25 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
@@ -100430,12 +101310,25 @@
           "503": {
             "content": {
               "application/json": {
+                "examples": {
+                  "reporting_admission": {
+                    "value": {
+                      "error": {
+                        "code": "application_usage_unavailable",
+                        "message": "Usage reporting admission is temporarily unavailable; retry shortly.",
+                        "retry_after_seconds": 2,
+                        "retryable": true,
+                        "type": "api_error"
+                      }
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/LbbErrorEnvelope"
                 }
               }
             },
-            "description": "Service unavailable",
+            "description": "Service unavailable. On metered routes, application_usage_unavailable refuses admission before execution and is retryable. On writes, application_usage_handoff_unconfirmed means execution ran but its measurement was not durably confirmed: retryable is false and clients must inspect operation state before retrying. A saved measurement preserves success even if settlement needs recovery. Completed public reads preserve their response and hand reporting to a bounded background task; an unconfirmed handoff remains an explicit reporting gap. An original rejected request keeps its original status if its NoCharge acknowledgement fails.",
             "headers": {
               "Lbb-Version": {
                 "description": "API contract version used for the response",
