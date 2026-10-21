@@ -33,6 +33,13 @@ Rows = Callable[[str], list[dict[str, str]]]
 Reason = Callable[[dict[str, Any]], "dict[str, Any] | None"]
 # The answers of a decide request, by question id.
 Decide = Callable[[dict[str, Any]], dict[str, Any]]
+# The answer a person gave to a value item, or None while it is open.
+ReviewAnswer = Callable[[dict[str, Any]], "dict[str, Any] | None"]
+# Why the graph refused an answer's value (`effects.commit_error`), or None.
+ReviewRefused = Callable[[dict[str, Any]], "str | None"]
+
+GRAPH = {"tenant_id": "t", "graph_id": "main", "branch_id": "main"}
+TIME = "2026-10-21T10:00:00Z"
 
 
 def iri_of(name: str) -> str:
@@ -69,11 +76,15 @@ class FakeLbb:
         reason: Reason,
         decide: Decide,
         review_status: Callable[[], str] = lambda: "open",
+        review_answer: ReviewAnswer = lambda request: None,
+        review_refused: ReviewRefused = lambda request: None,
     ) -> None:
         self.rows = rows
         self.reason = reason
         self.decide = decide
         self.review_status = review_status
+        self.review_answer = review_answer
+        self.review_refused = review_refused
         self.tasks: list[dict[str, Any]] = []
         self.pending: list[dict[str, Any]] = []
         self.saved: dict[str, list[dict[str, Any]]] = {}
@@ -82,6 +93,10 @@ class FakeLbb:
         self.kept: dict[str, Any] = {}
         self.commits: dict[str, dict[str, Any]] = {}
         self.reviews: dict[str, dict[str, Any]] = {}
+        # The review items of another kind than a change, by key.
+        self.questions: dict[str, dict[str, Any]] = {}
+        # Items asked again on new evidence: the answer in force they hold.
+        self.previous: dict[str, dict[str, Any]] = {}
         self.requeued: list[str] = []
         self.completed: list[dict[str, Any]] = []
         self.crash_after: str | None = None
@@ -163,6 +178,106 @@ class FakeLbb:
         self.kept[effect_id] = answer
         return httpx.Response(200, json=answer)
 
+    def question(self, request: dict[str, Any]) -> dict[str, Any]:
+        """A value item as the server keeps it: an answered one stays as
+        answered, unless new evidence brings a value other than the answer in
+        force and the one the person decided on, which asks again and keeps
+        that answer as ``previous_answer``."""
+        key = request["key"]
+        before = self.questions.get(key)
+        if before is not None:
+            was = self.item_of(key, before)
+            answer = was.get("answer") if was["status"] == "answered" else None
+            in_force = answer is not None and answer["decision"] in ("accept", "correct")
+            changed = (
+                bool(before.get("evidence_hash") and request.get("evidence_hash"))
+                and before["evidence_hash"] != request["evidence_hash"]
+            )
+            asked = request["question"].get("value")
+            held = answer.get("value", before["question"].get("value")) if answer else None
+            if in_force and changed and held != asked and before["question"].get("value") != asked:
+                self.previous[key] = {**answer, "value": held}
+            elif answer is not None:
+                return was
+        self.questions[key] = request
+        return self.item_of(key, request)
+
+    def item_of(self, key: str, request: dict[str, Any]) -> dict[str, Any]:
+        previous = self.previous.get(key)
+        # An item asked again waits for a new answer.
+        answer = None if previous else self.review_answer(request)
+        refused = self.review_refused(request) if answer else None
+        item = {
+            "id": f"rev_{key[-8:]}",
+            "object": "review_item",
+            "created": TIME,
+            "updated": TIME,
+            "kind": request["kind"],
+            "scope": "live",
+            # A refused answer does not stand: the item is open again.
+            "status": "answered" if answer and not refused else "open",
+            "key": key,
+            "title": request["title"],
+            "rationale": request.get("rationale"),
+            "origin": request["origin"],
+            "workflow": request.get("workflow"),
+            "subject": request.get("subject"),
+            "question": request["question"],
+            "evidence": request.get("evidence", []),
+            "evidence_hash": request.get("evidence_hash"),
+            "facts": request.get("facts"),
+            "revision": 1,
+        }
+        if previous:
+            item["previous_answer"] = previous
+        if answer:
+            item["answer"] = answer
+        if refused:
+            item["effects"] = {"commit_error": refused, "delivery": {"state": "none"}}
+        return item
+
+    def change_item(self, key: str) -> dict[str, Any] | None:
+        """A suggestion as a ``change`` review item, answered as its status says."""
+        filed = self.reviews.get(key)
+        if filed is None:
+            return None
+        decision = {"accepted": "accept", "dismissed": "reject"}.get(filed["status"])
+        item = {
+            "id": f"rev_{key[-8:]}",
+            "object": "review_item",
+            "created": TIME,
+            "updated": TIME,
+            "kind": "change",
+            "scope": "live",
+            "status": "answered"
+            if decision
+            else ("withdrawn" if filed["status"] == "superseded" else "open"),
+            "key": key,
+            "title": filed["title"],
+            "origin": filed.get("origin") or {"kind": "agent"},
+            "revision": 1,
+        }
+        if decision:
+            item["answer"] = {"decision": decision}
+        return item
+
+    def suggestion(self, key: str) -> dict[str, Any]:
+        filed = self.reviews[key]
+        return {
+            "suggestion_id": "sg_" + key[-8:],
+            "graph": GRAPH,
+            "key": key,
+            "status": filed["status"],
+            "title": filed["title"],
+            "anchor": {"kind": "ontology"},
+            "origin": filed.get("origin") or {"kind": "agent"},
+            "change": [],
+            "facts": filed.get("facts"),
+            "revision": 1,
+            "created_at": TIME,
+            "updated_at": TIME,
+        }
+
     async def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         body = json.loads(request.content) if request.content else None
@@ -213,6 +328,40 @@ class FakeLbb:
                     "edges_written": len(body.get("triplets", [])),
                 },
             )
+        if path == "/v1/reviews" and request.method == "POST":
+            return httpx.Response(200, json=self.question(body))
+        if path == "/v1/reviews":
+            keys = [key for key in request.url.params.get("key", "").split(",") if key]
+            data = [
+                item
+                for key in dict.fromkeys(keys)
+                if (
+                    item := self.item_of(key, self.questions[key])
+                    if key in self.questions
+                    else self.change_item(key)
+                )
+                is not None
+            ]
+            return httpx.Response(
+                200, json={"object": "list", "data": data, "has_more": False, "next_cursor": None}
+            )
+        if path == "/v1/ontology/suggestions" and request.method == "GET":
+            key = request.url.params.get("key")
+            found = [self.suggestion(key)] if key in self.reviews else []
+            return httpx.Response(
+                200,
+                json={
+                    "graph": GRAPH,
+                    "ontology_version": 1,
+                    "counts": {"open": 0, "accepted": 0, "dismissed": 0, "superseded": 0},
+                    "suggestions": [{**item, "comment_count": 0} for item in found],
+                    "truncated": False,
+                },
+            )
+        if path == "/v1/ontology/suggestions/detail":
+            wanted = request.url.params.get("suggestion_id")
+            key = next(k for k in self.reviews if "sg_" + k[-8:] == wanted)
+            return httpx.Response(200, json=self.suggestion(key))
         if path == "/v1/ontology/suggestions":
             status = self.reviews.get(body["key"], {}).get("status") or self.review_status()
             self.reviews[body["key"]] = {**body, "status": status}

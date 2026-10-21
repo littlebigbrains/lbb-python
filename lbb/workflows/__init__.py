@@ -55,9 +55,9 @@ from ._worker import (
     workflow_of_identity,
 )
 
-# TODO(W5 #1274): the review primitive. When #1274 lands, add the `review`
-# kinds (value, choice, grade, answer) to `LbbActivities.review`, and
-# `wait_for_review` beside `wait_for_signal`, as the TypeScript SDK has them.
+# TODO(W5): `wait_for_review` beside `wait_for_signal`, as the TypeScript SDK
+# has `waitForReview`. `LbbActivities.review` files the review kinds (value,
+# choice, grade, answer) and `review_items` reads them.
 # TODO(W4 #1280): `capture_activities`, the TypeScript `captureActivities`
 # for workflow tests, when #1280 lands.
 

@@ -3040,6 +3040,57 @@ class ModelChecksAndTuningTests(unittest.TestCase):
         self.assertEqual(applied["status"], "done")
         self.assertEqual(len(seen), 6, "apply sets the same settings again")
 
+    def test_reviews_list_get_and_answer_with_an_idempotency_key(self) -> None:
+        seen: list[httpx.Request] = []
+        item = {"id": "rev_1", "object": "review_item", "kind": "value", "status": "open"}
+        responses = [
+            {"json": {"object": "list", "data": [item], "has_more": True, "next_cursor": "c1"}},
+            {"json": item},
+            {"json": {**item, "status": "answered"}},
+            {"json": {"batch_id": "batch_1", "answered": 1, "skipped": 0, "results": []}},
+        ]
+        with LbbClient("http://h", transport=capturing_transport(seen, responses)) as client:
+            page = client.reviews.list(
+                kind=["value", "choice"], status="open", limit=2, key=["k:1", "k:2"]
+            )
+            got = client.reviews.get("rev_1")
+            answered = client.reviews.answer(
+                "rev_1",
+                answer={"decision": "correct", "value": 14.25},
+                revision=2,
+                idempotency_key="answer-1",
+            )
+            client.reviews.answer_batch(
+                ["rev_2"], answer={"decision": "accept"}, idempotency_key="batch-1"
+            )
+        self.assertEqual(page["next_cursor"], "c1")
+        self.assertEqual(got["id"], "rev_1")
+        self.assertEqual(answered["status"], "answered")
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [
+                ("GET", "/v1/reviews"),
+                ("GET", "/v1/reviews/detail"),
+                ("POST", "/v1/reviews/answer"),
+                ("POST", "/v1/reviews/answer-batch"),
+            ],
+        )
+        self.assertEqual(
+            dict(seen[0].url.params),
+            {"kind": "value,choice", "status": "open", "limit": "2", "key": "k:1,k:2"},
+        )
+        self.assertEqual(dict(seen[1].url.params), {"id": "rev_1"})
+        self.assertEqual(dict(seen[2].url.params), {"id": "rev_1"})
+        self.assertEqual(seen[2].headers["idempotency-key"], "answer-1")
+        self.assertEqual(
+            json.loads(seen[2].content),
+            {"answer": {"decision": "correct", "value": 14.25}, "revision": 2},
+        )
+        self.assertEqual(seen[3].headers["idempotency-key"], "batch-1")
+        self.assertEqual(
+            json.loads(seen[3].content), {"ids": ["rev_2"], "answer": {"decision": "accept"}}
+        )
+
     def test_checks_read_the_call_log_and_check_a_call_now(self) -> None:
         seen: list[httpx.Request] = []
         row = {
