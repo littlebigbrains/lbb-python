@@ -4,6 +4,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `WorkflowWorker` stops a turn on `409 turn_lease_lost`, the code a turn
+  route now answers when the attempt's token no longer holds its turn. It
+  still stops on any other 409 or a 404, as an older server answers a lost
+  lease `409 conflict`.
 - `lbb.workflows`: `LbbActivities.wait_for_review(ctx, key, request,
   timeout_ms=)` asks a person and waits for the answer without holding a
   worker, as the TypeScript `waitForReview` does. It files the item in the

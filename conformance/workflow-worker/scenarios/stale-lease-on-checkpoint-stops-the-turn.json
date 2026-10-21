@@ -1,6 +1,6 @@
 {
   "name": "stale-lease-on-checkpoint-stops-the-turn",
-  "rule": "A 409 on a turn route means another worker holds the turn: the turn stops, with no failure and no completion.",
+  "rule": "A 409 turn_lease_lost on a turn route means the attempt's token no longer holds the turn (another worker holds it, or its lease ended): the turn stops, with no failure and no completion.",
   "workflow": {
     "type": "plain",
     "name": "counter",
@@ -87,8 +87,9 @@
         "body": {
           "error": {
             "type": "conflict_error",
-            "code": "conflict",
-            "message": "the lease is stale"
+            "code": "turn_lease_lost",
+            "message": "the token no longer holds turn 1 of `agent`: another attempt holds it, its lease ended, or it finished; stop this attempt",
+            "param": "token"
           }
         }
       }

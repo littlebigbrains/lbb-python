@@ -19,7 +19,7 @@ A rule changes in one place: change the scenario, then both workers.
 | `turns/heartbeat` | Every third of the lease, not retried. A failed heartbeat ends the attempt here, and nothing more is sent for the turn. |
 | `turns/operation`, `turns/progress`, `turns/checkpoint`, `turns/wait-signal`, `turns/complete` | Retried: the same request again changes nothing more. A retried completion sends the same body. |
 | `turns/fail` | Not retried. A `WorkflowWait` or a `429 workflow_budget_exceeded` fails with `retry_at_ms` (at least a second ahead) and counts no attempt. |
-| Any turn route | A `409` (stale lease) or `404` (instance gone) stops the turn: nothing more is sent. |
+| Any turn route | A `409 turn_lease_lost` (the token no longer holds the turn), any other `409` (an older server answers a lost lease `409 conflict`) or a `404` (instance gone) stops the turn: nothing more is sent. |
 | `POST /v1/graph/commit` | A fenced write that meets `409 workflow_fence_lost` stops the turn. |
 | `POST /v1/reviews` | `waitForReview` / `wait_for_review` files the item in the step `<key>.ask`, with the run as the one that waits. It waits for the signal the item names in `<key>.answer`. On a timeout, the step `<key>.read` reads the item again. A trigger shard (`starter.<name>`) is refused: the turn fails for good. |
 | Captured activities | Model calls carry `test: {workflow}`. An owned write is checked with the commit's dry run and kept: no commit, no fence, no idempotency key. A refusal of the dry run is the write's error. Reviews are kept and filed nowhere, and a wait ends at once unanswered. A wait on a trigger shard is refused as the live one is. Reads of review items run. |
