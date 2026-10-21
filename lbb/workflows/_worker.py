@@ -15,8 +15,10 @@ The rules are those of the TypeScript ``WorkflowWorker``
   again changes nothing more.
 - A ``409`` or a ``404`` on a turn route, and ``409 workflow_fence_lost`` on a
   fenced commit, stop the turn: the worker sends nothing more for it. The
-  server answers ``409 conflict`` for a stale lease and for every other
-  conflict of a turn route; none of them lets the attempt go on.
+  server answers ``409 turn_lease_lost`` when the attempt's token no longer
+  holds the turn (another attempt holds it, its lease ended, or it
+  finished) and ``409 conflict`` for the other conflicts of a turn route;
+  none of them lets the attempt go on.
 """
 
 from __future__ import annotations
@@ -142,11 +144,19 @@ def _cancelling(task: asyncio.Task[Any]) -> bool:
     return bool(cancelling()) if callable(cancelling) else False
 
 
+TURN_LEASE_LOST_CODE = "turn_lease_lost"
+"""The code of a turn route's answer that the attempt's token no longer holds
+its turn: another attempt holds it, its lease ended, or it finished."""
+
+
 def _gone(error: BaseException) -> bool:
-    """A turn route's answer that the turn is not this worker's any more: a
-    ``409`` (the lease is stale, or another conflict) or a ``404`` (the
-    instance is gone)."""
-    return isinstance(error, LbbError) and error.status_code in (404, 409)
+    """A turn route's answer that the turn is not this worker's any more:
+    ``409 turn_lease_lost``, another ``409`` (a server older than the code
+    answers a lost lease ``409 conflict``) or a ``404`` (the instance is
+    gone)."""
+    return isinstance(error, LbbError) and (
+        error.code == TURN_LEASE_LOST_CODE or error.status_code in (404, 409)
+    )
 
 
 # ---- JSON values ---------------------------------------------------------------

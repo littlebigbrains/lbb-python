@@ -1,6 +1,6 @@
 {
   "name": "stale-lease-on-complete-stops-the-turn",
-  "rule": "A 409 on the completion stops the turn: the worker sends no failure and goes on.",
+  "rule": "A 409 on the completion stops the turn: the worker sends no failure and goes on. A server older than turn_lease_lost answers a lost lease 409 conflict, as here.",
   "workflow": {
     "type": "plain",
     "name": "counter",
