@@ -6631,8 +6631,19 @@
           "created_at": {
             "type": "string"
           },
+          "head_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The newest commit of the graph now."
+              }
+            ]
+          },
           "lag_commits": {
-            "description": "Commits the serving version is behind the published generation.",
+            "description": "Commits the serving version is behind the newest commit\n(`head_seq` − its `embedded_through_seq`). 0: a search finds every\ncommit. The commits wait for the publication\n(`head_seq` − `published_seq`), then for the embed job.",
             "format": "int64",
             "minimum": 0,
             "type": [
@@ -27804,6 +27815,17 @@
             },
             "type": "array"
           },
+          "min_commit_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "Read your writes: the `commit_seq` a write returned. The search waits\na few seconds until every embedding it reads has embedded through\nthis commit, then answers 429 `read_your_writes_pending` with a\n`Retry-After` (a commit after the head too). Embeddings in\n`not_ready` do not count."
+              }
+            ]
+          },
           "probe": {
             "description": "Clusters to read across the big runs (default 4·√clusters, at least\n8). Runs of up to 4,096 entries are always read whole.",
             "minimum": 0,
@@ -27993,6 +28015,17 @@
               }
             ]
           },
+          "head_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq",
+                "description": "The newest commit of the graph when the search ran."
+              }
+            ]
+          },
           "hits": {
             "description": "The best hits over every searched embedding, by score; an entity two\nembeddings hold comes back once, with its best score.",
             "items": {
@@ -28001,7 +28034,7 @@
             "type": "array"
           },
           "lag_commits": {
-            "description": "The most published commits one searched embedding does not cover yet\n(`served_at_seq` − its watermark); the embed job catches up by itself.",
+            "description": "The most commits one searched embedding is behind the newest commit\n(`head_seq` − its watermark). 0: the search found every commit. The\npublication and then the embed job catch up by themselves; to wait\nfor one write, pass its `commit_seq` as `min_commit_seq`.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -28036,7 +28069,7 @@
               },
               {
                 "$ref": "#/components/schemas/CommitSeq",
-                "description": "The RDF snapshot every hit was checked against."
+                "description": "The RDF snapshot every hit was checked against (the published\ngeneration)."
               }
             ]
           },
@@ -28968,6 +29001,7 @@
             "type": "integer"
           },
           "lag_commits": {
+            "description": "Commits it is behind the newest commit (`head_seq` −\n`embedded_through_seq`).",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
