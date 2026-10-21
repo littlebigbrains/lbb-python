@@ -2,8 +2,16 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.29.0 (2026-10-21)
 
+- `client.reviews`: the review items a person answers (`create`, `list`,
+  `get`, `patterns`, `answer`, `answer_batch`, `withdraw`, `comment`), over
+  `/v1/reviews`.
+- `client.evals.datasets`: eval datasets (`create`, `list`, `get`,
+  `add_items`, `export`), over `/v1/evals/datasets`.
+- `client.workflows.tests`: a workflow run on examples before it writes
+  (`create`, `get`, `list`, `answer`, `cancel`, `dataset`), over
+  `/v1/workflows/triggered/tests`.
 - `files.put_pages(sha256, parser, upload, idempotency_key=)` stores what a
   parser outside the server made of one upload of a file
   (`PUT /v1/files/pages`, with the upload's `uploaded_at`), as the
