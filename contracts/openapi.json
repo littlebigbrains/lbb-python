@@ -6965,6 +6965,17 @@
             },
             "type": "array"
           },
+          "edge_properties": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvidenceCompleteness",
+                "description": "Whether the relationship `properties` in `rdf_relations` are complete."
+              }
+            ]
+          },
           "entity": {
             "$ref": "#/components/schemas/EntityView"
           },
@@ -7054,6 +7065,10 @@
       "EntityDetailTruncation": {
         "description": "Which of an entity read's degree-proportional collections were cut, and by\nhow much. Only the cut collections appear.",
         "properties": {
+          "edge_property_lookups": {
+            "description": "True when the per-response cap on edge property reads stopped the\nproperty read: some relationships show no `properties` although they\nhave some.",
+            "type": "boolean"
+          },
           "edges": {
             "oneOf": [
               {
@@ -8701,7 +8716,7 @@
         "type": "string"
       },
       "EvidenceCompleteness": {
-        "description": "Whether the evidence a read returns is complete.",
+        "description": "Whether the evidence (or the edge properties) a read returns is complete.",
         "enum": [
           "complete",
           "partial"
@@ -23919,6 +23934,14 @@
           "evidence_truncated": {
             "description": "True when this relationship has more evidence than `evidence` holds.",
             "type": "boolean"
+          },
+          "properties": {
+            "additionalProperties": {},
+            "description": "The relationship's own properties, typed as the entity's\n`attributes` are, from its newest current assertion\n(`docs/architecture/edge-properties-in-rdf.md`). A relationship holds\nmore than one current assertion only in `append` mode; SPARQL returns\nall of them. Empty when the edge has no properties, or when the\nresponse's `edge_properties` is `partial` and the edge predates edge\nproperty projection.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "relation": {
             "$ref": "#/components/schemas/RelationView"

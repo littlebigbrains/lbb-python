@@ -1676,7 +1676,7 @@ class EvalVia(Enum):
 
 class EvidenceCompleteness(Enum):
     """
-    Whether the evidence a read returns is complete.
+    Whether the evidence (or the edge properties) a read returns is complete.
     """
 
     complete = 'complete'
@@ -11107,6 +11107,12 @@ class EntityDetailTruncation(BaseModel):
     how much. Only the cut collections appear.
     """
 
+    edge_property_lookups: Annotated[
+        bool | None,
+        Field(
+            description='True when the per-response cap on edge property reads stopped the\nproperty read: some relationships show no `properties` although they\nhave some.'
+        ),
+    ] = None
     edges: TruncatedCollection | None = None
     evidence_lookups: Annotated[
         bool | None,
@@ -13839,6 +13845,12 @@ class RdfEntityRelation(BaseModel):
         bool | None,
         Field(
             description='True when this relationship has more evidence than `evidence` holds.'
+        ),
+    ] = None
+    properties: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="The relationship's own properties, typed as the entity's\n`attributes` are, from its newest current assertion\n(`docs/architecture/edge-properties-in-rdf.md`). A relationship holds\nmore than one current assertion only in `append` mode; SPARQL returns\nall of them. Empty when the edge has no properties, or when the\nresponse's `edge_properties` is `partial` and the edge predates edge\nproperty projection."
         ),
     ] = None
     relation: RelationView
@@ -18285,6 +18297,7 @@ class EntityDetailResponse(BaseModel):
         ),
     ] = None
     current_state: list[StateEntry]
+    edge_properties: EvidenceCompleteness | None = None
     entity: EntityView
     evidence: EvidenceCompleteness | None = None
     history: list[EdgeEventRow]
