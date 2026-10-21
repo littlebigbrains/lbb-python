@@ -16,7 +16,7 @@ Reference: ``docs/reference/workflow-activities.md``.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from pydantic import BaseModel
 
@@ -37,6 +37,12 @@ if TYPE_CHECKING:
     from .._async_client import AsyncLbbClient
 
 AnswerT = TypeVar("AnswerT", bound=BaseModel)
+
+#: Keys one read of :meth:`LbbActivities.review_items` names, at most (the
+#: list route's bound).
+REVIEW_KEYS_PER_READ = 100
+#: The review kinds ``POST /v1/reviews`` files; a ``change`` is a suggestion.
+_REVIEW_ITEM_KINDS = ("value", "choice", "grade", "answer")
 
 #: Output tokens of a ``reason`` call can take minutes: its default timeout.
 REASON_TIMEOUT_SECONDS = 300.0
@@ -322,27 +328,83 @@ class LbbActivities:
         instances it calls nothing."""
         return await requeue_failed(self._client, ctx, step_key, failed, graph=graph)
 
+    @overload
     async def review(
         self,
-        request: models.OntologyChangeSuggestionCreateRequest | Mapping[str, Any],
+        request: models.ReviewItemCreateRequest,
         *,
         workflow: str | None = None,
-    ) -> models.OntologyChangeSuggestion:
-        """File a review item (``POST /v1/ontology/suggestions``): facts or
-        ontology changes for a person to accept.
+    ) -> models.ReviewItem: ...
+
+    @overload
+    async def review(
+        self,
+        request: models.OntologyChangeSuggestionCreateRequest,
+        *,
+        workflow: str | None = None,
+    ) -> models.OntologyChangeSuggestion: ...
+
+    @overload
+    async def review(
+        self,
+        request: Mapping[str, Any],
+        *,
+        workflow: str | None = None,
+    ) -> Any: ...
+
+    async def review(
+        self,
+        request: models.ReviewItemCreateRequest
+        | models.OntologyChangeSuggestionCreateRequest
+        | Mapping[str, Any],
+        *,
+        workflow: str | None = None,
+    ) -> models.ReviewItem | models.OntologyChangeSuggestion:
+        """Ask a person. A request of kind ``value``, ``choice``, ``grade`` or
+        ``answer`` files a review item (``POST /v1/reviews``) and returns a
+        :class:`~lbb.models.ReviewItem`: a value to confirm or correct, a
+        choice, a grade or a free-text answer. Any other request files a
+        suggestion (``POST /v1/ontology/suggestions``): facts or ontology
+        changes for a person to accept.
 
         ``workflow`` names the triggered workflow that files it (pass
         ``message.workflow``): without an ``origin`` in the request, the
         item's origin is then ``{"kind": "agent", "id": "starter:<workflow>"}``,
         so the workflow's status counts it. The same ``key`` again updates the
-        item, so a failed call is retried.
+        item, so a failed call is retried; an answered review item comes back
+        with its answer.
         """
         body = dict(_coerce_body(request))
         if body.get("origin") is None:
             body["origin"] = {"kind": "agent", **({"id": f"starter:{workflow}"} if workflow else {})}
+        kind = body.get("kind")
+        if getattr(kind, "value", kind) in _REVIEW_ITEM_KINDS:
+            if workflow and body.get("workflow") is None:
+                body["workflow"] = {"name": workflow}
+            raw = await self._client.reviews.create(
+                models.ReviewItemCreateRequest.model_validate(body).model_dump(
+                    mode="json", by_alias=True, exclude_none=True
+                )
+            )
+            return models.ReviewItem.model_validate(raw)
         return await self._client.ontology.suggestion_create(
             models.OntologyChangeSuggestionCreateRequest.model_validate(body)
         )
+
+    async def review_items(self, keys: Sequence[str]) -> list[models.ReviewItem]:
+        """The review items filed under ``keys``, of every status and kind
+        (``GET /v1/reviews?key=…``, 100 keys a read): a workflow reads them
+        before it writes, so a person's answer wins over what it would write
+        itself, and an item asked again on new evidence keeps the answer in
+        force (``previous_answer``) until a new one. A suggestion is a
+        ``change`` item, answered as its status says."""
+        unique = list(dict.fromkeys(keys))
+        out: list[models.ReviewItem] = []
+        for at in range(0, len(unique), REVIEW_KEYS_PER_READ):
+            chunk = unique[at : at + REVIEW_KEYS_PER_READ]
+            raw = await self._client.reviews.list(key=chunk, limit=len(chunk))
+            out.extend(models.ReviewItemList.model_validate(raw).data)
+        return out
 
     async def list_reviews(
         self,
@@ -362,8 +424,10 @@ class LbbActivities:
         )
 
     async def review_item(self, key: str) -> models.OntologyChangeSuggestion | None:
-        """The review item filed under ``key``, with its evidence, or ``None``
-        when none is: a merge of new evidence into an item reads it first."""
+        """The suggestion (a ``change`` review item) filed under ``key``, with
+        its evidence and facts, or ``None`` when none is: a merge of new
+        evidence into an item reads it first. :meth:`review_items` reads the
+        items of every kind."""
         listed = await self._client.ontology.suggestions(key=key, limit=1)
         found = next((item for item in listed.suggestions if item.key == key), None)
         if found is None:

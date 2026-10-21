@@ -192,28 +192,37 @@ def _outputs(
 
 
 def _review(fake: FakeLbb, iris: dict[str, str]) -> list[dict[str, Any]]:
+    """The value items the port filed, in the shape of the Rust record."""
     name_of = {iri: name for name, iri in iris.items()}
 
     def props(row: dict[str, Any]) -> dict[str, Any]:
         return {k: _round(v) if k == "support" else v for k, v in row["properties"].items()}
 
     items = []
-    for key, item in fake.reviews.items():
-        facts = item["facts"]
-        sample = item["evidence"]["samples"][0]
+    for key, request in fake.questions.items():
+        facts = request["facts"]
+        question = request["question"]
+        confidence = question.get("confidence")
         items.append(
             {
                 "key": key,
-                "status": item["status"],
-                "title": item["title"],
-                "rationale": item["rationale"],
-                "origin": item["origin"],
+                "kind": request["kind"],
+                "status": fake.item_of(key, request)["status"],
+                "title": request["title"],
+                "rationale": request["rationale"],
+                "origin": request["origin"],
                 "summary": facts["summary"],
-                "instance": name_of[sample["entity"]],
+                "instance": name_of[request["subject"]["iri"]],
+                "question": {
+                    "property": question["property"],
+                    "value": question["value"],
+                    "unit": question.get("unit"),
+                    "confidence": None if confidence is None else _round(confidence),
+                },
                 "on_instance": props(facts["entity_properties"][0]),
                 "on_source": props(facts["entity_properties"][1]),
-                "quote": sample["quote"],
-                "support": _round(sample["support"]),
+                "quote": request["evidence"][0]["quote"],
+                "evidence_hash": request["evidence_hash"],
             }
         )
     return sorted(items, key=lambda i: i["key"])

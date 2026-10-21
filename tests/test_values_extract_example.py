@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 
 from lbb import entity_id_from_iri, stable_hash_hex
+from lbb.workflows import entity_ref
 
 # The fake puts sdk/python/examples on the path of the example's modules.
 from values_extract_fake import EXAMPLES, FakeLbb, Killed, iri_of, message, serve  # isort: skip
@@ -31,8 +32,10 @@ from values_extract.workflow import (  # isort: skip
     coerce,
     ontology,
     quote_holds,
+    legacy_value_key,
     trigger,
     unit_problem,
+    value_item_key,
 )
 
 SAMPLES = EXAMPLES / "values_extract" / "samples"
@@ -101,6 +104,8 @@ def fake_for(
     *,
     proposals: Callable[[str], list[dict[str, str]]] | None = None,
     review_status: Callable[[], str] = lambda: "open",
+    review_answer: Callable[[dict[str, Any]], dict[str, Any] | None] = lambda request: None,
+    review_refused: Callable[[dict[str, Any]], str | None] = lambda request: None,
 ) -> FakeLbb:
     """A fake LBB with the mock models of the template's test, over ``records``."""
 
@@ -122,7 +127,14 @@ def fake_for(
             for qid, q in body["questions"].items()
         }
 
-    return FakeLbb(rows, reason=reason, decide=decide, review_status=review_status)
+    return FakeLbb(
+        rows,
+        reason=reason,
+        decide=decide,
+        review_status=review_status,
+        review_answer=review_answer,
+        review_refused=review_refused,
+    )
 
 
 def matches(got: Any, want: dict[str, Any]) -> bool:
@@ -168,6 +180,7 @@ def test_the_samples_give_the_values_of_the_answer_key_and_none_it_leaves_out() 
     assert reason["workflow"]["run_id"] == "run-1"
     assert reason["effect_id"] == "e1/values-0"
     assert fake.reviews == {}
+    assert fake.questions == {}
 
 
 def test_each_written_value_has_a_source_whose_evidence_is_a_quote_of_the_text() -> None:
@@ -208,14 +221,23 @@ def test_a_value_below_the_gate_goes_to_review_and_the_checks_run_in_lbbs_order(
     state = fake.completed[0]["state"]
     assert (state["values_proposed"], state["written"], state["review"]) == (5, 1, 1)
     assert (state["invalid_value"], state["duplicate"], state["unknown_property"]) == (1, 1, 1)
-    ((key, item),) = fake.reviews.items()
-    # The key of LBB's values.extract: its instance, property and value.
+    ((key, item),) = fake.questions.items()
+    assert item["kind"] == "value"
+    # The key of LBB's values.extract: its instance and property.
     entity = entity_id_from_iri(iri_of(record["name"]))
-    assert key == f"starter:values-extract:value:{stable_hash_hex([entity, 'width_cm', '70'])[:24]}"
-    assert item["title"] == "Set width_cm of S 9.1 to 70"
-    assert item["rationale"] == (
-        'The text supports the value with 0.60, below the gate 0.8: "Breite etwa 70 cm"'
+    assert key == value_item_key("values-extract", iri_of(record["name"]), "width_cm")
+    assert key == (
+        f"starter:values-extract:value:{stable_hash_hex(['value_item_v2', entity, 'width_cm'])[:24]}"
     )
+    assert item["title"] == "Set width_cm of S 9.1 to 70"
+    assert item["rationale"] == "The text supports the value with 0.60, below the gate 0.8."
+    assert item["question"] == {
+        "property": "width_cm",
+        "value": 70,
+        "unit": "cm",
+        "confidence": item["question"]["confidence"],
+    }
+    assert item["evidence"][0]["quote"] == "Breite etwa 70 cm"
     assert item["origin"] == {
         "kind": "agent",
         "id": "starter:values-extract",
@@ -224,10 +246,146 @@ def test_a_value_below_the_gate_goes_to_review_and_the_checks_run_in_lbbs_order(
     assert item["facts"]["entity_properties"][0]["properties"] == {"width_cm": 70}
 
     # Accepted, the value is written with the others the next time the instance is read.
-    accepting = fake_for([record], proposals=lambda text: proposals, review_status=lambda: "accepted")
+    accepting = fake_for(
+        [record], proposals=lambda text: proposals, review_answer=lambda request: {"decision": "accept"}
+    )
     accepting.queue(message([iri_of(record["name"])]))
     serve(accepting)
     assert accepting.written(record["name"]) == {"width_cm": 70, "material": "Kunststoff"}
+
+
+def run_again(fake: FakeLbb, name: str) -> None:
+    """A second message for the instance ``name``: its own turn."""
+    fake.queue(message([iri_of(name)]))
+    serve(fake)
+
+
+def width(value: str, quote: str, unit: str = "cm") -> list[dict[str, str]]:
+    return [{"property": "width_cm", "value": value, "unit": unit, "quote": quote}]
+
+
+def test_a_persons_correction_stays_when_new_evidence_reads_another_value_which_asks_again() -> None:
+    record = {"name": "S 9.3", "text": "S 9.3 Becken aus Kunststoff. Breite etwa 70 cm, Tiefe 40 cm."}
+    proposals = width("70", "Breite etwa 70 cm")
+    fake = fake_for(
+        [record],
+        proposals=lambda text: proposals,
+        review_answer=lambda request: {"decision": "correct", "value": 72},
+    )
+    run_again(fake, "S 9.3")
+    assert fake.written("S 9.3") == {"width_cm": 72}
+    # A new version of the text reads 80 above the gate: the person is asked
+    # again, and the corrected 72 stays until they answer.
+    record["text"] = "S 9.3 Becken aus Kunststoff. Breite 80 cm."
+    proposals[:] = width("80", "Breite 80 cm")
+    run_again(fake, "S 9.3")
+    assert fake.written("S 9.3") == {"width_cm": 72}
+    key = value_item_key("values-extract", iri_of("S 9.3"), "width_cm")
+    item = fake.item_of(key, fake.questions[key])
+    assert item["status"] == "open"
+    assert item["question"]["value"] == 80
+    assert item["previous_answer"] == {"decision": "correct", "value": 72}
+
+
+def test_the_value_a_person_decided_on_quoted_from_another_span_asks_nothing() -> None:
+    record = {"name": "S 9.2", "text": "S 9.2 Becken. Breite etwa 70 cm."}
+    proposals = width("70", "Breite etwa 70 cm")
+    fake = fake_for(
+        [record],
+        proposals=lambda text: proposals,
+        review_answer=lambda request: {"decision": "correct", "value": 72},
+    )
+    run_again(fake, "S 9.2")
+    # The same text; the model quotes another span of it and spells the unit
+    # otherwise. The person decided on 70 already.
+    proposals[:] = width("70", "etwa 70 cm", unit="CM")
+    run_again(fake, "S 9.2")
+    assert fake.written("S 9.2") == {"width_cm": 72}
+    assert fake.previous == {}
+
+
+def test_a_rejected_value_is_not_written_again_even_above_the_gate() -> None:
+    record = {"name": "S 9.6", "text": "S 9.6 Becken. Breite etwa 70 cm."}
+    proposals = width("70", "Breite etwa 70 cm")
+    fake = fake_for(
+        [record], proposals=lambda text: proposals, review_answer=lambda request: {"decision": "reject"}
+    )
+    run_again(fake, "S 9.6")
+    assert fake.written("S 9.6") == {}
+    record["text"] = "S 9.6 Becken. Breite 70 cm."
+    proposals[:] = width("70", "Breite 70 cm")
+    run_again(fake, "S 9.6")
+    assert fake.written("S 9.6") == {}
+
+
+def test_a_value_the_graph_refused_is_not_written_when_a_later_text_states_it() -> None:
+    record = {"name": "S 9.7", "text": "S 9.7 Becken. Breite etwa 70 cm."}
+    proposals = width("70", "Breite etwa 70 cm")
+    fake = fake_for(
+        [record],
+        proposals=lambda text: proposals,
+        review_answer=lambda request: {"decision": "correct", "value": 72},
+        review_refused=lambda request: "the shape MaxWidth rejects 72",
+    )
+    run_again(fake, "S 9.7")
+    assert fake.written("S 9.7") == {}
+    # The text now states 72 above the gate: the graph refused it, so it is
+    # not written; the item stays open for the person.
+    record["text"] = "S 9.7 Becken. Breite 72 cm."
+    proposals[:] = width("72", "Breite 72 cm")
+    run_again(fake, "S 9.7")
+    assert fake.written("S 9.7") == {}
+
+
+def test_a_held_value_keeps_its_source_link() -> None:
+    record = {"name": "S 9.9", "text": "S 9.9 Becken. Breite etwa 70 cm."}
+    proposals = width("70", "Breite etwa 70 cm")
+    fake = fake_for(
+        [record], proposals=lambda text: proposals, review_answer=lambda request: {"decision": "accept"}
+    )
+    run_again(fake, "S 9.9")
+    assert fake.written("S 9.9") == {"width_cm": 70}
+    # New evidence with another value: asked again; the accepted 70 and its
+    # source link stay, so the instance's write replaces neither.
+    record["text"] = "S 9.9 Becken. Breite 85 cm."
+    proposals[:] = width("85", "Breite 85 cm")
+    run_again(fake, "S 9.9")
+    assert fake.written("S 9.9") == {"width_cm": 70}
+    held = list(fake.commits.values())[-1]["replace_owned"]
+    assert held.get("relations", []) == []
+    assert "width_cm" not in held["properties"]
+    assert len(fake.previous) == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "writes"), [("accepted", {"width_cm": 70}), ("open", {}), ("dismissed", {})]
+)
+def test_a_value_an_earlier_version_filed_as_a_suggestion_keeps_working(
+    status: str, writes: dict[str, Any]
+) -> None:
+    record = {"name": "S 9.4", "text": "S 9.4 Becken. Breite etwa 70 cm."}
+    fake = fake_for([record], proposals=lambda text: width("70", "Breite etwa 70 cm"))
+    iri = iri_of("S 9.4")
+    # The key of the suggestion: one per value.
+    key = legacy_value_key("values-extract", iri, {"property": "width_cm", "value": "70"})
+    fake.reviews[key] = {
+        "key": key,
+        "title": "Set width_cm of S 9.4 to 70",
+        "status": status,
+        "origin": {"kind": "agent", "id": "starter:values-extract"},
+        "facts": {
+            "entity_properties": [
+                {**entity_ref(iri, "EquipmentItem", "S 9.4"), "properties": {"width_cm": 70}}
+            ],
+            "triplets": [],
+        },
+    }
+    run_again(fake, "S 9.4")
+    # An accepted one is written again, an open one stays the question (no
+    # value item), and a dismissed one is a reject of its value.
+    assert fake.questions == {}
+    assert fake.reviews[key]["status"] == status
+    assert fake.written("S 9.4") == writes
 
 
 def test_a_worker_killed_during_the_write_replays_its_steps_and_writes_once() -> None:

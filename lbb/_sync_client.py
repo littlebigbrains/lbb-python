@@ -55,6 +55,7 @@ from ._client_base import (
     _retry_allowed,
     _retry_delay_seconds,
     _retryable,
+    _ReviewsNamespace,
     _SchemaNamespace,
     _sse_decoder,
     _SseParser,
@@ -430,6 +431,8 @@ class LbbClient(_BaseLbbClient):
         self.evals = _EvalsNamespace(self)
         # Model checks: the call log, the judge's checks, and reviews.
         self.checks = _ChecksNamespace(self)
+        # Review: questions for a person, and their answers.
+        self.reviews = _ReviewsNamespace(self)
         # Model trials of other models on the graph's uses, and switches.
         self.models = _SyncModelsNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)

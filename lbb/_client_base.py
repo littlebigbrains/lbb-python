@@ -4683,6 +4683,152 @@ def _trial_timeout(trial_id: str, trial: Any) -> TimeoutError:
     )
 
 
+class _ReviewsNamespace:
+    """Review: questions for a person (human in the loop).
+
+    A review item (``rev_…``) asks to confirm or correct a value, pick an
+    option, grade an output, answer in free text, or accept a change (an
+    ontology suggestion). Its answer writes a value's accept or correction
+    to the graph, is a calibration label, and is sent to the workflow that
+    asked as a ``review.answered`` event. ``/v1/reviews`` is the canonical
+    surface; ``client.ontology`` suggestions are the view of kind ``change``.
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def create(self, body: Mapping[str, Any]) -> Any:
+        """Ask a person: file an item of kind ``value``, ``choice``,
+        ``grade`` or ``answer``. The same ``key`` again updates the item; an
+        answered one comes back unchanged, with its answer."""
+        return self._client._request("POST", "/v1/reviews", body=dict(body))
+
+    def list(
+        self,
+        *,
+        status: str | None = None,
+        kind: str | Sequence[str] | None = None,
+        scope: str | None = None,
+        origin_id: str | None = None,
+        workflow: str | None = None,
+        run: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        key: str | Sequence[str] | None = None,
+    ) -> Any:
+        """One page of items, the latest update first: ``{object: "list",
+        data, has_more, next_cursor}``. ``kind`` is one kind or several;
+        ``key`` one producer key or several (at most 100). Pass
+        ``next_cursor`` as ``cursor`` for the next page."""
+        if kind is not None and not isinstance(kind, str):
+            kind = ",".join(_enum_value(each) for each in kind)
+        if key is not None and not isinstance(key, str):
+            key = ",".join(key)
+        return self._client._request(
+            "GET",
+            "/v1/reviews",
+            params={
+                "status": _enum_value(status),
+                "kind": _enum_value(kind),
+                "scope": _enum_value(scope),
+                "origin_id": origin_id,
+                "workflow": workflow,
+                "run": run,
+                "limit": limit,
+                "cursor": cursor,
+                "key": key,
+            },
+        )
+
+    def patterns(
+        self,
+        *,
+        status: str | None = None,
+        origin_id: str | None = None,
+        type: str | None = None,
+    ) -> Any:
+        """The live items of every kind grouped by pattern, the largest
+        first, by their ``rev_`` ids. ``status`` is ``open``, ``answered``
+        or ``withdrawn``."""
+        return self._client._request(
+            "GET",
+            "/v1/reviews/patterns",
+            params={"status": status, "origin_id": origin_id, "type": type},
+        )
+
+    def get(self, id: str) -> Any:
+        """One item with its question, evidence, answer and effects."""
+        return self._client._request("GET", "/v1/reviews/detail", params={"id": id})
+
+    def answer(
+        self,
+        id: str,
+        *,
+        answer: Mapping[str, Any],
+        revision: int | None = None,
+        edits: Mapping[str, Any] | None = None,
+        comment: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        """Answer an item. ``revision`` is the revision the person saw: an
+        item revised since answers ``409 review_stale``. With
+        ``idempotency_key``, a retry returns the item; the key with another
+        answer answers ``409 idempotency_conflict``."""
+        body: dict[str, Any] = {"answer": dict(answer)}
+        if revision is not None:
+            body["revision"] = revision
+        if edits is not None:
+            body["edits"] = dict(edits)
+        if comment is not None:
+            body["comment"] = comment
+        return self._client._request(
+            "POST",
+            "/v1/reviews/answer",
+            params={"id": id},
+            body=body,
+            idempotency_key=idempotency_key,
+        )
+
+    def answer_batch(
+        self,
+        ids: Sequence[str],
+        *,
+        answer: Mapping[str, Any],
+        shown: Sequence[str] | None = None,
+        pattern: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        """One answer for up to 500 items, each checked against its own
+        kind. With ``idempotency_key``, a retry returns the first
+        response."""
+        body: dict[str, Any] = {"ids": list(ids), "answer": dict(answer)}
+        if shown is not None:
+            body["shown"] = list(shown)
+        if pattern is not None:
+            body["pattern"] = pattern
+        return self._client._request(
+            "POST",
+            "/v1/reviews/answer-batch",
+            body=body,
+            idempotency_key=idempotency_key,
+        )
+
+    def withdraw(self, id: str, reason: str) -> Any:
+        """Withdraw an item as its producer."""
+        return self._client._request(
+            "POST", "/v1/reviews/withdraw", params={"id": id}, body={"reason": reason}
+        )
+
+    def comment(self, id: str, *, text: str, author: str | None = None) -> Any:
+        """Add a comment to an item's discussion."""
+        payload: dict[str, Any] = {"text": text}
+        if author is not None:
+            payload["author"] = author
+        return self._client._request(
+            "POST", "/v1/reviews/comment", params={"id": id}, body=payload
+        )
+
+
 class _ModelTrialsNamespace:
     """Model trials: test another model on one use of a model on the graph
     (question answers ``ask``, query routing ``route``, search rerank

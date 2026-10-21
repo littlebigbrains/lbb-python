@@ -5767,6 +5767,184 @@ class RetrievalProfileId(Enum):
     ndcg_v1 = 'ndcg_v1'
 
 
+class ReviewDecision(Enum):
+    """
+    A person's decision on a review item.
+    """
+
+    accept = 'accept'
+    reject = 'reject'
+    correct = 'correct'
+    choose = 'choose'
+    cant_tell = 'cant_tell'
+
+
+class ReviewDeliveryState(Enum):
+    """
+    Where the "review answered" event of an answer is.
+    """
+
+    none = 'none'
+    pending = 'pending'
+    sent = 'sent'
+    dropped = 'dropped'
+
+
+class ReviewEvalOriginKind(Enum):
+    """
+    What in Evals filed an item.
+    """
+
+    check = 'check'
+    calibration = 'calibration'
+    test = 'test'
+
+
+class ReviewEvidence(BaseModel):
+    """
+    A quote the producer read, and where it is.
+    """
+
+    confidence: float | None = None
+    quote: str
+    region: RegionAnchorInput | None = None
+    source_id: Annotated[
+        str | None,
+        Field(
+            description="The `Document` IRI with a place (`#page=3`, `#row=5`,\n`#line=39,44`), or a record's name."
+        ),
+    ] = None
+
+
+class ReviewItemKind(Enum):
+    """
+    What a review item asks a person.
+    """
+
+    change = 'change'
+    value = 'value'
+    choice = 'choice'
+    grade = 'grade'
+    answer = 'answer'
+
+
+class ReviewOption(BaseModel):
+    """
+    One option of a `choice` item, or one grade of a `grade` item.
+    """
+
+    id: Annotated[str, Field(description='1 to 64 characters of `[A-Za-z0-9-_.:]`.')]
+    label: Annotated[str, Field(description='At most 200 characters.')]
+
+
+class ReviewQuestion(BaseModel):
+    """
+    What an item asks, by kind:
+    - `value`: `property`, the proposed `value`, its `unit` and `confidence`;
+    - `choice`: `options`, and the `proposed` option with its `confidence`;
+    - `grade`: the `output` to grade, `options` (the grades) and `proposed`;
+    - `answer`: the `prompt`.
+    """
+
+    confidence: Annotated[
+        float | None,
+        Field(description="The producer's confidence in its proposal, from 0 to 1."),
+    ] = None
+    options: list[ReviewOption] | None = None
+    output: str | None = None
+    prompt: str | None = None
+    property: str | None = None
+    proposed: Annotated[
+        str | None, Field(description='The option the producer proposes.')
+    ] = None
+    unit: str | None = None
+    value: Annotated[
+        Any | None,
+        Field(description='The proposed value: a number, a string or a boolean.'),
+    ] = None
+
+
+class ReviewScope(Enum):
+    """
+    Whether a review item belongs to live work, whose answers take effect,
+    or to a test, which writes nothing.
+    """
+
+    live = 'live'
+    test = 'test'
+
+
+class ReviewStatus(Enum):
+    """
+    Where an item is, as `/v1/reviews` says it.
+    """
+
+    open = 'open'
+    answered = 'answered'
+    withdrawn = 'withdrawn'
+
+
+class ReviewSubject(BaseModel):
+    """
+    The record a question is about.
+    """
+
+    iri: Annotated[str | None, Field(description="The record's IRI.")] = None
+    key: Annotated[str | None, Field(description='Its stable import key.')] = None
+    name: Annotated[str | None, Field(description='Its display name.')] = None
+    type: Annotated[str | None, Field(description='Its class.')] = None
+
+
+class ReviewWait(BaseModel):
+    """
+    The run that waits for an item's answer: the signal goes to this turn.
+    """
+
+    identity: Annotated[
+        str, Field(description='The engine identity (`ctx.workflowId`).')
+    ]
+    signal: Annotated[
+        str | None,
+        Field(
+            description='The signal name the run waits for: `review.<item id>`, set by the\nserver (a create request may leave it out).'
+        ),
+    ] = None
+    turn: Annotated[int, Field(ge=0)]
+
+
+class ReviewWithdrawRequest(BaseModel):
+    """
+    `POST /v1/reviews/withdraw?id=…`: the producer withdraws an open
+    item (a suggestion's supersede).
+    """
+
+    reason: Annotated[str, Field(description='Required, at most 1,000 characters.')]
+
+
+class ReviewWorkflowOrigin(BaseModel):
+    """
+    The workflow run and step that filed an item.
+    """
+
+    identity: Annotated[
+        str | None,
+        Field(description='The engine identity and turn of the run, for a signal.'),
+    ] = None
+    name: Annotated[
+        str,
+        Field(
+            description="The workflow's name (its `starter:<name>` origin id without the\nprefix)."
+        ),
+    ]
+    run: Annotated[
+        str | None, Field(description='The run (`WorkflowRunSummary::id`).')
+    ] = None
+    step: Annotated[str | None, Field(description='The step key inside the run.')] = (
+        None
+    )
+    turn: Annotated[int | None, Field(ge=0)] = None
+
+
 class RoutingObject(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -9641,6 +9819,22 @@ class WorkflowRequeueResponse(BaseModel):
         list[str],
         Field(description='The items queued again, back on the asking shard.'),
     ]
+
+
+class WorkflowReviewTrigger(BaseModel):
+    """
+    A review trigger: the answers to the review items a workflow asked
+    (`POST /v1/reviews` with `workflow.name`, or origin `starter:<name>`)
+    arrive as messages of type `review.answered` ([`ReviewAnsweredMessage`]),
+    one per answer. It goes beside the workflow's watch or content trigger.
+    """
+
+    workflow: Annotated[
+        str | None,
+        Field(
+            description="The workflow whose items' answers arrive. Absent: this workflow."
+        ),
+    ] = None
 
 
 class WorkflowRunHour(BaseModel):
@@ -13975,6 +14169,157 @@ class ResolvedTerm(BaseModel):
     type_signature: VocabularyTypeSignature | None = None
 
 
+class ReviewAnswer(BaseModel):
+    """
+    A person's answer to a review item.
+
+    `value` goes with `correct` and `option` with `choose`; `note` holds the
+    free text of an `answer` item. The server sets `by` and `at`.
+    """
+
+    at: Annotated[
+        str | None, Field(description='When, RFC 3339, set by the server.')
+    ] = None
+    by: Annotated[str | None, Field(description='Who answered, set by the server.')] = (
+        None
+    )
+    decision: ReviewDecision
+    note: Annotated[
+        str | None,
+        Field(
+            description='Why, in a few words; the text of an `answer` item. At most 1,000\ncharacters.'
+        ),
+    ] = None
+    option: Annotated[
+        str | None,
+        Field(description='The id of the chosen option or grade, for `choose`.'),
+    ] = None
+    value: Annotated[
+        Any | None,
+        Field(
+            description='The corrected value, for `correct`: a number, a string or a boolean\nin the type of the property it corrects.'
+        ),
+    ] = None
+
+
+class ReviewAnswerBatchRequest(BaseModel):
+    """
+    `POST /v1/reviews/answer-batch`: one answer for up to 500 items, each
+    checked against its own kind.
+    """
+
+    answer: ReviewAnswer
+    ids: Annotated[list[str], Field(description='1 to 500 review item ids.')]
+    pattern: str | None = None
+    shown: list[str] | None = None
+
+
+class ReviewBatchResult(BaseModel):
+    """
+    What a batch did with one item.
+    """
+
+    answered: Annotated[bool, Field(description='`true` when this batch answered it.')]
+    id: str
+    reason: Annotated[str | None, Field(description='Why it was skipped.')] = None
+    status: ReviewStatus | None = None
+
+
+class ReviewDelivery(BaseModel):
+    """
+    The "review answered" event of an answer.
+    """
+
+    attempts: Annotated[int | None, Field(description='Sends tried.', ge=0)] = None
+    error: Annotated[
+        str | None,
+        Field(description='The last failure, for a pending or dropped event.'),
+    ] = None
+    sent_to: Annotated[
+        list[str] | None,
+        Field(
+            description='Where it went: `signal` and/or `trigger:<workflow>` entries.'
+        ),
+    ] = None
+    state: ReviewDeliveryState
+
+
+class ReviewEffects(BaseModel):
+    """
+    What an answer did. The answer is recorded first; a `commit_key`
+    without a `commit_seq` or a `commit_error` is a commit still to make
+    (idempotent by that key).
+    """
+
+    commit_attempts: Annotated[
+        int | None,
+        Field(
+            description='Tries of the commit that failed for a cause that may pass.',
+            ge=0,
+        ),
+    ] = None
+    commit_error: Annotated[
+        str | None,
+        Field(
+            description='Why the graph refused the commit of the answered value (a value the\nproperty no longer takes, a shape that rejects it). The answer\nstays recorded and its event is sent; the value is not written.'
+        ),
+    ] = None
+    commit_key: Annotated[
+        str | None,
+        Field(
+            description='The idempotency key of that commit\n(`review:<suggestion id>:r<revision>:<hash>`).'
+        ),
+    ] = None
+    commit_seq: CommitSeq | None = None
+    delivery: ReviewDelivery | None = None
+    next_attempt_at: Annotated[
+        str | None,
+        Field(
+            description='When the work still to do (the commit, the event) is tried again\n(RFC 3339): after a failed try the starters job waits longer each\ntime.'
+        ),
+    ] = None
+    no_op: Annotated[
+        bool | None, Field(description='The value was in the graph already.')
+    ] = None
+    request_id: Annotated[
+        str | None, Field(description='The request that answered (its `X-Request-Id`).')
+    ] = None
+
+
+class ReviewEvalOrigin(BaseModel):
+    """
+    A model check, a calibration session or a test that filed an item.
+    """
+
+    id: str
+    kind: ReviewEvalOriginKind
+
+
+class ReviewItemFields(BaseModel):
+    """
+    The review part of a suggestion record. Absent on a plain suggestion,
+    which reads as kind `change`, scope `live`.
+    """
+
+    answer: ReviewAnswer | None = None
+    effects: ReviewEffects | None = None
+    eval: ReviewEvalOrigin | None = None
+    evidence: list[ReviewEvidence] | None = None
+    evidence_hash: Annotated[
+        str | None,
+        Field(
+            description="The producer's mark of the evidence the question is asked on (for\nvalues.extract: a hash of the text it read). An answer holds for\nthat evidence; new evidence with another value asks again."
+        ),
+    ] = None
+    kind: ReviewItemKind
+    previous_answer: ReviewAnswer | None = None
+    question: ReviewQuestion | None = None
+    scope: ReviewScope | None = None
+    subject: ReviewSubject | None = None
+    wait: ReviewWait | None = None
+    workflow: ReviewWorkflowOrigin | None = None
+
+
 class RewrittenQuery(BaseModel):
     """
     The query whose rows hold the answer.
@@ -15589,8 +15934,8 @@ class WorkflowStep(BaseModel):
 class WorkflowTrigger(BaseModel):
     """
     One trigger of a workflow: a watch or a content trigger, exactly one of
-    them. A schedule (design only) is refused with
-    `400 workflow_trigger_unsupported`.
+    them, and at most one review trigger beside it. A schedule (design only)
+    is refused with `400 workflow_trigger_unsupported`.
     """
 
     content: WorkflowContentTrigger | None = None
@@ -15600,6 +15945,7 @@ class WorkflowTrigger(BaseModel):
             description="`[a-z0-9][a-z0-9_-]{0,62}`. Default `watch`. Each message's origin\nnames it."
         ),
     ] = None
+    review: WorkflowReviewTrigger | None = None
     schedule: Annotated[
         dict[str, Any] | None,
         Field(
@@ -15662,7 +16008,8 @@ class WorkflowTriggerResolved(BaseModel):
 
     content: WorkflowContentTrigger | None = None
     id: str
-    kind: Annotated[str, Field(description='`watch` or `content`.')]
+    kind: Annotated[str, Field(description='`watch`, `content` or `review`.')]
+    review: WorkflowReviewTrigger | None = None
     watch: WorkflowWatchResolved | None = None
 
 
@@ -17140,6 +17487,7 @@ class OntologyChangeSuggestionSummary(BaseModel):
         ),
     ] = None
     records: Annotated[int | None, Field(ge=0)] = None
+    review: ReviewItemFields | None = None
     revision: Annotated[int, Field(ge=0)]
     source: SuggestionSourceSummary | None = None
     status: OntologyChangeSuggestionStatus
@@ -17472,6 +17820,64 @@ class ResolveTermResponse(BaseModel):
     ]
     snapshot: SnapshotView
     snapshot_token: str
+
+
+class ReviewAnswerBatchResponse(BaseModel):
+    """
+    The answer of `POST /v1/reviews/answer-batch`.
+    """
+
+    answered: Annotated[int, Field(ge=0)]
+    batch_id: str
+    results: Annotated[
+        list[ReviewBatchResult],
+        Field(description="One per item id, in the request's order."),
+    ]
+    skipped: Annotated[int, Field(ge=0)]
+
+
+class ReviewAnsweredItem(BaseModel):
+    """
+    The answered item a `review.answered` event carries: what a workflow
+    acts on, each text cut so the message stays within the engine's 32 KiB.
+    `GET /v1/reviews/detail?id=` reads the whole item.
+    """
+
+    answer: ReviewAnswer
+    commit_error: Annotated[
+        str | None,
+        Field(description='Why the graph refused the answered value, when it did.'),
+    ] = None
+    commit_seq: CommitSeq | None = None
+    id: Annotated[str, Field(description="`rev_` and the record's hex.")]
+    key: str
+    kind: ReviewItemKind
+    object: Annotated[str, Field(description='Always `review_item`.')]
+    origin: SuggestionOrigin
+    property: Annotated[
+        str | None, Field(description='The property a `value` item asks about.')
+    ] = None
+    revision: Annotated[int, Field(ge=0)]
+    scope: ReviewScope
+    subject: ReviewSubject | None = None
+    title: str
+    workflow: ReviewWorkflowOrigin | None = None
+
+
+class ReviewAnsweredMessage(BaseModel):
+    """
+    The message a workflow's review trigger receives for one answer: the
+    event `review.answered`, with the answered item in brief and the
+    request that answered.
+    """
+
+    graph: GraphKey
+    request_id: Annotated[
+        str | None, Field(description='The request that answered (its `X-Request-Id`).')
+    ] = None
+    review_item: ReviewAnsweredItem
+    type: Annotated[str, Field(description='Always `review.answered`.')]
+    workflow: Annotated[str, Field(description='The workflow that receives it.')]
 
 
 class RoutingPlan(BaseModel):
@@ -19253,6 +19659,7 @@ class OntologyChangeSuggestion(BaseModel):
         ),
     ] = None
     rationale: str | None = None
+    review: ReviewItemFields | None = None
     revision: Annotated[
         int,
         Field(
@@ -19402,6 +19809,134 @@ class QueryRewriteEvent(
             discriminator='event',
         ),
     ]
+
+
+class ReviewAnswerRequest(BaseModel):
+    """
+    `POST /v1/reviews/answer?id=…`. With an `Idempotency-Key` header, the same
+    key again returns the item; with other parameters it is refused
+    (`409 idempotency_conflict`).
+    """
+
+    answer: ReviewAnswer
+    comment: Annotated[
+        str | None, Field(description='Added to the discussion with the answer.')
+    ] = None
+    edits: OntologyChangeSuggestionAcceptRequest | None = None
+    revision: Annotated[
+        int | None,
+        Field(
+            description='The revision the person saw; a later revision answers 409.',
+            ge=0,
+        ),
+    ] = None
+
+
+class ReviewItem(BaseModel):
+    """
+    A question for a person (`/v1/reviews`). A list holds each item without
+    its `facts` and `comments`, with its first quote only, and with
+    `rationale` and long question texts cut to 300 characters; `GET
+    /v1/reviews/detail` returns it in full.
+    """
+
+    answer: ReviewAnswer | None = None
+    comments: list[SuggestionComment] | None = None
+    created: Annotated[str, Field(description='RFC 3339 times.')]
+    effects: ReviewEffects | None = None
+    eval: ReviewEvalOrigin | None = None
+    evidence: list[ReviewEvidence] | None = None
+    evidence_hash: Annotated[
+        str | None,
+        Field(
+            description="The producer's mark of the evidence the question is asked on."
+        ),
+    ] = None
+    facts: SuggestedFacts | None = None
+    id: Annotated[
+        str,
+        Field(
+            description='`rev_` and 24 hex characters. The suggestion id with the same hex\n(`sg_…`) names the same item on these routes.'
+        ),
+    ]
+    key: Annotated[
+        str,
+        Field(
+            description="The producer's idempotency key: the same key updates this item."
+        ),
+    ]
+    kind: ReviewItemKind
+    object: Annotated[str, Field(description='Always `review_item`.')]
+    origin: SuggestionOrigin
+    previous_answer: ReviewAnswer | None = None
+    question: ReviewQuestion | None = None
+    rationale: str | None = None
+    revision: Annotated[int, Field(ge=0)]
+    scope: ReviewScope
+    status: ReviewStatus
+    subject: ReviewSubject | None = None
+    suggestion_id: Annotated[
+        str | None,
+        Field(
+            description='For a `change` item: its id on `/v1/ontology/suggestions`, which\nserves its change, identities, facts and impact.'
+        ),
+    ] = None
+    title: str
+    updated: str
+    wait: ReviewWait | None = None
+    workflow: ReviewWorkflowOrigin | None = None
+
+
+class ReviewItemCreateRequest(BaseModel):
+    """
+    `POST /v1/reviews`: file an item of kind `value`, `choice`, `grade` or
+    `answer`, or update the one with the same `key` (a `change` is filed
+    with `POST /v1/ontology/suggestions`). The same key with a different
+    question revises an open item and reopens a dismissed one; an answered
+    item is returned unchanged.
+    """
+
+    eval: ReviewEvalOrigin | None = None
+    evidence: list[ReviewEvidence] | None = None
+    evidence_hash: Annotated[
+        str | None,
+        Field(
+            description='A mark of the evidence the question is asked on (a document\nversion, a hash of the text read), at most 128 characters. An answer\nholds for it: asking again with other evidence and another proposal\nreopens an answered item, and the answer in force stays as\n`previous_answer` until a new one.'
+        ),
+    ] = None
+    facts: SuggestedFacts | None = None
+    key: Annotated[
+        str | None,
+        Field(
+            description='Idempotency key, as for a suggestion. Absent: derived from the kind,\nsubject and question.'
+        ),
+    ] = None
+    kind: ReviewItemKind
+    origin: SuggestionOrigin
+    question: ReviewQuestion
+    rationale: Annotated[
+        str | None, Field(description='Why a person sees it. At most 4,000 characters.')
+    ] = None
+    scope: ReviewScope | None = None
+    subject: ReviewSubject | None = None
+    title: Annotated[
+        str, Field(description='The question in words. At most 200 characters.')
+    ]
+    wait: ReviewWait | None = None
+    workflow: ReviewWorkflowOrigin | None = None
+
+
+class ReviewItemList(BaseModel):
+    """
+    `GET /v1/reviews`: newest update first.
+    """
+
+    data: list[ReviewItem]
+    has_more: Annotated[
+        bool, Field(description='More items match: pass `next_cursor` as `cursor`.')
+    ]
+    next_cursor: str | None = None
+    object: Annotated[str, Field(description='Always `list`.')]
 
 
 class WorkflowCompleteResponse(BaseModel):

@@ -10,6 +10,15 @@ The rules are those of the TypeScript template and of LBB's own
 the samples with the mock models of its test, the port writes the values of
 the answer key (`samples/expected.json`).
 
+A value between 0.5 and the gate becomes a `value` review item, one per
+property of an instance, under LBB's key (`value_item_key`). A person's
+answer wins over the model, for the evidence it was given on
+(`evidence_of`: the quote and the unit the text states). An accepted or
+corrected value is written as answered; a rejected one, or one the graph
+refused, is not written again. New evidence with another value asks again,
+and the answered value and its source link stay until a new answer. A value
+an earlier version filed as a suggestion (`legacy_value_key`) keeps working.
+
 ## Run it
 
 From `sdk/python/examples`, with the Python SDK installed
