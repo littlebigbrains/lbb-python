@@ -1,0 +1,111 @@
+{
+  "name": "wait-for-review-is-refused-on-a-trigger-shard",
+  "rule": "A trigger shard (starter.<name>) serves many inputs, so wait_for_review is refused there: the turn fails for good and files nothing.",
+  "workflow": {
+    "type": "triggered",
+    "name": "notes",
+    "version": "v1",
+    "initial_state": {
+      "runs": 0
+    }
+  },
+  "on_instances": [
+    {
+      "wait_for_review": "floor",
+      "request": {
+        "kind": "choice",
+        "workflow": "rooms",
+        "key": "agent.floor",
+        "title": "Which floor covering?",
+        "question": {
+          "options": [
+            {
+              "id": "parquet",
+              "label": "Parquet"
+            },
+            {
+              "id": "tiles",
+              "label": "Tiles"
+            }
+          ]
+        }
+      },
+      "timeout_ms": 60000
+    },
+    {
+      "return": {
+        "state": {}
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "notes",
+    "state": {},
+    "token": "token-n",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f3",
+    "turn": {
+      "workflow_id": "starter.notes",
+      "number": 3,
+      "message_id": "starter-notes-3",
+      "message": {
+        "type": "instances",
+        "workflow": "notes",
+        "graph": "crm",
+        "as_of_commit_seq": 4,
+        "reason": "changed",
+        "instances": [
+          "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef"
+        ],
+        "removed": []
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.notes-3",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/fail",
+        "body": {
+          "workflow_id": "starter.notes",
+          "turn": 3,
+          "token": "token-n",
+          "non_retryable": true
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}

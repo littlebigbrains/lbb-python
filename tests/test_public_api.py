@@ -84,12 +84,17 @@ def test_the_workflow_worker_exports_are_explicit_and_stable() -> None:
     # The names of the TypeScript SDK, in Python casing.
     assert sorted(lbb.workflows.__all__) == sorted(
         [
+            "ActivityCapture",
+            "ActivityCaptureResult",
+            "CapturedReview",
+            "CapturedWrite",
             "ENTITY_ID_KEY_SENTINEL",
             "ENTITY_IRI_NAMESPACE",
             "FailedInstance",
             "LbbActivities",
             "OwnedWrite",
             "OwnedWriteResult",
+            "ReviewWaitResult",
             "TRIGGER_MESSAGE_TYPE",
             "TriggeredWorkflowDefinition",
             "WorkflowBlobsNamespace",
@@ -103,6 +108,7 @@ def test_the_workflow_worker_exports_are_explicit_and_stable() -> None:
             "WorkflowStepContext",
             "WorkflowWait",
             "WorkflowWorker",
+            "capture_activities",
             "entity_id_from_iri",
             "entity_ref",
             "fan_in_identity",

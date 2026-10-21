@@ -21,6 +21,8 @@ A rule changes in one place: change the scenario, then both workers.
 | `turns/fail` | Not retried. A `WorkflowWait` or a `429 workflow_budget_exceeded` fails with `retry_at_ms` (at least a second ahead) and counts no attempt. |
 | Any turn route | A `409` (stale lease) or `404` (instance gone) stops the turn: nothing more is sent. |
 | `POST /v1/graph/commit` | A fenced write that meets `409 workflow_fence_lost` stops the turn. |
+| `POST /v1/reviews` | `waitForReview` / `wait_for_review` files the item in the step `<key>.ask`, with the run as the one that waits. It waits for the signal the item names in `<key>.answer`. On a timeout, the step `<key>.read` reads the item again. A trigger shard (`starter.<name>`) is refused: the turn fails for good. |
+| Captured activities | Model calls carry `test: {workflow}`. An owned write is checked with the commit's dry run and kept: no commit, no fence, no idempotency key. A refusal of the dry run is the write's error. Reviews are kept and filed nowhere, and a wait ends at once unanswered. A wait on a trigger shard is refused as the live one is. Reads of review items run. |
 
 Steps replay by key and kind, in order; each step's effect id is
 `<effect_prefix>/<key>`, the same on every attempt.
@@ -51,6 +53,10 @@ A scenario is one JSON object:
 - `name`, `version`, `initial_state`.
 - `worker`: optional worker options: `execution_reads`, `progress_every_ms`.
 - The client names the graph `client_graph` (default `main`).
+- `capture`: optional, `{"workflow": name}`. The program's activities are then
+  a capture of the client's (`captureActivities` / `capture_activities`, with
+  that workflow name). Without it, they are the client's (`lbbActivities` /
+  `lbb_activities`).
 
 ### The handler program
 
@@ -63,8 +69,11 @@ SDK's context. A triggered workflow has `on_instances` and, optionally,
 | `{"step": key, "returns": v, "do": [...], "kind", "timeout_ms", "heartbeat_timeout_ms"}` | `ctx.step(key, fn)`; `fn` runs the actions in `do`, then returns `v` |
 | `{"sleep": key, "ms": n}` | `ctx.sleep(key, n)` |
 | `{"wait_for_signal": key, "name": s, "timeout_ms": n}` | `ctx.waitForSignal` / `ctx.wait_for_signal`; its output is `{received, value}` |
-| `{"write_owned": key, "write": {...}, "graph": g}` | `writeOwned` / `write_owned` with the SDK's owned-write fields |
-| `{"requeue": key, "failed": [{instance, error}], "graph": g}` | `requeueFailed` / `requeue_failed` |
+| `{"write_owned": key, "write": {...}, "graph": g}` | the activities' `writeOwned` / `write_owned` with the SDK's owned-write fields |
+| `{"requeue": key, "failed": [{instance, error}], "graph": g}` | the activities' `requeue` |
+| `{"wait_for_review": key, "request": {...}, "timeout_ms": n}` | `waitForReview` / `wait_for_review`; its output is `{answered, answer, item}` |
+| `{"review": key, "request": {...}}` | the activities' `review`; its output is the item |
+| `{"review_items": key, "keys": [...]}` | `reviewItems` / `review_items`; its output is the list of items |
 | `{"wait": retry_at_ms}` | raise a `WorkflowWait` |
 | `{"raise": "error" \| "workflow_error", "message": m}` | raise a plain error, or a `WorkflowError` (permanent) |
 | `{"return": {"state": v, "result": v}}` | return the turn's result |
@@ -80,7 +89,7 @@ Actions in a step's `do`:
 | `{"sleep_ms": n}` | wait `n` ms of real time |
 | `{"block": true}` | wait until the attempt ends (a step that never returns) |
 | `{"raise": "error" \| "workflow_error"}` | raise inside the step |
-| `{"reason": {prompt, schema}, "effect_id": true}` | the `reason` activity, with the step's effect id when `effect_id` is true |
+| `{"reason": {prompt, schema}, "effect_id": true}` | the activities' `reason`, with the step's effect id when `effect_id` is true |
 | `{"blob_put": text}` | put `text` as a blob of the turn's identity |
 
 A value anywhere in the program can be `{"$ref": "key.path"}` (the output of
@@ -99,7 +108,7 @@ request the worker sends must match the next exchange's `request`:
 
 - `method` and `path` exactly;
 - `query`: these query parameters (others may be present);
-- `headers`: these headers (lowercase names);
+- `headers`: these headers (lowercase names; `null` means the header is absent);
 - `body`: a subset match (an object matches when each listed key matches;
   arrays match item by item and in length; other values are equal);
 - `raw`: the body's text exactly;
@@ -122,5 +131,9 @@ fails), and `delay_ms` (answer that much later).
 - `ran`: the keys of the step functions that ran, in order.
 - `effect_ids`: the effect ids those step functions saw, in order.
 - `settle_ms`: after the last run, wait this long; no more requests may come.
+- `captured`: what the capture kept, matched as a `body` is. It is
+  `{"writes": [...], "reviews": [...]}`. A write is `{step_key, graph, body,
+  check, errors, report}`, without `graph` and `report` when it has none. A
+  review is `{request}`.
 
 Every exchange must be used, and no other request may come.

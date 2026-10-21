@@ -16,6 +16,7 @@ Reference: ``docs/reference/workflow-activities.md``.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from pydantic import BaseModel
@@ -31,7 +32,14 @@ from ._triggered import (
     requeue_failed,
     write_owned,
 )
-from ._worker import StepKind, WorkflowContext, _activity_turn, _ActivityTurn
+from ._worker import (
+    StepKind,
+    WorkflowContext,
+    WorkflowError,
+    WorkflowStepContext,
+    _activity_turn,
+    _ActivityTurn,
+)
 
 if TYPE_CHECKING:
     from .._async_client import AsyncLbbClient
@@ -70,6 +78,68 @@ def split_in_halves(items: Sequence[Any]) -> tuple[list[Any], list[Any]] | None:
         return None
     middle = len(items) // 2
     return list(items[:middle]), list(items[middle:])
+
+
+@dataclass(frozen=True)
+class ReviewWaitResult:
+    """What :meth:`LbbActivities.wait_for_review` returns: the answer, or none
+    when the wait timed out (``answered`` false, ``answer`` ``None``), and the
+    item as it was read last."""
+
+    answered: bool
+    answer: models.ReviewAnswer | None
+    item: models.ReviewItem
+
+
+def _review_item_body(
+    request: Any,
+    workflow: str | Mapping[str, Any] | None = None,
+    run: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The body of ``POST /v1/reviews`` for a request (the TypeScript
+    ``reviewItemBody``). ``workflow`` (or the request's own ``workflow``)
+    names the workflow that asks, by its name or as a
+    ``ReviewWorkflowOrigin``; ``run`` is the run that waits for the answer
+    (``identity`` and ``turn``). An item that names no workflow is filed by
+    the run itself: its origin id is the run's identity."""
+    body = {k: v for k, v in dict(_coerce_body(request)).items() if v is not None}
+    named: Any = body.pop("workflow", None)
+    if named is None:
+        named = workflow
+    if isinstance(named, str):
+        named = {"name": named}
+    elif isinstance(named, Mapping):
+        named = {k: v for k, v in _coerce_body(named).items() if v is not None}
+    asking = {**named, **run} if named and run else named
+    if body.get("origin") is None:
+        origin: dict[str, Any] = {"kind": "agent"}
+        if named and named.get("name"):
+            origin["id"] = f"starter:{named['name']}"
+        elif run:
+            origin["id"] = run["identity"]
+        body["origin"] = origin
+    if asking:
+        body["workflow"] = asking
+    if run:
+        body["wait"] = {**run, "signal": ""}
+    return body
+
+
+def _refuse_trigger_shard(ctx: WorkflowContext) -> None:
+    """A trigger shard (``starter.<name>``) serves many inputs, and a wait
+    would hold them all: ``wait_for_review`` refuses it, live and in a
+    capture."""
+    if ctx.workflow_id.startswith("starter."):
+        raise WorkflowError(
+            f"wait_for_review needs a run with its own identity: {ctx.workflow_id} serves "
+            "many inputs, and a wait would hold them all. File the item with review() "
+            "and take the answer with a review trigger."
+        )
+
+
+def _item_kind(request: Any) -> Any:
+    kind = _coerce_body(request).get("kind") if request is not None else None
+    return getattr(kind, "value", kind)
 
 
 async def _counted(
@@ -150,6 +220,7 @@ class LbbActivities:
         effect_id: str | None = None,
         label: str | None = None,
         instance: str | None = None,
+        test: models.ActivityTest | Mapping[str, Any] | None = None,
     ) -> models.ReasonActivityResponse:
         """The reasoning model answers ``prompt`` with JSON that follows
         ``schema`` (``POST /v1/workflows/activities/reason``).
@@ -164,6 +235,8 @@ class LbbActivities:
         instance IRI or a document's name). A request the model cannot answer
         fails with ``422 activity_request_refused``: see
         :func:`is_activity_refused`. One attempt waits up to 5 minutes.
+        ``test`` (``{"workflow": name}``) marks the call as a workflow test's:
+        :func:`capture_activities` sets it.
         """
         fields, options, turn = self._call(
             effect_id, label, instance, {"timeout": REASON_TIMEOUT_SECONDS}
@@ -174,6 +247,7 @@ class LbbActivities:
                 "schema": dict(schema),
                 "system": system,
                 "max_tokens": max_tokens,
+                "test": _coerce_body(test) if test is not None else None,
                 **fields,
             }
         )
@@ -196,6 +270,7 @@ class LbbActivities:
         effect_id: str | None = None,
         label: str | None = None,
         instance: str | None = None,
+        test: models.ActivityTest | Mapping[str, Any] | None = None,
     ) -> models.DecideActivityResponse:
         """The decision model answers each choice question about ``state`` with
         one option, a confidence and the probability of each option
@@ -203,7 +278,8 @@ class LbbActivities:
 
         ``questions`` maps a question id to ``{"instructions": ...,
         "criteria": {option id: what the option means}}``. A question the
-        model did not answer is missing from ``answers``.
+        model did not answer is missing from ``answers``. ``test`` marks the
+        call as a workflow test's, as for :meth:`reason`.
         """
         fields, options, turn = self._call(effect_id, label, instance)
         body = models.DecideActivityRequest(
@@ -212,6 +288,7 @@ class LbbActivities:
                 key: models.DecideActivityQuestion.model_validate(_coerce_body(question))
                 for key, question in questions.items()
             },
+            test=models.ActivityTest.model_validate(_coerce_body(test)) if test else None,
             **fields,
         )
         return await _counted(
@@ -374,19 +451,11 @@ class LbbActivities:
         item, so a failed call is retried; an answered review item comes back
         with its answer.
         """
+        if _item_kind(request) in _REVIEW_ITEM_KINDS:
+            return await self._create_item(_review_item_body(request, workflow))
         body = dict(_coerce_body(request))
         if body.get("origin") is None:
             body["origin"] = {"kind": "agent", **({"id": f"starter:{workflow}"} if workflow else {})}
-        kind = body.get("kind")
-        if getattr(kind, "value", kind) in _REVIEW_ITEM_KINDS:
-            if workflow and body.get("workflow") is None:
-                body["workflow"] = {"name": workflow}
-            raw = await self._client.reviews.create(
-                models.ReviewItemCreateRequest.model_validate(body).model_dump(
-                    mode="json", by_alias=True, exclude_none=True
-                )
-            )
-            return models.ReviewItem.model_validate(raw)
         return await self._client.ontology.suggestion_create(
             models.OntologyChangeSuggestionCreateRequest.model_validate(body)
         )
@@ -405,6 +474,66 @@ class LbbActivities:
             raw = await self._client.reviews.list(key=chunk, limit=len(chunk))
             out.extend(models.ReviewItemList.model_validate(raw).data)
         return out
+
+    async def _create_item(self, body: Mapping[str, Any]) -> models.ReviewItem:
+        raw = await self._client.reviews.create(
+            models.ReviewItemCreateRequest.model_validate(body).model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            )
+        )
+        return models.ReviewItem.model_validate(raw)
+
+    async def wait_for_review(
+        self,
+        ctx: WorkflowContext,
+        key: str,
+        request: models.ReviewItemCreateRequest | Mapping[str, Any],
+        *,
+        timeout_ms: int,
+        workflow: str | Mapping[str, Any] | None = None,
+    ) -> ReviewWaitResult:
+        """Ask a person and wait for the answer without holding a worker.
+
+        The item (of kind ``value``, ``choice``, ``grade`` or ``answer``) is
+        filed in the step ``<key>.ask`` with this run as the one that waits;
+        then the turn waits for the answer's signal (``<key>.answer``, at most
+        ``timeout_ms``). An answer that came before the wait is taken at once.
+        When the wait times out, the step ``<key>.read`` reads the item again,
+        so an answer whose signal was lost still counts. ``workflow`` names the
+        workflow that asks, as for :meth:`review`.
+
+        Only for a run with its own identity: a trigger shard
+        (``starter.<name>``) serves many inputs, and a wait would hold them
+        all, so it is refused there; file with :meth:`review` and take the
+        answer with a review trigger instead.
+        """
+        _refuse_trigger_shard(ctx)
+        run = {"identity": ctx.workflow_id, "turn": ctx.turn}
+        body = _review_item_body(request, workflow, run)
+
+        async def ask(_: WorkflowStepContext) -> models.ReviewItem:
+            return await self._create_item(body)
+
+        item = await ctx.step(f"{key}.ask", ask, model=models.ReviewItem)
+        if getattr(item.status, "value", item.status) != "open" and item.answer is not None:
+            return ReviewWaitResult(answered=True, answer=item.answer, item=item)
+        signal = item.wait.signal if item.wait is not None else None
+        if not signal:
+            raise WorkflowError(f"review item {item.id} names no signal to wait for")
+        got = await ctx.wait_for_signal(f"{key}.answer", name=signal, timeout_ms=timeout_ms)
+        if got.received:
+            answer = models.ReviewAnswer.model_validate(got.value)
+            return ReviewWaitResult(answered=True, answer=answer, item=item)
+
+        # The wait timed out: the answer may have come and its signal not (a
+        # dropped event). Read the item again.
+        async def read(_: WorkflowStepContext) -> models.ReviewItem:
+            return models.ReviewItem.model_validate(await self._client.reviews.get(item.id))
+
+        now = await ctx.step(f"{key}.read", read, model=models.ReviewItem)
+        if getattr(now.status, "value", now.status) == "answered" and now.answer is not None:
+            return ReviewWaitResult(answered=True, answer=now.answer, item=now)
+        return ReviewWaitResult(answered=False, answer=None, item=now)
 
     async def list_reviews(
         self,
@@ -459,6 +588,7 @@ def lbb_activities(client: AsyncLbbClient) -> LbbActivities:
 
 __all__ = [
     "LbbActivities",
+    "ReviewWaitResult",
     "lbb_activities",
     "is_activity_refused",
     "split_in_halves",
