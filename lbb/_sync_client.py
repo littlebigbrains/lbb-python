@@ -61,6 +61,8 @@ from ._client_base import (
     _SseParser,
     _trial_settled,
     _trial_timeout,
+    _workflow_test_open,
+    _WorkflowTestsNamespace,
     _write_chunks,
 )
 from ._workflow_execution import WorkflowTurnReader
@@ -381,6 +383,90 @@ class _SyncModelsNamespace:
         self.switches = _SyncModelSwitchesNamespace(client)
 
 
+class _SyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
+    __doc__ = _WorkflowTestsNamespace.__doc__
+
+    def create(
+        self,
+        *,
+        workflow: Mapping[str, str] | None = None,
+        install: Mapping[str, Any] | None = None,
+        iris: Sequence[str] | None = None,
+        sample: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.WorkflowTest:
+        return cast(
+            models.WorkflowTest,
+            super().create(
+                workflow=workflow,
+                install=install,
+                iris=iris,
+                sample=sample,
+                idempotency_key=idempotency_key,
+            ),
+        )
+
+    def get(self, test_id: str) -> models.WorkflowTest:
+        return cast(models.WorkflowTest, super().get(test_id))
+
+    def list(
+        self,
+        *,
+        starter: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> models.WorkflowTestList:
+        return cast(
+            models.WorkflowTestList,
+            super().list(starter=starter, name=name, limit=limit, cursor=cursor),
+        )
+
+    def answer(
+        self,
+        test_id: str,
+        iri: str,
+        property: str,
+        answer: Mapping[str, Any] | None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> models.WorkflowTest:
+        return cast(
+            models.WorkflowTest,
+            super().answer(test_id, iri, property, answer, idempotency_key=idempotency_key),
+        )
+
+    def cancel(self, test_id: str) -> models.WorkflowTest:
+        return cast(models.WorkflowTest, super().cancel(test_id))
+
+    def dataset(self, test_id: str) -> models.WorkflowTestDataset:
+        return cast(models.WorkflowTestDataset, super().dataset(test_id))
+
+    def wait(
+        self, test_id: str, *, timeout: float | None = None, poll_interval: float = 1.0
+    ) -> models.WorkflowTest:
+        """Read the test until it ends (``done``, ``failed`` or
+        ``cancelled``) and return it. ``timeout`` (seconds) raises
+        :class:`TimeoutError`."""
+        if poll_interval < 0:
+            raise ValueError("poll_interval must be non-negative")
+        deadline = time.monotonic() + timeout if timeout is not None else None
+        while True:
+            test = self.get(test_id)
+            if not _workflow_test_open(test):
+                return test
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(f"workflow test {test_id} is still {test.status}")
+            time.sleep(poll_interval)
+
+
+class _SyncWorkflowsNamespace:
+    """Workflows: tests of a workflow on chosen inputs (:attr:`tests`)."""
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self.tests = _SyncWorkflowTestsNamespace(client)
+
+
 class LbbClient(_BaseLbbClient):
     """Synchronous client. Usable as a context manager."""
 
@@ -435,6 +521,8 @@ class LbbClient(_BaseLbbClient):
         self.reviews = _ReviewsNamespace(self)
         # Model trials of other models on the graph's uses, and switches.
         self.models = _SyncModelsNamespace(self)
+        # Tests of a workflow on chosen inputs, which write nothing.
+        self.workflows = _SyncWorkflowsNamespace(self)
         self.embeddings = _EmbeddingsNamespace(self)
         # Files of the graph: upload, list, bytes, parsed pages, delete.
         self.files = _FilesNamespace(self)

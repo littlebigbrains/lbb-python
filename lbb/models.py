@@ -55,6 +55,26 @@ class ActivityState(Enum):
     cancelled = 'cancelled'
 
 
+class ActivityTest(BaseModel):
+    """
+    The workflow test a `reason` or `decide` call belongs to: the call log
+    names the route `tests/<workflow>` and the scope `test`, it counts as the
+    workflow's in the model activity and the budget, and calibration, the
+    model checks and model trials leave it out. `captureActivities` of the
+    TypeScript SDK sets it.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    workflow: Annotated[
+        str,
+        Field(
+            description='The workflow under test: 1 to 64 characters of `A-Z a-z 0-9 _ . -`.'
+        ),
+    ]
+
+
 class ActivityUnit(Enum):
     phases = 'phases'
     partitions = 'partitions'
@@ -979,6 +999,7 @@ class DecideActivityRequest(BaseModel):
             description='What the questions are about: any JSON, at most 200,000 characters.'
         ),
     ]
+    test: ActivityTest | None = None
     workflow: ActivityWorkflow | None = None
 
 
@@ -1498,6 +1519,76 @@ class EntityView(BaseModel):
     id: str
     name: str
     type: str
+
+
+class EvalDatasetInstall(BaseModel):
+    """
+    The settings a `values` dataset is graded with, as a template answer key
+    has them: the value type of each property (`text`, `keyword`, `i64`,
+    `f64`, `bool`), the units, and the context.
+    """
+
+    context: str | None = None
+    properties: dict[str, str] | None = None
+    units: dict[str, str] | None = None
+
+
+class EvalDatasetKind(Enum):
+    """
+    What the items of a dataset hold.
+    """
+
+    values = 'values'
+
+
+class EvalDatasetRecord(BaseModel):
+    """
+    One input of an export (`records.json` of a template): its name, its
+    text and the instance it was read from.
+    """
+
+    iri: str | None = None
+    name: str
+    text: str
+
+
+class EvalDatasetSourceKind(Enum):
+    """
+    Where an item came from.
+    """
+
+    test = 'test'
+    review = 'review'
+    answer_key = 'answer_key'
+
+
+class EvalExpectedValue(BaseModel):
+    """
+    One value of an item: a value a correct run writes, or, in `leave_out`,
+    one it must not write.
+    """
+
+    accept: Annotated[
+        list[str] | None,
+        Field(description='Other spellings a text value may take, lower case.'),
+    ] = None
+    property: str
+    quote: Annotated[
+        str | None, Field(description='Words of the text that state the value.')
+    ] = None
+    reason: Annotated[str | None, Field(description='Why a value is left out.')] = None
+    stated: Annotated[
+        str | None,
+        Field(
+            description='The number and unit as the text states them, when the property holds\nanother unit: `450 mm` for a `width_cm` of 45.'
+        ),
+    ] = None
+    value: Annotated[
+        Any,
+        Field(
+            description='The value: numbers compare as numbers, text in lower case and trimmed\nagainst `accept`. In `leave_out`, null means no value at all for the\nproperty.'
+        ),
+    ]
 
 
 class EvalItem(BaseModel):
@@ -3378,6 +3469,16 @@ class ModelCallRun(BaseModel):
             description="The turn's number; absent for a step of the Rust path.", ge=0
         ),
     ] = None
+
+
+class ModelCallScope(Enum):
+    """
+    Whether a logged call did a workflow's live work or ran in a workflow
+    test, which writes nothing (`ModelCall::scope`).
+    """
+
+    live = 'live'
+    test = 'test'
 
 
 class ModelCallShape(Enum):
@@ -5432,6 +5533,7 @@ class ReasonActivityRequest(BaseModel):
         str | None,
         Field(description='The system prompt: who the model is and how it answers.'),
     ] = None
+    test: ActivityTest | None = None
     workflow: ActivityWorkflow | None = None
 
 
@@ -10052,6 +10154,161 @@ class WorkflowTask(BaseModel):
     workflow_input: Any
 
 
+class WorkflowTestCounts(BaseModel):
+    """
+    The values of a test by what the live workflow would do with them.
+    """
+
+    answered: Annotated[int, Field(description='Properties a person answered.', ge=0)]
+    failed: Annotated[
+        int,
+        Field(
+            description='Values a check dropped, and inputs the model did not answer.',
+            ge=0,
+        ),
+    ]
+    inputs_done: Annotated[int, Field(description='Inputs with a result.', ge=0)]
+    no_value: Annotated[
+        int, Field(description='Properties of a read input with no value.', ge=0)
+    ]
+    passed: Annotated[
+        int,
+        Field(
+            description='Values at or above the gate, which the workflow writes: checks\npassed.',
+            ge=0,
+        ),
+    ]
+    review: Annotated[int, Field(description='Values a person would review.', ge=0)]
+
+
+class WorkflowTestInput(BaseModel):
+    """
+    One input of a test: an instance of the watched class.
+    """
+
+    iri: str
+    label: Annotated[
+        str | None,
+        Field(description="The instance's label; empty until the input is read."),
+    ] = None
+    text: Annotated[
+        str | None,
+        Field(
+            description='The text the workflow read, at most 40,000 characters; empty until\nthe input is read. A list of tests leaves it out.'
+        ),
+    ] = None
+
+
+class WorkflowTestProperty(BaseModel):
+    """
+    One property a `values.extract` test reads: its name, value type and,
+    for a number, the unit the property holds.
+    """
+
+    name: str
+    unit: str | None = None
+    value_type: str
+
+
+class WorkflowTestRegion(BaseModel):
+    """
+    The page box of an instance read from a file: where its values are.
+    """
+
+    page: Annotated[int, Field(ge=0)]
+    x0: float
+    x1: float
+    y0: float
+    y1: float
+
+
+class WorkflowTestSettings(BaseModel):
+    """
+    The settings a test runs with, frozen when it starts.
+    """
+
+    class_: Annotated[str, Field(alias='class', description='The watched class IRI.')]
+    context: str | None = None
+    fields: Annotated[
+        list[EmbeddingField] | None,
+        Field(description='The watched fields whose text the workflow reads.'),
+    ] = None
+    gate: Annotated[
+        float,
+        Field(description='The gate: a value with this support or more is written.'),
+    ]
+    properties: list[WorkflowTestProperty]
+
+
+class WorkflowTestStatus(Enum):
+    """
+    Where a test stands. `queued` → `running` → `done`, `failed` or
+    `cancelled`; the last three are final.
+    """
+
+    queued = 'queued'
+    running = 'running'
+    done = 'done'
+    failed = 'failed'
+    cancelled = 'cancelled'
+
+
+class WorkflowTestValue(BaseModel):
+    """
+    One value the workflow read from an input, after every check, as the live
+    workflow would decide it.
+    """
+
+    detail: str | None = None
+    outcome: Annotated[
+        str,
+        Field(
+            description='What the live workflow would do: `written` (at or above the gate),\n`review` (a review item), `weak_support` (dropped below 0.5),\n`quote_not_found`, `invalid_value`, `unknown_property` or\n`duplicate`.'
+        ),
+    ]
+    property: str
+    quote: Annotated[str, Field(description='The words of the text the model quoted.')]
+    stated: Annotated[
+        str | None,
+        Field(
+            description="The number and unit as the text states them (`600 mm`), when they\nwere converted to the property's unit."
+        ),
+    ] = None
+    support: Annotated[
+        float | None,
+        Field(description='How well the quote supports the value, 0 to 1.'),
+    ] = None
+    unconfirmed: Annotated[
+        str | None,
+        Field(
+            description='Why the unit is not confirmed: such a value goes to review at most.'
+        ),
+    ] = None
+    value: Annotated[
+        str,
+        Field(
+            description="The value as the workflow writes it (a number in the property's\nunit)."
+        ),
+    ]
+
+
+class WorkflowTestWorkflow(BaseModel):
+    """
+    The workflow a test runs: a starter workflow's catalog id and the
+    workflow's name.
+    """
+
+    name: Annotated[
+        str,
+        Field(
+            description="The triggered workflow's name; for a workflow not created yet, the\nname its create would give."
+        ),
+    ]
+    starter: Annotated[
+        str, Field(description="The starter workflow's catalog id (`values.extract`).")
+    ]
+
+
 class WorkflowTriggerReason(Enum):
     """
     Why a developer workflow receives instances.
@@ -11416,6 +11673,16 @@ class EvalAskInput(BaseModel):
             description='The date the question was asked (`YYYY-MM-DD`), so a relative\nquestion reads the same window on every run.'
         ),
     ] = None
+
+
+class EvalDatasetSource(BaseModel):
+    """
+    The origin of an item: its kind and the id of the test, review item or
+    template it came from.
+    """
+
+    id: str | None = None
+    kind: EvalDatasetSourceKind
 
 
 class EvalLabel(BaseModel):
@@ -15832,6 +16099,12 @@ class WorkflowRunSummary(BaseModel):
         str | None,
         Field(description='Why it failed, at most 500 characters; `null` otherwise.'),
     ] = None
+    fingerprint: Annotated[
+        str | None,
+        Field(
+            description='A hash of what an LBB-run workflow ran with (added 2026-10-20): its\nstarter and version, settings, gate and watch, the units of its\nproperties, its models and its system prompt. A workflow test\ncarries the same hash (`WorkflowTest::fingerprint`), so a run and a\ntest with one fingerprint ran the same workflow. Absent for engine\nruns.'
+        ),
+    ] = None
     id: Annotated[
         str,
         Field(
@@ -15929,6 +16202,71 @@ class WorkflowStep(BaseModel):
     ] = None
     retry_delay_ms: Annotated[int | None, Field(ge=0)] = None
     timeout_ms: Annotated[int | None, Field(ge=0)] = None
+
+
+class WorkflowTestAnswerRequest(BaseModel):
+    """
+    `POST /v1/workflows/triggered/tests/answer`: a person's answer to one
+    property of one read input; `answer: null` removes it.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    answer: ReviewAnswer | None = None
+    id: str
+    iri: str
+    property: str
+
+
+class WorkflowTestCreateRequest(BaseModel):
+    """
+    `POST /v1/workflows/triggered/tests`: run a workflow on chosen inputs.
+    Name a workflow of the graph (`workflow`), or a workflow to create
+    (`install`, the body of `PUT /v1/workflows/triggered`); and the inputs
+    (`iris`, at most 20), or a sample of the watched class's first instances
+    (`sample`, 1 to 20, default 6).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    install: TriggeredWorkflowRequest | None = None
+    iris: list[str] | None = None
+    sample: Annotated[int | None, Field(ge=0)] = None
+    workflow: WorkflowTestWorkflow | None = None
+
+
+class WorkflowTestResult(BaseModel):
+    """
+    What a test read from one input.
+    """
+
+    answers: Annotated[
+        dict[str, ReviewAnswer] | None,
+        Field(
+            description="A person's answer per property (`value` items of Review): to the\nvalue the workflow read, or, for a property without one, the value\nthe text states (`correct`) or that it states none (`accept`)."
+        ),
+    ] = None
+    cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The model cost of this input, in millionths of a US dollar.',
+            ge=0,
+        ),
+    ] = None
+    error: Annotated[
+        str | None,
+        Field(
+            description='Why the input has no values: the instance is gone, or its text is\nempty.'
+        ),
+    ] = None
+    failed: Annotated[
+        bool | None, Field(description='The model gave no usable answer.')
+    ] = None
+    iri: str
+    region: WorkflowTestRegion | None = None
+    values: list[WorkflowTestValue] | None = None
 
 
 class WorkflowTrigger(BaseModel):
@@ -16561,6 +16899,56 @@ class EntityRdfRelations(BaseModel):
     outgoing_truncation: TruncatedCollection | None = None
 
 
+class EvalDatasetItem(BaseModel):
+    """
+    One example of a `values` dataset.
+    """
+
+    case: Annotated[
+        str | None, Field(description='What the example shows, in one sentence.')
+    ] = None
+    iri: Annotated[
+        str | None,
+        Field(
+            description='The instance the input was read from, when it came from a graph.'
+        ),
+    ] = None
+    leave_out: Annotated[
+        list[EvalExpectedValue] | None,
+        Field(description='Values a correct run does not write.'),
+    ] = None
+    name: Annotated[
+        str,
+        Field(
+            description="The input's name: a record name or label, unique in the dataset."
+        ),
+    ]
+    source: EvalDatasetSource | None = None
+    text: Annotated[
+        str | None,
+        Field(
+            description="The input text, at most 40,000 characters. A write needs it; the\n`expected.records` of an export leave it out, because `records`\nholds it, as a template's `records.json` does."
+        ),
+    ] = None
+    values: Annotated[
+        list[EvalExpectedValue] | None,
+        Field(description='Values a correct run writes.'),
+    ] = None
+
+
+class EvalDatasetItemsRequest(BaseModel):
+    """
+    `POST /v1/evals/datasets/items`: add items to the dataset `id`. An item
+    with the name of an item the dataset has replaces it in its place.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: str
+    items: list[EvalDatasetItem]
+
+
 class ExtractorDatasetResponse(BaseModel):
     """
     `GET /v1/models/extractor-dataset` — the extractor fine-tune's training
@@ -17061,10 +17449,23 @@ class ModelCall(BaseModel):
     sampled: Annotated[
         bool, Field(description='The sampler picked the call for a check.')
     ]
+    scope: ModelCallScope | None = None
+    step: Annotated[
+        str | None,
+        Field(
+            description='The step of the workflow that made the call (added 2026-10-20):\n`values` or `support` for `values.extract`.'
+        ),
+    ] = None
     truncated: Annotated[
         bool | None, Field(description='A text or a list was cut to fit the bounds.')
     ] = None
     usage: ModelCallUsage
+    use: Annotated[
+        str | None,
+        Field(
+            description="The model use the call served (added 2026-10-20): `extract` for an\nAI step's reasoning call, `decide` for its decision call. Calls of\n`values.extract` carry it."
+        ),
+    ] = None
 
 
 class ModelCallRow(BaseModel):
@@ -17095,9 +17496,13 @@ class ModelCallRow(BaseModel):
         ),
     ] = None
     sampled: bool
+    scope: ModelCallScope | None = None
     skipped: Annotated[
         str | None,
         Field(description='`budget`, `refused` or `failed`: sampled but not checked.'),
+    ] = None
+    step: Annotated[
+        str | None, Field(description="The call's workflow step (`ModelCall::step`).")
     ] = None
     summary: Annotated[
         str,
@@ -17106,6 +17511,9 @@ class ModelCallRow(BaseModel):
         ),
     ]
     usage: ModelCallRowUsage | None = None
+    use: Annotated[
+        str | None, Field(description="The call's model use (`ModelCall::model_use`).")
+    ] = None
 
 
 class ModelCheck(BaseModel):
@@ -18416,6 +18824,80 @@ class WorkflowStartRequest(BaseModel):
     steps: list[WorkflowStep]
 
 
+class WorkflowTest(BaseModel):
+    """
+    A test of a workflow on chosen inputs. `get` returns it whole; a list
+    leaves out the inputs' texts and the results.
+    """
+
+    cost_micro_usd: Annotated[
+        int | None, Field(description='What its model calls cost so far.', ge=0)
+    ] = None
+    counts: WorkflowTestCounts
+    created: Annotated[str, Field(description='When it was started, RFC 3339.')]
+    created_by: Annotated[
+        str | None, Field(description='Who started it, when known.')
+    ] = None
+    error: Annotated[
+        str | None, Field(description='Why it failed, at most 500 characters.')
+    ] = None
+    estimate_micro_usd: Annotated[
+        int,
+        Field(
+            description='What the start estimated the test to cost, in millionths of a US\ndollar.',
+            ge=0,
+        ),
+    ]
+    fingerprint: Annotated[
+        str,
+        Field(
+            description='A hash of the settings, the units of the properties, the models and\nthe system prompt. A test and a run (`WorkflowRunSummary`) with the\nsame fingerprint ran the same workflow.'
+        ),
+    ]
+    finished: Annotated[
+        str | None,
+        Field(description='When it reached `done`, `failed` or `cancelled`, RFC 3339.'),
+    ] = None
+    id: Annotated[str, Field(description='`wtest_` and an opaque suffix.')]
+    inputs: list[WorkflowTestInput]
+    installed: Annotated[
+        bool,
+        Field(
+            description='The workflow exists on the graph; `false` for a test of a create\nrequest.'
+        ),
+    ]
+    object: Annotated[str, Field(description='`workflow_test`.')]
+    results: Annotated[
+        list[WorkflowTestResult] | None,
+        Field(description='One result per read input, in input order.'),
+    ] = None
+    settings: WorkflowTestSettings
+    status: WorkflowTestStatus
+    uses: Annotated[
+        dict[str, str] | None,
+        Field(
+            description='The model of each use: `extract` (the reasoning model reads values)\nand `decide` (the decision model scores their support).'
+        ),
+    ] = None
+    workflow: WorkflowTestWorkflow
+
+
+class WorkflowTestList(BaseModel):
+    """
+    `GET /v1/workflows/triggered/tests`: the graph's tests, newest first.
+    """
+
+    data: list[WorkflowTest]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; absent on the last page.'
+        ),
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+
+
 class WorkflowTurn(BaseModel):
     attempt: Annotated[int, Field(ge=0)]
     continued_to: Annotated[int | None, Field(ge=0)] = None
@@ -18768,6 +19250,89 @@ class EntityPropertiesInput(BaseModel):
         ),
     ] = None
     type: str
+
+
+class EvalDataset(BaseModel):
+    """
+    An Evals dataset: a name, a kind, the settings it is graded with, and
+    its items. It belongs to a graph and is erased with it.
+    """
+
+    about: Annotated[
+        list[str] | None,
+        Field(
+            description='What the dataset is, in sentences, as an answer key has it.'
+        ),
+    ] = None
+    created: Annotated[str, Field(description='RFC 3339, UTC.')]
+    id: Annotated[str, Field(description='`ds_` and an opaque suffix.')]
+    install: EvalDatasetInstall | None = None
+    item_count: Annotated[int, Field(ge=0)]
+    items: Annotated[
+        list[EvalDatasetItem] | None,
+        Field(
+            description='The items, in the order they were added. A list leaves them out.'
+        ),
+    ] = None
+    kind: EvalDatasetKind
+    name: str
+    object: Annotated[str, Field(description='`eval_dataset`.')]
+
+
+class EvalDatasetCreateRequest(BaseModel):
+    """
+    `POST /v1/evals/datasets`: create a dataset with its first items, or
+    from a source: `source: {kind: "test", id}` makes the answers of that
+    workflow test the items, and its settings the `install`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    about: list[str] | None = None
+    install: EvalDatasetInstall | None = None
+    items: list[EvalDatasetItem] | None = None
+    kind: EvalDatasetKind
+    name: str
+    source: EvalDatasetSource | None = None
+
+
+class EvalDatasetExpected(BaseModel):
+    """
+    `expected.json` of an export: the answer key. Its `records` are the
+    items without their text and instance, which `records.json` holds.
+    """
+
+    about: list[str] | None = None
+    install: EvalDatasetInstall
+    records: list[EvalDatasetItem]
+
+
+class EvalDatasetExport(BaseModel):
+    """
+    A dataset in the files of a template's samples: the inputs
+    (`records.json`) and the answer key (`expected.json`).
+    """
+
+    expected: EvalDatasetExpected
+    records: list[EvalDatasetRecord]
+
+
+class EvalDatasetList(BaseModel):
+    """
+    `GET /v1/evals/datasets`: the graph's datasets, newest first, without
+    their items.
+    """
+
+    data: list[EvalDataset]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; absent on the last page.'
+        ),
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
 
 
 class EvalRunAnswer(BaseModel):
@@ -19394,6 +19959,24 @@ class WorkflowRun(BaseModel):
     state: WorkflowState
     steps: list[WorkflowStepView]
     updated_at_ms: int
+
+
+class WorkflowTestDataset(BaseModel):
+    """
+    `GET /v1/workflows/triggered/tests/dataset`: a test's answers as an Evals
+    dataset of kind `values`, in the shape of a template's samples: the
+    inputs (`records.json`) and the answer key (`expected.json`). An input
+    is in it when a person answered at least one of its properties; only
+    answered properties are, and `cant_tell` answers are not.
+    `POST /v1/evals/datasets` with `source: {kind: "test", id}` stores the
+    same items as a dataset.
+    """
+
+    expected: EvalDatasetExpected
+    fingerprint: str
+    kind: EvalDatasetKind
+    records: list[EvalDatasetRecord]
+    test: Annotated[str, Field(description="The test's id.")]
 
 
 class WorkflowTurnClaimResponse(BaseModel):

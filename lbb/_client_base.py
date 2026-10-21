@@ -4340,11 +4340,116 @@ class _SchemaNamespace:
         )
 
 
-class _EvalsNamespace:
-    """Managed evals: traces, labels (thumbs up or down), goldens, and runs."""
+class _EvalDatasetsNamespace:
+    """Evals datasets: examples with the outputs a correct run gives, which
+    workflow tests, experiments and template evals share. An item of a
+    ``values`` dataset holds an input ``text``, the ``values`` a correct run
+    reads from it and the values it must ``leave_out``. A dataset exports as
+    a template's samples (``records`` and ``expected``)::
+
+        dataset = client.evals.datasets.create(
+            "sinks", kind="values", source={"kind": "test", "id": test.id}
+        )
+        client.evals.datasets.add_items(dataset.id, [item])
+        files = client.evals.datasets.export(dataset.id)
+    """
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
+
+    def create(
+        self,
+        name: str,
+        *,
+        kind: str = "values",
+        items: Sequence[Mapping[str, Any]] | None = None,
+        install: Mapping[str, Any] | None = None,
+        about: Sequence[str] | None = None,
+        source: Mapping[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.EvalDataset:
+        """Create a dataset (``POST /v1/evals/datasets``) with its first
+        ``items`` and the ``install`` it is graded with, or from a workflow
+        test's answers (``source={"kind": "test", "id": ...}``). At most 500
+        items. The client sends an idempotency key unless you pass one, so a
+        retry answers the same dataset."""
+        body: dict[str, Any] = {"name": name, "kind": kind}
+        if items is not None:
+            body["items"] = [dict(item) for item in items]
+        if install is not None:
+            body["install"] = dict(install)
+        if about is not None:
+            body["about"] = [str(line) for line in about]
+        if source is not None:
+            body["source"] = dict(source)
+        return self._client._model_request(
+            models.EvalDataset,
+            "POST",
+            "/v1/evals/datasets",
+            body=body,
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("eval-datasets.create"),
+        )
+
+    def list(
+        self, *, limit: int | None = None, cursor: str | None = None
+    ) -> models.EvalDatasetList:
+        """One page of the graph's datasets, newest first, without their
+        items (``GET /v1/evals/datasets``). Pass ``next_cursor`` as
+        ``cursor`` for the next page; ``limit`` is 1 to 50 (default 20)."""
+        return self._client._model_request(
+            models.EvalDatasetList,
+            "GET",
+            "/v1/evals/datasets",
+            params={"limit": limit, "cursor": cursor},
+        )
+
+    def get(self, dataset_id: str) -> models.EvalDataset:
+        """One dataset with its items (``GET /v1/evals/datasets/get``)."""
+        return self._client._model_request(
+            models.EvalDataset,
+            "GET",
+            "/v1/evals/datasets/get",
+            params={"id": dataset_id},
+        )
+
+    def add_items(
+        self,
+        dataset_id: str,
+        items: Sequence[Mapping[str, Any]],
+        *,
+        idempotency_key: str | None = None,
+    ) -> models.EvalDataset:
+        """Add items (``POST /v1/evals/datasets/items``). An item with the
+        name of an item the dataset has replaces it in its place. The client
+        sends an idempotency key unless you pass one, so a retry is safe."""
+        return self._client._model_request(
+            models.EvalDataset,
+            "POST",
+            "/v1/evals/datasets/items",
+            body={"id": dataset_id, "items": [dict(item) for item in items]},
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("eval-datasets.items"),
+        )
+
+    def export(self, dataset_id: str) -> models.EvalDatasetExport:
+        """The dataset as a template's samples: ``records`` (records.json)
+        and ``expected`` (expected.json) (``GET /v1/evals/datasets/export``)."""
+        return self._client._model_request(
+            models.EvalDatasetExport,
+            "GET",
+            "/v1/evals/datasets/export",
+            params={"id": dataset_id},
+        )
+
+
+class _EvalsNamespace:
+    """Managed evals: traces, labels (thumbs up or down), goldens, runs, and
+    datasets (:attr:`datasets`)."""
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+        self.datasets = _EvalDatasetsNamespace(client)
 
     def summary(self) -> Any:
         """Settings, golden counts, unlabeled traces, the latest run, and the score by commit."""
@@ -4938,6 +5043,146 @@ class _ModelTrialsNamespace:
         return self._client._model_request(
             models.ModelTrial, "POST", "/v1/models/trials/stop", params={"id": trial_id}
         )
+
+
+class _WorkflowTestsNamespace:
+    """Workflow tests: a ``values.extract`` workflow runs on chosen inputs and
+    writes nothing to the graph. A person answers each value, and the answers
+    export as a dataset. A test goes ``queued``, ``running``, then ``done``,
+    ``failed`` or ``cancelled``::
+
+        started = client.workflows.tests.create(
+            workflow={"starter": "values.extract", "name": "sinks"}, sample=6
+        )
+        test = client.workflows.tests.wait(started.id)
+        client.workflows.tests.answer(
+            test.id, test.inputs[0].iri, "width_cm", {"decision": "correct", "value": 45}
+        )
+        dataset = client.workflows.tests.dataset(test.id)
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def create(
+        self,
+        *,
+        workflow: Mapping[str, str] | None = None,
+        install: Mapping[str, Any] | None = None,
+        iris: Sequence[str] | None = None,
+        sample: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.WorkflowTest:
+        """Start a test (``POST /v1/workflows/triggered/tests``): of a
+        workflow of the graph (``workflow``: its ``starter`` and ``name``), or
+        of a workflow to create (``install``: the body of a create), on
+        ``iris`` (at most 20) or a ``sample`` of the watched class (default
+        6). The client sends an idempotency key unless you pass one, so a
+        retry answers the same test. Raises :class:`LbbError`
+        ``workflow_budget_exceeded`` (429) when the test may cost more than
+        the environment's budget has left, ``conflict`` (409) while a test of
+        the workflow is open."""
+        body: dict[str, Any] = {}
+        if workflow is not None:
+            body["workflow"] = dict(workflow)
+        if install is not None:
+            body["install"] = dict(install)
+        if iris is not None:
+            body["iris"] = [str(iri) for iri in iris]
+        if sample is not None:
+            body["sample"] = sample
+        return self._client._model_request(
+            models.WorkflowTest,
+            "POST",
+            "/v1/workflows/triggered/tests",
+            body=body,
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("workflow-tests.create"),
+        )
+
+    def get(self, test_id: str) -> models.WorkflowTest:
+        """One test with its inputs' texts and its results
+        (``GET /v1/workflows/triggered/tests/get``)."""
+        return self._client._model_request(
+            models.WorkflowTest,
+            "GET",
+            "/v1/workflows/triggered/tests/get",
+            params={"id": test_id},
+        )
+
+    def list(
+        self,
+        *,
+        starter: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> models.WorkflowTestList:
+        """One page of the graph's tests, newest first, without texts and
+        results (``GET /v1/workflows/triggered/tests``). Pass ``next_cursor``
+        as ``cursor`` for the next page; ``limit`` is 1 to 50 (default 10)."""
+        return self._client._model_request(
+            models.WorkflowTestList,
+            "GET",
+            "/v1/workflows/triggered/tests",
+            params={"starter": starter, "name": name, "limit": limit, "cursor": cursor},
+        )
+
+    def answer(
+        self,
+        test_id: str,
+        iri: str,
+        property: str,
+        answer: Mapping[str, Any] | None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> models.WorkflowTest:
+        """A person's answer to one value of a read input
+        (``POST /v1/workflows/triggered/tests/answer``): ``accept``,
+        ``reject``, ``correct`` with the right ``value``, or ``cant_tell``;
+        ``None`` removes the answer. Writes nothing to the graph."""
+        return self._client._model_request(
+            models.WorkflowTest,
+            "POST",
+            "/v1/workflows/triggered/tests/answer",
+            body={
+                "id": test_id,
+                "iri": iri,
+                "property": property,
+                "answer": None if answer is None else dict(answer),
+            },
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("workflow-tests.answer"),
+        )
+
+    def cancel(self, test_id: str) -> models.WorkflowTest:
+        """Stop a queued or running test
+        (``POST /v1/workflows/triggered/tests/cancel``). What it read stays;
+        a test that ended stays as it is, so a retry is safe."""
+        return self._client._model_request(
+            models.WorkflowTest,
+            "POST",
+            "/v1/workflows/triggered/tests/cancel",
+            params={"id": test_id},
+            options={"retry": True},
+        )
+
+    def dataset(self, test_id: str) -> models.WorkflowTestDataset:
+        """The test's answers as a dataset in the shape of a template's
+        samples: ``records`` and ``expected``
+        (``GET /v1/workflows/triggered/tests/dataset``)."""
+        return self._client._model_request(
+            models.WorkflowTestDataset,
+            "GET",
+            "/v1/workflows/triggered/tests/dataset",
+            params={"id": test_id},
+        )
+
+
+def _workflow_test_open(test: Any) -> bool:
+    status = getattr(test, "status", None)
+    value = getattr(status, "value", status)
+    return value in ("queued", "running")
 
 
 class _ModelSwitchesNamespace:
