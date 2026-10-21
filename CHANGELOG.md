@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.30.0 (2026-10-21)
 
 - `WorkflowWorker` stops a turn on `409 turn_lease_lost`, the code a turn
   route now answers when the attempt's token no longer holds its turn. It
