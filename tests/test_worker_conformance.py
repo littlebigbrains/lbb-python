@@ -16,9 +16,11 @@ from urllib.parse import parse_qsl
 
 import httpx
 import pytest
+from pydantic import BaseModel
 
 from lbb import AsyncLbbClient
 from lbb.workflows import (
+    ActivityCaptureResult,
     FailedInstance,
     OwnedWrite,
     WorkflowContext,
@@ -27,11 +29,10 @@ from lbb.workflows import (
     WorkflowStepContext,
     WorkflowWait,
     WorkflowWorker,
+    capture_activities,
     lbb_activities,
-    requeue_failed,
     triggered_workflow,
     workflow,
-    write_owned,
 )
 
 
@@ -144,11 +145,46 @@ class _Server:
         return httpx.Response(answer.get("status", 200), json=answer.get("body", {}))
 
 
-class _Program:
-    """The scenario's handler program, run with the SDK's context."""
+def _dump(value: Any) -> Any:
+    """A model or a list of models as the JSON the server sends."""
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if isinstance(value, list):
+        return [_dump(item) for item in value]
+    return value
 
-    def __init__(self, client: AsyncLbbClient) -> None:
+
+def _captured(result: ActivityCaptureResult) -> dict[str, Any]:
+    """What a capture kept, in the suite's names."""
+    writes = []
+    for write in result.writes:
+        kept = {
+            "step_key": write.step_key,
+            "graph": write.graph,
+            "body": _dump(write.body),
+            "check": write.check,
+            "errors": write.errors,
+            "report": _dump(write.report),
+        }
+        writes.append({key: value for key, value in kept.items() if value is not None})
+    return {
+        "writes": writes,
+        "reviews": [{"request": dict(review.request)} for review in result.reviews],
+    }
+
+
+class _Program:
+    """The scenario's handler program, run with the SDK's context: the
+    activities of the client, or of a capture when the scenario names one."""
+
+    def __init__(self, client: AsyncLbbClient, capture: Mapping[str, Any] | None = None) -> None:
         self.client = client
+        self.capture = (
+            capture_activities(lbb_activities(client), workflow=capture["workflow"])
+            if capture is not None
+            else None
+        )
+        self.activities = self.capture.activities if self.capture else lbb_activities(client)
         self.ran: list[str] = []
         self.effect_ids: list[str] = []
 
@@ -188,7 +224,7 @@ class _Program:
                 action.get("message", "raised")
             )
         elif "reason" in action:
-            await lbb_activities(self.client).reason(
+            await self.activities.reason(
                 action["reason"]["prompt"],
                 action["reason"]["schema"],
                 effect_id=step.effect_id if action.get("effect_id") else None,
@@ -232,13 +268,28 @@ class _Program:
             elif "write_owned" in op:
                 write = OwnedWrite(**op["write"])
                 graph = value(op.get("graph"))
-                written = await write_owned(self.client, ctx, op["write_owned"], write, graph=graph)
+                written = await self.activities.write_owned(
+                    ctx, op["write_owned"], write, graph=graph
+                )
                 outputs[op["write_owned"]] = written.model_dump(mode="json")
             elif "requeue" in op:
                 failed = [FailedInstance(**item) for item in op["failed"]]
                 graph = value(op.get("graph"))
-                answer = await requeue_failed(self.client, ctx, op["requeue"], failed, graph=graph)
+                answer = await self.activities.requeue(ctx, op["requeue"], failed, graph=graph)
                 outputs[op["requeue"]] = answer.model_dump(mode="json") if answer else None
+            elif "wait_for_review" in op:
+                waited = await self.activities.wait_for_review(
+                    ctx, op["wait_for_review"], op["request"], timeout_ms=op["timeout_ms"]
+                )
+                outputs[op["wait_for_review"]] = {
+                    "answered": waited.answered,
+                    "answer": _dump(waited.answer),
+                    "item": _dump(waited.item),
+                }
+            elif "review" in op:
+                outputs[op["review"]] = _dump(await self.activities.review(op["request"]))
+            elif "review_items" in op:
+                outputs[op["review_items"]] = _dump(await self.activities.review_items(op["keys"]))
             elif "wait" in op:
                 raise WorkflowWait(op["wait"])
             elif "raise" in op:
@@ -298,7 +349,7 @@ async def _run(scenario: dict[str, Any]) -> None:
         retry_delay=0,
         transport=httpx.MockTransport(server.handle),
     ) as client:
-        program = _Program(client)
+        program = _Program(client, scenario.get("capture"))
         options = scenario["workflow"].get("worker", {})
         worker = WorkflowWorker(client, [_definition(scenario, program)], worker="conformance", **options)
         outcomes: list[str] = []
@@ -322,6 +373,13 @@ async def _run(scenario: dict[str, Any]) -> None:
         problems.append(f"ran {program.ran}, not {expect['ran']}")
     if "effect_ids" in expect and program.effect_ids != expect["effect_ids"]:
         problems.append(f"effect ids {program.effect_ids}, not {expect['effect_ids']}")
+    if "captured" in expect:
+        assert program.capture is not None, "the scenario expects a capture and names none"
+        captured = _captured(program.capture.result())
+        if not _matches(expect["captured"], captured, 0):
+            problems.append(
+                f"captured {json.dumps(captured)} does not match {json.dumps(expect['captured'])}"
+            )
     assert not problems, f"{scenario['name']}: {scenario['rule']}\n" + "\n".join(problems)
 
 
@@ -332,5 +390,5 @@ def test_scenario(path: Path) -> None:
 
 def test_the_suite_covers_the_named_rules() -> None:
     names = {path.stem for path in SCENARIOS}
-    for rule in ("replay", "lease", "fence", "wait", "fan-in", "signal", "timeout"):
+    for rule in ("replay", "lease", "fence", "wait", "fan-in", "signal", "timeout", "review", "captured"):
         assert any(rule in name for name in names), rule

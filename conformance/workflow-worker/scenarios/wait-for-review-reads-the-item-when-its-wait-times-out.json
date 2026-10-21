@@ -1,0 +1,356 @@
+{
+  "name": "wait-for-review-reads-the-item-when-its-wait-times-out",
+  "rule": "When the answer's signal times out, wait_for_review reads the item again in the step <key>.read, so an answer whose signal was lost still counts.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "wait_for_review": "floor",
+      "request": {
+        "kind": "choice",
+        "workflow": "rooms",
+        "key": "agent.floor",
+        "title": "Which floor covering?",
+        "question": {
+          "options": [
+            {
+              "id": "parquet",
+              "label": "Parquet"
+            },
+            {
+              "id": "tiles",
+              "label": "Tiles"
+            }
+          ]
+        }
+      },
+      "timeout_ms": 60000
+    },
+    {
+      "return": {
+        "state": {
+          "answered": {
+            "$ref": "floor.answered"
+          },
+          "option": {
+            "$ref": "floor.answer.option"
+          },
+          "item": {
+            "$ref": "floor.item.id"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "floor.ask"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/reviews",
+        "body": {
+          "wait": {
+            "identity": "agent",
+            "turn": 1,
+            "signal": ""
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "id": "rev_2",
+          "object": "review_item",
+          "key": "agent.floor",
+          "kind": "choice",
+          "scope": "live",
+          "status": "open",
+          "revision": 1,
+          "title": "Which floor covering?",
+          "question": {
+            "options": [
+              {
+                "id": "parquet",
+                "label": "Parquet"
+              },
+              {
+                "id": "tiles",
+                "label": "Tiles"
+              }
+            ]
+          },
+          "origin": {
+            "kind": "agent",
+            "id": "starter:rooms"
+          },
+          "workflow": {
+            "name": "rooms",
+            "identity": "agent",
+            "turn": 1
+          },
+          "wait": {
+            "identity": "agent",
+            "turn": 1,
+            "signal": "review.rev_2"
+          },
+          "created": "2026-10-21T10:00:00Z",
+          "updated": "2026-10-21T10:00:00Z"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "floor.ask"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/wait-signal",
+        "body": {
+          "key": "floor.answer",
+          "position": 1,
+          "name": "review.rev_2"
+        }
+      },
+      "response": {
+        "body": {
+          "workflow_id": "agent",
+          "number": 1,
+          "message_id": "m1",
+          "message": {
+            "add": 1
+          },
+          "version": "v1",
+          "status": "running",
+          "attempt": 1,
+          "created_at_ms": 1,
+          "updated_at_ms": 1,
+          "ready_at_ms": 1,
+          "steps": [
+            {
+              "key": "floor.ask",
+              "kind": "step",
+              "output": {
+                "id": "rev_2",
+                "object": "review_item",
+                "key": "agent.floor",
+                "kind": "choice",
+                "scope": "live",
+                "status": "open",
+                "revision": 1,
+                "title": "Which floor covering?",
+                "question": {
+                  "options": [
+                    {
+                      "id": "parquet",
+                      "label": "Parquet"
+                    },
+                    {
+                      "id": "tiles",
+                      "label": "Tiles"
+                    }
+                  ]
+                },
+                "origin": {
+                  "kind": "agent",
+                  "id": "starter:rooms"
+                },
+                "workflow": {
+                  "name": "rooms",
+                  "identity": "agent",
+                  "turn": 1
+                },
+                "wait": {
+                  "identity": "agent",
+                  "turn": 1,
+                  "signal": "review.rev_2"
+                },
+                "created": "2026-10-21T10:00:00Z",
+                "updated": "2026-10-21T10:00:00Z"
+              },
+              "at_ms": 2
+            },
+            {
+              "key": "floor.answer",
+              "kind": "signal",
+              "signal_name": "review.rev_2",
+              "delay_ms": 60000,
+              "at_ms": 3,
+              "wake_at_ms": 60003,
+              "output": {
+                "received": false,
+                "value": null
+              }
+            }
+          ],
+          "result": null,
+          "state_after": null,
+          "sequence": 1,
+          "run": {
+            "id": "0000000000001-agent-1",
+            "started_at_ms": 1,
+            "queue_before": 1
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "floor.read"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v1/reviews/detail",
+        "query": {
+          "id": "rev_2"
+        }
+      },
+      "response": {
+        "body": {
+          "id": "rev_2",
+          "object": "review_item",
+          "key": "agent.floor",
+          "kind": "choice",
+          "scope": "live",
+          "status": "answered",
+          "revision": 2,
+          "title": "Which floor covering?",
+          "question": {
+            "options": [
+              {
+                "id": "parquet",
+                "label": "Parquet"
+              },
+              {
+                "id": "tiles",
+                "label": "Tiles"
+              }
+            ]
+          },
+          "origin": {
+            "kind": "agent",
+            "id": "starter:rooms"
+          },
+          "workflow": {
+            "name": "rooms",
+            "identity": "agent",
+            "turn": 1
+          },
+          "wait": {
+            "identity": "agent",
+            "turn": 1,
+            "signal": "review.rev_2"
+          },
+          "created": "2026-10-21T10:00:00Z",
+          "updated": "2026-10-21T10:00:00Z",
+          "answer": {
+            "decision": "choose",
+            "option": "parquet"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "floor.read",
+          "output": {
+            "status": "answered"
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "answered": true,
+            "option": "parquet",
+            "item": "rev_2"
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  }
+}

@@ -67,16 +67,18 @@ class FakeEngine:
         self.completed: list[tuple[str, dict[str, Any]]] = []
         self.failed: list[dict[str, Any]] = []
         self.commits: list[dict[str, Any]] = []
+        self.dry_runs: list[dict[str, Any]] = []
+        self.reviews: list[dict[str, Any]] = []
         self.claims = 0
         # SIGTERM went to the serving worker since the last claimed turn.
         self.signalled = False
 
-    def create(self, id: str, workflow_type: str, state: Any = None) -> None:
+    def create(self, id: str, workflow_type: str, state: Any = None, version: str = "v1") -> None:
         self.instances.setdefault(
             id,
             {
                 "type": workflow_type,
-                "version": "v1",
+                "version": version,
                 "state": state,
                 "inbox": [],
                 "turn": 0,
@@ -109,6 +111,7 @@ class FakeEngine:
                 id,
                 number,
                 head["message"],
+                version=instance["version"],
                 status="running",
                 steps=head["steps"],
                 run={"id": f"run-{id}-{number}", "started_at_ms": 1, "queue_before": 1},
@@ -129,7 +132,7 @@ class FakeEngine:
         path = request.url.path
         body: Any = json.loads(request.content) if request.content else None
         if path == "/v1/workflows/instances":
-            self.create(body["id"], body["workflow_type"], body.get("state"))
+            self.create(body["id"], body["workflow_type"], body.get("state"), body["version"])
             return httpx.Response(200, json={})
         if path == "/v1/workflows/instances/message":
             return httpx.Response(200, json=self.send(body["workflow_id"], body["message"]))
@@ -262,6 +265,26 @@ class FakeEngine:
                 },
             }
             return httpx.Response(200, json={"results": json.dumps(doc)})
+        if path == "/v1/reviews":
+            self.reviews.append(body)
+            id = f"rev_{len(self.reviews)}"
+            item = {
+                **body,
+                "id": id,
+                "object": "review_item",
+                "scope": "live",
+                "status": "open",
+                "revision": 1,
+                "wait": {**body["wait"], "signal": f"review.{id}"},
+                "created": "2026-10-21T10:00:00Z",
+                "updated": "2026-10-21T10:00:00Z",
+            }
+            return httpx.Response(200, json=item)
+        if path == "/v1/graph/commit" and request.url.params.get("dry_run") == "true":
+            self.dry_runs.append(body)
+            return httpx.Response(
+                200, json={"dry_run": True, "op_count": 1, "triplets": 0, "entity_properties": 1}
+            )
         if path == "/v1/graph/commit":
             self.commits.append(body)
             return httpx.Response(
@@ -295,6 +318,12 @@ def test_every_example_of_the_guide_runs(fake: FakeEngine) -> None:
         exec(compile(block, f"{page.name} block {number}", "exec"), namespace)
     # The quick start's message ran.
     assert ("counter-1", {"count": 2}) in [(id, body["state"]) for id, body in fake.completed]
+    # The captured word count ran on its own instance and version: one dry
+    # run, no commit, and the watch's own turn is still there.
+    assert [id for id, _ in fake.completed].count("word-count-test-1") == 1
+    assert fake.dry_runs[0]["entity_properties"][0]["properties"] == {"word_count": 3}
+    assert "workflow_fence" not in fake.dry_runs[0]
+    assert fake.commits == []
 
     # One message for each workflow the guide defines, with the real worker.
     definitions = [v for v in namespace.values() if isinstance(v, WorkflowDefinition)]
@@ -305,9 +334,13 @@ def test_every_example_of_the_guide_runs(fake: FakeEngine) -> None:
         ("pages-1", "pages", {"pages": list(range(45))}),
         ("crawler-1", "crawler", {}),
         ("invoice-1", "invoice", {"order": "o-1", "paid": True}),
+        ("rooms-1", "rooms", {"room": "R 1.04"}),
     ]:
         fake.create(id, workflow_type, initial[workflow_type])
         fake.send(id, message)
+    # A person answered the room's question.
+    answer = {"decision": "choose", "option": "tiles"}
+    fake.signals["rooms-1"] = [{"name": "review.rev_1", "value": answer}]
     assert {d.name for d in definitions} >= {
         "counter",
         "define-codes",
@@ -316,6 +349,7 @@ def test_every_example_of_the_guide_runs(fake: FakeEngine) -> None:
         "crawler",
         "word-count",
         "invoice",
+        "rooms",
     }
     worker = lbb.workflows.WorkflowWorker(namespace["client"], definitions, worker="docs", claim_wait_ms=0)
     worker.run()
@@ -331,6 +365,9 @@ def test_every_example_of_the_guide_runs(fake: FakeEngine) -> None:
     assert [id for id, _ in fake.completed].count("pages-1") == 3
     assert states["crawler-1"] == {"pages": 3}
     assert states["invoice-1"] == {"last": "o-1"}
+    assert states["rooms-1"] == {"floor": "tiles"}
+    (asked,) = fake.reviews
+    assert asked["wait"] == {"identity": "rooms-1", "turn": 1, "signal": ""}
     # The triggered workflow wrote the word count of its instance, fenced.
     (commit,) = fake.commits
     assert commit["entity_properties"][0]["properties"] == {"word_count": 3}

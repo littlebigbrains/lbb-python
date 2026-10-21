@@ -25,7 +25,20 @@ in ``docs/reference/workflows.md``.
 """
 
 from ..entities import ENTITY_ID_KEY_SENTINEL, ENTITY_IRI_NAMESPACE, entity_id_from_iri, entity_ref
-from ._activities import LbbActivities, is_activity_refused, lbb_activities, split_in_halves
+from ._activities import (
+    LbbActivities,
+    ReviewWaitResult,
+    is_activity_refused,
+    lbb_activities,
+    split_in_halves,
+)
+from ._capture import (
+    ActivityCapture,
+    ActivityCaptureResult,
+    CapturedReview,
+    CapturedWrite,
+    capture_activities,
+)
 from ._handles import WorkflowBlobsNamespace, WorkflowHandle, WorkflowNamespace
 from ._triggered import (
     TRIGGER_MESSAGE_TYPE,
@@ -55,19 +68,18 @@ from ._worker import (
     workflow_of_identity,
 )
 
-# TODO(W5): `wait_for_review` beside `wait_for_signal`, as the TypeScript SDK
-# has `waitForReview`. `LbbActivities.review` files the review kinds (value,
-# choice, grade, answer) and `review_items` reads them.
-# TODO(W4 #1280): `capture_activities`, the TypeScript `captureActivities`
-# for workflow tests, when #1280 lands.
-
 __all__ = [
+    "ActivityCapture",
+    "ActivityCaptureResult",
+    "CapturedReview",
+    "CapturedWrite",
     "ENTITY_ID_KEY_SENTINEL",
     "ENTITY_IRI_NAMESPACE",
     "FailedInstance",
     "LbbActivities",
     "OwnedWrite",
     "OwnedWriteResult",
+    "ReviewWaitResult",
     "TRIGGER_MESSAGE_TYPE",
     "TriggeredWorkflowDefinition",
     "WorkflowBlobsNamespace",
@@ -81,6 +93,7 @@ __all__ = [
     "WorkflowStepContext",
     "WorkflowWait",
     "WorkflowWorker",
+    "capture_activities",
     "entity_id_from_iri",
     "entity_ref",
     "fan_in_identity",

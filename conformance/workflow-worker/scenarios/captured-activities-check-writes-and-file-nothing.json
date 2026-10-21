@@ -1,0 +1,404 @@
+{
+  "name": "captured-activities-check-writes-and-file-nothing",
+  "rule": "Captured activities mark model calls as the test's, check an owned write with the commit's dry run and keep it, keep every review filed nowhere, end wait_for_review at once unanswered, and read review items.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "define",
+      "do": [
+        {
+          "reason": {
+            "prompt": "p",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "effect_id": true
+        }
+      ],
+      "returns": 1
+    },
+    {
+      "review_items": "items",
+      "keys": [
+        "note.n1.word_count"
+      ]
+    },
+    {
+      "write_owned": "write",
+      "write": {
+        "subjects": [
+          {
+            "type": "Note",
+            "name": "n1"
+          }
+        ],
+        "properties": [
+          "word_count"
+        ],
+        "entity_properties": [
+          {
+            "type": "Note",
+            "name": "n1",
+            "properties": {
+              "word_count": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "review": "check",
+      "request": {
+        "kind": "value",
+        "workflow": "notes",
+        "key": "note.n1.word_count",
+        "title": "Word count of n1",
+        "subject": {
+          "type": "Note",
+          "name": "n1"
+        },
+        "question": {
+          "property": "word_count",
+          "value": 3
+        }
+      }
+    },
+    {
+      "wait_for_review": "floor",
+      "request": {
+        "kind": "choice",
+        "workflow": "rooms",
+        "key": "agent.floor",
+        "title": "Which floor covering?",
+        "question": {
+          "options": [
+            {
+              "id": "parquet",
+              "label": "Parquet"
+            },
+            {
+              "id": "tiles",
+              "label": "Tiles"
+            }
+          ]
+        }
+      },
+      "timeout_ms": 60000
+    },
+    {
+      "return": {
+        "state": {
+          "commit_seq": {
+            "$ref": "write.commit_seq"
+          },
+          "items": {
+            "$ref": "items"
+          },
+          "checked": {
+            "$ref": "check.status"
+          },
+          "answered": {
+            "$ref": "floor.answered"
+          },
+          "asked": {
+            "$ref": "floor.item.status"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "define"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "body": {
+          "effect_id": "stable/define",
+          "test": {
+            "workflow": "sinks"
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "value": {
+            "code": "P3"
+          },
+          "model": "m",
+          "tokens_in": 10,
+          "tokens_out": 2,
+          "cost_micro_usd": 1,
+          "cached": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "define"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v1/reviews",
+        "query": {
+          "key": "note.n1.word_count",
+          "limit": "1"
+        }
+      },
+      "response": {
+        "body": {
+          "object": "list",
+          "data": [],
+          "has_more": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "write"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/graph/commit",
+        "query": {
+          "dry_run": "true"
+        },
+        "headers": {
+          "idempotency-key": null
+        },
+        "body": {
+          "entity_properties": [
+            {
+              "type": "Note",
+              "name": "n1",
+              "properties": {
+                "word_count": 3
+              }
+            }
+          ],
+          "edge_idempotency": "skip_unchanged",
+          "replace_owned": {
+            "subjects": [
+              {
+                "type": "Note",
+                "name": "n1"
+              }
+            ],
+            "properties": [
+              "word_count"
+            ]
+          },
+          "workflow_fence": {
+            "$absent": true
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "dry_run": true,
+          "op_count": 1,
+          "triplets": 0,
+          "entity_properties": 1
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "write",
+          "output": {
+            "commit_seq": null,
+            "idempotency_key": "stable/write",
+            "replayed": false
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "state": {
+            "commit_seq": null,
+            "items": [],
+            "checked": "open",
+            "answered": false,
+            "asked": "open"
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "define"
+    ],
+    "captured": {
+      "writes": [
+        {
+          "step_key": "write",
+          "graph": {
+            "$absent": true
+          },
+          "check": "dry_run",
+          "errors": [],
+          "body": {
+            "entity_properties": [
+              {
+                "type": "Note",
+                "name": "n1",
+                "properties": {
+                  "word_count": 3
+                }
+              }
+            ],
+            "edge_idempotency": "skip_unchanged",
+            "replace_owned": {
+              "subjects": [
+                {
+                  "type": "Note",
+                  "name": "n1"
+                }
+              ],
+              "properties": [
+                "word_count"
+              ]
+            },
+            "workflow_fence": {
+              "$absent": true
+            }
+          },
+          "report": {
+            "dry_run": true,
+            "op_count": 1
+          }
+        }
+      ],
+      "reviews": [
+        {
+          "request": {
+            "kind": "value",
+            "workflow": "notes",
+            "key": "note.n1.word_count",
+            "title": "Word count of n1",
+            "subject": {
+              "type": "Note",
+              "name": "n1"
+            },
+            "question": {
+              "property": "word_count",
+              "value": 3
+            }
+          }
+        },
+        {
+          "request": {
+            "kind": "choice",
+            "workflow": "rooms",
+            "key": "agent.floor",
+            "title": "Which floor covering?",
+            "question": {
+              "options": [
+                {
+                  "id": "parquet",
+                  "label": "Parquet"
+                },
+                {
+                  "id": "tiles",
+                  "label": "Tiles"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "capture": {
+    "workflow": "sinks"
+  }
+}

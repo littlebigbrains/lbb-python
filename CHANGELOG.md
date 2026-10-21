@@ -2,6 +2,20 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- `lbb.workflows`: `LbbActivities.wait_for_review(ctx, key, request,
+  timeout_ms=)` asks a person and waits for the answer without holding a
+  worker, as the TypeScript `waitForReview` does. It files the item in the
+  step `<key>.ask`, waits for its signal in `<key>.answer`, and on a timeout
+  reads the item again in `<key>.read`. A trigger shard is refused.
+- `lbb.workflows`: `capture_activities(activities, workflow=)` gives
+  activities that write nothing, for a workflow test, as the TypeScript
+  `captureActivities` does. Model calls carry `test: {workflow}`, each owned
+  write is checked with the commit's dry run and kept, and every review is
+  kept and filed nowhere. A `wait_for_review` on a trigger shard is refused,
+  as the live call refuses it. `result()` gives what was kept.
+
 ## 0.29.0 (2026-10-21)
 
 - `client.reviews`: the review items a person answers (`create`, `list`,
