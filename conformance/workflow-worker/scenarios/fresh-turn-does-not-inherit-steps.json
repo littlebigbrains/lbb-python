@@ -1,0 +1,182 @@
+{
+  "name": "fresh-turn-does-not-inherit-steps",
+  "rule": "Each turn has its own effect prefix: the same step key in the next turn runs again with a new effect id.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "add",
+      "returns": {
+        "$state": "count"
+      }
+    },
+    {
+      "return": {
+        "state": {
+          "count": {
+            "$ref": "add"
+          }
+        },
+        "result": {
+          "$ref": "add"
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 2,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "key": "add",
+          "output": 0
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "state": {
+            "count": 0
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {
+          "effect_prefix": "next",
+          "state": {
+            "count": 5
+          },
+          "token": "token-2",
+          "turn": {
+            "number": 2,
+            "message_id": "m2"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 2,
+          "token": "token-2",
+          "key": "add"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "turn": 2,
+          "output": 5
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "turn": 2,
+          "state": {
+            "count": 5
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed",
+      "claimed"
+    ],
+    "ran": [
+      "add",
+      "add"
+    ],
+    "effect_ids": [
+      "stable/add",
+      "next/add"
+    ]
+  }
+}

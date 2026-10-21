@@ -1,0 +1,169 @@
+{
+  "name": "signal-wait-releases-and-resumes",
+  "rule": "A signal wait releases the worker while the turn waits; the next claim resumes with the received value.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "wait_for_signal": "review",
+      "name": "approval",
+      "timeout_ms": 10000
+    },
+    {
+      "return": {
+        "state": {
+          "$ref": "review.value"
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 2,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/wait-signal",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "key": "review",
+          "position": 0,
+          "name": "approval",
+          "timeout_ms": 10000
+        }
+      },
+      "response": {
+        "body": {
+          "workflow_id": "agent",
+          "number": 1,
+          "message_id": "m1",
+          "message": {
+            "add": 1
+          },
+          "version": "v1",
+          "status": "waiting",
+          "attempt": 1,
+          "created_at_ms": 1,
+          "updated_at_ms": 1,
+          "ready_at_ms": 1,
+          "steps": [
+            {
+              "key": "review",
+              "kind": "signal",
+              "signal_name": "approval",
+              "delay_ms": 10000,
+              "at_ms": 2,
+              "wake_at_ms": 10002,
+              "output": null
+            }
+          ],
+          "result": null,
+          "state_after": null,
+          "sequence": 1,
+          "run": {
+            "id": "0000000000001-agent-1",
+            "started_at_ms": 1,
+            "queue_before": 1
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {
+          "token": "token-2",
+          "turn": {
+            "steps": [
+              {
+                "key": "review",
+                "kind": "signal",
+                "signal_name": "approval",
+                "delay_ms": 10000,
+                "at_ms": 2,
+                "wake_at_ms": 10002,
+                "output": {
+                  "received": true,
+                  "value": {
+                    "approved": true
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "token": "token-2",
+          "state": {
+            "approved": true
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed",
+      "claimed"
+    ],
+    "ran": []
+  }
+}

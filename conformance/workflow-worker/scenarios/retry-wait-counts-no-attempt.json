@@ -1,0 +1,83 @@
+{
+  "name": "retry-wait-counts-no-attempt",
+  "rule": "A WorkflowWait fails the turn with retry_at_ms, at least a second ahead, and does not make it permanent.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "wait": 0
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/fail",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "non_retryable": false,
+          "retry_at_ms": {
+            "$at_least_now_plus_ms": 1000
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  }
+}

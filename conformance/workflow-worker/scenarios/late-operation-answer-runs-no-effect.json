@@ -1,0 +1,113 @@
+{
+  "name": "late-operation-answer-runs-no-effect",
+  "rule": "A step whose begin answer arrives after the lease was lost does not run.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "model",
+      "returns": "unexpected"
+    },
+    {
+      "return": {
+        "state": {
+          "count": {
+            "$ref": "add"
+          }
+        },
+        "result": {
+          "$ref": "add"
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {
+          "lease_ms": 90
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {
+        "delay_ms": 120,
+        "body": {
+          "operation": {
+            "checkpoint": null
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/heartbeat"
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "type": "conflict_error",
+            "code": "conflict",
+            "message": "the lease is stale"
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [],
+    "settle_ms": 150
+  }
+}

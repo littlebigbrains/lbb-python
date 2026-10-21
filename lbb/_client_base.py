@@ -117,6 +117,9 @@ class LbbError(RuntimeError):
         self.doc_url = self.error.get("doc_url")
         self.retryable = self.error.get("retryable")
         self.retry_after_seconds = self.error.get("retry_after_seconds")
+        # When a spent budget lets the call run again (Unix milliseconds), as
+        # ``429 workflow_budget_exceeded`` names it.
+        self.retry_at_ms = self.error.get("retry_at_ms")
         self.endpoint_hint = _endpoint_migration_hint(self.code)
         # Per-item reasons for a refusal, e.g. ``conflicts`` of ``starter_conflict``.
         self.details = self.error.get("details")
@@ -484,12 +487,14 @@ def _coerce_body(body: Body | None) -> Any:
     if body is None:
         return None
     if isinstance(body, BaseModel):
+        # The wire names: a field such as ``schema_`` or ``class_`` is sent
+        # under its alias (``schema``, ``class``).
         return body.model_dump(
-            mode="json", exclude=_unset_optional_fields(body) or None
+            mode="json", by_alias=True, exclude=_unset_optional_fields(body) or None
         )
     dump = getattr(body, "model_dump", None)
     if callable(dump):
-        return dump(mode="json")
+        return dump(mode="json", by_alias=True)
     return body
 
 
@@ -3445,6 +3450,38 @@ class _FilesNamespace:
             params=self._scope({"sha256": _sha256_of(sha256), "from": from_, "to": to}),
         )
 
+    def put_pages(
+        self,
+        sha256: str,
+        parser: str,
+        upload: Body,
+        *,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        """Store what a parser outside the server made of one upload of a
+        file (``PUT /v1/files/pages``): ``status`` ``parsed`` with every
+        page, in the shape :meth:`pages` serves, or ``failed`` or
+        ``unsupported`` with its ``error``, and ``uploaded_at``, the upload
+        the parser read (the record's ``uploaded_at``, :meth:`get`). The
+        pages are stored once under ``parser`` (a parser id such as
+        ``poppler-26.03.0``): the same pages again store nothing
+        (``stored: False``), other pages under the same id answer ``409
+        file_pages_conflict``. A file deleted and uploaded again since
+        answers ``409 file_upload_changed``, and a deleted file ``404
+        file_not_found``: nothing is stored. An ``idempotency_key`` is bound
+        to this parser and body; with another one it answers ``409
+        idempotency_conflict``. Safe to retry. Validate the answer with
+        ``models.FilePagesPutResponse``."""
+        if not parser:
+            raise ValueError("parser must not be empty")
+        return self._client._request(
+            "PUT",
+            "/v1/files/pages",
+            params=self._scope({"sha256": _sha256_of(sha256), "parser": parser}),
+            body=upload,
+            idempotency_key=idempotency_key,
+        )
+
     def delete(self, sha256: str, *, purge: bool = False) -> Any:
         """Remove a file from the list and retract its ``Document`` entity;
         the client repeats the SHA-256 as ``confirm``. A ``documents.link``
@@ -3862,6 +3899,7 @@ class _QueryNamespace:
         text: str,
         *,
         limit: int | None = None,
+        min_commit_seq: int | None = None,
         options: RequestOptions | None = None,
     ) -> Any:
         """The entities a question or a list of names names
@@ -3873,11 +3911,16 @@ class _QueryNamespace:
         one to prefer first. Use it in your own agent before you write a
         query: put the IRI in the query instead of matching the name.
         ``index_ready`` is ``False`` while the name index builds; ask again in
-        a few seconds. No model call.
+        a few seconds. ``commit_seq`` is the newest commit the index holds.
+        Right after a write, pass its ``commit_seq`` as ``min_commit_seq``:
+        the server waits a few seconds for the index to hold it, then answers
+        the retryable ``429 read_your_writes_pending``. No model call.
         """
         body: dict[str, Any] = {"text": text}
         if limit is not None:
             body["limit"] = limit
+        if min_commit_seq is not None:
+            body["min_commit_seq"] = min_commit_seq
         return self._client._request(
             "POST",
             "/v1/query/names",

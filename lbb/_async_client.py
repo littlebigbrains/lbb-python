@@ -15,7 +15,7 @@ from collections.abc import (
     Mapping,
     Sequence,
 )
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import httpx
 
@@ -77,6 +77,9 @@ from ._client_base import (
     _trial_timeout,
 )
 from ._workflow_execution import AsyncWorkflowTurnReader
+
+if TYPE_CHECKING:
+    from .workflows._handles import WorkflowNamespace
 from .integrations import (
     _DEFAULT,
     IntegrationAcceptResult,
@@ -1290,6 +1293,18 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
             timeout=timeout, transport=transport, event_hooks=event_hooks
         )
         self._capabilities: set[str] | None = None
+
+    @property
+    def workflows(self) -> WorkflowNamespace:
+        """Workflows of the graph: start an instance of a workflow definition,
+        address one by its id (``handle``), and the engine's ``blobs``. The
+        worker is :class:`lbb.workflows.WorkflowWorker`."""
+        namespace = self.__dict__.get("_workflows")
+        if namespace is None:
+            from .workflows._handles import WorkflowNamespace
+
+            namespace = self.__dict__["_workflows"] = WorkflowNamespace(self)
+        return cast("WorkflowNamespace", namespace)
 
     async def _require_capability(self, capability: str) -> None:
         if self._capabilities is None:

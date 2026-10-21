@@ -1809,6 +1809,23 @@ class FileDeleteResponse(BaseModel):
     sha256: str
 
 
+class FilePagesPutResponse(BaseModel):
+    """
+    The answer of `PUT /v1/files/pages`.
+    """
+
+    page_count: Annotated[int | None, Field(ge=0)] = None
+    parser: str
+    sha256: str
+    status: str
+    stored: Annotated[
+        bool,
+        Field(
+            description='False when the same pages were stored before under this parser id:\nnothing was written.'
+        ),
+    ]
+
+
 class FileParse(BaseModel):
     """
     What the parse starter made of a file.
@@ -4950,6 +4967,13 @@ class QueryNamesRequest(BaseModel):
     )
     limit: Annotated[
         int | None, Field(description='Candidates per name: 1 to 10, default 5.', ge=0)
+    ] = None
+    min_commit_seq: Annotated[
+        int | None,
+        Field(
+            description="The commit the index must hold: the `commit_seq` of your write. The\ncall waits for the index to hold it (a few seconds at most), then\nfails with the retryable `429 read_your_writes_pending`. Without it,\nan index behind the graph's head answers while a new one builds.",
+            ge=0,
+        ),
     ] = None
     text: Annotated[
         str, Field(description='A question, or names: 1 to 4,000 characters.')
@@ -9062,6 +9086,35 @@ class WorkerRole(Enum):
     apply = 'apply'
 
 
+class WorkflowBlob(BaseModel):
+    """
+    A blob of a workflow (`POST /v1/workflows/blobs?workflow_id=`): bytes a
+    step stores beside the engine for a large output or a large shared read
+    (a catalogue), keyed by their SHA-256. A step names `key` in its output,
+    its state or a message; `GET /v1/workflows/blobs?key=` reads the bytes.
+    A blob stays while a live identity of the graph names it (its state, an
+    unfinished turn's message, steps or operation), and at least a day after
+    its last write; it goes with its workflow and with the graph.
+    """
+
+    bytes: Annotated[int, Field(ge=0)]
+    created: Annotated[
+        bool,
+        Field(
+            description='This write stored the bytes; false when they were stored already.'
+        ),
+    ]
+    key: Annotated[
+        str,
+        Field(
+            description='`<workflow>/<sha256>`: the workflow is the named workflow of the\nwriting identity (`starter.<name>[.<k>]` writes under `<name>`), or\n`instance:<id>` for an identity of no named workflow.'
+        ),
+    ]
+    sha256: Annotated[
+        str, Field(description='The SHA-256 of the bytes, lowercase hex.')
+    ]
+
+
 class WorkflowCheckpointKind(Enum):
     step = 'step'
     sleep = 'sleep'
@@ -9111,10 +9164,32 @@ class WorkflowContentTrigger(BaseModel):
 
 class WorkflowExecutionOperation(Enum):
     """
-    One explicit operation of a workflow execution credential.
+    One explicit operation of a workflow execution credential. `file_read`
+    and `owned_write` are the grants of LBB's hosted workers: only LBB's work
+    token is issued them.
     """
 
     sparql_read = 'sparql_read'
+    file_read = 'file_read'
+    owned_write = 'owned_write'
+
+
+class WorkflowFence(BaseModel):
+    """
+    A commit made from a workflow turn (`POST /v1/graph/commit`,
+    `workflow_fence`): the server answers a repeat of the commit's request id
+    as a replay, and refuses a new commit unless `token` still holds turn
+    `turn` of instance `workflow_id` (`409 workflow_fence_lost`). The check
+    runs before the commit, so a lease that ends while the commit runs is the
+    only window left.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
 
 
 class WorkflowGate(BaseModel):
@@ -9280,6 +9355,7 @@ class WorkflowInstanceAction(Enum):
     retry = 'retry'
     skip = 'skip'
     cancel_turn = 'cancel_turn'
+    wake = 'wake'
 
 
 class WorkflowInstanceControlRequest(BaseModel):
@@ -9295,22 +9371,6 @@ class WorkflowInstanceControlRequest(BaseModel):
         ),
     ] = None
     workflow_id: str
-
-
-class WorkflowInstanceCreateRequest(BaseModel):
-    """
-    A stable workflow identity. Each message executes one bounded, version-pinned turn.
-    """
-
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    id: str
-    lease_ms: Annotated[int | None, Field(ge=0)] = None
-    max_attempts: Annotated[int | None, Field(ge=0)] = None
-    state: Any | None = None
-    version: str
-    workflow_type: str
 
 
 class WorkflowInstanceDeleteRequest(BaseModel):
@@ -9447,6 +9507,16 @@ class WorkflowMessageRequest(BaseModel):
     workflow_id: str
 
 
+class WorkflowOnExhausted(Enum):
+    """
+    What a turn does after its last attempt failed
+    (`WorkflowInstanceCreateRequest::on_exhausted`).
+    """
+
+    block = 'block'
+    skip = 'skip'
+
+
 class WorkflowOperationKind(Enum):
     step = 'step'
     model = 'model'
@@ -9492,6 +9562,79 @@ class WorkflowProgress(BaseModel):
             description='What `done` and `total` count: one of the `ActivityUnit` words\n(`documents`, `pages`, `mentions`, `links`, `proposals`,\n`instances`, `questions`, `messages`, `items`) or another short word.'
         ),
     ] = None
+
+
+class WorkflowRequeueItem(BaseModel):
+    """
+    One item a turn could not do (`POST /v1/workflows/named/requeue`).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    error: Annotated[
+        str | None,
+        Field(
+            description="Why it failed, at most 1,000 characters. The first error is the\nrequeue origin's note."
+        ),
+    ] = None
+    instance: Annotated[
+        str, Field(description='The instance IRI, as the message named it.')
+    ]
+
+
+class WorkflowRequeueRequest(BaseModel):
+    """
+    `POST /v1/workflows/named/requeue?name=`: the instances a turn of a
+    shard could not do go back into the watch's queue, to be sent again
+    later with origin `requeue` (dogfooding design §3.3 G7). Record the
+    failure in the turn's result and counters, ask for the requeue, and
+    complete the turn: the shard goes on with its next message.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    items: Annotated[list[WorkflowRequeueItem], Field(description='1 to 64 items.')]
+    turn: Annotated[
+        int,
+        Field(
+            description="The turn that asks. Its message's origin gives the attempt: one more\nthan a requeue message's `attempt`, else 1.",
+            ge=0,
+        ),
+    ]
+    workflow_id: Annotated[
+        str,
+        Field(
+            description='The shard whose turn asks: `starter.<name>` or `starter.<name>.<k>`.'
+        ),
+    ]
+
+
+class WorkflowRequeueResponse(BaseModel):
+    """
+    What a requeue did.
+    """
+
+    attempt: Annotated[
+        int, Field(description='The attempt the items are sent with: 1 to 3.', ge=0)
+    ]
+    exhausted: Annotated[
+        list[str],
+        Field(
+            description="The items that failed after 3 requeues: not sent again, counted in\nthe workflow's `exhausted` counter and named in its `last_error`."
+        ),
+    ]
+    not_before: Annotated[
+        str,
+        Field(
+            description='When they are sent at the earliest (RFC 3339): one minute after the\nfirst failure, four after the second, sixteen after the third.'
+        ),
+    ]
+    requeued: Annotated[
+        list[str],
+        Field(description='The items queued again, back on the asking shard.'),
+    ]
 
 
 class WorkflowRunHour(BaseModel):
@@ -9753,6 +9896,12 @@ class WorkflowTurnFailRequest(BaseModel):
     )
     error: str
     non_retryable: bool | None = None
+    retry_at_ms: Annotated[
+        int | None,
+        Field(
+            description='Wait until this time (Unix milliseconds, at most 366 days ahead) and\ncount no attempt: for a cause outside the turn, such as a spent budget\n(`retry_at` of `429 workflow_budget_exceeded`) or a dependency that is\nnot there yet. A time less than a second ahead waits one second\n(`WORKFLOW_MIN_WAIT_MS`). A resume or a wake of the instance moves the\ntime to now. Not with `non_retryable`.'
+        ),
+    ] = None
     token: str
     turn: Annotated[int, Field(ge=0)]
     usage: WorkflowRunUsage | None = None
@@ -9888,6 +10037,15 @@ class WorkflowTurnStatus(Enum):
     completed = 'completed'
     failed = 'failed'
     cancelled = 'cancelled'
+
+
+class WorkflowTurnWaitReason(Enum):
+    """
+    Why a turn waits without counting an attempt (`WorkflowTurnWait`).
+    """
+
+    retry = 'retry'
+    capacity = 'capacity'
 
 
 class WorkflowTurnWaitSignalRequest(BaseModel):
@@ -11246,6 +11404,41 @@ class FilePages(BaseModel):
     parser: str
     sha256: str
     to: Annotated[int, Field(ge=0)]
+
+
+class FilePagesPutRequest(BaseModel):
+    """
+    `PUT /v1/files/pages?sha256=&parser=`: what a parser made of one upload
+    of a file, sent by a worker that parses outside the server (LBB's hosted
+    `documents.parse`). `parsed` stores every page once under the parser id;
+    `failed` and `unsupported` store no page and record why.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    error: Annotated[
+        str | None,
+        Field(
+            description='Why the parse failed, at most 500 characters. Only without pages.'
+        ),
+    ] = None
+    pages: Annotated[
+        list[FilePage] | None,
+        Field(
+            description='Every page of the file, in order, `page` 0 to `n - 1`, at most 2,000.\nOnly with `parsed`.'
+        ),
+    ] = None
+    status: Annotated[
+        str | None,
+        Field(description='`parsed` (the default), `failed` or `unsupported`.'),
+    ] = None
+    uploaded_at: Annotated[
+        str,
+        Field(
+            description="The upload the parser read: the file record's `uploaded_at`\n(`GET /v1/files/record`). When the file was deleted and uploaded\nagain since, the server stores nothing and answers `409\nfile_upload_changed`; a deleted file answers `404 file_not_found`."
+        ),
+    ]
 
 
 class FitSource(BaseModel):
@@ -12625,6 +12818,18 @@ class ModelTrialReport(BaseModel):
     ]
 
 
+class NamedWorkflowFanIn(BaseModel):
+    """
+    The fan-in identity of a workflow and what the engine holds for it.
+    """
+
+    id: Annotated[str, Field(description='The id word (`fan_in` of the request).')]
+    pending_messages: Annotated[int | None, Field(ge=0)] = None
+    running: WorkflowProgress | None = None
+    status: WorkflowInstanceStatus | None = None
+    workflow_id: Annotated[str, Field(description='`starter.<name>.<id>`.')]
+
+
 class OntologyDefineResponse(BaseModel):
     changed: Annotated[
         bool | None,
@@ -13399,7 +13604,7 @@ class QueryNamesResponse(BaseModel):
     commit_seq: Annotated[
         int,
         Field(
-            description='The commit of the graph description the index was built from.',
+            description="Every commit up to this one is in the index. Below the graph's head\nwhile a newer index builds; pass `min_commit_seq` to wait for a\ncommit. The graph's head when the index was not ready.",
             ge=0,
         ),
     ]
@@ -13413,7 +13618,7 @@ class QueryNamesResponse(BaseModel):
     index_complete: Annotated[
         bool | None,
         Field(
-            description='Every class of the graph description was read in full. Absent when\nthe index was not ready.'
+            description='Every class of the graph description was read in full. It says\nnothing of how recent the names are: that is `commit_seq`. Absent when\nthe index was not ready.'
         ),
     ] = None
     index_gaps: Annotated[
@@ -15169,68 +15374,25 @@ class WorkflowGateMeasurement(BaseModel):
     target_precision: float
 
 
-class WorkflowInboxMessage(BaseModel):
+class WorkflowInstanceCreateRequest(BaseModel):
     """
-    One unfinished turn of an instance's inbox: a message that runs or
-    waits.
-    """
-
-    attempt: Annotated[int, Field(ge=0)]
-    error: Annotated[
-        str | None, Field(description='The error of the last failed attempt.')
-    ] = None
-    message: Annotated[
-        Any | None, Field(description='The message itself, only with `payloads=true`.')
-    ] = None
-    message_bytes: Annotated[
-        int, Field(description='The size of the message, serialized.', ge=0)
-    ]
-    message_id: str
-    origin: WorkflowMessageOrigin | None = None
-    progress: WorkflowProgress | None = None
-    ready_at_ms: Annotated[
-        int, Field(description='When a worker may claim it (a queued or waiting turn).')
-    ]
-    received_at_ms: Annotated[
-        int, Field(description='When the inbox admitted the message.')
-    ]
-    status: Annotated[
-        WorkflowTurnStatus,
-        Field(description='`queued`, `waiting`, `running` or `failed`.'),
-    ]
-    turn: Annotated[
-        int, Field(description='The turn number; turns run in this order.', ge=0)
-    ]
-
-
-class WorkflowInboxResponse(BaseModel):
-    """
-    `GET /v1/workflows/instances/inbox?id=&after=&limit=&payloads=`: the
-    unfinished turns of one instance, oldest first, from one read of the
-    instance object.
+    A stable workflow identity. Each message executes one bounded, version-pinned turn.
     """
 
-    messages: list[WorkflowInboxMessage]
-    newest_received_at_ms: Annotated[
-        int | None,
-        Field(description='When the newest unfinished message was admitted.'),
-    ] = None
-    next_after: Annotated[
-        int | None,
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: str
+    lease_ms: Annotated[int | None, Field(ge=0)] = None
+    max_attempts: Annotated[int | None, Field(ge=0)] = None
+    on_exhausted: Annotated[
+        WorkflowOnExhausted | None,
         Field(
-            description='The turn number to pass as `after` for the next page.', ge=0
+            description='What a turn that failed for good does to the inbox: `block` (the\ndefault) keeps it at the inbox head until a person retries or skips\nit; `skip` keeps the failed turn in the history and goes on with the\nnext message. Absent on the wire while `block`.'
         ),
     ] = None
-    oldest_received_at_ms: Annotated[
-        int | None,
-        Field(description='When the oldest unfinished message was admitted.'),
-    ] = None
-    pending_messages: Annotated[
-        int, Field(description='Every unfinished turn, on this page or not.', ge=0)
-    ]
-    status: WorkflowInstanceStatus
+    state: Any | None = None
     version: str
-    workflow_id: str
     workflow_type: str
 
 
@@ -15282,30 +15444,6 @@ class WorkflowQueuePass(BaseModel):
     target_seq: Annotated[
         int, Field(description='The published commit the pass reads at.', ge=0)
     ]
-
-
-class WorkflowQueueShard(BaseModel):
-    """
-    One shard in the queue view: what the watch holds for it and the head
-    of its inbox.
-    """
-
-    in_flight: WorkflowQueueInFlight | None = None
-    index: Annotated[int, Field(ge=0)]
-    messages: Annotated[
-        list[WorkflowInboxMessage] | None,
-        Field(
-            description='The first unfinished turns, oldest first, with their origins (at\nmost 10; `GET /v1/workflows/instances/inbox` pages the rest).'
-        ),
-    ] = None
-    next_message: Annotated[int, Field(ge=0)]
-    pending_messages: Annotated[
-        int | None, Field(description='Its unfinished turns.', ge=0)
-    ] = None
-    running: WorkflowProgress | None = None
-    status: WorkflowInstanceStatus | None = None
-    waiting: Annotated[int, Field(description='Items waiting for this shard.', ge=0)]
-    workflow_id: str
 
 
 class WorkflowRunSummary(BaseModel):
@@ -15507,33 +15645,6 @@ class WorkflowTriggerResolved(BaseModel):
     watch: WorkflowWatchResolved | None = None
 
 
-class WorkflowTurn(BaseModel):
-    attempt: Annotated[int, Field(ge=0)]
-    continued_to: Annotated[int | None, Field(ge=0)] = None
-    created_at_ms: int
-    deadline_ms: int | None = None
-    error: str | None = None
-    finished_at_ms: int | None = None
-    message: Any
-    message_id: str
-    number: Annotated[int, Field(ge=0)]
-    operation: WorkflowTurnOperation | None = None
-    origin: WorkflowMessageOrigin | None = None
-    progress: WorkflowProgress | None = None
-    ready_at_ms: int
-    result: Any
-    run: WorkflowTurnRun | None = None
-    sequence: Annotated[int, Field(ge=0)]
-    signals: list[WorkflowTurnSignal] | None = None
-    state_after: Any
-    status: WorkflowTurnStatus
-    steps: list[WorkflowStepCheckpoint]
-    updated_at_ms: int
-    version: str
-    worker: str | None = None
-    workflow_id: str
-
-
 class WorkflowTurnClaimRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -15562,70 +15673,24 @@ class WorkflowTurnCompleteRequest(BaseModel):
     workflow_id: str
 
 
-class WorkflowTurnHistoryResponse(BaseModel):
-    next_after: Annotated[int | None, Field(ge=0)] = None
-    turns: list[WorkflowTurn]
+class WorkflowTurnWait(BaseModel):
+    """
+    A wait of a turn that counts no attempt (`WorkflowTurn::wait`). Two
+    causes make one: a worker's failure with `retry_at_ms` (a spent budget, a
+    missing dependency), and the server's deferral of a turn for capacity.
+    The turn is ready again at `until_ms`. A resume or a wake of the
+    instance moves the time to now, and the next claim clears the wait. A
+    step's own sleep or signal wait is not one.
+    """
 
-
-class WorkflowTurnTask(BaseModel):
-    effect_prefix: Annotated[
-        str,
+    reason: Annotated[
+        WorkflowTurnWaitReason | None,
         Field(
-            description='Stable across attempt retries and recovery; SDK appends the named step key.'
+            description='Why the turn waits: `retry` (the default, absent on the wire) or\n`capacity`.'
         ),
-    ]
-    execution_credential: WorkflowExecutionCredential | None = None
-    lease_ms: Annotated[int, Field(ge=0)]
-    state: Any
-    token: str
-    turn: WorkflowTurn
-    workflow_type: str
-
-
-class WorkflowTypeInboxEntry(BaseModel):
-    """
-    One instance in the inbox of a workflow type.
-    """
-
-    head: WorkflowInboxMessage | None = None
-    oldest_received_at_ms: Annotated[
-        int | None,
-        Field(description='When its oldest unfinished message was admitted.'),
     ] = None
-    pending_messages: Annotated[int, Field(ge=0)]
-    status: WorkflowInstanceStatus
-    version: str
-    workflow_id: str
-
-
-class WorkflowTypeInboxResponse(BaseModel):
-    """
-    `GET /v1/workflows/inbox?workflow_type=&version=&after=&limit=`: the
-    instances of a type with unfinished turns, by id. The namespace index
-    names them; each listed instance is one read.
-    """
-
-    identities: Annotated[
-        int,
-        Field(
-            description='Instances of the type (and version) in the namespace index, idle\nones included. The index lags a write of another node by at most\nits poll interval.',
-            ge=0,
-        ),
-    ]
-    instances: list[WorkflowTypeInboxEntry]
-    next_after: Annotated[
-        str | None,
-        Field(description='The instance id to pass as `after` for the next page.'),
-    ] = None
-    version: str | None = None
-    with_messages: Annotated[
-        int,
-        Field(
-            description='Of them, the instances the index lists with an unfinished turn.',
-            ge=0,
-        ),
-    ]
-    workflow_type: str
+    since_ms: Annotated[int, Field(description='When the wait began.')]
+    until_ms: Annotated[int, Field(description='When the turn is ready again.')]
 
 
 class ActivityEmbedding(BaseModel):
@@ -16886,48 +16951,6 @@ class ModelTrialStartResponse(BaseModel):
     trials: list[ModelTrial]
 
 
-class NamedWorkflowQueue(BaseModel):
-    """
-    `GET /v1/workflows/named/queue?name=&trigger=&after=&limit=`: what a
-    watch has not sent yet, with origins, the pass in progress, and per
-    shard its unfinished turns and its running turn's progress.
-    """
-
-    items: Annotated[
-        list[WorkflowQueueItem],
-        Field(
-            description='From position `after`, at most `limit` (1 to 100, default 50):\ninstances first, then removed instances, in send order.'
-        ),
-    ]
-    name: str
-    next_after: Annotated[
-        int | None,
-        Field(
-            description='The position to pass as `after` for the next page. The queue moves\nas it drains, so a page is a view at one time.',
-            ge=0,
-        ),
-    ] = None
-    pass_: Annotated[WorkflowQueuePass | None, Field(alias='pass')] = None
-    pending: Annotated[
-        int,
-        Field(
-            description='Items waiting to be sent (instances and removed instances), on this\npage or not. A workflow LBB runs reads its items from this queue\nitself.',
-            ge=0,
-        ),
-    ]
-    processed_through_seq: Annotated[
-        int | None,
-        Field(description='The published commit the watch read through.', ge=0),
-    ] = None
-    shards: Annotated[
-        list[WorkflowQueueShard] | None,
-        Field(
-            description="The shards of a workflow your worker runs; empty for LBB's own."
-        ),
-    ] = None
-    trigger: str
-
-
 class NamedWorkflowRequest(BaseModel):
     """
     Create a workflow with triggers, or change one (`PUT
@@ -16943,7 +16966,20 @@ class NamedWorkflowRequest(BaseModel):
             ge=0,
         ),
     ] = None
+    budget_usd_per_month: Annotated[
+        float | None,
+        Field(
+            description="The workflow's own monthly budget of model calls, in US dollars: the\nactivities its turns call (`reason`, `decide`, `embed`) answer `429\nworkflow_budget_exceeded` with `retry_at` once the month's spend\nreaches it. The stack's budget of the workflow's kind applies too.\nAbsent: no budget of its own."
+        ),
+    ] = None
+    fan_in: Annotated[
+        str | None,
+        Field(
+            description="The workflow's fan-in identity (dogfooding design §3.3 G9): one more\nengine identity of the workflow's type, `starter.<name>.<fan_in>`,\nthat the shards' turns send to (a catalogue, the things of a\nlinking). `[a-z][a-z0-9-]{0,30}`. Send with deterministic message\nids (`generated-<sha256>-<version>`, `decided-<shard>-<turn>`): a\nrepeat is admitted once. It is paused, resumed and woken with the\nshards, its runs and blobs file under the workflow, and its model\ncalls count against the workflow's budget. Absent: none."
+        ),
+    ] = None
     name: Annotated[str, Field(description='`[a-z0-9][a-z0-9-]{0,62}`.')]
+    on_exhausted: WorkflowOnExhausted | None = None
     owns: WorkflowOwns | None = None
     route_by: Annotated[
         str | None,
@@ -17807,38 +17843,94 @@ class WorkflowGateReport(BaseModel):
     ]
 
 
-class WorkflowInstance(BaseModel):
-    completed_turns: Annotated[int, Field(ge=0)]
-    created_at_ms: int
-    current_turn: WorkflowTurn | None = None
-    history_pruned_through: Annotated[
+class WorkflowInboxMessage(BaseModel):
+    """
+    One unfinished turn of an instance's inbox: a message that runs or
+    waits.
+    """
+
+    attempt: Annotated[int, Field(ge=0)]
+    error: Annotated[
+        str | None, Field(description='The error of the last failed attempt.')
+    ] = None
+    message: Annotated[
+        Any | None, Field(description='The message itself, only with `payloads=true`.')
+    ] = None
+    message_bytes: Annotated[
+        int, Field(description='The size of the message, serialized.', ge=0)
+    ]
+    message_id: str
+    origin: WorkflowMessageOrigin | None = None
+    progress: WorkflowProgress | None = None
+    ready_at_ms: Annotated[
+        int, Field(description='When a worker may claim it (a queued or waiting turn).')
+    ]
+    received_at_ms: Annotated[
+        int, Field(description='When the inbox admitted the message.')
+    ]
+    status: Annotated[
+        WorkflowTurnStatus,
+        Field(description='`queued`, `waiting`, `running` or `failed`.'),
+    ]
+    turn: Annotated[
+        int, Field(description='The turn number; turns run in this order.', ge=0)
+    ]
+    wait: WorkflowTurnWait | None = None
+
+
+class WorkflowInboxResponse(BaseModel):
+    """
+    `GET /v1/workflows/instances/inbox?id=&after=&limit=&payloads=`: the
+    unfinished turns of one instance, oldest first, from one read of the
+    instance object.
+    """
+
+    messages: list[WorkflowInboxMessage]
+    newest_received_at_ms: Annotated[
+        int | None,
+        Field(description='When the newest unfinished message was admitted.'),
+    ] = None
+    next_after: Annotated[
         int | None,
         Field(
-            description='Turns `1..=history_pruned_through` were removed by history retention:\nreading one answers 404, and a message id whose turn was removed is\nadmitted again as a new message. Zero when nothing was removed.',
-            ge=0,
+            description='The turn number to pass as `after` for the next page.', ge=0
         ),
     ] = None
-    history_through: Annotated[
-        int,
-        Field(
-            description='Completed history safely copied to immutable object storage and evicted locally.',
-            ge=0,
-        ),
+    oldest_received_at_ms: Annotated[
+        int | None,
+        Field(description='When the oldest unfinished message was admitted.'),
+    ] = None
+    pending_messages: Annotated[
+        int, Field(description='Every unfinished turn, on this page or not.', ge=0)
     ]
-    id: str
-    pending_messages: Annotated[int, Field(ge=0)]
-    progress: WorkflowProgress | None = None
-    sequence: Annotated[int, Field(ge=0)]
-    state: Any
     status: WorkflowInstanceStatus
-    updated_at_ms: int
     version: str
+    workflow_id: str
     workflow_type: str
 
 
-class WorkflowInstanceListResponse(BaseModel):
-    instances: list[WorkflowInstance]
-    next_after: str | None = None
+class WorkflowQueueShard(BaseModel):
+    """
+    One shard in the queue view: what the watch holds for it and the head
+    of its inbox.
+    """
+
+    in_flight: WorkflowQueueInFlight | None = None
+    index: Annotated[int, Field(ge=0)]
+    messages: Annotated[
+        list[WorkflowInboxMessage] | None,
+        Field(
+            description='The first unfinished turns, oldest first, with their origins (at\nmost 10; `GET /v1/workflows/instances/inbox` pages the rest).'
+        ),
+    ] = None
+    next_message: Annotated[int, Field(ge=0)]
+    pending_messages: Annotated[
+        int | None, Field(description='Its unfinished turns.', ge=0)
+    ] = None
+    running: WorkflowProgress | None = None
+    status: WorkflowInstanceStatus | None = None
+    waiting: Annotated[int, Field(description='Items waiting for this shard.', ge=0)]
+    workflow_id: str
 
 
 class WorkflowRunDetail(BaseModel):
@@ -17897,8 +17989,98 @@ class WorkflowStartRequest(BaseModel):
     steps: list[WorkflowStep]
 
 
-class WorkflowTurnClaimResponse(BaseModel):
-    task: WorkflowTurnTask | None = None
+class WorkflowTurn(BaseModel):
+    attempt: Annotated[int, Field(ge=0)]
+    continued_to: Annotated[int | None, Field(ge=0)] = None
+    created_at_ms: int
+    deadline_ms: int | None = None
+    error: str | None = None
+    finished_at_ms: int | None = None
+    message: Any
+    message_id: str
+    number: Annotated[int, Field(ge=0)]
+    operation: WorkflowTurnOperation | None = None
+    origin: WorkflowMessageOrigin | None = None
+    progress: WorkflowProgress | None = None
+    ready_at_ms: int
+    result: Any
+    run: WorkflowTurnRun | None = None
+    sequence: Annotated[int, Field(ge=0)]
+    signals: list[WorkflowTurnSignal] | None = None
+    state_after: Any
+    status: WorkflowTurnStatus
+    steps: list[WorkflowStepCheckpoint]
+    updated_at_ms: int
+    version: str
+    wait: WorkflowTurnWait | None = None
+    worker: str | None = None
+    workflow_id: str
+
+
+class WorkflowTurnHistoryResponse(BaseModel):
+    next_after: Annotated[int | None, Field(ge=0)] = None
+    turns: list[WorkflowTurn]
+
+
+class WorkflowTurnTask(BaseModel):
+    effect_prefix: Annotated[
+        str,
+        Field(
+            description='Stable across attempt retries and recovery; SDK appends the named step key.'
+        ),
+    ]
+    execution_credential: WorkflowExecutionCredential | None = None
+    lease_ms: Annotated[int, Field(ge=0)]
+    state: Any
+    token: str
+    turn: WorkflowTurn
+    workflow_type: str
+
+
+class WorkflowTypeInboxEntry(BaseModel):
+    """
+    One instance in the inbox of a workflow type.
+    """
+
+    head: WorkflowInboxMessage | None = None
+    oldest_received_at_ms: Annotated[
+        int | None,
+        Field(description='When its oldest unfinished message was admitted.'),
+    ] = None
+    pending_messages: Annotated[int, Field(ge=0)]
+    status: WorkflowInstanceStatus
+    version: str
+    workflow_id: str
+
+
+class WorkflowTypeInboxResponse(BaseModel):
+    """
+    `GET /v1/workflows/inbox?workflow_type=&version=&after=&limit=`: the
+    instances of a type with unfinished turns, by id. The namespace index
+    names them; each listed instance is one read.
+    """
+
+    identities: Annotated[
+        int,
+        Field(
+            description='Instances of the type (and version) in the namespace index, idle\nones included. The index lags a write of another node by at most\nits poll interval.',
+            ge=0,
+        ),
+    ]
+    instances: list[WorkflowTypeInboxEntry]
+    next_after: Annotated[
+        str | None,
+        Field(description='The instance id to pass as `after` for the next page.'),
+    ] = None
+    version: str | None = None
+    with_messages: Annotated[
+        int,
+        Field(
+            description='Of them, the instances the index lists with an unfinished turn.',
+            ge=0,
+        ),
+    ]
+    workflow_type: str
 
 
 class CdcDiscoveryCompleteRequest(BaseModel):
@@ -18420,8 +18602,15 @@ class NamedWorkflow(BaseModel):
     batch: Annotated[int | None, Field(ge=0)] = None
     budget_usd_per_month: float | None = None
     created_at: str | None = None
+    fan_in: NamedWorkflowFanIn | None = None
     gate: WorkflowGate | None = None
     name: str
+    on_exhausted: Annotated[
+        WorkflowOnExhausted | None,
+        Field(
+            description='What a turn of a shard that failed for good does: absent while\n`block`.'
+        ),
+    ] = None
     owns: WorkflowOwns | None = None
     params: Any | None = None
     paused: bool
@@ -18477,6 +18666,48 @@ class NamedWorkflowList(BaseModel):
     """
 
     workflows: list[NamedWorkflow]
+
+
+class NamedWorkflowQueue(BaseModel):
+    """
+    `GET /v1/workflows/named/queue?name=&trigger=&after=&limit=`: what a
+    watch has not sent yet, with origins, the pass in progress, and per
+    shard its unfinished turns and its running turn's progress.
+    """
+
+    items: Annotated[
+        list[WorkflowQueueItem],
+        Field(
+            description='From position `after`, at most `limit` (1 to 100, default 50):\ninstances first, then removed instances, in send order.'
+        ),
+    ]
+    name: str
+    next_after: Annotated[
+        int | None,
+        Field(
+            description='The position to pass as `after` for the next page. The queue moves\nas it drains, so a page is a view at one time.',
+            ge=0,
+        ),
+    ] = None
+    pass_: Annotated[WorkflowQueuePass | None, Field(alias='pass')] = None
+    pending: Annotated[
+        int,
+        Field(
+            description='Items waiting to be sent (instances and removed instances), on this\npage or not. A workflow LBB runs reads its items from this queue\nitself.',
+            ge=0,
+        ),
+    ]
+    processed_through_seq: Annotated[
+        int | None,
+        Field(description='The published commit the watch read through.', ge=0),
+    ] = None
+    shards: Annotated[
+        list[WorkflowQueueShard] | None,
+        Field(
+            description="The shards of a workflow your worker runs; empty for LBB's own."
+        ),
+    ] = None
+    trigger: str
 
 
 class NamedWorkflowRunResponse(BaseModel):
@@ -18657,6 +18888,7 @@ class TripletCommitFile(BaseModel):
             description='The edges to commit. Defaults to empty so a properties-only or\nembeddings-only commit needs no placeholder `"triplets": []`; the commit\nstill requires at least one triplet, embedding, or entity-property overall.'
         ),
     ] = None
+    workflow_fence: WorkflowFence | None = None
 
 
 class WorkflowGateCalibrationReport(BaseModel):
@@ -18687,6 +18919,46 @@ class WorkflowGateCalibrationReport(BaseModel):
     workflows: list[WorkflowGateReport]
 
 
+class WorkflowInstance(BaseModel):
+    completed_turns: Annotated[int, Field(ge=0)]
+    created_at_ms: int
+    current_turn: WorkflowTurn | None = None
+    history_pruned_through: Annotated[
+        int | None,
+        Field(
+            description='Turns `1..=history_pruned_through` were removed by history retention:\nreading one answers 404, and a message id whose turn was removed is\nadmitted again as a new message. Zero when nothing was removed.',
+            ge=0,
+        ),
+    ] = None
+    history_through: Annotated[
+        int,
+        Field(
+            description='Completed history safely copied to immutable object storage and evicted locally.',
+            ge=0,
+        ),
+    ]
+    id: str
+    on_exhausted: Annotated[
+        WorkflowOnExhausted | None,
+        Field(
+            description='What a turn that failed for good does: absent while `block`.'
+        ),
+    ] = None
+    pending_messages: Annotated[int, Field(ge=0)]
+    progress: WorkflowProgress | None = None
+    sequence: Annotated[int, Field(ge=0)]
+    state: Any
+    status: WorkflowInstanceStatus
+    updated_at_ms: int
+    version: str
+    workflow_type: str
+
+
+class WorkflowInstanceListResponse(BaseModel):
+    instances: list[WorkflowInstance]
+    next_after: str | None = None
+
+
 class WorkflowRun(BaseModel):
     created_at_ms: int
     definition: WorkflowStartRequest
@@ -18694,6 +18966,10 @@ class WorkflowRun(BaseModel):
     state: WorkflowState
     steps: list[WorkflowStepView]
     updated_at_ms: int
+
+
+class WorkflowTurnClaimResponse(BaseModel):
+    task: WorkflowTurnTask | None = None
 
 
 class DiscoveryApproval(BaseModel):

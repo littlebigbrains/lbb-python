@@ -15,7 +15,15 @@ import httpx
 
 from lbb import AsyncLbbClient, LbbClient, LbbError, entity_id_from_iri, entity_ref
 from lbb.entities import ENTITY_ID_KEY_SENTINEL, ENTITY_IRI_NAMESPACE
-from lbb.models import FileCounts, FileList, FilePages, FileRecord, FileUploadResponse
+from lbb.models import (
+    FileCounts,
+    FileList,
+    FilePages,
+    FilePagesPutRequest,
+    FilePagesPutResponse,
+    FileRecord,
+    FileUploadResponse,
+)
 
 SHA = "ab" * 32
 RECORD = {
@@ -170,6 +178,44 @@ class FilesSync(unittest.TestCase):
                 ("DELETE", "/v1/files", {"graph": "docs", "sha256": SHA, "confirm": SHA}),
             ],
         )
+
+    def test_put_pages_stores_a_parse_of_one_upload(self) -> None:
+        captured: list[httpx.Request] = []
+        lbb = self.client(
+            captured,
+            [
+                json_answer(
+                    {
+                        "sha256": SHA,
+                        "parser": "poppler-26.03.0",
+                        "status": "parsed",
+                        "stored": True,
+                        "page_count": 1,
+                    }
+                )
+            ],
+        )
+        upload = FilePagesPutRequest(
+            uploaded_at=RECORD["uploaded_at"], status="parsed", pages=PAGES["pages"]
+        )
+        answer = FilePagesPutResponse.model_validate(
+            lbb.files.put_pages(SHA.upper(), "poppler-26.03.0", upload, idempotency_key="parse-1")
+        )
+        self.assertTrue(answer.stored)
+        [request] = captured
+        self.assertEqual(request.method, "PUT")
+        self.assertEqual(request.url.path, "/v1/files/pages")
+        self.assertEqual(
+            dict(request.url.params),
+            {"graph": "docs", "sha256": SHA, "parser": "poppler-26.03.0"},
+        )
+        self.assertEqual(request.headers["idempotency-key"], "parse-1")
+        body = json.loads(request.content)
+        self.assertEqual(body["uploaded_at"], RECORD["uploaded_at"])
+        self.assertEqual(body["status"], "parsed")
+        self.assertEqual(body["pages"][0]["lines"][0]["id"], "p2-l1")
+        with self.assertRaises(ValueError):
+            lbb.files.put_pages(SHA, "", upload)
 
     def test_a_plain_text_file_stays_bytes(self) -> None:
         captured: list[httpx.Request] = []

@@ -1,0 +1,156 @@
+{
+  "name": "requeue-sends-failed-instances-back",
+  "rule": "The instances a turn could not do go back to the watch inside a step, and the turn completes.",
+  "workflow": {
+    "type": "triggered",
+    "name": "notes",
+    "version": "v1",
+    "initial_state": {
+      "runs": 0
+    }
+  },
+  "on_instances": [
+    {
+      "requeue": "requeue",
+      "failed": [
+        {
+          "instance": "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+          "error": "the model refused"
+        }
+      ],
+      "graph": {
+        "$message": "graph"
+      }
+    },
+    {
+      "return": {
+        "state": {
+          "requeued": {
+            "$ref": "requeue.requeued"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "notes",
+    "state": {},
+    "token": "token-n",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f3",
+    "turn": {
+      "workflow_id": "starter.notes",
+      "number": 3,
+      "message_id": "starter-notes-3",
+      "message": {
+        "type": "instances",
+        "workflow": "notes",
+        "graph": "crm",
+        "as_of_commit_seq": 4,
+        "reason": "changed",
+        "instances": [
+          "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef"
+        ],
+        "removed": []
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.notes-3",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "requeue"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/named/requeue",
+        "body": {
+          "workflow_id": "starter.notes",
+          "turn": 3,
+          "items": [
+            {
+              "instance": "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+              "error": "the model refused"
+            }
+          ]
+        },
+        "query": {
+          "name": "notes",
+          "graph": "crm"
+        }
+      },
+      "response": {
+        "body": {
+          "attempt": 1,
+          "requeued": [
+            "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef"
+          ],
+          "exhausted": [],
+          "not_before": "2026-10-21T10:01:00Z"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "requeue"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "requeued": [
+              "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef"
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}

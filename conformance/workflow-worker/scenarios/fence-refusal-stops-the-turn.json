@@ -1,0 +1,135 @@
+{
+  "name": "fence-refusal-stops-the-turn",
+  "rule": "A fenced write that meets 409 workflow_fence_lost stops the turn: no failure and no completion; the turn's next holder writes.",
+  "workflow": {
+    "type": "triggered",
+    "name": "notes",
+    "version": "v1",
+    "initial_state": {
+      "runs": 0
+    }
+  },
+  "on_instances": [
+    {
+      "write_owned": "write",
+      "write": {
+        "subjects": [
+          {
+            "type": "Note",
+            "name": "n1"
+          }
+        ],
+        "properties": [
+          "word_count"
+        ],
+        "entity_properties": [
+          {
+            "type": "Note",
+            "name": "n1",
+            "properties": {
+              "word_count": 3
+            }
+          }
+        ]
+      },
+      "graph": {
+        "$message": "graph"
+      }
+    },
+    {
+      "return": {
+        "state": {}
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "notes",
+    "state": {},
+    "token": "token-n",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f3",
+    "turn": {
+      "workflow_id": "starter.notes",
+      "number": 3,
+      "message_id": "starter-notes-3",
+      "message": {
+        "type": "instances",
+        "workflow": "notes",
+        "graph": "crm",
+        "as_of_commit_seq": 4,
+        "reason": "changed",
+        "instances": [
+          "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef"
+        ],
+        "removed": []
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.notes-3",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/graph/commit",
+        "body": {
+          "workflow_fence": {
+            "workflow_id": "starter.notes",
+            "turn": 3,
+            "token": "token-n"
+          }
+        }
+      },
+      "response": {
+        "status": 409,
+        "body": {
+          "error": {
+            "type": "invalid_request_error",
+            "code": "workflow_fence_lost",
+            "message": "the commit's workflow_fence does not hold turn 3 of `starter.notes`",
+            "param": "workflow_fence",
+            "retryable": false
+          }
+        }
+      }
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [],
+    "settle_ms": 50
+  },
+  "client_graph": "crm"
+}

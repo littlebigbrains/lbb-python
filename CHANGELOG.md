@@ -4,6 +4,36 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `files.put_pages(sha256, parser, upload, idempotency_key=)` stores what a
+  parser outside the server made of one upload of a file
+  (`PUT /v1/files/pages`, with the upload's `uploaded_at`), as the
+  TypeScript `files.putPages` does. An `idempotency_key` is bound to the
+  parser and body (`409 idempotency_conflict` with another).
+
+- `client.query.names(..., min_commit_seq=)` waits for the name index to hold
+  a write's commit; `commit_seq` in the answer is the newest commit the index
+  holds.
+- `lbb.workflows`: a workflow worker with the rules and the names of the
+  TypeScript `WorkflowWorker`. `WorkflowWorker` claims turns on asyncio, at
+  most `concurrency` at once; `run()` serves until SIGTERM (it drains the held
+  turns, then releases the rest with `retry_at_ms`, so they count no attempt)
+  or SIGINT (it releases at once; a second one ends the process), and
+  `run_async()` serves until `stop()`. Steps replay by key and kind with
+  stable effect ids; `model=` gives a step's model back; a sync step function
+  runs in a thread. `ctx.continue_`, `wait_for_signal`, `sleep` and fan-in
+  identities are there, and `AsyncLbbClient.workflows` starts instances and
+  holds the engine's `blobs`. `triggered_workflow`, `write_owned` (fenced,
+  with the step's effect id as the idempotency key) and `requeue_failed`
+  serve triggered workflows. `lbb_activities(client)` has `reason`, `decide`
+  and `embed` on the generated models, and names the turn's run.
+  `examples/values_extract` is the Python port of the `values-extract`
+  template. Guide: https://docs.littlebigbrain.com/guides/python-worker/
+- `stable_hash_hex(parts)`: the data plane's stable hash, for review keys a
+  worker files under LBB's own keys.
+- `LbbError.retry_at_ms`: when a spent workflow budget lets a call run again.
+- A request body given as a generated model goes out under the wire names of
+  its fields: `ReasonActivityRequest.schema_` is sent as `schema`.
+
 - Release 2 adds sync/async `client.workflow_turn_reader(task)` for bounded
   SELECT/ASK with a separately issued execution credential. Keep lease
   heartbeat, checkpoints and completion on the control client. Readers refresh

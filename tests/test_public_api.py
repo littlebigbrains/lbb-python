@@ -29,6 +29,7 @@ def test_public_exports_are_explicit_and_stable() -> None:
         "RESET",
         "entity_ref",
         "entity_id_from_iri",
+        "stable_hash_hex",
         "LbbLocalClient",
         "LbbCommandError",
     ]
@@ -75,3 +76,53 @@ def test_feedback_kind_enum_names_survive_new_application_schemas() -> None:
     for enum_type, value, target in existing:
         assert enum_type(value).value == value
         assert target.model_fields["kind"].annotation is enum_type
+
+
+def test_the_workflow_worker_exports_are_explicit_and_stable() -> None:
+    import lbb.workflows
+
+    # The names of the TypeScript SDK, in Python casing.
+    assert sorted(lbb.workflows.__all__) == sorted(
+        [
+            "ENTITY_ID_KEY_SENTINEL",
+            "ENTITY_IRI_NAMESPACE",
+            "FailedInstance",
+            "LbbActivities",
+            "OwnedWrite",
+            "OwnedWriteResult",
+            "TRIGGER_MESSAGE_TYPE",
+            "TriggeredWorkflowDefinition",
+            "WorkflowBlobsNamespace",
+            "WorkflowContext",
+            "WorkflowDefinition",
+            "WorkflowError",
+            "WorkflowHandle",
+            "WorkflowNamespace",
+            "WorkflowResult",
+            "WorkflowSignalResult",
+            "WorkflowStepContext",
+            "WorkflowWait",
+            "WorkflowWorker",
+            "entity_id_from_iri",
+            "entity_ref",
+            "fan_in_identity",
+            "is_activity_refused",
+            "is_fan_in_identity",
+            "lbb_activities",
+            "owned_commit_body",
+            "parse_trigger_message",
+            "requeue_failed",
+            "split_in_halves",
+            "triggered_workflow",
+            "triggered_workflow_state",
+            "workflow",
+            "workflow_of_identity",
+            "write_owned",
+        ]
+    )
+    for name in lbb.workflows.__all__:
+        assert getattr(lbb.workflows, name) is not None
+    client = lbb.AsyncLbbClient("http://localhost:7400")
+    assert isinstance(client.workflows, lbb.workflows.WorkflowNamespace)
+    assert client.workflows is client.workflows
+    assert isinstance(client.workflows.blobs, lbb.workflows.WorkflowBlobsNamespace)

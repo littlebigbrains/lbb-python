@@ -1,0 +1,150 @@
+{
+  "name": "activity-calls-name-the-run-and-add-up-usage",
+  "rule": "A model activity called from a step names the turn's run, and its usage goes with the completion.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "define",
+      "do": [
+        {
+          "reason": {
+            "prompt": "p",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "effect_id": true
+        }
+      ],
+      "returns": 1
+    },
+    {
+      "return": {
+        "state": {
+          "count": {
+            "$ref": "define"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "body": {
+          "prompt": "p",
+          "schema": {
+            "type": "object"
+          },
+          "effect_id": "stable/define",
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1"
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "value": {
+            "code": "P3"
+          },
+          "model": "m",
+          "tokens_in": 120,
+          "tokens_out": 30,
+          "cost_micro_usd": 9,
+          "cached": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "usage": {
+            "calls": 1,
+            "errors": 0,
+            "tokens_in": 120,
+            "tokens_out": 30,
+            "cost_micro_usd": 9
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "define"
+    ]
+  }
+}
