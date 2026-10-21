@@ -76,6 +76,8 @@ from ._client_base import (
     _StarterWorkflowMethods,
     _trial_settled,
     _trial_timeout,
+    _workflow_test_open,
+    _WorkflowTestsNamespace,
 )
 from ._workflow_execution import AsyncWorkflowTurnReader
 
@@ -1213,6 +1215,84 @@ class _AsyncModelsNamespace:
         self.switches = _AsyncModelSwitchesNamespace(client)
 
 
+class _AsyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
+    __doc__ = _WorkflowTestsNamespace.__doc__
+
+    async def create(
+        self,
+        *,
+        workflow: Mapping[str, str] | None = None,
+        install: Mapping[str, Any] | None = None,
+        iris: Sequence[str] | None = None,
+        sample: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.WorkflowTest:
+        return cast(
+            models.WorkflowTest,
+            await super().create(
+                workflow=workflow,
+                install=install,
+                iris=iris,
+                sample=sample,
+                idempotency_key=idempotency_key,
+            ),
+        )
+
+    async def get(self, test_id: str) -> models.WorkflowTest:
+        return cast(models.WorkflowTest, await super().get(test_id))
+
+    async def list(
+        self,
+        *,
+        starter: str | None = None,
+        name: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> models.WorkflowTestList:
+        return cast(
+            models.WorkflowTestList,
+            await super().list(starter=starter, name=name, limit=limit, cursor=cursor),
+        )
+
+    async def answer(
+        self,
+        test_id: str,
+        iri: str,
+        property: str,
+        answer: Mapping[str, Any] | None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> models.WorkflowTest:
+        return cast(
+            models.WorkflowTest,
+            await super().answer(test_id, iri, property, answer, idempotency_key=idempotency_key),
+        )
+
+    async def cancel(self, test_id: str) -> models.WorkflowTest:
+        return cast(models.WorkflowTest, await super().cancel(test_id))
+
+    async def dataset(self, test_id: str) -> models.WorkflowTestDataset:
+        return cast(models.WorkflowTestDataset, await super().dataset(test_id))
+
+    async def wait(
+        self, test_id: str, *, timeout: float | None = None, poll_interval: float = 1.0
+    ) -> models.WorkflowTest:
+        """Read the test until it ends (``done``, ``failed`` or
+        ``cancelled``) and return it. ``timeout`` (seconds) raises
+        :class:`TimeoutError`."""
+        if poll_interval < 0:
+            raise ValueError("poll_interval must be non-negative")
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout if timeout is not None else None
+        while True:
+            test = await self.get(test_id)
+            if not _workflow_test_open(test):
+                return test
+            if deadline is not None and loop.time() >= deadline:
+                raise TimeoutError(f"workflow test {test_id} is still {test.status}")
+            await asyncio.sleep(poll_interval)
+
+
 class _AsyncFileChunks:
     """A file's bytes in chunks for the async client, read off the event loop
     and again from the start each time they are iterated (a retry sends the
@@ -1300,8 +1380,9 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
     @property
     def workflows(self) -> WorkflowNamespace:
         """Workflows of the graph: start an instance of a workflow definition,
-        address one by its id (``handle``), and the engine's ``blobs``. The
-        worker is :class:`lbb.workflows.WorkflowWorker`."""
+        address one by its id (``handle``), the engine's ``blobs``, and the
+        ``tests`` of a workflow. The worker is
+        :class:`lbb.workflows.WorkflowWorker`."""
         namespace = self.__dict__.get("_workflows")
         if namespace is None:
             from .workflows._handles import WorkflowNamespace
