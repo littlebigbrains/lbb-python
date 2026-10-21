@@ -1,0 +1,152 @@
+{
+  "name": "step-saves-its-output-with-a-stable-effect-id",
+  "rule": "A new step begins an operation, runs once with the effect id <effect_prefix>/<key>, and saves its output; a checkpoint that meets a 5xx is retried.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "add",
+      "returns": 1
+    },
+    {
+      "return": {
+        "state": {
+          "count": {
+            "$ref": "add"
+          }
+        },
+        "result": {
+          "$ref": "add"
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "key": "add",
+          "position": 0,
+          "kind": "step",
+          "timeout_ms": 300000
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "key": "add",
+          "position": 0,
+          "kind": "step",
+          "output": 1
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "type": "api_error",
+            "code": "storage_degraded",
+            "message": "try again"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "state": {
+            "count": 1
+          },
+          "result": 1,
+          "usage": {
+            "$absent": true
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "add"
+    ],
+    "effect_ids": [
+      "stable/add"
+    ]
+  }
+}

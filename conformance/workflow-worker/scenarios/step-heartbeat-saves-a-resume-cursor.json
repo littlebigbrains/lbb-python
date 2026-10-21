@@ -1,0 +1,187 @@
+{
+  "name": "step-heartbeat-saves-a-resume-cursor",
+  "rule": "A step reads the checkpoint of an earlier attempt; its heartbeats write progress in sequence with the resume cursor, apart from the lease heartbeat.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "crawl",
+      "kind": "tool",
+      "timeout_ms": 1000,
+      "heartbeat_timeout_ms": 500,
+      "do": [
+        {
+          "heartbeat": {
+            "documents": 4
+          },
+          "checkpoint": {
+            "cursor": 4
+          }
+        },
+        {
+          "heartbeat": {
+            "documents": 5
+          }
+        }
+      ],
+      "returns": 5
+    },
+    {
+      "return": {
+        "state": {
+          "documents": {
+            "$ref": "crawl"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "key": "crawl",
+          "kind": "tool",
+          "timeout_ms": 1000,
+          "heartbeat_timeout_ms": 500
+        }
+      },
+      "response": {
+        "body": {
+          "operation": {
+            "checkpoint": {
+              "cursor": 3
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/progress",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "key": "crawl",
+          "sequence": 1,
+          "details": {
+            "documents": 4
+          },
+          "checkpoint": {
+            "cursor": 4
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/progress",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "key": "crawl",
+          "sequence": 2,
+          "details": {
+            "documents": 5
+          },
+          "checkpoint": {
+            "cursor": 4
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "crawl",
+          "output": 5
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "documents": 5
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "crawl"
+    ],
+    "effect_ids": [
+      "stable/crawl"
+    ]
+  }
+}

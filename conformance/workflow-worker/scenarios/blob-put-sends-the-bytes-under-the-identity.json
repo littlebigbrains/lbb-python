@@ -1,0 +1,131 @@
+{
+  "name": "blob-put-sends-the-bytes-under-the-identity",
+  "rule": "A blob put sends the raw bytes under the writing identity.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "store",
+      "do": [
+        {
+          "blob_put": "a large output"
+        }
+      ],
+      "returns": "agent/hash"
+    },
+    {
+      "return": {
+        "state": {
+          "blob": {
+            "$ref": "store"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/blobs",
+        "query": {
+          "workflow_id": "agent"
+        },
+        "raw": "a large output",
+        "headers": {
+          "content-type": "application/octet-stream"
+        }
+      },
+      "response": {
+        "body": {
+          "key": "instance:agent/9c1b",
+          "sha256": "9c1b",
+          "bytes": 14,
+          "created": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "blob": "agent/hash"
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "store"
+    ]
+  }
+}

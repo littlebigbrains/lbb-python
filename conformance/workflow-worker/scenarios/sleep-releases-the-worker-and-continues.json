@@ -1,0 +1,171 @@
+{
+  "name": "sleep-releases-the-worker-and-continues",
+  "rule": "A sleep saves the turn and releases the worker; the next claim replays the steps and the continuation commits with the state.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "effect",
+      "returns": {
+        "$message": "add"
+      }
+    },
+    {
+      "sleep": "timer",
+      "ms": 1000
+    },
+    {
+      "continue": {
+        "state": {
+          "count": {
+            "$ref": "effect"
+          }
+        },
+        "message": {
+          "add": 2
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 2,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "effect",
+          "kind": "step",
+          "output": 1
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "timer",
+          "kind": "sleep",
+          "position": 1,
+          "delay_ms": 1000
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {
+          "token": "token-2",
+          "turn": {
+            "steps": [
+              {
+                "key": "effect",
+                "kind": "step",
+                "output": 1,
+                "at_ms": 2
+              },
+              {
+                "key": "timer",
+                "kind": "sleep",
+                "output": null,
+                "delay_ms": 1000,
+                "at_ms": 3,
+                "wake_at_ms": 1003
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "token": "token-2",
+          "state": {
+            "count": 1
+          },
+          "continuation": {
+            "message": {
+              "add": 2
+            }
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed",
+      "claimed"
+    ],
+    "ran": [
+      "effect"
+    ],
+    "effect_ids": [
+      "stable/effect"
+    ]
+  }
+}

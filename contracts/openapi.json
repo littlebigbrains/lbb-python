@@ -9415,6 +9415,71 @@
         ],
         "type": "object"
       },
+      "FilePagesPutRequest": {
+        "additionalProperties": false,
+        "description": "`PUT /v1/files/pages?sha256=&parser=`: what a parser made of one upload\nof a file, sent by a worker that parses outside the server (LBB's hosted\n`documents.parse`). `parsed` stores every page once under the parser id;\n`failed` and `unsupported` store no page and record why.",
+        "properties": {
+          "error": {
+            "description": "Why the parse failed, at most 500 characters. Only without pages.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pages": {
+            "description": "Every page of the file, in order, `page` 0 to `n - 1`, at most 2,000.\nOnly with `parsed`.",
+            "items": {
+              "$ref": "#/components/schemas/FilePage"
+            },
+            "type": "array"
+          },
+          "status": {
+            "description": "`parsed` (the default), `failed` or `unsupported`.",
+            "type": "string"
+          },
+          "uploaded_at": {
+            "description": "The upload the parser read: the file record's `uploaded_at`\n(`GET /v1/files/record`). When the file was deleted and uploaded\nagain since, the server stores nothing and answers `409\nfile_upload_changed`; a deleted file answers `404 file_not_found`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uploaded_at"
+        ],
+        "type": "object"
+      },
+      "FilePagesPutResponse": {
+        "description": "The answer of `PUT /v1/files/pages`.",
+        "properties": {
+          "page_count": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "parser": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stored": {
+            "description": "False when the same pages were stored before under this parser id:\nnothing was written.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sha256",
+          "parser",
+          "status",
+          "stored"
+        ],
+        "type": "object"
+      },
       "FileParse": {
         "description": "What the parse starter made of a file.",
         "properties": {
@@ -18002,6 +18067,17 @@
               "null"
             ]
           },
+          "fan_in": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NamedWorkflowFanIn",
+                "description": "The fan-in identity, when the workflow has one."
+              }
+            ]
+          },
           "gate": {
             "oneOf": [
               {
@@ -18014,6 +18090,10 @@
           },
           "name": {
             "type": "string"
+          },
+          "on_exhausted": {
+            "$ref": "#/components/schemas/WorkflowOnExhausted",
+            "description": "What a turn of a shard that failed for good does: absent while\n`block`."
           },
           "owns": {
             "$ref": "#/components/schemas/WorkflowOwns"
@@ -18100,6 +18180,52 @@
         },
         "required": [
           "deleted"
+        ],
+        "type": "object"
+      },
+      "NamedWorkflowFanIn": {
+        "description": "The fan-in identity of a workflow and what the engine holds for it.",
+        "properties": {
+          "id": {
+            "description": "The id word (`fan_in` of the request).",
+            "type": "string"
+          },
+          "pending_messages": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "running": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowProgress"
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowInstanceStatus"
+              }
+            ]
+          },
+          "workflow_id": {
+            "description": "`starter.<name>.<id>`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workflow_id"
         ],
         "type": "object"
       },
@@ -18208,9 +18334,35 @@
               "null"
             ]
           },
+          "budget_usd_per_month": {
+            "description": "The workflow's own monthly budget of model calls, in US dollars: the\nactivities its turns call (`reason`, `decide`, `embed`) answer `429\nworkflow_budget_exceeded` with `retry_at` once the month's spend\nreaches it. The stack's budget of the workflow's kind applies too.\nAbsent: no budget of its own.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "fan_in": {
+            "description": "The workflow's fan-in identity (dogfooding design §3.3 G9): one more\nengine identity of the workflow's type, `starter.<name>.<fan_in>`,\nthat the shards' turns send to (a catalogue, the things of a\nlinking). `[a-z][a-z0-9-]{0,30}`. Send with deterministic message\nids (`generated-<sha256>-<version>`, `decided-<shard>-<turn>`): a\nrepeat is admitted once. It is paused, resumed and woken with the\nshards, its runs and blobs file under the workflow, and its model\ncalls count against the workflow's budget. Absent: none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "name": {
             "description": "`[a-z0-9][a-z0-9-]{0,62}`.",
             "type": "string"
+          },
+          "on_exhausted": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowOnExhausted",
+                "description": "What a turn of a shard that failed for good does: `block` (the\ndefault) holds the shard's inbox until a person retries or skips it;\n`skip` keeps the failed turn in the history and goes on. Each shard\ntakes a change at the watch's next send to it."
+              }
+            ]
           },
           "owns": {
             "oneOf": [
@@ -22661,6 +22813,15 @@
               "null"
             ]
           },
+          "min_commit_seq": {
+            "description": "The commit the index must hold: the `commit_seq` of your write. The\ncall waits for the index to hold it (a few seconds at most), then\nfails with the retryable `429 read_your_writes_pending`. Without it,\nan index behind the graph's head answers while a new one builds.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "text": {
             "description": "A question, or names: 1 to 4,000 characters.",
             "type": "string"
@@ -22682,7 +22843,7 @@
             "type": "array"
           },
           "commit_seq": {
-            "description": "The commit of the graph description the index was built from.",
+            "description": "Every commit up to this one is in the index. Below the graph's head\nwhile a newer index builds; pass `min_commit_seq` to wait for a\ncommit. The graph's head when the index was not ready.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -22697,7 +22858,7 @@
             ]
           },
           "index_complete": {
-            "description": "Every class of the graph description was read in full. Absent when\nthe index was not ready.",
+            "description": "Every class of the graph description was read in full. It says\nnothing of how recent the names are: that is `commit_seq`. Absent when\nthe index was not ready.",
             "type": [
               "boolean",
               "null"
@@ -34333,6 +34494,17 @@
               "$ref": "#/components/schemas/TripletInput"
             },
             "type": "array"
+          },
+          "workflow_fence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowFence",
+                "description": "The workflow turn that makes the commit (`WorkflowFence`): a repeat\nof the commit's `Idempotency-Key` is answered as a replay, and a new\ncommit is refused with `409 workflow_fence_lost` unless the token\nstill holds the turn. The TypeScript SDK's `writeOwned` sends it."
+              }
+            ]
           }
         },
         "type": "object"
@@ -35064,6 +35236,35 @@
         ],
         "type": "string"
       },
+      "WorkflowBlob": {
+        "description": "A blob of a workflow (`POST /v1/workflows/blobs?workflow_id=`): bytes a\nstep stores beside the engine for a large output or a large shared read\n(a catalogue), keyed by their SHA-256. A step names `key` in its output,\nits state or a message; `GET /v1/workflows/blobs?key=` reads the bytes.\nA blob stays while a live identity of the graph names it (its state, an\nunfinished turn's message, steps or operation), and at least a day after\nits last write; it goes with its workflow and with the graph.",
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created": {
+            "description": "This write stored the bytes; false when they were stored already.",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "`<workflow>/<sha256>`: the workflow is the named workflow of the\nwriting identity (`starter.<name>[.<k>]` writes under `<name>`), or\n`instance:<id>` for an identity of no named workflow.",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "The SHA-256 of the bytes, lowercase hex.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "sha256",
+          "bytes",
+          "created"
+        ],
+        "type": "object"
+      },
       "WorkflowCheckpointKind": {
         "enum": [
           "step",
@@ -35277,11 +35478,36 @@
         "type": "object"
       },
       "WorkflowExecutionOperation": {
-        "description": "One explicit operation of a workflow execution credential.",
+        "description": "One explicit operation of a workflow execution credential. `file_read`\nand `owned_write` are the grants of LBB's hosted workers: only LBB's work\ntoken is issued them.",
         "enum": [
-          "sparql_read"
+          "sparql_read",
+          "file_read",
+          "owned_write"
         ],
         "type": "string"
+      },
+      "WorkflowFence": {
+        "additionalProperties": false,
+        "description": "A commit made from a workflow turn (`POST /v1/graph/commit`,\n`workflow_fence`): the server answers a repeat of the commit's request id\nas a replay, and refuses a new commit unless `token` still holds turn\n`turn` of instance `workflow_id` (`409 workflow_fence_lost`). The check\nruns before the commit, so a lease that ends while the commit runs is the\nonly window left.",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "turn": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "turn",
+          "token"
+        ],
+        "type": "object"
       },
       "WorkflowGate": {
         "description": "Outputs whose confidence is below `below` go to the review inbox instead\nof the graph.",
@@ -35866,6 +36092,17 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "wait": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTurnWait",
+                "description": "A wait that counts no attempt (a failure with `retry_at_ms`, or a\ncapacity deferral): the turn is ready again at `wait.until_ms`."
+              }
+            ]
           }
         },
         "required": [
@@ -35978,6 +36215,10 @@
           "id": {
             "type": "string"
           },
+          "on_exhausted": {
+            "$ref": "#/components/schemas/WorkflowOnExhausted",
+            "description": "What a turn that failed for good does: absent while `block`."
+          },
           "pending_messages": {
             "format": "int64",
             "minimum": 0,
@@ -36035,7 +36276,8 @@
           "resume",
           "retry",
           "skip",
-          "cancel_turn"
+          "cancel_turn",
+          "wake"
         ],
         "type": "string"
       },
@@ -36080,6 +36322,10 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "on_exhausted": {
+            "$ref": "#/components/schemas/WorkflowOnExhausted",
+            "description": "What a turn that failed for good does to the inbox: `block` (the\ndefault) keeps it at the inbox head until a person retries or skips\nit; `skip` keeps the failed turn in the history and goes on with the\nnext message. Absent on the wire while `block`."
           },
           "state": {},
           "version": {
@@ -36347,6 +36593,14 @@
         ],
         "type": "object"
       },
+      "WorkflowOnExhausted": {
+        "description": "What a turn does after its last attempt failed\n(`WorkflowInstanceCreateRequest::on_exhausted`).",
+        "enum": [
+          "block",
+          "skip"
+        ],
+        "type": "string"
+      },
       "WorkflowOperationKind": {
         "enum": [
           "step",
@@ -36611,6 +36865,92 @@
           "workflow_id",
           "next_message",
           "waiting"
+        ],
+        "type": "object"
+      },
+      "WorkflowRequeueItem": {
+        "additionalProperties": false,
+        "description": "One item a turn could not do (`POST /v1/workflows/named/requeue`).",
+        "properties": {
+          "error": {
+            "description": "Why it failed, at most 1,000 characters. The first error is the\nrequeue origin's note.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "description": "The instance IRI, as the message named it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance"
+        ],
+        "type": "object"
+      },
+      "WorkflowRequeueRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/workflows/named/requeue?name=`: the instances a turn of a\nshard could not do go back into the watch's queue, to be sent again\nlater with origin `requeue` (dogfooding design §3.3 G7). Record the\nfailure in the turn's result and counters, ask for the requeue, and\ncomplete the turn: the shard goes on with its next message.",
+        "properties": {
+          "items": {
+            "description": "1 to 64 items.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRequeueItem"
+            },
+            "type": "array"
+          },
+          "turn": {
+            "description": "The turn that asks. Its message's origin gives the attempt: one more\nthan a requeue message's `attempt`, else 1.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflow_id": {
+            "description": "The shard whose turn asks: `starter.<name>` or `starter.<name>.<k>`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "turn",
+          "items"
+        ],
+        "type": "object"
+      },
+      "WorkflowRequeueResponse": {
+        "description": "What a requeue did.",
+        "properties": {
+          "attempt": {
+            "description": "The attempt the items are sent with: 1 to 3.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exhausted": {
+            "description": "The items that failed after 3 requeues: not sent again, counted in\nthe workflow's `exhausted` counter and named in its `last_error`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "not_before": {
+            "description": "When they are sent at the earliest (RFC 3339): one minute after the\nfirst failure, four after the second, sixteen after the third.",
+            "type": "string"
+          },
+          "requeued": {
+            "description": "The items queued again, back on the asking shard.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "attempt",
+          "not_before",
+          "requeued",
+          "exhausted"
         ],
         "type": "object"
       },
@@ -37701,6 +38041,17 @@
           "version": {
             "type": "string"
           },
+          "wait": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTurnWait",
+                "description": "A wait that counts no attempt: the last failure asked for it with\n`retry_at_ms`, or the server deferred the turn for capacity\n(`WorkflowTurnWait::reason`). The next claim clears it."
+              }
+            ]
+          },
           "worker": {
             "type": [
               "string",
@@ -37882,6 +38233,14 @@
           },
           "non_retryable": {
             "type": "boolean"
+          },
+          "retry_at_ms": {
+            "description": "Wait until this time (Unix milliseconds, at most 366 days ahead) and\ncount no attempt: for a cause outside the turn, such as a spent budget\n(`retry_at` of `429 workflow_budget_exceeded`) or a dependency that is\nnot there yet. A time less than a second ahead waits one second\n(`WORKFLOW_MIN_WAIT_MS`). A resume or a wake of the instance moves the\ntime to now. Not with `non_retryable`.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "token": {
             "type": "string"
@@ -38276,6 +38635,38 @@
           "effect_prefix"
         ],
         "type": "object"
+      },
+      "WorkflowTurnWait": {
+        "description": "A wait of a turn that counts no attempt (`WorkflowTurn::wait`). Two\ncauses make one: a worker's failure with `retry_at_ms` (a spent budget, a\nmissing dependency), and the server's deferral of a turn for capacity.\nThe turn is ready again at `until_ms`. A resume or a wake of the\ninstance moves the time to now, and the next claim clears the wait. A\nstep's own sleep or signal wait is not one.",
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/WorkflowTurnWaitReason",
+            "description": "Why the turn waits: `retry` (the default, absent on the wire) or\n`capacity`."
+          },
+          "since_ms": {
+            "description": "When the wait began.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "until_ms": {
+            "description": "When the turn is ready again.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "since_ms",
+          "until_ms"
+        ],
+        "type": "object"
+      },
+      "WorkflowTurnWaitReason": {
+        "description": "Why a turn waits without counting an attempt (`WorkflowTurnWait`).",
+        "enum": [
+          "retry",
+          "capacity"
+        ],
+        "type": "string"
       },
       "WorkflowTurnWaitSignalRequest": {
         "additionalProperties": false,
@@ -69361,6 +69752,303 @@
         "tags": [
           "files"
         ]
+      },
+      "put": {
+        "operationId": "put_v1_files_pages",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the file's SHA-256, hex",
+            "in": "query",
+            "name": "sha256",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the parser id (`poppler-26.03.0`): 1 to 64 letters, digits, '.', '_' or '-'",
+            "in": "query",
+            "name": "parser",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilePagesPutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilePagesPutResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Store what a parser outside the server made of a file (LBB's hosted `documents.parse`): `status` `parsed` with every page (at most 2,000, the shape `GET /v1/files/pages` serves), or `failed` or `unsupported` with its `error`. The pages are stored once under the parser id; the same pages again store nothing (`stored: false`), other pages under the same id are 409 `file_pages_conflict`. The file's record gets the parse, so `GET /v1/files/pages` serves the pages. 400 `file_pages_invalid`, 404 `file_not_found`",
+        "tags": [
+          "files"
+        ]
       }
     },
     "/v1/files/record": {
@@ -70248,7 +70936,7 @@
             "bearer": []
           }
         ],
-        "summary": "Commit triplets and optional entity embeddings; `replace_owned` replaces a writer's owned edges and fields on its subjects in the same commit",
+        "summary": "Commit triplets and optional entity embeddings; `replace_owned` replaces a writer's owned edges and fields on its subjects in the same commit. A commit of a workflow turn names `workflow_fence`: a repeat of its `Idempotency-Key` replays, and a new commit whose token no longer holds the turn answers `409 workflow_fence_lost` and writes nothing",
         "tags": [
           "graph"
         ]
@@ -107707,6 +108395,603 @@
         ]
       }
     },
+    "/v1/workflows/blobs": {
+      "get": {
+        "operationId": "get_v1_workflows_blobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the blob's key, `<workflow>/<sha256>`",
+            "in": "query",
+            "name": "key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A blob's bytes (`application/octet-stream`). 404 when no kept generation holds it",
+        "tags": [
+          "system"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_workflows_blobs",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the writing identity",
+            "in": "query",
+            "name": "workflow_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The blob's bytes, at most 8 MiB.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowBlob"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Store a blob of a workflow: the raw request body (at most 8 MiB), keyed by its SHA-256 under the workflow of the writing identity (`<workflow>/<sha256>`). A step names the key in its output, its state or a message instead of large bytes. A blob stays while a live identity of the graph names it and at least a day after its last write; it goes with its workflow and with the graph. The same bytes again answer the same key (`created: false`)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/v1/workflows/cancel": {
       "post": {
         "operationId": "post_v1_workflows_cancel",
@@ -114859,6 +116144,305 @@
           }
         ],
         "summary": "What a workflow's watch has not sent yet: each waiting instance with its reason, its shard and its origin (a backfill, a commit range with the watched fields that changed and the request ids of its commits, a run now, a schema change), the pass in progress, and per shard its message in flight, its first unfinished turns with their origins and its running turn's progress",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/named/requeue": {
+      "post": {
+        "operationId": "post_v1_workflows_named_requeue",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin. Use `2026-07-23` for this beta-breaking shape.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the workflow's name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowRequeueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRequeueResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send the instances a turn of a shard could not do again later: they go back into the watch's queue on the same shard, with origin `requeue` (the attempt, the asking turn and message, the first error) and a backoff of one minute, then four, then sixteen. The attempt is one more than the asking message's (`origin.attempt` of a requeue); past 3 the instances are exhausted, not sent again, and counted in the workflow's `exhausted`. Record the failure in the turn's result, ask for the requeue, and complete the turn",
         "tags": [
           "workflows"
         ]
@@ -122531,7 +124115,7 @@
             "bearer": []
           }
         ],
-        "summary": "Issue or refresh a SELECT/ASK credential for the exact live turn attempt. Requires the original control credential and lease token; execution bearers cannot refresh or control workflows.",
+        "summary": "Issue or refresh one operation credential for the exact live turn attempt: SELECT/ASK (`sparql_read`, the default), or the grants of LBB's hosted workers (`file_read`, `owned_write`), which only LBB's work token is issued and only with LBB_WORKFLOW_EXECUTION_GRANTS (403 workflow_execution_scope or workflow_execution_disabled). Requires the original control credential and lease token; execution bearers cannot refresh or control workflows.",
         "tags": [
           "system"
         ]

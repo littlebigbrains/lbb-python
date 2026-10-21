@@ -1,0 +1,140 @@
+{
+  "name": "unknown-kinds-of-a-newer-server-pass-through",
+  "rule": "A claimed task may hold enum values of a newer server (a status, an operation kind, a wait reason): the worker keeps them as text and runs the turn.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "add",
+      "returns": 1
+    },
+    {
+      "return": {
+        "state": {
+          "count": {
+            "$ref": "add"
+          }
+        },
+        "result": {
+          "$ref": "add"
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {
+          "turn": {
+            "status": "reviewing",
+            "attempt": 2,
+            "operation": {
+              "attempt": 1,
+              "checkpoint": null,
+              "deadline_ms": 2,
+              "details": null,
+              "key": "add",
+              "kind": "review",
+              "last_heartbeat_ms": 1,
+              "sequence": 0,
+              "started_at_ms": 1,
+              "timeout_ms": 300000
+            },
+            "wait": {
+              "reason": "review",
+              "since_ms": 1,
+              "until_ms": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "add"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "add",
+          "output": 1
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "state": {
+            "count": 1
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "add"
+    ]
+  }
+}

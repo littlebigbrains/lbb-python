@@ -253,6 +253,40 @@ print(answer["value"]["code"], answer["cost_micro_usd"])
 A request too large for the model raises `LbbError` with the code
 `activity_request_refused` (422): split it and send each half.
 
+## Run a workflow worker
+
+`lbb.workflows` runs durable workflows in Python, with the rules of the
+TypeScript worker. A turn runs one message. Its named steps save their
+outputs, so a turn that runs again after a crash replays them and does each
+effect once.
+
+```python
+from lbb import AsyncLbbClient
+from lbb.workflows import WorkflowResult, WorkflowWorker, workflow
+
+
+@workflow(name="counter", version="v1", initial_state={"count": 0})
+async def counter(ctx, state, message):
+    amount = await ctx.step("add", lambda s: message["add"])
+    return WorkflowResult(state={"count": state["count"] + amount})
+
+
+client = AsyncLbbClient("http://127.0.0.1:7400", api_key="lbb_sk_test_local", graph="main")
+WorkflowWorker(client, [counter], worker="counter-1", concurrency=4).run()
+```
+
+`run()` serves until SIGTERM, which drains the held turns and releases the
+rest. `run_async()` serves inside your own event loop until `stop()`. A step's
+`effect_id` stays the same on every attempt: pass it to an external service as
+its idempotency key. A sync step function runs in a thread, so a blocking call
+holds no other turn. `lbb_activities(client)` has `reason`, `decide` and
+`embed` on the generated models, and `triggered_workflow`, `write_owned` and
+`requeue_failed` serve the triggered workflows of a class.
+`client.workflows` starts instances and holds the engine's blobs.
+`examples/values_extract` is the Python port of the `values-extract` template.
+The guide is
+[Run a worker in Python](https://docs.littlebigbrain.com/guides/python-worker/).
+
 ## Next steps
 
 - [Search by meaning](https://docs.littlebigbrain.com/guides/search-by-meaning/): choose which facts to embed, find records from a text description, and search inside a SPARQL query with `search:similarTo`.

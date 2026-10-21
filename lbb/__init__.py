@@ -9,6 +9,7 @@ responses.
 """
 
 from ._catalog import CatalogUsageProfile
+from ._hash import stable_hash_hex
 from ._version import __version__ as __version__
 from ._workflow_execution import AsyncWorkflowTurnReader, WorkflowExecutionError, WorkflowTurnReader
 from .client import (
@@ -47,6 +48,7 @@ __all__ = [
     "RESET",
     "entity_ref",
     "entity_id_from_iri",
+    "stable_hash_hex",
     "LbbLocalClient",
     "LbbCommandError",
 ]

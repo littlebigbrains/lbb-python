@@ -1,0 +1,163 @@
+{
+  "name": "progress-is-coalesced",
+  "rule": "Progress goes out at once on a phase change, then at most once per interval with the last value, and the held value goes out when the step returns.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    },
+    "worker": {
+      "progress_every_ms": 200
+    }
+  },
+  "handler": [
+    {
+      "step": "read",
+      "do": [
+        {
+          "progress": "reading pages",
+          "done": 1,
+          "total": 10,
+          "unit": "pages"
+        },
+        {
+          "progress": "reading pages",
+          "done": 2,
+          "total": 10,
+          "unit": "pages"
+        },
+        {
+          "progress": "reading pages",
+          "done": 3,
+          "total": 10,
+          "unit": "pages"
+        },
+        {
+          "progress": "writing facts",
+          "done": 0
+        }
+      ],
+      "returns": 4
+    },
+    {
+      "return": {
+        "state": {}
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/progress",
+        "body": {
+          "sequence": 1,
+          "details": {
+            "phase": "reading pages",
+            "done": 1,
+            "total": 10,
+            "unit": "pages"
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/progress",
+        "body": {
+          "sequence": 2,
+          "details": {
+            "phase": "writing facts",
+            "done": 0,
+            "total": {
+              "$absent": true
+            },
+            "unit": {
+              "$absent": true
+            }
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "read",
+          "output": 4
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete"
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "read"
+    ]
+  }
+}

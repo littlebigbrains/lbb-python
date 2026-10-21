@@ -56,7 +56,7 @@ class QueryToolTests(unittest.TestCase):
             {"json": {"moment": "2026-06-19T00:00:00Z", "as_of_commit_seq": 5, "resolved_by": "commit_time"}},
         ]
         with LbbClient("http://h", graph="crm", transport=transport(seen, responses)) as client:
-            found = client.query.names("Summarize Mara Lindqvist's deals", limit=3)
+            found = client.query.names("Summarize Mara Lindqvist's deals", limit=3, min_commit_seq=4)
             described = client.query.describe(
                 question="Which clubs are active?", classes=["https://x.test/class/Club"]
             )
@@ -74,7 +74,10 @@ class QueryToolTests(unittest.TestCase):
                 ("GET", "/v1/graph/commit-at"),
             ],
         )
-        self.assertEqual(json.loads(seen[0].content), {"text": "Summarize Mara Lindqvist's deals", "limit": 3})
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"text": "Summarize Mara Lindqvist's deals", "limit": 3, "min_commit_seq": 4},
+        )
         self.assertEqual(
             json.loads(seen[1].content),
             {"question": "Which clubs are active?", "classes": ["https://x.test/class/Club"]},
