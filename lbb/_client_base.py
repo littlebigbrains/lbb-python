@@ -5030,6 +5030,7 @@ class _EmbeddingsNamespace:
         explain: bool = False,
         rerank: bool | None = None,
         shown: Mapping[str, Any] | None = None,
+        min_commit_seq: int | None = None,
     ) -> Any:
         """Search by meaning (``POST /v1/search``).
 
@@ -5050,6 +5051,10 @@ class _EmbeddingsNamespace:
         ``{"min_score": 0.3, "min_relevance": 0.3, "limit": 10}`` (each
         optional); the trace marks each hit shown or not, and a golden of the
         search checks only the hits the app shows. It changes no hit.
+        ``min_commit_seq`` (the ``commit_seq`` a write returned) waits a few
+        seconds until every searched embedding covers that commit; past the
+        wait the server answers the retryable 429
+        ``read_your_writes_pending``.
         """
         body: dict[str, Any] = {"text": text}
         if embedding is not None:
@@ -5070,6 +5075,8 @@ class _EmbeddingsNamespace:
             body["rerank"] = rerank
         if shown is not None:
             body["shown"] = dict(shown)
+        if min_commit_seq is not None:
+            body["min_commit_seq"] = min_commit_seq
         return self._client._request("POST", "/v1/search", body=body)
 
     def search_settings(self) -> Any:

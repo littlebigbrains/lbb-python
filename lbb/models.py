@@ -6761,7 +6761,13 @@ class SearchedEmbedding(BaseModel):
     class_: Annotated[str, Field(alias='class')]
     embedded_through_seq: CommitSeq | None = None
     hits: Annotated[int, Field(description='The hits of this response it found.', ge=0)]
-    lag_commits: Annotated[int | None, Field(ge=0)] = None
+    lag_commits: Annotated[
+        int | None,
+        Field(
+            description='Commits it is behind the newest commit (`head_seq` −\n`embedded_through_seq`).',
+            ge=0,
+        ),
+    ] = None
     model_id: str
     name: str
     version: Annotated[int, Field(ge=0)]
@@ -11057,10 +11063,11 @@ class EmbeddingStatus(BaseModel):
     building: EmbeddingVersionStatus | None = None
     class_: Annotated[str, Field(alias='class')]
     created_at: str
+    head_seq: CommitSeq | None = None
     lag_commits: Annotated[
         int | None,
         Field(
-            description='Commits the serving version is behind the published generation.',
+            description='Commits the serving version is behind the newest commit\n(`head_seq` − its `embedded_through_seq`). 0: a search finds every\ncommit. The commits wait for the publication\n(`head_seq` − `published_seq`), then for the embed job.',
             ge=0,
         ),
     ] = None
@@ -14428,6 +14435,7 @@ class SearchRequest(BaseModel):
         list[str] | None,
         Field(description='Extra hit fields: `text` (the embedded text).'),
     ] = None
+    min_commit_seq: CommitSeq | None = None
     probe: Annotated[
         int | None,
         Field(
@@ -14506,6 +14514,7 @@ class SearchResponse(BaseModel):
         Field(description='Only planned (`explain`): no hits and no model call.'),
     ] = None
     filter: SearchFilterReport | None = None
+    head_seq: CommitSeq | None = None
     hits: Annotated[
         list[SearchHit],
         Field(
@@ -14515,7 +14524,7 @@ class SearchResponse(BaseModel):
     lag_commits: Annotated[
         int | None,
         Field(
-            description='The most published commits one searched embedding does not cover yet\n(`served_at_seq` − its watermark); the embed job catches up by itself.',
+            description='The most commits one searched embedding is behind the newest commit\n(`head_seq` − its watermark). 0: the search found every commit. The\npublication and then the embed job catch up by themselves; to wait\nfor one write, pass its `commit_seq` as `min_commit_seq`.',
             ge=0,
         ),
     ] = None

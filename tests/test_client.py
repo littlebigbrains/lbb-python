@@ -2781,6 +2781,14 @@ class SearchAndEvalsNamespaceTests(unittest.TestCase):
             },
         )
 
+    def test_a_search_sends_its_read_your_writes_floor(self) -> None:
+        seen: list[httpx.Request] = []
+        with self._client(seen) as client:
+            client.embeddings.search("card payments", min_commit_seq=128)
+        self.assertEqual(
+            self._body(seen[0]), {"text": "card payments", "min_commit_seq": 128}
+        )
+
     def test_a_plain_search_sends_only_the_text(self) -> None:
         seen: list[httpx.Request] = []
         with self._client(seen) as client:
