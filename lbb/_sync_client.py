@@ -529,6 +529,23 @@ class _SyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
             lambda cursor: self.runs(name, cursor=cursor, limit=limit, outcome=outcome)
         )
 
+    def all_run_results(
+        self,
+        name: str,
+        *,
+        run: str | None = None,
+        outcome: str | Sequence[str] | None = None,
+        iri: str | None = None,
+        limit: int | None = None,
+    ) -> Iterator[models.WorkflowRunResult]:
+        """Every result of the workflow's runs kept, newest run first:
+        :meth:`run_results` page by page."""
+        return _every(
+            lambda cursor: self.run_results(
+                name, run=run, outcome=outcome, iri=iri, cursor=cursor, limit=limit
+            )
+        )
+
     def all_documents(
         self,
         name: str,

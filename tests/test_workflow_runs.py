@@ -255,6 +255,84 @@ EARLIER_ROUTES = [
 ]
 
 
+class RunResultsTests(unittest.TestCase):
+    def test_run_results_read_their_route_with_filters_and_every_page(self) -> None:
+        def result(rid: str, outcome: str) -> dict[str, Any]:
+            return {
+                "id": rid,
+                "object": "workflow_run_result",
+                "created": "2026-10-21T10:00:00.000Z",
+                "run": "1791967648726-starter.notes-3",
+                "label": rid,
+                "outcome": outcome,
+                "values": [],
+                "cost_micro_usd": 0,
+            }
+
+        answers = [
+            {
+                "object": "list",
+                "data": [result("wrr_a", "review")],
+                "has_more": False,
+                "run_counts": {
+                    "counts": {"written": 0, "review": 1, "no_value": 0, "failed": 0, "duplicate": 0},
+                    "inputs": 1,
+                    "listed": 1,
+                },
+            },
+            {
+                "object": "list",
+                "data": [result("wrr_b", "failed")],
+                "has_more": True,
+                "next_cursor": "1:1791967648726-starter.notes-3",
+            },
+            {"object": "list", "data": [result("wrr_c", "review")], "has_more": False},
+        ]
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, answers)
+        ) as client:
+            named = client.workflows.named
+            one = named.run_results(
+                "notes", run="1791967648726-starter.notes-3", outcome="review", limit=20
+            )
+            ids = [
+                each.id
+                for each in named.all_run_results(
+                    "notes", outcome=["review", "failed"], iri="https://littlebigbrain.com/e/01"
+                )
+            ]
+        assert one.run_counts is not None
+        self.assertEqual(one.run_counts.inputs, 1)
+        self.assertEqual(ids, ["wrr_b", "wrr_c"])
+        self.assertEqual(
+            [dict(request.url.params) for request in seen],
+            [
+                {
+                    "graph": "crm",
+                    "name": "notes",
+                    "run": "1791967648726-starter.notes-3",
+                    "outcome": "review",
+                    "limit": "20",
+                },
+                {
+                    "graph": "crm",
+                    "name": "notes",
+                    "outcome": "review,failed",
+                    "iri": "https://littlebigbrain.com/e/01",
+                },
+                {
+                    "graph": "crm",
+                    "name": "notes",
+                    "outcome": "review,failed",
+                    "iri": "https://littlebigbrain.com/e/01",
+                    "cursor": "1:1791967648726-starter.notes-3",
+                },
+            ],
+        )
+        self.assertTrue(all(r.url.path == "/v1/workflows/named/runs/results" for r in seen))
+
+
 class NamedWorkflowsTests(unittest.TestCase):
     def test_each_method_reads_its_route_and_returns_its_model(self) -> None:
         seen: list[httpx.Request] = []

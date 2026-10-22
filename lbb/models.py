@@ -10026,6 +10026,45 @@ class WorkflowRunPhase(BaseModel):
     unit: str | None = None
 
 
+class WorkflowRunResultCounts(BaseModel):
+    """
+    The inputs of a run by outcome.
+    """
+
+    duplicate: Annotated[int | None, Field(ge=0)] = None
+    failed: Annotated[int | None, Field(ge=0)] = None
+    no_value: Annotated[int | None, Field(ge=0)] = None
+    review: Annotated[int | None, Field(ge=0)] = None
+    written: Annotated[int | None, Field(ge=0)] = None
+
+
+class WorkflowRunResultOutcome(Enum):
+    """
+    What a run did with one input. When several hold, the first of
+    `failed`, `review`, `written`, `duplicate`, `no_value` is the input's.
+    """
+
+    written = 'written'
+    review = 'review'
+    no_value = 'no_value'
+    failed = 'failed'
+    duplicate = 'duplicate'
+
+
+class WorkflowRunResultRunCounts(BaseModel):
+    """
+    The counts of the run a list names (`run`): every input by outcome, and
+    how many the run had.
+    """
+
+    counts: WorkflowRunResultCounts
+    inputs: Annotated[int, Field(ge=0)]
+    listed: Annotated[
+        int,
+        Field(description='The inputs the run kept a result for (at most 200).', ge=0),
+    ]
+
+
 class WorkflowRunStats(BaseModel):
     """
     The last hours of a workflow's runs, oldest first, up to the current
@@ -10282,7 +10321,10 @@ class WorkflowTestStatus(Enum):
 class WorkflowTestValue(BaseModel):
     """
     One value the workflow read from an input, after every check, as the live
-    workflow would decide it.
+    workflow would decide it. A live run records its values in this shape too
+    (`WorkflowRunInput`), with two more outcomes: `answered` (a person's
+    answer in force was written) and `rejected` (a person rejected the value,
+    or the graph refused it, so it was not written again).
     """
 
     detail: str | None = None
@@ -10294,6 +10336,19 @@ class WorkflowTestValue(BaseModel):
     ]
     property: str
     quote: Annotated[str, Field(description='The words of the text the model quoted.')]
+    region: WorkflowTestRegion | None = None
+    review_item: Annotated[
+        str | None,
+        Field(
+            description='The review item a live run filed for the value (`rev_…`); a test\nfiles none.'
+        ),
+    ] = None
+    source: Annotated[
+        str | None,
+        Field(
+            description="Where the quote is: the evidence's `Document` IRI with its place\n(`#page=3`, `#row=5`), or a name."
+        ),
+    ] = None
     stated: Annotated[
         str | None,
         Field(
@@ -10371,24 +10426,6 @@ class WorkflowTurnContinuation(BaseModel):
         extra='forbid',
     )
     message: Any
-
-
-class WorkflowTurnFailRequest(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    error: str
-    non_retryable: bool | None = None
-    retry_at_ms: Annotated[
-        int | None,
-        Field(
-            description='Wait until this time (Unix milliseconds, at most 366 days ahead) and\ncount no attempt: for a cause outside the turn, such as a spent budget\n(`retry_at` of `429 workflow_budget_exceeded`) or a dependency that is\nnot there yet. A time less than a second ahead waits one second\n(`WORKFLOW_MIN_WAIT_MS`). A resume or a wake of the instance moves the\ntime to now. Not with `non_retryable`.'
-        ),
-    ] = None
-    token: str
-    turn: Annotated[int, Field(ge=0)]
-    usage: WorkflowRunUsage | None = None
-    workflow_id: str
 
 
 class WorkflowTurnLeaseRequest(BaseModel):
@@ -16135,6 +16172,125 @@ class WorkflowQueuePass(BaseModel):
     ]
 
 
+class WorkflowRunInput(BaseModel):
+    """
+    One input as a run records it: its IRI and label, what the run did with
+    it, and its values in the shape of a test's (`WorkflowTestValue`).
+    """
+
+    cost_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The model cost of this input, in millionths of a US dollar, when the\ncalls named it.',
+            ge=0,
+        ),
+    ] = None
+    error: Annotated[
+        str | None,
+        Field(
+            description='Why the input failed or has no values (the instance is gone), at\nmost 500 characters.'
+        ),
+    ] = None
+    iri: Annotated[
+        str | None,
+        Field(
+            description="The input. Absent for a worker's write that names its subject by\ntype and name only."
+        ),
+    ] = None
+    label: Annotated[
+        str | None, Field(description="The input's label, or the subject's name.")
+    ] = None
+    outcome: WorkflowRunResultOutcome
+    region: WorkflowTestRegion | None = None
+    values: Annotated[
+        list[WorkflowTestValue] | None,
+        Field(
+            description='What the run read or wrote, at most 32: a value with its quote,\nsupport, conversion (`stated`) and outcome; a value filed for review\nnames its `review_item`.'
+        ),
+    ] = None
+
+
+class WorkflowRunResult(BaseModel):
+    """
+    One result as the list answers it: an input of a run with the run's id
+    and when the run recorded it.
+    """
+
+    cost_micro_usd: Annotated[int | None, Field(ge=0)] = None
+    created: Annotated[
+        str, Field(description="When the run recorded it (the run's end), RFC 3339.")
+    ]
+    error: str | None = None
+    id: Annotated[str, Field(description='`wrr_` and 24 hex. Opaque.')]
+    iri: str | None = None
+    label: str | None = None
+    object: Annotated[str, Field(description='`workflow_run_result`.')]
+    outcome: WorkflowRunResultOutcome
+    region: WorkflowTestRegion | None = None
+    run: Annotated[
+        str, Field(description='The run id, as `…/runs` and `…/runs/get` name it.')
+    ]
+    values: list[WorkflowTestValue] | None = None
+
+
+class WorkflowRunResultList(BaseModel):
+    """
+    `GET /v1/workflows/named/runs/results`: the results of a workflow's
+    runs, newest run first, each run's inputs in order.
+    """
+
+    data: list[WorkflowRunResult]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; absent on the last page.'
+        ),
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+    run_counts: WorkflowRunResultRunCounts | None = None
+
+
+class WorkflowRunResults(BaseModel):
+    """
+    The results of one run as they are stored: one object per run, beside
+    its summary, written once.
+    """
+
+    counts: Annotated[
+        WorkflowRunResultCounts, Field(description='Every input of the run by outcome.')
+    ]
+    data: list[WorkflowRunInput] | None = None
+    inputs: Annotated[
+        int,
+        Field(description='The inputs of the run; `data` holds the first 200.', ge=0),
+    ]
+    recorded_at_ms: Annotated[
+        int,
+        Field(
+            description="When the run recorded them, Unix milliseconds: the run's end."
+        ),
+    ]
+    run: Annotated[str, Field(description="The run id, as the run's summary names it.")]
+    v: Annotated[int, Field(description='The format number, 1.', ge=0)]
+    workflow: Annotated[str, Field(description='The workflow folder of the run.')]
+
+
+class WorkflowRunResultsReport(BaseModel):
+    """
+    What a worker reports with the completion or the failure of a turn:
+    the inputs of the run, and the counts of every input it handled (also
+    those past the bound). The SDK fills it from `writeOwned`, `review` and
+    `requeue`.
+    """
+
+    counts: WorkflowRunResultCounts | None = None
+    inputs: Annotated[
+        list[WorkflowRunInput] | None,
+        Field(description='At most 200 inputs, in the order the run first named them.'),
+    ] = None
+
+
 class WorkflowRunSummary(BaseModel):
     """
     The run summary: the record of one run that a workflow keeps for 30
@@ -16434,7 +16590,27 @@ class WorkflowTurnCompleteRequest(BaseModel):
     )
     continuation: WorkflowTurnContinuation | None = None
     result: Any | None = None
+    results: WorkflowRunResultsReport | None = None
     state: Any
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    usage: WorkflowRunUsage | None = None
+    workflow_id: str
+
+
+class WorkflowTurnFailRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    error: str
+    non_retryable: bool | None = None
+    results: WorkflowRunResultsReport | None = None
+    retry_at_ms: Annotated[
+        int | None,
+        Field(
+            description='Wait until this time (Unix milliseconds, at most 366 days ahead) and\ncount no attempt: for a cause outside the turn, such as a spent budget\n(`retry_at` of `429 workflow_budget_exceeded`) or a dependency that is\nnot there yet. A time less than a second ahead waits one second\n(`WORKFLOW_MIN_WAIT_MS`). A resume or a wake of the instance moves the\ntime to now. Not with `non_retryable`.'
+        ),
+    ] = None
     token: str
     turn: Annotated[int, Field(ge=0)]
     usage: WorkflowRunUsage | None = None
@@ -19013,6 +19189,13 @@ class WorkflowTurnTask(BaseModel):
     ]
     execution_credential: WorkflowExecutionCredential | None = None
     lease_ms: Annotated[int, Field(ge=0)]
+    results_max: Annotated[
+        int | None,
+        Field(
+            description='The inputs a completion or a failure may report results for\n(`results`, at most this many kept whole). Set by a server that takes\nresults; a worker sends `results` only when it is present.',
+            ge=0,
+        ),
+    ] = None
     state: Any
     token: str
     turn: WorkflowTurn

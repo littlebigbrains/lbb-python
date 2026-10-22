@@ -5533,6 +5533,44 @@ class _NamedWorkflowsNamespace:
             params={"name": name, "hours": hours},
         )
 
+    def run_results(
+        self,
+        name: str,
+        *,
+        run: str | None = None,
+        outcome: str | Sequence[str] | None = None,
+        iri: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> models.WorkflowRunResultList:
+        """What the workflow's runs did with each input, newest run first and
+        each run's inputs in order (``GET /v1/workflows/named/runs/results``).
+
+        Each result names the input and its outcome (``written``, ``review``,
+        ``no_value``, ``failed``, ``duplicate``) with its values as a test
+        gives them: the value, quote, support, conversion, and the review
+        item it went to. A run records them when it ends and keeps its first
+        200 inputs whole; with ``run``, ``run_counts`` counts all of them.
+        Kept 30 days. ``outcome`` is one outcome or a list of them; ``iri``
+        keeps one input's results; ``limit`` is 1 to 200 (default 50). A
+        ``run`` the workflow does not have raises :class:`LbbError`
+        ``workflow_run_not_found`` (404)."""
+        if outcome is not None and not isinstance(outcome, str):
+            outcome = ",".join(_enum_value(item) or "" for item in outcome)
+        return self._client._model_request(
+            models.WorkflowRunResultList,
+            "GET",
+            "/v1/workflows/named/runs/results",
+            params={
+                "name": name,
+                "run": run,
+                "outcome": outcome,
+                "iri": iri,
+                "cursor": cursor,
+                "limit": limit,
+            },
+        )
+
     def documents(
         self,
         name: str,

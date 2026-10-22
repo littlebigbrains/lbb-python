@@ -43,6 +43,13 @@ from pydantic import BaseModel, ValidationError
 from .. import models
 from .._client_base import LbbError, _coerce_body
 from .._workflow_execution import AsyncWorkflowTurnReader, WorkflowExecutionError
+from ._results import (
+    RunResultsCollector,
+    message_instances,
+    replayed_inputs,
+    step_output_results,
+    step_output_with_results,
+)
 
 if TYPE_CHECKING:
     from .._async_client import AsyncLbbClient
@@ -232,6 +239,9 @@ class _Task:
     run_id: str | None
     origin: models.WorkflowMessageOrigin | None
     steps: list[dict[str, Any]]
+    #: The inputs a completion may report results for: set by a server that
+    #: writes them.
+    results_max: int | None = None
 
 
 def _field(value: Mapping[str, Any], name: str, kind: type | tuple[type, ...]) -> Any:
@@ -274,6 +284,13 @@ def _read_task(raw: Mapping[str, Any]) -> _Task:
         run_id=run_id if isinstance(run_id, str) and run_id else None,
         origin=parsed_origin,
         steps=[dict(step) for step in steps],
+        results_max=(
+            raw["results_max"]
+            if isinstance(raw.get("results_max"), int)
+            and not isinstance(raw.get("results_max"), bool)
+            and raw["results_max"] > 0
+            else None
+        ),
     )
 
 
@@ -440,6 +457,13 @@ class _ActivityTurn:
         for key, value in used.items():
             self.usage[key] = self.usage.get(key, 0) + value
 
+    #: What the turn did with each input (``write_owned``, ``review``,
+    #: ``requeue``), for the completion's ``results``; ``None`` when the claim
+    #: named no ``results_max``.
+    results: RunResultsCollector | None = None
+    #: The instances of the turn's trigger message.
+    instances: frozenset[str] = frozenset()
+
     def step_of(self, effect_id: str | None) -> str | None:
         """The key of the step that makes an activity call: the step whose
         effect id is ``effect_id``, else the step with the longest effect id
@@ -468,6 +492,29 @@ class _ActivityTurn:
             return models.WorkflowRunUsage(**self.usage)
         return None
 
+    def report_results(
+        self, message: Any = None, continuation: Any = None
+    ) -> models.WorkflowRunResultsReport | None:
+        """The results a turn reports: what its calls reported, and, at a
+        completion (``message``), the instances of its trigger message that it
+        named nowhere and that its continuation does not carry
+        (``no_value``). ``None`` when the claim named no ``results_max``, or
+        when no call reported an input."""
+        results = self.results
+        if results is None or not len(results):
+            return None
+        if message is not None:
+            carried = set(message_instances(continuation))
+            for iri in message_instances(message):
+                if not results.has(iri) and iri not in carried:
+                    results.add({"iri": iri, "label": "", "outcome": "no_value", "values": []})
+        try:
+            report = results.report()
+            return models.WorkflowRunResultsReport.model_validate(report) if report else None
+        except Exception:  # noqa: BLE001 - results never cost a completion
+            _logger.warning("the run's results were left out of the turn's report", exc_info=True)
+            return None
+
 
 # The turns this process runs now, by their effect prefix.
 _RUNNING: dict[str, _ActivityTurn] = {}
@@ -475,6 +522,14 @@ _RUNNING: dict[str, _ActivityTurn] = {}
 _CURRENT: contextvars.ContextVar[_ActivityTurn | None] = contextvars.ContextVar(
     "lbb_workflow_turn", default=None
 )
+
+
+def _turn_of_instance(iri: str) -> _ActivityTurn | None:
+    """The running turn whose trigger message names ``iri``: a review item
+    about an input belongs to the turn that reads it. ``None`` when none or
+    more than one does."""
+    found = [turn for turn in _RUNNING.values() if iri in turn.instances]
+    return found[0] if len(found) == 1 else None
 
 
 def _activity_turn(effect_id: str | None) -> _ActivityTurn | None:
@@ -799,7 +854,12 @@ class _Turn:
         workflow: dict[str, Any] = {"identity": task.workflow_id, "turn": task.number}
         if task.run_id:
             workflow["run_id"] = task.run_id
-        self.activity = _ActivityTurn(workflow=workflow)
+        self.activity = _ActivityTurn(
+            workflow=workflow,
+            # A server that writes results names how many a run keeps whole.
+            results=RunResultsCollector(task.results_max) if task.results_max else None,
+            instances=frozenset(message_instances(task.message)),
+        )
 
     # -- the lease --
 
@@ -923,14 +983,34 @@ class _Turn:
                         "Step order changed: keep code for existing workflow versions"
                     )
                     raise self._invalid
-                return _copy(old.get("output"))
+                # A step that reported inputs saved them: report them again, as
+                # they were in this run (a resume), or as an earlier attempt's.
+                value, run, saved = step_output_results(old.get("output"))
+                results = self.activity.results
+                if results is not None:
+                    same = run == self.activity.workflow.get("run_id")
+                    for item in saved if same else replayed_inputs(saved):
+                        results.add(item)
+                return _copy(value)
             if any(step.get("key") == key for step in self._steps):
                 self._invalid = WorkflowError("Step keys must be unique within a turn")
                 raise self._invalid
             output: Any = None
+            # What the step reported, kept in its saved output.
+            reported: list[dict[str, Any]] = []
             if kind == "step":
                 assert fn is not None
-                output = await self._run_step(key, index, fn, model, **(operation or {}))
+                results = self.activity.results
+                if results is not None:
+                    results.begin_step()
+                try:
+                    output = await self._run_step(key, index, fn, model, **(operation or {}))
+                finally:
+                    if results is not None:
+                        reported = results.end_step()
+            saved_output = step_output_with_results(
+                output, self.activity.workflow.get("run_id") or "", reported
+            )
             self._check()
             if kind != "step":
                 self._stop_heartbeat()
@@ -961,12 +1041,12 @@ class _Turn:
                     position=index,
                     key=key,
                     kind=models.WorkflowCheckpointKind(kind),
-                    output=output,
+                    output=saved_output,
                     delay_ms=delay,
                 ),
             )
             self._steps.append(
-                {"key": key, "kind": kind, "output": output, "delay_ms": delay, "at_ms": 0}
+                {"key": key, "kind": kind, "output": saved_output, "delay_ms": delay, "at_ms": 0}
             )
             if kind == "sleep":
                 raise _Suspended()
@@ -1219,11 +1299,22 @@ class _Turn:
                     else None
                 ),
                 usage=self.activity.reported(),
+                results=self.activity.report_results(
+                    self.task.message,
+                    continuation.get("message") if continuation is not None else None,
+                ),
             )
             # Serialize completion retries exactly; a lost answer must not rerun effects.
             self._finishing = True
             self._stop_heartbeat()
-            await self._turn_request("complete", body)
+            try:
+                await self._turn_request("complete", body)
+            except LbbError as refused:
+                # Results never cost a completion: a body too large for the
+                # server goes again without them.
+                if refused.status_code != 413 or body.results is None:
+                    raise
+                await self._turn_request("complete", body.model_copy(update={"results": None}))
         except _Suspended:
             return
         except _TurnStopped:
@@ -1276,6 +1367,7 @@ class _Turn:
             non_retryable=non_retryable,
             retry_at_ms=retry_at_ms,
             usage=self.activity.reported(),
+            results=self.activity.report_results(),
         )
 
 
@@ -1287,10 +1379,13 @@ async def _send_fail(
     non_retryable: bool = False,
     retry_at_ms: int | None = None,
     usage: models.WorkflowRunUsage | None = None,
+    results: models.WorkflowRunResultsReport | None = None,
 ) -> None:
     """``turns/fail``, sent once. A turn that is not this worker's any more
-    (``409``, ``404``) has nothing to fail."""
-    try:
+    (``409``, ``404``) has nothing to fail. A body too large for the server
+    (``413``) goes again without its results."""
+
+    async def send(report: models.WorkflowRunResultsReport | None) -> None:
         await client._request(
             "POST",
             f"{_BASE}/turns/fail",
@@ -1300,9 +1395,18 @@ async def _send_fail(
                 non_retryable=non_retryable,
                 retry_at_ms=retry_at_ms,
                 usage=usage,
+                results=report,
             ),
             options={"retry": False},
         )
+
+    try:
+        try:
+            await send(results)
+        except LbbError as refused:
+            if refused.status_code != 413 or results is None:
+                raise
+            await send(None)
     except LbbError as refused:
         if not _gone(refused):
             raise

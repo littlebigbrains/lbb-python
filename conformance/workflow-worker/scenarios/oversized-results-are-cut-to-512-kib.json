@@ -1,0 +1,314 @@
+{
+  "name": "oversized-results-are-cut-to-512-kib",
+  "rule": "A report larger than 512 KiB (UTF-8 of its JSON) loses the values of its last inputs first; every input and the counts stay.",
+  "workflow": {
+    "type": "triggered",
+    "name": "notes",
+    "version": "v1",
+    "initial_state": {
+      "runs": 0
+    }
+  },
+  "on_instances": [
+    {
+      "write_owned": "write",
+      "write": {
+        "subjects": {
+          "$repeat": 200,
+          "of": {
+            "type": "Note",
+            "name": "n{i}"
+          }
+        },
+        "properties": [
+          "p00",
+          "p01",
+          "p02",
+          "p03",
+          "p04",
+          "p05",
+          "p06",
+          "p07",
+          "p08",
+          "p09",
+          "p10",
+          "p11",
+          "p12",
+          "p13",
+          "p14",
+          "p15",
+          "p16",
+          "p17",
+          "p18",
+          "p19",
+          "p20",
+          "p21",
+          "p22",
+          "p23",
+          "p24",
+          "p25",
+          "p26",
+          "p27",
+          "p28",
+          "p29",
+          "p30",
+          "p31"
+        ],
+        "entity_properties": {
+          "$repeat": 200,
+          "of": {
+            "type": "Note",
+            "name": "n{i}",
+            "properties": {
+              "p00": {
+                "$chars": 512
+              },
+              "p01": {
+                "$chars": 512
+              },
+              "p02": {
+                "$chars": 512
+              },
+              "p03": {
+                "$chars": 512
+              },
+              "p04": {
+                "$chars": 512
+              },
+              "p05": {
+                "$chars": 512
+              },
+              "p06": {
+                "$chars": 512
+              },
+              "p07": {
+                "$chars": 512
+              },
+              "p08": {
+                "$chars": 512
+              },
+              "p09": {
+                "$chars": 512
+              },
+              "p10": {
+                "$chars": 512
+              },
+              "p11": {
+                "$chars": 512
+              },
+              "p12": {
+                "$chars": 512
+              },
+              "p13": {
+                "$chars": 512
+              },
+              "p14": {
+                "$chars": 512
+              },
+              "p15": {
+                "$chars": 512
+              },
+              "p16": {
+                "$chars": 512
+              },
+              "p17": {
+                "$chars": 512
+              },
+              "p18": {
+                "$chars": 512
+              },
+              "p19": {
+                "$chars": 512
+              },
+              "p20": {
+                "$chars": 512
+              },
+              "p21": {
+                "$chars": 512
+              },
+              "p22": {
+                "$chars": 512
+              },
+              "p23": {
+                "$chars": 512
+              },
+              "p24": {
+                "$chars": 512
+              },
+              "p25": {
+                "$chars": 512
+              },
+              "p26": {
+                "$chars": 512
+              },
+              "p27": {
+                "$chars": 512
+              },
+              "p28": {
+                "$chars": 512
+              },
+              "p29": {
+                "$chars": 512
+              },
+              "p30": {
+                "$chars": 512
+              },
+              "p31": {
+                "$chars": 512
+              }
+            }
+          }
+        }
+      },
+      "graph": {
+        "$message": "graph"
+      }
+    },
+    {
+      "return": {
+        "state": {
+          "done": true
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "notes",
+    "state": {},
+    "token": "token-n",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f3",
+    "turn": {
+      "workflow_id": "starter.notes",
+      "number": 3,
+      "message_id": "starter-notes-3",
+      "message": {
+        "type": "instances",
+        "workflow": "notes",
+        "graph": "crm",
+        "as_of_commit_seq": 4,
+        "reason": "changed",
+        "instances": [],
+        "removed": []
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.notes-3",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    },
+    "results_max": 200
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "write"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/graph/commit"
+      },
+      "response": {
+        "body": {
+          "commit": {
+            "commit_seq": 12,
+            "edge_event_ids": [],
+            "entity_ids": [
+              "0123456789abcdef0123456789abcdef"
+            ],
+            "idempotent_replay": false,
+            "observation_ids": [],
+            "visibility_token": "v12"
+          },
+          "commit_seq": 12,
+          "edges_written": 0,
+          "entities_written": 1,
+          "graph_created": false,
+          "idempotency_key": "e0f3/write",
+          "replayed": false,
+          "owned": {
+            "edges_retracted": 0,
+            "fields_removed": 1,
+            "entities_retracted": 0
+          },
+          "visibility_token": "v12"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "write"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "done": true
+          },
+          "results": {
+            "$all": [
+              {
+                "$json_bytes_at_most": 524288
+              },
+              {
+                "inputs": {
+                  "$length": 200
+                },
+                "counts": {
+                  "written": 200,
+                  "review": 0,
+                  "no_value": 0,
+                  "failed": 0,
+                  "duplicate": 0
+                }
+              }
+            ]
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}

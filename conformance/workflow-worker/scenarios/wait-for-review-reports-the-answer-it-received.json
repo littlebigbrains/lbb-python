@@ -1,0 +1,283 @@
+{
+  "name": "wait-for-review-reports-the-answer-it-received",
+  "rule": "A wait for review that resumes with its answer reports the item answered, and the write that follows reports the input written.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "wait_for_review": "floor",
+      "request": {
+        "kind": "choice",
+        "workflow": "rooms",
+        "key": "agent.floor",
+        "title": "Which floor covering?",
+        "question": {
+          "options": [
+            {
+              "id": "parquet",
+              "label": "Parquet"
+            },
+            {
+              "id": "tiles",
+              "label": "Tiles"
+            }
+          ]
+        },
+        "subject": {
+          "iri": "https://littlebigbrain.com/e/22222222222222222222222222222222",
+          "type": "Room",
+          "name": "r1"
+        }
+      },
+      "timeout_ms": 60000
+    },
+    {
+      "write_owned": "write",
+      "write": {
+        "subjects": [
+          {
+            "type": "Room",
+            "name": "r1",
+            "key": "\u0000lbb-eid:22222222222222222222222222222222"
+          }
+        ],
+        "properties": [
+          "floor"
+        ],
+        "entity_properties": [
+          {
+            "type": "Room",
+            "name": "r1",
+            "key": "\u0000lbb-eid:22222222222222222222222222222222",
+            "properties": {
+              "floor": "parquet"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "return": {
+        "state": {
+          "answered": {
+            "$ref": "floor.answered"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    },
+    "results_max": 200
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {
+          "turn": {
+            "steps": [
+              {
+                "key": "floor.ask",
+                "kind": "step",
+                "at_ms": 2,
+                "output": {
+                  "id": "rev_2",
+                  "object": "review_item",
+                  "key": "agent.floor",
+                  "kind": "choice",
+                  "scope": "live",
+                  "status": "open",
+                  "revision": 1,
+                  "title": "Which floor covering?",
+                  "question": {
+                    "options": [
+                      {
+                        "id": "parquet",
+                        "label": "Parquet"
+                      },
+                      {
+                        "id": "tiles",
+                        "label": "Tiles"
+                      }
+                    ]
+                  },
+                  "origin": {
+                    "kind": "agent",
+                    "id": "starter:rooms"
+                  },
+                  "workflow": {
+                    "name": "rooms",
+                    "identity": "agent",
+                    "turn": 1
+                  },
+                  "wait": {
+                    "identity": "agent",
+                    "turn": 1,
+                    "signal": "review.rev_2"
+                  },
+                  "created": "2026-10-21T10:00:00Z",
+                  "updated": "2026-10-21T10:00:00Z"
+                }
+              },
+              {
+                "key": "floor.answer",
+                "kind": "signal",
+                "at_ms": 3,
+                "delay_ms": 60000,
+                "signal_name": "review.rev_2",
+                "output": {
+                  "received": true,
+                  "value": {
+                    "decision": "choose",
+                    "option": "parquet"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "write"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/graph/commit"
+      },
+      "response": {
+        "body": {
+          "commit": {
+            "commit_seq": 12,
+            "edge_event_ids": [],
+            "entity_ids": [
+              "0123456789abcdef0123456789abcdef"
+            ],
+            "idempotent_replay": false,
+            "observation_ids": [],
+            "visibility_token": "v12"
+          },
+          "commit_seq": 12,
+          "edges_written": 0,
+          "entities_written": 1,
+          "graph_created": false,
+          "idempotency_key": "e0f3/write",
+          "replayed": false,
+          "owned": {
+            "edges_retracted": 0,
+            "fields_removed": 1,
+            "entities_retracted": 0
+          },
+          "visibility_token": "v12"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "write"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "answered": true
+          },
+          "results": {
+            "inputs": [
+              {
+                "iri": "https://littlebigbrain.com/e/22222222222222222222222222222222",
+                "label": "r1",
+                "outcome": "written",
+                "values": [
+                  {
+                    "property": "choice",
+                    "value": "Which floor covering?",
+                    "quote": "",
+                    "outcome": "answered",
+                    "review_item": "rev_2"
+                  },
+                  {
+                    "property": "floor",
+                    "value": "parquet",
+                    "quote": "",
+                    "outcome": "written"
+                  }
+                ]
+              }
+            ],
+            "counts": {
+              "written": 1,
+              "review": 0,
+              "no_value": 0,
+              "failed": 0,
+              "duplicate": 0
+            }
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  }
+}

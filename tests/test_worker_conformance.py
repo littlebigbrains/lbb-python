@@ -62,6 +62,17 @@ def _path(value: Any, path: str) -> Any:
     return value
 
 
+def _with_index(value: Any, i: int) -> Any:
+    """A template with ``{i}`` in its texts replaced by ``i`` (``$repeat``)."""
+    if isinstance(value, str):
+        return value.replace("{i}", str(i))
+    if isinstance(value, list):
+        return [_with_index(item, i) for item in value]
+    if isinstance(value, dict):
+        return {key: _with_index(item, i) for key, item in value.items()}
+    return value
+
+
 def _matches(want: Any, got: Any, arrived_ms: int, missing: bool = False) -> bool:
     if isinstance(want, dict) and "$absent" in want:
         return missing
@@ -69,6 +80,13 @@ def _matches(want: Any, got: Any, arrived_ms: int, missing: bool = False) -> boo
         return False
     if isinstance(want, dict) and "$any" in want:
         return True
+    if isinstance(want, dict) and "$all" in want:
+        return all(_matches(each, got, arrived_ms) for each in want["$all"])
+    if isinstance(want, dict) and "$length" in want:
+        return isinstance(got, list) and len(got) == want["$length"]
+    if isinstance(want, dict) and "$json_bytes_at_most" in want:
+        size = len(json.dumps(got, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        return size <= want["$json_bytes_at_most"]
     if isinstance(want, dict) and "$at_least_now_plus_ms" in want:
         return (
             isinstance(got, (int, float))
@@ -170,6 +188,7 @@ def _captured(result: ActivityCaptureResult) -> dict[str, Any]:
     return {
         "writes": writes,
         "reviews": [{"request": dict(review.request)} for review in result.reviews],
+        "results": result.results,
     }
 
 
@@ -190,6 +209,13 @@ class _Program:
 
     def resolve(self, value: Any, outputs: dict[str, Any], state: Any, message: Any) -> Any:
         if isinstance(value, dict):
+            if "$repeat" in value:
+                return [
+                    self.resolve(_with_index(value["of"], i), outputs, state, message)
+                    for i in range(value["$repeat"])
+                ]
+            if "$chars" in value:
+                return str(value.get("char", "q")) * value["$chars"]
             if "$ref" in value:
                 key, _, rest = value["$ref"].partition(".")
                 return _path(outputs[key], rest)
@@ -232,6 +258,8 @@ class _Program:
                 action["reason"]["schema"],
                 effect_id=f"{step.effect_id}{suffix}" if made else None,
             )
+        elif "review" in action:
+            await self.activities.review(action["review"])
         elif "blob_put" in action:
             await self.client.workflows.blobs.put(action["blob_put"], workflow_id=ctx.workflow_id)
         else:
@@ -269,7 +297,7 @@ class _Program:
                 )
                 outputs[op["wait_for_signal"]] = {"received": got.received, "value": got.value}
             elif "write_owned" in op:
-                write = OwnedWrite(**op["write"])
+                write = OwnedWrite(**value(op["write"]))
                 graph = value(op.get("graph"))
                 written = await self.activities.write_owned(
                     ctx, op["write_owned"], write, graph=graph

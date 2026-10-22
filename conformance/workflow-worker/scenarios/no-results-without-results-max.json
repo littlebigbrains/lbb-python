@@ -1,0 +1,192 @@
+{
+  "name": "no-results-without-results-max",
+  "rule": "A claim that names no results_max gets no results: the completion and the saved step carry none, so an older server takes them.",
+  "workflow": {
+    "type": "triggered",
+    "name": "notes",
+    "version": "v1",
+    "initial_state": {
+      "runs": 0
+    }
+  },
+  "on_instances": [
+    {
+      "write_owned": "write",
+      "write": {
+        "subjects": [
+          {
+            "type": "Note",
+            "name": "n1",
+            "key": "\u0000lbb-eid:0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "properties": [
+          "word_count"
+        ],
+        "entity_properties": [
+          {
+            "type": "Note",
+            "name": "n1",
+            "key": "\u0000lbb-eid:0123456789abcdef0123456789abcdef",
+            "properties": {
+              "word_count": 3
+            }
+          }
+        ]
+      },
+      "graph": {
+        "$message": "graph"
+      }
+    },
+    {
+      "return": {
+        "state": {
+          "done": true
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "notes",
+    "state": {},
+    "token": "token-n",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f3",
+    "turn": {
+      "workflow_id": "starter.notes",
+      "number": 3,
+      "message_id": "starter-notes-3",
+      "message": {
+        "type": "instances",
+        "workflow": "notes",
+        "graph": "crm",
+        "as_of_commit_seq": 4,
+        "reason": "changed",
+        "instances": [
+          "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+          "https://littlebigbrain.com/e/11111111111111111111111111111111",
+          "https://littlebigbrain.com/e/22222222222222222222222222222222"
+        ],
+        "removed": []
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.notes-3",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "write"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/graph/commit",
+        "body": {
+          "replace_owned": {
+            "subjects": [
+              {
+                "type": "Note",
+                "name": "n1",
+                "key": "\u0000lbb-eid:0123456789abcdef0123456789abcdef"
+              }
+            ]
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "commit": {
+            "commit_seq": 12,
+            "edge_event_ids": [],
+            "entity_ids": [
+              "0123456789abcdef0123456789abcdef"
+            ],
+            "idempotent_replay": false,
+            "observation_ids": [],
+            "visibility_token": "v12"
+          },
+          "commit_seq": 12,
+          "edges_written": 0,
+          "entities_written": 1,
+          "graph_created": false,
+          "idempotency_key": "e0f3/write",
+          "replayed": false,
+          "owned": {
+            "edges_retracted": 0,
+            "fields_removed": 1,
+            "entities_retracted": 0
+          },
+          "visibility_token": "v12"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "write",
+          "output": {
+            "commit_seq": 12,
+            "lbb_step_results": {
+              "$absent": true
+            }
+          }
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "done": true
+          },
+          "results": {
+            "$absent": true
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}

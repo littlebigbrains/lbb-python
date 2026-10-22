@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from .. import models
 from .._client_base import _coerce_body
 from ..entities import ENTITY_ID_KEY_SENTINEL, ENTITY_IRI_NAMESPACE, entity_id_from_iri, entity_ref
+from ._results import owned_write_inputs, requeued_inputs
 from ._worker import (
     StepKind,
     WorkflowContext,
@@ -336,6 +337,11 @@ async def write_owned(
     writes the same output.
     """
 
+    # The turn's run, when the worker records results. The step keeps what it
+    # reports in its saved output, so a replay reports it again.
+    turn = getattr(getattr(ctx, "_turn", None), "activity", None)
+    results = turn.results if turn is not None else None
+
     async def commit(step: WorkflowStepContext) -> OwnedWriteResult:
         planned = await _call(write, step) if callable(write) else write
         body = owned_commit_body(planned, edge_idempotency)
@@ -365,6 +371,11 @@ async def write_owned(
         # The fields of `GraphCommitResponse` the step saves: the rest of the
         # answer may grow without failing a write that landed.
         owned = response.get("owned")
+        # The step's own write, also when the server answers it as a replay of
+        # a request this step sent before.
+        if results is not None:
+            for item in owned_write_inputs(body, "written"):
+                results.add(item)
         return OwnedWriteResult(
             commit_seq=response["commit_seq"],
             idempotency_key=response.get("idempotency_key") or step.effect_id,
@@ -431,6 +442,12 @@ async def requeue_failed(
             for item in failed
         ],
     )
+
+    # The requeued instances failed in this run (a replay reports them too).
+    turn = getattr(getattr(ctx, "_turn", None), "activity", None)
+    if turn is not None and turn.results is not None:
+        for item in requeued_inputs(failed):
+            turn.results.add(item)
 
     async def requeue() -> models.WorkflowRequeueResponse:
         params: dict[str, Any] = {"name": name}
