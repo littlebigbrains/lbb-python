@@ -3070,7 +3070,7 @@ class ModelChecksAndTuningTests(unittest.TestCase):
             [(request.method, request.url.path) for request in seen],
             [
                 ("GET", "/v1/reviews"),
-                ("GET", "/v1/reviews/detail"),
+                ("GET", "/v1/reviews/get"),
                 ("POST", "/v1/reviews/answer"),
                 ("POST", "/v1/reviews/answer-batch"),
             ],
@@ -3089,6 +3089,65 @@ class ModelChecksAndTuningTests(unittest.TestCase):
         self.assertEqual(seen[3].headers["idempotency-key"], "batch-1")
         self.assertEqual(
             json.loads(seen[3].content), {"ids": ["rev_2"], "answer": {"decision": "accept"}}
+        )
+
+    def test_reviews_all_pages_and_writes_send_a_key_of_their_own(self) -> None:
+        seen: list[httpx.Request] = []
+        item = {"id": "rev_1", "object": "review_item", "kind": "value", "status": "open"}
+        responses = [
+            {"json": {"object": "list", "data": [item], "has_more": True, "next_cursor": "c1"}},
+            {"json": {"object": "list", "data": [{**item, "id": "rev_2"}], "has_more": False}},
+            {"json": item},
+            {"json": item},
+            {"json": item},
+            {"json": {"batch_id": "batch_1", "answered": 1, "skipped": 0, "results": []}},
+        ]
+        with LbbClient("http://h", transport=capturing_transport(seen, responses)) as client:
+            ids = [each["id"] for each in client.reviews.all(status="open", limit=1)]
+            client.reviews.answer("rev_1", answer={"decision": "accept"})
+            client.reviews.withdraw("rev_1", "superseded")
+            client.reviews.comment("rev_1", text="checked", idempotency_key="comment-1")
+            client.reviews.answer_batch(["rev_2"], answer={"decision": "accept"})
+        self.assertEqual(ids, ["rev_1", "rev_2"])
+        self.assertEqual(dict(seen[0].url.params), {"status": "open", "limit": "1"})
+        self.assertEqual(
+            dict(seen[1].url.params), {"status": "open", "limit": "1", "cursor": "c1"}
+        )
+        keys = [request.headers.get("idempotency-key") for request in seen[2:]]
+        self.assertTrue(keys[0].startswith("reviews.answer:"), keys)
+        self.assertTrue(keys[1].startswith("reviews.withdraw:"), keys)
+        self.assertEqual(keys[2], "comment-1")
+        self.assertTrue(keys[3].startswith("reviews.answer_batch:"), keys)
+
+    def test_reviews_get_reads_the_earlier_route_of_an_older_data_plane(self) -> None:
+        seen: list[httpx.Request] = []
+        item = {"id": "rev_1", "object": "review_item", "kind": "value", "status": "open"}
+        catch_all = {
+            "error": {
+                "type": "not_found_error",
+                "code": "not_found",
+                "message": "no route for /v1/reviews/get",
+            }
+        }
+        missing = {
+            "error": {"type": "not_found_error", "code": "not_found", "message": "no review item rev_9"}
+        }
+        responses = [
+            {"status": 404, "json": catch_all},
+            {"json": item},
+            {"status": 404, "json": missing},
+        ]
+        with LbbClient(
+            "http://h", transport=capturing_transport(seen, responses), max_retries=0
+        ) as client:
+            got = client.reviews.get("rev_1")
+            with self.assertRaises(LbbError) as raised:
+                client.reviews.get("rev_9")
+        self.assertEqual(got["id"], "rev_1")
+        self.assertEqual(raised.exception.status_code, 404)
+        self.assertEqual(
+            [request.url.path for request in seen],
+            ["/v1/reviews/get", "/v1/reviews/detail", "/v1/reviews/get"],
         )
 
     def test_checks_read_the_call_log_and_check_a_call_now(self) -> None:
@@ -3414,6 +3473,32 @@ class AsyncModelTrialsTests(unittest.IsolatedAsyncioTestCase):
                 "/v1/models/trials/get",
                 "/v1/models/switches",
             ],
+        )
+
+
+class AsyncReviewsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_reviews_page_all_and_read_the_earlier_route(self) -> None:
+        seen: list[httpx.Request] = []
+        item = {"id": "rev_1", "object": "review_item", "kind": "value", "status": "open"}
+        catch_all = {
+            "error": {"code": "not_found", "message": "no route for /v1/reviews/get"}
+        }
+        responses = [
+            {"json": {"object": "list", "data": [item], "has_more": True, "next_cursor": "c1"}},
+            {"json": {"object": "list", "data": [], "has_more": False}},
+            {"status": 404, "json": catch_all},
+            {"json": item},
+        ]
+        async with AsyncLbbClient(
+            "http://h", transport=capturing_transport(seen, responses), max_retries=0
+        ) as client:
+            ids = [each["id"] async for each in client.reviews.all(kind="value")]
+            got = await client.reviews.get("rev_1")
+        self.assertEqual(ids, ["rev_1"])
+        self.assertEqual(got["id"], "rev_1")
+        self.assertEqual(
+            [request.url.path for request in seen],
+            ["/v1/reviews", "/v1/reviews", "/v1/reviews/get", "/v1/reviews/detail"],
         )
 
 

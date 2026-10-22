@@ -18285,7 +18285,7 @@ class ReviewAnsweredItem(BaseModel):
     """
     The answered item a `review.answered` event carries: what a workflow
     acts on, each text cut so the message stays within the engine's 32 KiB.
-    `GET /v1/reviews/detail?id=` reads the whole item.
+    `GET /v1/reviews/get?id=` reads the whole item.
     """
 
     answer: ReviewAnswer
@@ -20484,7 +20484,7 @@ class ReviewItem(BaseModel):
     A question for a person (`/v1/reviews`). A list holds each item without
     its `facts` and `comments`, with its first quote only, and with
     `rationale` and long question texts cut to 300 characters; `GET
-    /v1/reviews/detail` returns it in full.
+    /v1/reviews/get` returns it in full.
     """
 
     answer: ReviewAnswer | None = None

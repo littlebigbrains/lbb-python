@@ -25641,7 +25641,7 @@
         "type": "object"
       },
       "ReviewAnsweredItem": {
-        "description": "The answered item a `review.answered` event carries: what a workflow\nacts on, each text cut so the message stays within the engine's 32 KiB.\n`GET /v1/reviews/detail?id=` reads the whole item.",
+        "description": "The answered item a `review.answered` event carries: what a workflow\nacts on, each text cut so the message stays within the engine's 32 KiB.\n`GET /v1/reviews/get?id=` reads the whole item.",
         "properties": {
           "answer": {
             "$ref": "#/components/schemas/ReviewAnswer"
@@ -25974,7 +25974,7 @@
         "type": "object"
       },
       "ReviewItem": {
-        "description": "A question for a person (`/v1/reviews`). A list holds each item without\nits `facts` and `comments`, with its first quote only, and with\n`rationale` and long question texts cut to 300 characters; `GET\n/v1/reviews/detail` returns it in full.",
+        "description": "A question for a person (`/v1/reviews`). A list holds each item without\nits `facts` and `comments`, with its first quote only, and with\n`rationale` and long question texts cut to 300 characters; `GET\n/v1/reviews/get` returns it in full.",
         "properties": {
           "answer": {
             "oneOf": [
@@ -107669,7 +107669,288 @@
     },
     "/v1/reviews/detail": {
       "get": {
+        "deprecated": true,
         "operationId": "get_v1_reviews_detail",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Review item id (`rev_…`)",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewItem"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Deprecated: `GET /v1/reviews/get`, the same read",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/reviews/get": {
+      "get": {
+        "operationId": "get_v1_reviews_get",
         "parameters": [
           {
             "description": "Graph name (default `main`)",
@@ -122010,7 +122291,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create or change a workflow of your worker with one trigger. A watch sends the class's new, changed and removed instances as messages to `shards` engine identities (1 to 16, default 1), routed by `route_by` (a field; default the instance IRI) so the changes of one key stay in order, at most `window` messages queued per shard (1 to 128, default 4). A content trigger (`content.media_types`) sends each upload of those media types as it is logged, without a wait for a publication: one content per message, routed by its SHA-256, with origin `content`. Each message names its origin. The same request again is a no-op; a workflow keeps its trigger's kind. 400 `workflow_trigger_unsupported` for a schedule or more than one trigger; 400 `workflow_param_invalid` for an `lbb.*` target; 409 `workflow_shards_busy` for a change of `shards` or `route_by` while a shard's inbox holds messages; 409 `workflow_cycle`, `workflow_owns_conflict`; 503 `workflows_disabled`",
+        "summary": "Create or change a workflow of your worker with one trigger. A watch sends the class's new, changed and removed instances as messages to `shards` engine identities (1 to 16, default 1), routed by `route_by` (a field; default the instance IRI) so the changes of one key stay in order, at most `window` messages queued per shard (1 to 128, default 4). A content trigger (`content.media_types`) sends each upload of those media types as it is logged, without a wait for a publication: one content per message, routed by its SHA-256, with origin `content`. Each message names its origin. The same request again is a no-op; a workflow keeps its trigger's kind. 400 `workflow_trigger_unsupported` for a schedule or more than one trigger; 400 `workflow_param_invalid` for an `lbb.*` target; 409 `workflow_shards_busy` for a change of `shards` or `route_by` while a shard's inbox holds messages; 409 `workflow_cycle`, `workflow_owns_conflict`; 503 `workflows_disabled`. The PUT replaces the whole workflow, so a repeat with the same body changes nothing: it needs no `Idempotency-Key`",
         "tags": [
           "workflows"
         ]
@@ -122625,7 +122906,7 @@
             "bearer": []
           }
         ],
-        "summary": "Pause (`paused: true`) or resume a workflow: its watch, and every shard of your worker's type (no new claims). A resume catches up",
+        "summary": "Pause (`paused: true`) or resume a workflow: its watch, and every shard of your worker's type (no new claims). A resume catches up. A repeat changes nothing, so it needs no `Idempotency-Key`",
         "tags": [
           "workflows"
         ]
@@ -123231,7 +123512,7 @@
             "bearer": []
           }
         ],
-        "summary": "Send the instances a turn of a shard could not do again later: they go back into the watch's queue on the same shard, with origin `requeue` (the attempt, the asking turn and message, the first error) and a backoff of one minute, then four, then sixteen. The attempt is one more than the asking message's (`origin.attempt` of a requeue); past 3 the instances are exhausted, not sent again, and counted in the workflow's `exhausted`. Record the failure in the turn's result, ask for the requeue, and complete the turn",
+        "summary": "Send the instances a turn of a shard could not do again later: they go back into the watch's queue on the same shard, with origin `requeue` (the attempt, the asking turn and message, the first error) and a backoff of one minute, then four, then sixteen. The attempt is one more than the asking message's (`origin.attempt` of a requeue); past 3 the instances are exhausted, not sent again, and counted in the workflow's `exhausted`. Record the failure in the turn's result, ask for the requeue, and complete the turn. A repeat from the same turn queues nothing again (the items wait with this attempt already); past 3 attempts a repeat counts the same items in `exhausted` again. It takes no `Idempotency-Key`",
         "tags": [
           "workflows"
         ]
@@ -123520,7 +123801,7 @@
             "bearer": []
           }
         ],
-        "summary": "Run a workflow now: its watch reads every instance of the class again and sends them with origin `manual`; a content trigger reads its content log again from the start. Answers at once (`queued`)",
+        "summary": "Run a workflow now: its watch reads every instance of the class again and sends them with origin `manual`; a content trigger reads its content log again from the start. Answers at once (`queued`). A repeat while the run waits adds nothing; a repeat after the pass started starts the pass again from its first instance. It takes no `Idempotency-Key`",
         "tags": [
           "workflows"
         ]
