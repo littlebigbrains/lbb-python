@@ -38888,6 +38888,60 @@
         ],
         "type": "object"
       },
+      "WorkflowRunInput": {
+        "description": "One input as a run records it: its IRI and label, what the run did with\nit, and its values in the shape of a test's (`WorkflowTestValue`).",
+        "properties": {
+          "cost_micro_usd": {
+            "description": "The model cost of this input, in millionths of a US dollar, when the\ncalls named it.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "description": "Why the input failed or has no values (the instance is gone), at\nmost 500 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "iri": {
+            "description": "The input. Absent for a worker's write that names its subject by\ntype and name only.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "description": "The input's label, or the subject's name.",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/WorkflowRunResultOutcome"
+          },
+          "region": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTestRegion",
+                "description": "The input's page box, when it was read from a file."
+              }
+            ]
+          },
+          "values": {
+            "description": "What the run read or wrote, at most 32: a value with its quote,\nsupport, conversion (`stated`) and outcome; a value filed for review\nnames its `review_item`.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowTestValue"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "type": "object"
+      },
       "WorkflowRunList": {
         "description": "A page of a workflow's runs, newest first, in the list envelope. A\nrequest with `Lbb-Version` before 2026-10-21 gets the earlier shape:\n`runs` and `next_before` in place of `object`, `data`, `has_more` and\n`next_cursor`.",
         "properties": {
@@ -38978,6 +39032,256 @@
           "ended_at_ms",
           "done"
         ],
+        "type": "object"
+      },
+      "WorkflowRunResult": {
+        "description": "One result as the list answers it: an input of a run with the run's id\nand when the run recorded it.",
+        "properties": {
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created": {
+            "description": "When the run recorded it (the run's end), RFC 3339.",
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "`wrr_` and 24 hex. Opaque.",
+            "type": "string"
+          },
+          "iri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "object": {
+            "description": "`workflow_run_result`.",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/WorkflowRunResultOutcome"
+          },
+          "region": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTestRegion"
+              }
+            ]
+          },
+          "run": {
+            "description": "The run id, as `…/runs` and `…/runs/get` name it.",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowTestValue"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "run",
+          "outcome"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunResultCounts": {
+        "description": "The inputs of a run by outcome.",
+        "properties": {
+          "duplicate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "no_value": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "review": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "written": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "WorkflowRunResultList": {
+        "description": "`GET /v1/workflows/named/runs/results`: the results of a workflow's\nruns, newest run first, each run's inputs in order.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunResult"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` for the next page; absent on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object": {
+            "description": "`list`.",
+            "type": "string"
+          },
+          "run_counts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowRunResultRunCounts",
+                "description": "With `run`: that run's counts; absent when the run has no results."
+              }
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunResultOutcome": {
+        "description": "What a run did with one input. When several hold, the first of\n`failed`, `review`, `written`, `duplicate`, `no_value` is the input's.",
+        "enum": [
+          "written",
+          "review",
+          "no_value",
+          "failed",
+          "duplicate"
+        ],
+        "type": "string"
+      },
+      "WorkflowRunResultRunCounts": {
+        "description": "The counts of the run a list names (`run`): every input by outcome, and\nhow many the run had.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/WorkflowRunResultCounts"
+          },
+          "inputs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "listed": {
+            "description": "The inputs the run kept a result for (at most 200).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "counts",
+          "inputs",
+          "listed"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunResults": {
+        "description": "The results of one run as they are stored: one object per run, beside\nits summary, written once.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/WorkflowRunResultCounts",
+            "description": "Every input of the run by outcome."
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunInput"
+            },
+            "type": "array"
+          },
+          "inputs": {
+            "description": "The inputs of the run; `data` holds the first 200.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "recorded_at_ms": {
+            "description": "When the run recorded them, Unix milliseconds: the run's end.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "run": {
+            "description": "The run id, as the run's summary names it.",
+            "type": "string"
+          },
+          "v": {
+            "description": "The format number, 1.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflow": {
+            "description": "The workflow folder of the run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "v",
+          "run",
+          "workflow",
+          "recorded_at_ms",
+          "counts",
+          "inputs"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunResultsReport": {
+        "description": "What a worker reports with the completion or the failure of a turn:\nthe inputs of the run, and the counts of every input it handled (also\nthose past the bound). The SDK fills it from `writeOwned`, `review` and\n`requeue`.",
+        "properties": {
+          "counts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowRunResultCounts",
+                "description": "Every input by outcome; absent, the inputs are counted."
+              }
+            ]
+          },
+          "inputs": {
+            "description": "At most 200 inputs, in the order the run first named them.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunInput"
+            },
+            "type": "array"
+          }
+        },
         "type": "object"
       },
       "WorkflowRunStats": {
@@ -40010,7 +40314,7 @@
         "type": "string"
       },
       "WorkflowTestValue": {
-        "description": "One value the workflow read from an input, after every check, as the live\nworkflow would decide it.",
+        "description": "One value the workflow read from an input, after every check, as the live\nworkflow would decide it. A live run records its values in this shape too\n(`WorkflowRunInput`), with two more outcomes: `answered` (a person's\nanswer in force was written) and `rejected` (a person rejected the value,\nor the graph refused it, so it was not written again).",
         "properties": {
           "detail": {
             "type": [
@@ -40028,6 +40332,31 @@
           "quote": {
             "description": "The words of the text the model quoted.",
             "type": "string"
+          },
+          "region": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTestRegion",
+                "description": "The quote's page box, when it differs from the input's."
+              }
+            ]
+          },
+          "review_item": {
+            "description": "The review item a live run filed for the value (`rev_…`); a test\nfiles none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "Where the quote is: the evidence's `Document` IRI with its place\n(`#page=3`, `#row=5`), or a name.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "stated": {
             "description": "The number and unit as the text states them (`600 mm`), when they\nwere converted to the property's unit.",
@@ -40550,6 +40879,17 @@
             ]
           },
           "result": {},
+          "results": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowRunResultsReport",
+                "description": "What the run did with each input (`WorkflowRunResultsReport`): the\nSDK fills it from `writeOwned`, `review` and `requeue` when the claim\nnamed `results_max`. Read leniently: an input that does not decode\nis left out, and the completion never fails for its results. No part\nof the completion's identity."
+              }
+            ]
+          },
           "state": {},
           "token": {
             "type": "string"
@@ -40600,6 +40940,17 @@
           },
           "non_retryable": {
             "type": "boolean"
+          },
+          "results": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowRunResultsReport",
+                "description": "What the attempt did with each input before it failed, as on a\ncompletion."
+              }
+            ]
           },
           "retry_at_ms": {
             "description": "Wait until this time (Unix milliseconds, at most 366 days ahead) and\ncount no attempt: for a cause outside the turn, such as a spent budget\n(`retry_at` of `429 workflow_budget_exceeded`) or a dependency that is\nnot there yet. A time less than a second ahead waits one second\n(`WORKFLOW_MIN_WAIT_MS`). A resume or a wake of the instance moves the\ntime to now. Not with `non_retryable`.",
@@ -40981,6 +41332,15 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "results_max": {
+            "description": "The inputs a completion or a failure may report results for\n(`results`, at most this many kept whole). Set by a server that takes\nresults; a worker sends `results` only when it is present.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "state": {},
           "token": {
@@ -124447,6 +124807,331 @@
           }
         ],
         "summary": "One run of a named workflow with its model calls in time order (at most 1,000; `calls_truncated`): the calls of the graph's call log from the run's start to 30 s after its end whose `origin.run` names it. A node writes its calls every 10 s, so the calls of a run that just ended can come a little later. 404 `workflow_run_not_found`",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/named/runs/results": {
+      "get": {
+        "operationId": "get_v1_workflows_named_runs_results",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the workflow's name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one run's results, in input order (a run id); without it, the newest runs'",
+            "in": "query",
+            "name": "run",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "a comma list of `written`, `review`, `no_value`, `failed` and `duplicate`",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one input's results",
+            "in": "query",
+            "name": "iri",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next_cursor` of the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "results, 1 to 200; default 50",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResultList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What a named workflow's runs did with each input, newest run first and each run's inputs in order: the input's IRI and label, its outcome (`written`, `review`, `no_value`, `failed`, `duplicate`), and its values as a test gives them (the value, quote, support, conversion, what the run did with it, and the review item it went to). A run records its results when it ends; one keeps its first 200 inputs whole and counts every input (`run_counts` with `run`). Kept 30 days. A page reads at most 400 runs' results. 404 `named_workflow_not_found`, 404 `workflow_run_not_found` for a `run` the workflow does not have",
         "tags": [
           "workflows"
         ]

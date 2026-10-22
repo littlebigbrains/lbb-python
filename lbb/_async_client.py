@@ -1405,6 +1405,23 @@ class _AsyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
     async def get_run(self, name: str, run: str) -> models.WorkflowRunDetail:
         return cast(models.WorkflowRunDetail, await super().get_run(name, run))
 
+    async def run_results(
+        self,
+        name: str,
+        *,
+        run: str | None = None,
+        outcome: str | Sequence[str] | None = None,
+        iri: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> models.WorkflowRunResultList:
+        return cast(
+            models.WorkflowRunResultList,
+            await super().run_results(
+                name, run=run, outcome=outcome, iri=iri, cursor=cursor, limit=limit
+            ),
+        )
+
     async def run_stats(self, name: str, *, hours: int | None = None) -> models.WorkflowRunStats:
         return cast(models.WorkflowRunStats, await super().run_stats(name, hours=hours))
 
@@ -1437,6 +1454,23 @@ class _AsyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
         page."""
         return _aevery(
             lambda cursor: self.runs(name, cursor=cursor, limit=limit, outcome=outcome)
+        )
+
+    def all_run_results(
+        self,
+        name: str,
+        *,
+        run: str | None = None,
+        outcome: str | Sequence[str] | None = None,
+        iri: str | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[models.WorkflowRunResult]:
+        """Every result of the workflow's runs kept, newest run first:
+        :meth:`run_results` page by page."""
+        return _aevery(
+            lambda cursor: self.run_results(
+                name, run=run, outcome=outcome, iri=iri, cursor=cursor, limit=limit
+            )
         )
 
     def all_documents(

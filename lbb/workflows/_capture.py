@@ -28,6 +28,7 @@ from ._activities import (
     _refuse_trigger_shard,
     _review_item_body,
 )
+from ._results import RunResultsCollector, owned_write_inputs, requeued_inputs, review_input
 from ._triggered import (
     EdgeIdempotency,
     FailedInstance,
@@ -80,6 +81,11 @@ class ActivityCaptureResult:
 
     writes: list[CapturedWrite] = field(default_factory=list)
     reviews: list[CapturedReview] = field(default_factory=list)
+    #: What the run would have done with each input, as a live run reports it
+    #: (``results``): each subject of a write ``written`` (or ``no_value``),
+    #: each subject of a review item ``review``, each requeued instance
+    #: ``failed``.
+    results: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _shape_errors(body: models.TripletCommitFile) -> list[str]:
@@ -195,6 +201,7 @@ class _CapturedActivities(LbbActivities):
         self._test = {"workflow": workflow}
         self.writes: list[CapturedWrite] = []
         self.reviews: list[CapturedReview] = []
+        self.results = RunResultsCollector()
         self._filed = 0
 
     # -- the models and the reads, as they run live --
@@ -289,6 +296,8 @@ class _CapturedActivities(LbbActivities):
                         report=report,
                     )
                 )
+                for item in owned_write_inputs(body, "written"):
+                    self.results.add(item)
             return OwnedWriteResult(
                 commit_seq=None,
                 idempotency_key=step.effect_id,
@@ -315,7 +324,9 @@ class _CapturedActivities(LbbActivities):
         *,
         graph: str | None = None,
     ) -> models.WorkflowRequeueResponse | None:
-        # A test sends nothing back to the watch.
+        # A test sends nothing back to the watch; its inputs failed.
+        for item in requeued_inputs(failed):
+            self.results.add(item)
         return None
 
     async def review(  # type: ignore[override]
@@ -326,7 +337,11 @@ class _CapturedActivities(LbbActivities):
         self.reviews.append(CapturedReview(request=kept))
         self._filed += 1
         if _item_kind(kept) in _REVIEW_ITEM_KINDS:
-            return _captured_item(_review_item_body(kept, workflow), self._filed)
+            item = _captured_item(_review_item_body(kept, workflow), self._filed)
+            found = review_input(kept, item)
+            if found is not None:
+                self.results.add(found)
+            return item
         return _captured_suggestion(kept, workflow, self._filed)
 
     async def wait_for_review(
@@ -345,6 +360,9 @@ class _CapturedActivities(LbbActivities):
         self.reviews.append(CapturedReview(request=kept))
         self._filed += 1
         item = _captured_item(_review_item_body(kept, workflow), self._filed)
+        found = review_input(kept, item)
+        if found is not None:
+            self.results.add(found)
         return ReviewWaitResult(answered=False, answer=None, item=item)
 
 
@@ -365,13 +383,16 @@ class ActivityCapture:
     def result(self) -> ActivityCaptureResult:
         """What was kept so far."""
         return ActivityCaptureResult(
-            writes=list(self._activities.writes), reviews=list(self._activities.reviews)
+            writes=list(self._activities.writes),
+            reviews=list(self._activities.reviews),
+            results=self._activities.results.inputs(),
         )
 
     def reset(self) -> None:
         """Forget what was kept."""
         self._activities.writes.clear()
         self._activities.reviews.clear()
+        self._activities.results = RunResultsCollector()
 
 
 def capture_activities(

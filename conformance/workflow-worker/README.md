@@ -23,6 +23,7 @@ A rule changes in one place: change the scenario, then both workers.
 | `POST /v1/graph/commit` | A fenced write that meets `409 workflow_fence_lost` stops the turn. |
 | `POST /v1/workflows/activities/*` | A model call from a turn names the turn's run (`workflow`). It names the step (`workflow.step`, the key) whose effect id is the call's, or starts the call's followed by `.` or `:`. A call with no such step names no step. The calls' usage goes with the completion. |
 | `POST /v1/reviews` | `waitForReview` / `wait_for_review` files the item in the step `<key>.ask`, with the run as the one that waits. It waits for the signal the item names in `<key>.answer`. On a timeout, the step `<key>.read` reads the item again. A trigger shard (`starter.<name>`) is refused: the turn fails for good. |
+| Run results | When the claim names `results_max`, `turns/complete` and `turns/fail` carry `results` (`{inputs, counts}`): each subject of an owned write `written` with its fields and edges (`no_value` when the write sets nothing on it), each subject of a review item `review` with the item's id (`waitForReview`: with what the wait ended with), each requeued instance `failed` with its error, and, at a completion only, the trigger message's other instances not in the continuation `no_value`. The report is at most 512 KiB (UTF-8 of its JSON); a `413` sends the turn route again without `results`. A step that reported inputs saves `{lbb_step_results: 1, run, results, value}` and its code sees `value`; a replay in the same run reports the saved inputs as they were, in another run its writes as `duplicate`. Without `results_max`, nothing is sent and nothing is saved. |
 | Captured activities | Model calls carry `test: {workflow}`. An owned write is checked with the commit's dry run and kept: no commit, no fence, no idempotency key. A refusal of the dry run is the write's error. Reviews are kept and filed nowhere, and a wait ends at once unanswered. A wait on a trigger shard is refused as the live one is. Reads of review items run. |
 
 Steps replay by key and kind, in order; each step's effect id is
@@ -95,7 +96,11 @@ Actions in a step's `do`:
 
 A value anywhere in the program can be `{"$ref": "key.path"}` (the output of
 step `key`, then the dotted path into it), `{"$message": "path"}` or
-`{"$state": "path"}` (the turn's message or state; `""` is the whole value).
+`{"$state": "path"}` (the turn's message or state; `""` is the whole value),
+`{"$repeat": n, "of": template}` (a list of `n` copies of the template, each
+text's `{i}` replaced by its index) or `{"$chars": n, "char": c}` (a text of
+`n` times `c`, default `q`). A step's `do` can also hold `{"review": request}`:
+the activities' `review` inside the step.
 
 ### `task` and the exchanges
 
@@ -118,7 +123,10 @@ request the worker sends must match the next exchange's `request`:
 
 Matchers in `body`: `{"$absent": true}` (the key is absent),
 `{"$any": true}` (present, any value), `{"$at_least_now_plus_ms": n}` (a
-number at least the time the request arrived plus `n`, minus 100 ms).
+number at least the time the request arrived plus `n`, minus 100 ms),
+`{"$length": n}` (a list of `n` items), `{"$json_bytes_at_most": n}` (a value
+whose compact JSON is at most `n` bytes of UTF-8) and `{"$all": [m, …]}` (every
+matcher holds).
 
 `response`: `{"status": 200, "body": {...}}` (status 200 and body `{}` by
 default), `{"claim": ...}`, `{"transport_error": true}` (the connection
@@ -133,7 +141,7 @@ fails), and `delay_ms` (answer that much later).
 - `effect_ids`: the effect ids those step functions saw, in order.
 - `settle_ms`: after the last run, wait this long; no more requests may come.
 - `captured`: what the capture kept, matched as a `body` is. It is
-  `{"writes": [...], "reviews": [...]}`. A write is `{step_key, graph, body,
+  `{"writes": [...], "reviews": [...], "results": [...]}`. A write is `{step_key, graph, body,
   check, errors, report}`, without `graph` and `report` when it has none. A
   review is `{request}`.
 

@@ -4,6 +4,22 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `lbb.workflows.Worker` reports what each run did with each input (the
+  run's results) when the claim names `results_max`: `write_owned` reports
+  each subject `written` (or `no_value` when it sets nothing) with its
+  fields and out-edges, `review` of an item with a `subject` reports it
+  `review` with the item's id, `wait_for_review` with what the wait ended
+  with, and `requeue` reports each instance `failed`. The completion and the
+  failure send them as `results`, at most 512 KiB, measured as the
+  TypeScript worker measures them; a `413` sends them again without
+  `results`, and a server that names no `results_max` gets none. A step that
+  reported inputs keeps them in its saved output, so a replay reports them
+  again; the step's code sees its own value. An earlier version of this
+  package does not unwrap that output: when it replays such a step (after a
+  rollback, or in a fleet of mixed versions), the workflow's code gets
+  `{lbb_step_results, run, results, value}` in place of its value. Roll
+  workers forward only. `capture_activities(...).result()`
+  gains `results`, the same records.
 - `client.reviews.list`, `patterns` and `all` take `eval_id`: the items
   Evals filed for one record (a calibration session, a model call's
   check, a golden).

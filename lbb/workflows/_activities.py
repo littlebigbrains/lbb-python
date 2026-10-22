@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from .. import models
 from .._client_base import LbbError, RequestOptions, SparqlResults, _coerce_body
+from ._results import review_input
 from ._triggered import (
     EdgeIdempotency,
     FailedInstance,
@@ -40,6 +41,7 @@ from ._worker import (
     WorkflowStepContext,
     _activity_turn,
     _ActivityTurn,
+    _turn_of_instance,
 )
 
 if TYPE_CHECKING:
@@ -136,6 +138,21 @@ def _refuse_trigger_shard(ctx: WorkflowContext) -> None:
             "many inputs, and a wait would hold them all. File the item with review() "
             "and take the answer with a review trigger."
         )
+
+
+def _report_review(request: Any, item: Any, turn: _ActivityTurn | None = None) -> None:
+    """Report a review item about a subject to the run of its turn: the turn
+    whose trigger message names the subject, else the turn of the running
+    task. Nothing outside a turn, or when the worker records no results."""
+    body = _coerce_body(request)
+    subject = body.get("subject") if isinstance(body, Mapping) else None
+    iri = subject.get("iri") if isinstance(subject, Mapping) else None
+    run = turn or (_turn_of_instance(iri) if iri else None) or _activity_turn(None)
+    if run is None or run.results is None:
+        return
+    found = review_input(body, item)
+    if found is not None:
+        run.results.add(found)
 
 
 def _item_kind(request: Any) -> Any:
@@ -455,9 +472,16 @@ class LbbActivities:
         so the workflow's status counts it. The same ``key`` again updates the
         item, so a failed call is retried; an answered review item comes back
         with its answer.
+
+        Inside a turn of a worker, an item with a ``subject`` reports that
+        input as ``review`` in the run's results. A step that a later attempt
+        replays does not call ``review`` again, so only the attempt that filed
+        the item reports it.
         """
         if _item_kind(request) in _REVIEW_ITEM_KINDS:
-            return await self._create_item(_review_item_body(request, workflow))
+            item = await self._create_item(_review_item_body(request, workflow))
+            _report_review(request, item)
+            return item
         body = dict(_coerce_body(request))
         if body.get("origin") is None:
             body["origin"] = {"kind": "agent", **({"id": f"starter:{workflow}"} if workflow else {})}
@@ -520,7 +544,11 @@ class LbbActivities:
             return await self._create_item(body)
 
         item = await ctx.step(f"{key}.ask", ask, model=models.ReviewItem)
+        # The input is reported with what the wait ended with: answered, or
+        # still open after a timeout.
+        turn = getattr(getattr(ctx, "_turn", None), "activity", None)
         if getattr(item.status, "value", item.status) != "open" and item.answer is not None:
+            _report_review(request, item, turn)
             return ReviewWaitResult(answered=True, answer=item.answer, item=item)
         signal = item.wait.signal if item.wait is not None else None
         if not signal:
@@ -528,6 +556,7 @@ class LbbActivities:
         got = await ctx.wait_for_signal(f"{key}.answer", name=signal, timeout_ms=timeout_ms)
         if got.received:
             answer = models.ReviewAnswer.model_validate(got.value)
+            _report_review(request, {"id": item.id, "status": "answered"}, turn)
             return ReviewWaitResult(answered=True, answer=answer, item=item)
 
         # The wait timed out: the answer may have come and its signal not (a
@@ -536,6 +565,7 @@ class LbbActivities:
             return models.ReviewItem.model_validate(await self._client.reviews.get(item.id))
 
         now = await ctx.step(f"{key}.read", read, model=models.ReviewItem)
+        _report_review(request, now, turn)
         if getattr(now.status, "value", now.status) == "answered" and now.answer is not None:
             return ReviewWaitResult(answered=True, answer=now.answer, item=now)
         return ReviewWaitResult(answered=False, answer=None, item=now)

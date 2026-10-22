@@ -107,8 +107,20 @@ def test_a_capture_checks_owned_writes_with_the_dry_run_and_keeps_them() -> None
         assert [review.request["title"] for review in result.reviews] == [
             "Set material of f1 to Keramik"
         ]
+        # What a live run would report: the write's subject with its field.
+        # The review item names no subject, so it reports no input.
+        assert result.results == [
+            {
+                "label": "f1",
+                "outcome": "written",
+                "values": [
+                    {"property": "width_cm", "value": "55", "quote": "", "outcome": "written"}
+                ],
+            }
+        ]
         capture.reset()
         assert capture.result().writes == [] and capture.result().reviews == []
+        assert capture.result().results == []
 
     seen = run([(200, DRY_RUN)], body)
     assert len(seen) == 1, "a review item is kept, not filed"

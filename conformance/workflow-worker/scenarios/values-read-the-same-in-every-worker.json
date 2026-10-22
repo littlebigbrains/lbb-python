@@ -1,0 +1,332 @@
+{
+  "name": "values-read-the-same-in-every-worker",
+  "rule": "Values read the same in every worker: a whole float as 60, text past ASCII as it is, an edge's evidence as the quote, support and page box (an empty source left out), and a live review item's title when its question has no value.",
+  "workflow": {
+    "type": "triggered",
+    "name": "notes",
+    "version": "v1",
+    "initial_state": {
+      "runs": 0
+    }
+  },
+  "on_instances": [
+    {
+      "write_owned": "write",
+      "write": {
+        "subjects": [
+          {
+            "type": "Note",
+            "name": "n1",
+            "key": "\u0000lbb-eid:0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "properties": [
+          "width",
+          "ratio",
+          "name"
+        ],
+        "relations": [
+          "HAS_SOURCE"
+        ],
+        "entity_properties": [
+          {
+            "type": "Note",
+            "name": "n1",
+            "key": "\u0000lbb-eid:0123456789abcdef0123456789abcdef",
+            "properties": {
+              "width": 60.0,
+              "ratio": 0.5,
+              "name": "Gr\u00f6\u00dfe \u2013 K\u00fcche"
+            }
+          }
+        ],
+        "triplets": [
+          {
+            "source": {
+              "type": "Note",
+              "name": "n1",
+              "key": "\u0000lbb-eid:0123456789abcdef0123456789abcdef"
+            },
+            "relation": "HAS_SOURCE",
+            "target": {
+              "type": "Doc",
+              "name": "Blatt 3"
+            },
+            "confidence": 0.75,
+            "evidence": {
+              "text": "Breite 60 cm",
+              "source_id": "",
+              "region": {
+                "page": 2,
+                "x0": 0.1,
+                "y0": 0.2,
+                "x1": 0.3,
+                "y1": 0.4,
+                "confidence": 0.75
+              }
+            }
+          }
+        ]
+      },
+      "graph": {
+        "$message": "graph"
+      }
+    },
+    {
+      "review": "ask",
+      "request": {
+        "kind": "value",
+        "workflow": "notes",
+        "key": "note.b.width",
+        "title": "Breite der Sp\u00fcle?",
+        "subject": {
+          "iri": "https://littlebigbrain.com/e/11111111111111111111111111111111",
+          "type": "Note",
+          "name": "Sp\u00fcle"
+        },
+        "question": {
+          "property": "width",
+          "value": null
+        },
+        "evidence": [
+          {
+            "quote": "ca. 60",
+            "source_id": "",
+            "confidence": 0.5
+          }
+        ]
+      }
+    },
+    {
+      "return": {
+        "state": {
+          "done": true
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "notes",
+    "state": {},
+    "token": "token-n",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f3",
+    "turn": {
+      "workflow_id": "starter.notes",
+      "number": 3,
+      "message_id": "starter-notes-3",
+      "message": {
+        "type": "instances",
+        "workflow": "notes",
+        "graph": "crm",
+        "as_of_commit_seq": 4,
+        "reason": "changed",
+        "instances": [
+          "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+          "https://littlebigbrain.com/e/11111111111111111111111111111111"
+        ],
+        "removed": []
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.notes-3",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    },
+    "results_max": 200
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation",
+        "body": {
+          "key": "write"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/graph/commit"
+      },
+      "response": {
+        "body": {
+          "commit": {
+            "commit_seq": 12,
+            "edge_event_ids": [],
+            "entity_ids": [
+              "0123456789abcdef0123456789abcdef"
+            ],
+            "idempotent_replay": false,
+            "observation_ids": [],
+            "visibility_token": "v12"
+          },
+          "commit_seq": 12,
+          "edges_written": 0,
+          "entities_written": 1,
+          "graph_created": false,
+          "idempotency_key": "e0f3/write",
+          "replayed": false,
+          "owned": {
+            "edges_retracted": 0,
+            "fields_removed": 1,
+            "entities_retracted": 0
+          },
+          "visibility_token": "v12"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint",
+        "body": {
+          "key": "write"
+        }
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/reviews",
+        "body": {
+          "key": "note.b.width"
+        }
+      },
+      "response": {
+        "body": {
+          "id": "rev_b",
+          "object": "review_item",
+          "key": "note.b.width",
+          "kind": "value",
+          "scope": "live",
+          "status": "open",
+          "revision": 1,
+          "title": "Breite der Sp\u00fcle?",
+          "question": {
+            "property": "width"
+          },
+          "origin": {
+            "kind": "agent",
+            "id": "starter:notes"
+          },
+          "created": "2026-10-21T10:00:00Z",
+          "updated": "2026-10-21T10:00:00Z"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "done": true
+          },
+          "results": {
+            "inputs": [
+              {
+                "iri": "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+                "label": "n1",
+                "outcome": "written",
+                "values": [
+                  {
+                    "property": "width",
+                    "value": "60",
+                    "quote": "",
+                    "outcome": "written"
+                  },
+                  {
+                    "property": "ratio",
+                    "value": "0.5",
+                    "quote": "",
+                    "outcome": "written"
+                  },
+                  {
+                    "property": "name",
+                    "value": "Gr\u00f6\u00dfe \u2013 K\u00fcche",
+                    "quote": "",
+                    "outcome": "written"
+                  },
+                  {
+                    "property": "HAS_SOURCE",
+                    "value": "Blatt 3",
+                    "quote": "Breite 60 cm",
+                    "outcome": "written",
+                    "support": 0.75,
+                    "source": {
+                      "$absent": true
+                    },
+                    "region": {
+                      "page": 2,
+                      "x0": 0.1,
+                      "y0": 0.2,
+                      "x1": 0.3,
+                      "y1": 0.4
+                    }
+                  }
+                ]
+              },
+              {
+                "iri": "https://littlebigbrain.com/e/11111111111111111111111111111111",
+                "label": "Sp\u00fcle",
+                "outcome": "review",
+                "values": [
+                  {
+                    "property": "width",
+                    "value": "Breite der Sp\u00fcle?",
+                    "quote": "ca. 60",
+                    "outcome": "review",
+                    "support": 0.5,
+                    "review_item": "rev_b",
+                    "source": {
+                      "$absent": true
+                    }
+                  }
+                ]
+              }
+            ],
+            "counts": {
+              "written": 1,
+              "review": 1,
+              "no_value": 0,
+              "failed": 0,
+              "duplicate": 0
+            }
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}

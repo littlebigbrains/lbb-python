@@ -1,0 +1,265 @@
+{
+  "name": "resumed-run-reports-its-replayed-steps-as-they-were",
+  "rule": "A run that resumes after a sleep reports what its replayed steps saved, as they were: a review item filed inside a step and an owned write keep their outcome and values.",
+  "workflow": {
+    "type": "triggered",
+    "name": "notes",
+    "version": "v1",
+    "initial_state": {
+      "runs": 0
+    }
+  },
+  "on_instances": [
+    {
+      "step": "ask",
+      "do": [
+        {
+          "review": {
+            "kind": "value",
+            "workflow": "notes",
+            "key": "note.b.width",
+            "title": "Width of b",
+            "subject": {
+              "iri": "https://littlebigbrain.com/e/11111111111111111111111111111111",
+              "type": "Note",
+              "name": "b"
+            },
+            "question": {
+              "property": "width_cm",
+              "value": 45,
+              "confidence": 0.6
+            },
+            "evidence": [
+              {
+                "quote": "approx. 45 cm",
+                "confidence": 0.6
+              }
+            ]
+          }
+        }
+      ],
+      "returns": 1
+    },
+    {
+      "write_owned": "write",
+      "write": {
+        "subjects": [
+          {
+            "type": "Note",
+            "name": "n1",
+            "key": "\u0000lbb-eid:0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "properties": [
+          "word_count"
+        ],
+        "entity_properties": [
+          {
+            "type": "Note",
+            "name": "n1",
+            "key": "\u0000lbb-eid:0123456789abcdef0123456789abcdef",
+            "properties": {
+              "word_count": 3
+            }
+          }
+        ]
+      },
+      "graph": {
+        "$message": "graph"
+      }
+    },
+    {
+      "sleep": "nap",
+      "ms": 1000
+    },
+    {
+      "return": {
+        "state": {
+          "done": true
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "notes",
+    "state": {},
+    "token": "token-n",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f3",
+    "turn": {
+      "workflow_id": "starter.notes",
+      "number": 3,
+      "message_id": "starter-notes-3",
+      "message": {
+        "type": "instances",
+        "workflow": "notes",
+        "graph": "crm",
+        "as_of_commit_seq": 4,
+        "reason": "changed",
+        "instances": [
+          "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+          "https://littlebigbrain.com/e/11111111111111111111111111111111"
+        ],
+        "removed": []
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.notes-3",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    },
+    "results_max": 200
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {
+          "turn": {
+            "steps": [
+              {
+                "key": "ask",
+                "kind": "step",
+                "at_ms": 2,
+                "output": {
+                  "lbb_step_results": 1,
+                  "run": "0000000000001-starter.notes-3",
+                  "results": [
+                    {
+                      "iri": "https://littlebigbrain.com/e/11111111111111111111111111111111",
+                      "label": "b",
+                      "outcome": "review",
+                      "values": [
+                        {
+                          "property": "width_cm",
+                          "value": "45",
+                          "quote": "approx. 45 cm",
+                          "outcome": "review",
+                          "support": 0.6,
+                          "review_item": "rev_b"
+                        }
+                      ]
+                    }
+                  ],
+                  "value": 1
+                }
+              },
+              {
+                "key": "write",
+                "kind": "step",
+                "at_ms": 3,
+                "output": {
+                  "lbb_step_results": 1,
+                  "run": "0000000000001-starter.notes-3",
+                  "results": [
+                    {
+                      "iri": "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+                      "label": "n1",
+                      "outcome": "written",
+                      "values": [
+                        {
+                          "property": "word_count",
+                          "value": "3",
+                          "quote": "",
+                          "outcome": "written"
+                        }
+                      ]
+                    }
+                  ],
+                  "value": {
+                    "commit_seq": 12,
+                    "idempotency_key": "e0f3/write",
+                    "replayed": false,
+                    "owned": null,
+                    "entities_written": 1,
+                    "edges_written": 0
+                  }
+                }
+              },
+              {
+                "key": "nap",
+                "kind": "sleep",
+                "at_ms": 4,
+                "delay_ms": 1000,
+                "wake_at_ms": 1004,
+                "output": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "state": {
+            "done": true
+          },
+          "results": {
+            "inputs": [
+              {
+                "iri": "https://littlebigbrain.com/e/11111111111111111111111111111111",
+                "label": "b",
+                "outcome": "review",
+                "values": [
+                  {
+                    "property": "width_cm",
+                    "value": "45",
+                    "quote": "approx. 45 cm",
+                    "outcome": "review",
+                    "support": 0.6,
+                    "review_item": "rev_b"
+                  }
+                ]
+              },
+              {
+                "iri": "https://littlebigbrain.com/e/0123456789abcdef0123456789abcdef",
+                "label": "n1",
+                "outcome": "written",
+                "values": [
+                  {
+                    "property": "word_count",
+                    "value": "3",
+                    "quote": "",
+                    "outcome": "written"
+                  }
+                ]
+              }
+            ],
+            "counts": {
+              "written": 1,
+              "review": 1,
+              "no_value": 0,
+              "failed": 0,
+              "duplicate": 0
+            }
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}
