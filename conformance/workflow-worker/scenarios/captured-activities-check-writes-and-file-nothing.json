@@ -176,6 +176,12 @@
           "effect_id": "stable/define",
           "test": {
             "workflow": "sinks"
+          },
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1",
+            "step": "define"
           }
         }
       },

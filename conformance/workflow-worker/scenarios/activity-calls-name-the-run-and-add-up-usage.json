@@ -1,6 +1,6 @@
 {
   "name": "activity-calls-name-the-run-and-add-up-usage",
-  "rule": "A model activity called from a step names the turn's run, and its usage goes with the completion.",
+  "rule": "A model activity called from a step names the turn's run and the step's key, and its usage goes with the completion.",
   "workflow": {
     "type": "plain",
     "name": "counter",
@@ -98,7 +98,8 @@
           "workflow": {
             "identity": "agent",
             "turn": 1,
-            "run_id": "0000000000001-agent-1"
+            "run_id": "0000000000001-agent-1",
+            "step": "define"
           }
         }
       },

@@ -1,0 +1,286 @@
+{
+  "name": "activity-calls-name-their-step",
+  "rule": "A model activity call names the step whose effect id is the call's, or starts it followed by `.` or `:`; a call with no such step names no step.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "define",
+      "do": [
+        {
+          "reason": {
+            "prompt": "p",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "effect_id": true
+        },
+        {
+          "reason": {
+            "prompt": "p",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "effect_id": ".2"
+        },
+        {
+          "reason": {
+            "prompt": "p",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "effect_id": ":rows"
+        },
+        {
+          "reason": {
+            "prompt": "p",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "effect_id": "x"
+        },
+        {
+          "reason": {
+            "prompt": "p",
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "returns": 1
+    },
+    {
+      "return": {
+        "state": {
+          "count": {
+            "$ref": "define"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "body": {
+          "effect_id": "stable/define",
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1",
+            "step": "define"
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "value": {},
+          "model": "m",
+          "tokens_in": 1,
+          "tokens_out": 1,
+          "cost_micro_usd": 1,
+          "cached": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "body": {
+          "effect_id": "stable/define.2",
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1",
+            "step": "define"
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "value": {},
+          "model": "m",
+          "tokens_in": 1,
+          "tokens_out": 1,
+          "cost_micro_usd": 1,
+          "cached": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "body": {
+          "effect_id": "stable/define:rows",
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1",
+            "step": "define"
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "value": {},
+          "model": "m",
+          "tokens_in": 1,
+          "tokens_out": 1,
+          "cost_micro_usd": 1,
+          "cached": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "body": {
+          "effect_id": "stable/definex",
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1",
+            "step": {
+              "$absent": true
+            }
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "value": {},
+          "model": "m",
+          "tokens_in": 1,
+          "tokens_out": 1,
+          "cost_micro_usd": 1,
+          "cached": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "body": {
+          "effect_id": {
+            "$absent": true
+          },
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1",
+            "step": {
+              "$absent": true
+            }
+          }
+        }
+      },
+      "response": {
+        "body": {
+          "value": {},
+          "model": "m",
+          "tokens_in": 1,
+          "tokens_out": 1,
+          "cost_micro_usd": 1,
+          "cached": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/checkpoint"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "usage": {
+            "calls": 5,
+            "errors": 0,
+            "tokens_in": 5,
+            "tokens_out": 5,
+            "cost_micro_usd": 5
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "define"
+    ]
+  }
+}

@@ -1,148 +1,122 @@
 {
   "about": [
     "The answer key for the values-extract samples: the values a correct run reads from each record, with the quote that supports each, and the values it must leave out.",
-    "All text is invented. make-samples.mjs checks that every quote is in its record's text (whitespace runs as one space) and that a number's quote holds the number.",
-    "Numbers compare as numbers. A text value compares in lower case, trimmed, against accept. A run may quote more or less of the text, as long as its quote is in the text and holds the evidence.",
-    "leave_out lists values a correct run does not write. With value null, the run writes no value for that property at all."
+    "All text is invented: the products, their codes and their data sheets. make-samples.mjs checks that every quote is in its record's text as written, and that a number's quote holds the number as the text states it.",
+    "Numbers compare as numbers, in the property's unit. stated gives the number and unit as the text states them when the property holds another unit: 800 mm is 80 for depth_cm. A text value compares in lower case, trimmed, against accept. A run may quote more or less of the text, as long as its quote is in the text and holds the evidence.",
+    "leave_out lists values a correct run does not write. With value null, the run writes no value for that property at all.",
+    "Two values go to review before they are written: the width of R-3, whose quote states no unit, and, with the mock models, the width of K-17, whose quote says about (the mocks give it a support of 0.6, below the default gate 0.8)."
   ],
   "install": {
     "properties": {
       "width_cm": "f64",
       "depth_cm": "f64",
       "material": "text",
-      "water_supply": "keyword"
+      "color": "keyword"
     },
     "units": { "width_cm": "cm", "depth_cm": "cm" },
-    "context": "Entries of the sanitary equipment list of a school building tender, in German."
+    "context": "Product data sheets of office furniture and small appliances, in English and German."
   },
   "records": [
     {
-      "name": "S 4.1",
-      "case": "An approximate size (ca.) is still the item's size.",
-      "values": [
-        { "property": "width_cm", "value": 60, "quote": "ca. 60x40 cm" },
-        { "property": "depth_cm", "value": 40, "quote": "ca. 60x40 cm" },
-        {
-          "property": "material",
-          "value": "Sanitärkeramik",
-          "accept": ["sanitärkeramik", "keramik", "sanitärkeramik, weiß", "sanitärkeramik weiß"],
-          "quote": "aus Sanitärkeramik, weiß"
-        },
-        {
-          "property": "water_supply",
-          "value": "kalt und warm",
-          "accept": ["kalt und warm", "warm und kalt", "kalt- und warmwasser", "kaltwasser und warmwasser"],
-          "quote": "Anschluss an Kalt- und Warmwasser"
-        }
-      ],
-      "leave_out": []
-    },
-    {
-      "name": "S 4.2",
-      "case": "An accessory of another material: the Klapprost.",
-      "values": [
-        { "property": "width_cm", "value": 50, "quote": "Stahl emailliert, 50x35 cm" },
-        { "property": "depth_cm", "value": 35, "quote": "Stahl emailliert, 50x35 cm" },
-        {
-          "property": "material",
-          "value": "Stahl emailliert",
-          "accept": ["stahl emailliert", "stahl, emailliert", "emaillierter stahl"],
-          "quote": "Ausgussbecken für Putzräume, Stahl emailliert"
-        },
-        {
-          "property": "water_supply",
-          "value": "kalt",
-          "accept": ["kalt", "kaltwasser", "nur kaltwasser", "nur kalt"],
-          "quote": "Anschluss nur an Kaltwasser"
-        }
-      ],
-      "leave_out": [
-        { "property": "material", "value": "Edelstahl", "reason": "Edelstahl is the material of the Klapprost, an accessory." }
-      ]
-    },
-    {
-      "name": "S 4.3",
-      "case": "The only size in the text belongs to an accessory, the Glasablage.",
-      "values": [
-        {
-          "property": "material",
-          "value": "Mineralguss",
-          "accept": ["mineralguss"],
-          "quote": "Waschtisch, unterfahrbar, aus Mineralguss"
-        },
-        {
-          "property": "water_supply",
-          "value": "kalt und warm",
-          "accept": ["kalt und warm", "warm und kalt", "kalt- und warmwasser", "kaltwasser und warmwasser"],
-          "quote": "Anschluss an Kalt- und Warmwasser"
-        }
-      ],
-      "leave_out": [
-        { "property": "width_cm", "value": null, "reason": "50x12 cm is the size of the Glasablage. The basin's size is left to the maker (Maße nach Hersteller)." },
-        { "property": "depth_cm", "value": null, "reason": "50x12 cm is the size of the Glasablage. The basin's size is left to the maker (Maße nach Hersteller)." },
-        { "property": "material", "value": "Glas", "reason": "Glas is the material of the Glasablage, an accessory." },
-        { "property": "material", "value": "Edelstahl", "reason": "Edelstahl is the material of the Haltegriff, an accessory." }
-      ]
-    },
-    {
-      "name": "S 4.4",
+      "name": "D-120",
       "case": "Every value stated once, plainly.",
       "values": [
-        { "property": "width_cm", "value": 40, "quote": "Edelstahl, 40x30 cm" },
-        { "property": "depth_cm", "value": 30, "quote": "Edelstahl, 40x30 cm" },
+        { "property": "width_cm", "value": 120, "quote": "120 x 80 cm" },
+        { "property": "depth_cm", "value": 80, "quote": "120 x 80 cm" },
         {
           "property": "material",
-          "value": "Edelstahl",
-          "accept": ["edelstahl"],
-          "quote": "Trinkbrunnen für den Flur, Edelstahl"
+          "value": "beech veneer",
+          "accept": ["beech veneer", "beech"],
+          "quote": "Desk of beech veneer"
         },
-        {
-          "property": "water_supply",
-          "value": "kalt",
-          "accept": ["kalt", "kaltwasser", "nur kaltwasser", "nur kalt"],
-          "quote": "Anschluss an Kaltwasser in Trinkwasserqualität"
-        }
+        { "property": "color", "value": "natural", "quote": "Color: natural" }
       ],
       "leave_out": []
     },
     {
-      "name": "S 4.5",
-      "case": "A variant that holds only under a condition (Bei Einsatz von Geschirrspülern).",
+      "name": "T-160",
+      "case": "Sizes in m and mm, which the run converts to cm, an accessory of another material, and no color.",
       "values": [
-        { "property": "width_cm", "value": 100, "quote": "Edelstahl, 100x50 cm" },
-        { "property": "depth_cm", "value": 50, "quote": "Edelstahl, 100x50 cm" },
+        { "property": "width_cm", "value": 160, "stated": "1.6 m", "quote": "width 1.6 m" },
+        { "property": "depth_cm", "value": 80, "stated": "800 mm", "quote": "depth 800 mm" },
         {
           "property": "material",
-          "value": "Edelstahl",
-          "accept": ["edelstahl"],
-          "quote": "Spüle für die Lehrerküche, Edelstahl"
-        },
-        {
-          "property": "water_supply",
-          "value": "kalt und warm",
-          "accept": ["kalt und warm", "warm und kalt", "kalt- und warmwasser", "kaltwasser und warmwasser"],
-          "quote": "Anschluss an Kalt- und Warmwasser"
+          "value": "oak veneer",
+          "accept": ["oak veneer", "oak"],
+          "quote": "Conference table of oak veneer"
         }
       ],
       "leave_out": [
-        { "property": "width_cm", "value": 120, "reason": "The width of the variant with two basins, which holds only bei Einsatz von Geschirrspülern." }
+        { "property": "material", "value": "steel", "reason": "Steel is the material of the cable tray, an accessory." },
+        { "property": "color", "value": null, "reason": "The text names no color." }
       ]
     },
     {
-      "name": "S 4.6",
-      "case": "A second size that is a height, and no water supply.",
+      "name": "LP-7",
+      "case": "The only size in the text belongs to an accessory, the clamp.",
       "values": [
-        { "property": "width_cm", "value": 60, "quote": "Breite 60 cm" },
         {
           "property": "material",
-          "value": "Kristallglas",
-          "accept": ["kristallglas", "glas"],
-          "quote": "Spiegel für Waschplätze, Kristallglas"
+          "value": "aluminium",
+          "accept": ["aluminium", "aluminum"],
+          "quote": "housing of aluminium"
+        },
+        { "property": "color", "value": "black", "quote": "Color: black" }
+      ],
+      "leave_out": [
+        { "property": "width_cm", "value": null, "reason": "6 x 4 cm is the size of the clamp, an accessory. The lamp's size is left to the maker (size as the maker states)." },
+        { "property": "depth_cm", "value": null, "reason": "6 x 4 cm is the size of the clamp, an accessory. The lamp's size is left to the maker (size as the maker states)." }
+      ]
+    },
+    {
+      "name": "K-17",
+      "case": "An approximate width (about 22 cm) is still the item's width. The mock models give its quote a support below the default gate, so a run with them puts it in review.",
+      "values": [
+        { "property": "width_cm", "value": 22, "quote": "width about 22 cm" },
+        { "property": "depth_cm", "value": 16, "quote": "depth 16 cm" },
+        {
+          "property": "material",
+          "value": "brushed stainless steel",
+          "accept": ["brushed stainless steel", "stainless steel"],
+          "quote": "Kettle of brushed stainless steel"
+        },
+        { "property": "color", "value": "silver", "quote": "Color: silver" }
+      ],
+      "leave_out": []
+    },
+    {
+      "name": "MS-40",
+      "case": "A variant that holds only under a condition (For two screens).",
+      "values": [
+        { "property": "width_cm", "value": 60, "quote": "bamboo, 60 x 24 cm" },
+        { "property": "depth_cm", "value": 24, "quote": "bamboo, 60 x 24 cm" },
+        { "property": "material", "value": "bamboo", "quote": "Monitor stand of bamboo" },
+        { "property": "color", "value": "natural", "quote": "Color: natural" }
+      ],
+      "leave_out": [
+        { "property": "width_cm", "value": 90, "reason": "The width of the version for two screens, which holds only under that condition." }
+      ]
+    },
+    {
+      "name": "R-3",
+      "case": "A text in German. The width states no unit (Breite 43), so the run asks a person to confirm it. The second size is a height, and the text gives no depth.",
+      "values": [
+        { "property": "width_cm", "value": 43, "quote": "Breite 43" },
+        {
+          "property": "material",
+          "value": "Stahlblech",
+          "accept": ["stahlblech", "stahl"],
+          "quote": "Rollcontainer aus Stahlblech"
+        },
+        {
+          "property": "color",
+          "value": "lichtgrau",
+          "accept": ["lichtgrau", "hellgrau", "grau"],
+          "quote": "Farbe: lichtgrau"
         }
       ],
       "leave_out": [
-        { "property": "depth_cm", "value": null, "reason": "45 cm is the height (Höhe). The text gives no depth." },
-        { "property": "water_supply", "value": null, "reason": "The text names no water supply." }
+        { "property": "depth_cm", "value": null, "reason": "60 cm is the height (Höhe). The text gives no depth." }
       ]
     }
   ]

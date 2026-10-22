@@ -4,11 +4,13 @@ LBB: the workflow engine, the model activities with the mock rules of the
 TypeScript template's test, SPARQL over the sample records, commits with
 their idempotency keys, review items and requeue.
 
-The mock reasoning model reads the first size (``60x40 cm`` or ``Breite 60
-cm``) with its unit, the first material and the water supply of each text;
-the mock decision model says a quote from a sentence about an accessory
-(``Zubehör``) or a conditional variant (``Bei Einsatz``) does not support its
-value. The expected values come from ``samples/expected.json``.
+The mock reasoning model reads the first size (``120 x 80 cm``, else
+``width 1.6 m`` and ``depth 800 mm``, or ``Breite 43``) with the unit the text
+states, the first material and the color of each text. The mock decision
+model says a quote from a sentence about an accessory (``Accessory:``) or a
+variant under a condition (``For two screens:``) does not support its value,
+and gives a quote that says ``about`` 0.6, below the gate. The expected values
+come from ``samples/expected.json``.
 """
 
 from __future__ import annotations
@@ -42,28 +44,38 @@ SAMPLES = EXAMPLES / "values_extract" / "samples"
 RECORDS: list[dict[str, str]] = json.loads((SAMPLES / "records.json").read_text())
 EXPECTED: dict[str, Any] = json.loads((SAMPLES / "expected.json").read_text())
 MATERIALS = [
-    "Sanitärkeramik",
-    "Stahl emailliert",
-    "Mineralguss",
-    "Edelstahl",
-    "Kristallglas",
-    "Keramik",
-    "Glas",
+    "beech veneer",
+    "oak veneer",
+    "aluminium",
+    "brushed stainless steel",
+    "stainless steel",
+    "bamboo",
+    "Stahlblech",
+    "plastic",
+    "steel",
 ]
 
 
+def sized(words: str) -> re.Pattern[str]:
+    """A size with the unit the text states it in, if any: ``width 1.6 m``, ``Breite 43``."""
+    return re.compile(rf"(?:{words}) (?:about )?(\d+(?:\.\d+)?)(?: (mm|cm|m)\b)?", re.I)
+
+
 def read_values(text: str) -> list[dict[str, str]]:
-    """The mock reasoning model: the first size, material and water supply of a text."""
+    """The mock reasoning model: the first size, material and color of a text."""
     values: list[dict[str, str]] = []
-    size = re.search(r"(?:ca\. )?(\d+)x(\d+) cm", text)
-    width = re.search(r"Breite (\d+) cm", text)
+    size = re.search(r"(\d+) x (\d+) cm", text)
     if size:
         values += [
             {"property": "width_cm", "value": size[1], "unit": "cm", "quote": size[0]},
             {"property": "depth_cm", "value": size[2], "unit": "cm", "quote": size[0]},
         ]
-    elif width:
-        values.append({"property": "width_cm", "value": width[1], "unit": "cm", "quote": width[0]})
+    else:
+        for prop, words in (("width_cm", "width|Breite"), ("depth_cm", "depth|Tiefe")):
+            if found := sized(words).search(text):
+                values.append(
+                    {"property": prop, "value": found[1], "unit": found[2] or "", "quote": found[0]}
+                )
     found = [
         (m.start(), name)
         for name in MATERIALS
@@ -72,26 +84,23 @@ def read_values(text: str) -> list[dict[str, str]]:
     if found:
         material = min(found)[1]
         values.append({"property": "material", "value": material, "unit": "", "quote": material})
-    water = re.search(r"Anschluss[^.]*?(Kalt- und Warmwasser|Kaltwasser)", text)
-    if water:
-        values.append(
-            {
-                "property": "water_supply",
-                "value": "kalt" if water[1] == "Kaltwasser" else "kalt und warm",
-                "unit": "",
-                "quote": water[0],
-            }
-        )
+    color = re.search(r"(?:Color|Farbe): ([^\W\d_]+)", text)
+    if color:
+        values.append({"property": "color", "value": color[1], "unit": "", "quote": color[0]})
     return values
 
 
 def support(text: str, instructions: str, options: list[str]) -> dict[str, Any]:
-    """The mock decision model: the support of each quote, from the sentence that holds it."""
+    """The mock decision model: the support of each quote, from the quote and the sentence
+    that holds it."""
     found = re.search(r'Quote: "(.*)"$', instructions, re.S)
     assert found
     quote = found[1]
     sentence = next((s for s in re.split(r"(?<=\.)\s+", text) if quote in s), "")
-    p = 0.05 if re.search("Zubehör|Bei Einsatz", sentence) else 0.6 if "etwa" in sentence else 0.92
+    if re.match(r"(?:Accessory|For [^:]+):", sentence):
+        p = 0.05
+    else:
+        p = 0.6 if re.search(r"\babout\b", quote, re.I) else 0.92
     return {
         "choice": "supported" if p >= 0.5 else "not_supported",
         "confidence": max(p, 1 - p),
@@ -144,6 +153,19 @@ def matches(got: Any, want: dict[str, Any]) -> bool:
     return str(got).strip().lower() in accepted
 
 
+# The values of the answer key that the port gives a person to review, with
+# the reason it gives: a number the text states in another unit (the key's
+# ``stated``, which LBB's values.extract converts), a number whose quote
+# states no unit, and a quote that says ``about`` (the mock decision model
+# gives it 0.6, below the gate).
+REVIEWED = {
+    ("T-160", "width_cm"): "The unit is not confirmed: the text states m; the property holds cm.",
+    ("T-160", "depth_cm"): "The unit is not confirmed: the text states mm; the property holds cm.",
+    ("K-17", "width_cm"): "The text supports the value with 0.60, below the gate 0.8.",
+    ("R-3", "width_cm"): "The unit is not confirmed: the text states no unit; the property holds cm.",
+}
+
+
 def test_the_samples_give_the_values_of_the_answer_key_and_none_it_leaves_out() -> None:
     fake = fake_for(RECORDS)
     fake.queue(message([iri_of(r["name"]) for r in RECORDS]))
@@ -152,19 +174,34 @@ def test_the_samples_give_the_values_of_the_answer_key_and_none_it_leaves_out() 
     for record in EXPECTED["records"]:
         values = fake.written(record["name"])
         for want in record["values"]:
-            assert matches(values.get(want["property"]), want), (record["name"], want)
+            if (record["name"], want["property"]) in REVIEWED:
+                assert want["property"] not in values, (record["name"], want)
+            else:
+                assert matches(values.get(want["property"]), want), (record["name"], want)
         for out in record["leave_out"]:
             if out["value"] is None:
                 assert out["property"] not in values
             else:
                 assert not matches(values.get(out["property"]), out)
-        assert sorted(values) == sorted(v["property"] for v in record["values"])
+        assert sorted(values) == sorted(
+            v["property"]
+            for v in record["values"]
+            if (record["name"], v["property"]) not in REVIEWED
+        )
+    # One value item per value in review, with its reason.
+    asked = {
+        (item["subject"]["name"], item["question"]["property"]): item["rationale"]
+        for item in fake.questions.values()
+    }
+    assert sorted(asked) == sorted(REVIEWED)
+    for key, rationale in asked.items():
+        assert rationale.startswith(REVIEWED[key]), (key, rationale)
     (done,) = fake.completed
     assert done["state"] == {
         "instances": 6,
         "values_proposed": 22,
-        "written": 20,
-        "review": 0,
+        "written": 16,
+        "review": 4,
         "weak_support": 2,
         "quote_not_found": 0,
         "invalid_value": 0,
@@ -180,7 +217,6 @@ def test_the_samples_give_the_values_of_the_answer_key_and_none_it_leaves_out() 
     assert reason["workflow"]["run_id"] == "run-1"
     assert reason["effect_id"] == "e1/values-0"
     assert fake.reviews == {}
-    assert fake.questions == {}
 
 
 def test_each_written_value_has_a_source_whose_evidence_is_a_quote_of_the_text() -> None:
@@ -189,7 +225,7 @@ def test_each_written_value_has_a_source_whose_evidence_is_a_quote_of_the_text()
     serve(fake)
     (commit,) = fake.commits.values()
     edges = commit["triplets"]
-    assert len(edges) == 20
+    assert len(edges) == 16
     for edge in edges:
         record = next(r for r in RECORDS if r["name"] == edge["source"]["name"])
         assert edge["relation"] == "HAS_VALUE_SOURCE"
@@ -202,22 +238,22 @@ def test_each_written_value_has_a_source_whose_evidence_is_a_quote_of_the_text()
 
 
 def test_a_value_below_the_gate_goes_to_review_and_the_checks_run_in_lbbs_order() -> None:
-    record = {"name": "S 9.1", "text": "S 9.1 Becken aus Kunststoff. Breite etwa 70 cm, Tiefe 40 cm."}
+    record = {"name": "S 9.1", "text": "S 9.1 Bench of plastic. Width about 70 cm, depth 40 cm."}
     # The checks of values.extract: the property, then the first value of it,
     # then the type, then the quote. A second material is a duplicate even
     # when the first one fails a later check.
     proposals = [
-        {"property": "width_cm", "value": "70", "unit": "cm", "quote": "Breite etwa 70 cm"},
-        {"property": "depth_cm", "value": "vierzig", "unit": "cm", "quote": "Tiefe 40 cm"},
-        {"property": "material", "value": "Kunststoff", "unit": "", "quote": "Becken aus Kunststoff"},
-        {"property": "material", "value": "Holz", "unit": "", "quote": "aus Holz gefertigt"},
-        {"property": "height_cm", "value": "80", "unit": "", "quote": "Becken aus Kunststoff"},
+        {"property": "width_cm", "value": "70", "unit": "cm", "quote": "Width about 70 cm"},
+        {"property": "depth_cm", "value": "forty", "unit": "cm", "quote": "depth 40 cm"},
+        {"property": "material", "value": "plastic", "unit": "", "quote": "Bench of plastic"},
+        {"property": "material", "value": "wood", "unit": "", "quote": "made of wood"},
+        {"property": "height_cm", "value": "80", "unit": "", "quote": "Bench of plastic"},
     ]
     fake = fake_for([record], proposals=lambda text: proposals)
     fake.queue(message([iri_of(record["name"])]))
     serve(fake)
 
-    assert fake.written(record["name"]) == {"material": "Kunststoff"}
+    assert fake.written(record["name"]) == {"material": "plastic"}
     state = fake.completed[0]["state"]
     assert (state["values_proposed"], state["written"], state["review"]) == (5, 1, 1)
     assert (state["invalid_value"], state["duplicate"], state["unknown_property"]) == (1, 1, 1)
@@ -237,7 +273,7 @@ def test_a_value_below_the_gate_goes_to_review_and_the_checks_run_in_lbbs_order(
         "unit": "cm",
         "confidence": item["question"]["confidence"],
     }
-    assert item["evidence"][0]["quote"] == "Breite etwa 70 cm"
+    assert item["evidence"][0]["quote"] == "Width about 70 cm"
     assert item["origin"] == {
         "kind": "agent",
         "id": "starter:values-extract",
@@ -251,7 +287,7 @@ def test_a_value_below_the_gate_goes_to_review_and_the_checks_run_in_lbbs_order(
     )
     accepting.queue(message([iri_of(record["name"])]))
     serve(accepting)
-    assert accepting.written(record["name"]) == {"width_cm": 70, "material": "Kunststoff"}
+    assert accepting.written(record["name"]) == {"width_cm": 70, "material": "plastic"}
 
 
 def run_again(fake: FakeLbb, name: str) -> None:
@@ -265,8 +301,8 @@ def width(value: str, quote: str, unit: str = "cm") -> list[dict[str, str]]:
 
 
 def test_a_persons_correction_stays_when_new_evidence_reads_another_value_which_asks_again() -> None:
-    record = {"name": "S 9.3", "text": "S 9.3 Becken aus Kunststoff. Breite etwa 70 cm, Tiefe 40 cm."}
-    proposals = width("70", "Breite etwa 70 cm")
+    record = {"name": "S 9.3", "text": "S 9.3 Bench of plastic. Width about 70 cm, depth 40 cm."}
+    proposals = width("70", "Width about 70 cm")
     fake = fake_for(
         [record],
         proposals=lambda text: proposals,
@@ -276,8 +312,8 @@ def test_a_persons_correction_stays_when_new_evidence_reads_another_value_which_
     assert fake.written("S 9.3") == {"width_cm": 72}
     # A new version of the text reads 80 above the gate: the person is asked
     # again, and the corrected 72 stays until they answer.
-    record["text"] = "S 9.3 Becken aus Kunststoff. Breite 80 cm."
-    proposals[:] = width("80", "Breite 80 cm")
+    record["text"] = "S 9.3 Bench of plastic. Width 80 cm."
+    proposals[:] = width("80", "Width 80 cm")
     run_again(fake, "S 9.3")
     assert fake.written("S 9.3") == {"width_cm": 72}
     key = value_item_key("values-extract", iri_of("S 9.3"), "width_cm")
@@ -288,8 +324,8 @@ def test_a_persons_correction_stays_when_new_evidence_reads_another_value_which_
 
 
 def test_the_value_a_person_decided_on_quoted_from_another_span_asks_nothing() -> None:
-    record = {"name": "S 9.2", "text": "S 9.2 Becken. Breite etwa 70 cm."}
-    proposals = width("70", "Breite etwa 70 cm")
+    record = {"name": "S 9.2", "text": "S 9.2 Bench. Width about 70 cm."}
+    proposals = width("70", "Width about 70 cm")
     fake = fake_for(
         [record],
         proposals=lambda text: proposals,
@@ -298,29 +334,29 @@ def test_the_value_a_person_decided_on_quoted_from_another_span_asks_nothing() -
     run_again(fake, "S 9.2")
     # The same text; the model quotes another span of it and spells the unit
     # otherwise. The person decided on 70 already.
-    proposals[:] = width("70", "etwa 70 cm", unit="CM")
+    proposals[:] = width("70", "about 70 cm", unit="CM")
     run_again(fake, "S 9.2")
     assert fake.written("S 9.2") == {"width_cm": 72}
     assert fake.previous == {}
 
 
 def test_a_rejected_value_is_not_written_again_even_above_the_gate() -> None:
-    record = {"name": "S 9.6", "text": "S 9.6 Becken. Breite etwa 70 cm."}
-    proposals = width("70", "Breite etwa 70 cm")
+    record = {"name": "S 9.6", "text": "S 9.6 Bench. Width about 70 cm."}
+    proposals = width("70", "Width about 70 cm")
     fake = fake_for(
         [record], proposals=lambda text: proposals, review_answer=lambda request: {"decision": "reject"}
     )
     run_again(fake, "S 9.6")
     assert fake.written("S 9.6") == {}
-    record["text"] = "S 9.6 Becken. Breite 70 cm."
-    proposals[:] = width("70", "Breite 70 cm")
+    record["text"] = "S 9.6 Bench. Width 70 cm."
+    proposals[:] = width("70", "Width 70 cm")
     run_again(fake, "S 9.6")
     assert fake.written("S 9.6") == {}
 
 
 def test_a_value_the_graph_refused_is_not_written_when_a_later_text_states_it() -> None:
-    record = {"name": "S 9.7", "text": "S 9.7 Becken. Breite etwa 70 cm."}
-    proposals = width("70", "Breite etwa 70 cm")
+    record = {"name": "S 9.7", "text": "S 9.7 Bench. Width about 70 cm."}
+    proposals = width("70", "Width about 70 cm")
     fake = fake_for(
         [record],
         proposals=lambda text: proposals,
@@ -331,15 +367,15 @@ def test_a_value_the_graph_refused_is_not_written_when_a_later_text_states_it() 
     assert fake.written("S 9.7") == {}
     # The text now states 72 above the gate: the graph refused it, so it is
     # not written; the item stays open for the person.
-    record["text"] = "S 9.7 Becken. Breite 72 cm."
-    proposals[:] = width("72", "Breite 72 cm")
+    record["text"] = "S 9.7 Bench. Width 72 cm."
+    proposals[:] = width("72", "Width 72 cm")
     run_again(fake, "S 9.7")
     assert fake.written("S 9.7") == {}
 
 
 def test_a_held_value_keeps_its_source_link() -> None:
-    record = {"name": "S 9.9", "text": "S 9.9 Becken. Breite etwa 70 cm."}
-    proposals = width("70", "Breite etwa 70 cm")
+    record = {"name": "S 9.9", "text": "S 9.9 Bench. Width about 70 cm."}
+    proposals = width("70", "Width about 70 cm")
     fake = fake_for(
         [record], proposals=lambda text: proposals, review_answer=lambda request: {"decision": "accept"}
     )
@@ -347,8 +383,8 @@ def test_a_held_value_keeps_its_source_link() -> None:
     assert fake.written("S 9.9") == {"width_cm": 70}
     # New evidence with another value: asked again; the accepted 70 and its
     # source link stay, so the instance's write replaces neither.
-    record["text"] = "S 9.9 Becken. Breite 85 cm."
-    proposals[:] = width("85", "Breite 85 cm")
+    record["text"] = "S 9.9 Bench. Width 85 cm."
+    proposals[:] = width("85", "Width 85 cm")
     run_again(fake, "S 9.9")
     assert fake.written("S 9.9") == {"width_cm": 70}
     held = list(fake.commits.values())[-1]["replace_owned"]
@@ -363,8 +399,8 @@ def test_a_held_value_keeps_its_source_link() -> None:
 def test_a_value_an_earlier_version_filed_as_a_suggestion_keeps_working(
     status: str, writes: dict[str, Any]
 ) -> None:
-    record = {"name": "S 9.4", "text": "S 9.4 Becken. Breite etwa 70 cm."}
-    fake = fake_for([record], proposals=lambda text: width("70", "Breite etwa 70 cm"))
+    record = {"name": "S 9.4", "text": "S 9.4 Bench. Width about 70 cm."}
+    fake = fake_for([record], proposals=lambda text: width("70", "Width about 70 cm"))
     iri = iri_of("S 9.4")
     # The key of the suggestion: one per value.
     key = legacy_value_key("values-extract", iri, {"property": "width_cm", "value": "70"})
@@ -375,7 +411,7 @@ def test_a_value_an_earlier_version_filed_as_a_suggestion_keeps_working(
         "origin": {"kind": "agent", "id": "starter:values-extract"},
         "facts": {
             "entity_properties": [
-                {**entity_ref(iri, "EquipmentItem", "S 9.4"), "properties": {"width_cm": 70}}
+                {**entity_ref(iri, "Product", "S 9.4"), "properties": {"width_cm": 70}}
             ],
             "triplets": [],
         },
@@ -410,7 +446,7 @@ def test_a_worker_killed_during_the_write_replays_its_steps_and_writes_once() ->
     commits = [h["idempotency-key"] for path, _, h in fake.calls if path == "/v1/graph/commit"]
     assert commits == ["e1/write", "e1/write"]
     (done,) = fake.completed
-    assert done["state"]["written"] == 20
+    assert done["state"]["written"] == 16
     # The write was a replay the second time: this turn made no new commit.
     assert done["state"]["commits"] == 0
 
@@ -422,15 +458,15 @@ def test_values_take_their_property_type_and_a_quote_is_in_the_text() -> None:
     assert coerce("ja", "bool") == {"value": True}
     assert coerce("2026-10-21", "date_time") == {"value": "2026-10-21T00:00:00Z"}
     assert "error" in coerce("2026-13-01", "datetime")
-    assert quote_holds("ca. 60x40 cm", "60", "S 4.1 ca. 60x40 cm, weiß")
-    assert not quote_holds("60x40", "70", "S 4.1 ca. 60x40 cm")
-    assert unit_problem("cm", "cm", "Breite 60 cm") is None
+    assert quote_holds("about 60x40 cm", "60", "D-1 about 60x40 cm, white")
+    assert not quote_holds("60x40", "70", "D-1 about 60x40 cm")
+    assert unit_problem("cm", "cm", "width 60 cm") is None
     assert unit_problem("cm", "mm", "600 mm") == "the text states mm; the property holds cm"
     assert unit_problem("cm", "", "60") == "the text states no unit; the property holds cm"
     checked = check(
-        [{"property": "width_cm", "value": "600 mm", "unit": "", "quote": "Breite 600 mm hier"}],
+        [{"property": "width_cm", "value": "600 mm", "unit": "", "quote": "width 600 mm here"}],
         DEFAULTS.properties,
-        "Breite 600 mm hier",
+        "width 600 mm here",
         DEFAULTS.units,
     )
     assert checked[0]["value"] == "600"
@@ -440,8 +476,8 @@ def test_values_take_their_property_type_and_a_quote_is_in_the_text() -> None:
 def test_the_trigger_and_the_ontology_fit_the_settings() -> None:
     created = trigger()
     assert created["workflow"] == {"workflow_type": "values-extract", "version": "v1"}
-    assert created["class_"] == "EquipmentItem"
-    assert created["owns"]["properties"] == ["width_cm", "depth_cm", "material", "water_supply"]
+    assert created["class_"] == "Product"
+    assert created["owns"]["properties"] == ["width_cm", "depth_cm", "material", "color"]
     units = {op["name"]: op.get("unit") for op in ontology() if op["op"] == "add_property"}
     assert units["width_cm"] == "cm" and units["material"] is None
 

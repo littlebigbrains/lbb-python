@@ -1100,6 +1100,11 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
     :class:`LbbClient`, :class:`AsyncLbbClient` and ``graph(name)`` have
     these methods; on ``graph(name)`` they address that graph. Each returns
     the JSON answer (an awaitable on :class:`AsyncLbbClient`).
+
+    ``client.workflows.named`` reads and changes the same workflows by name,
+    with typed answers. The methods here that it covers name it in their
+    docstrings; ``use_workflow_starter`` (a workflow from one of LBB's
+    templates) and ``preview_triggered_workflow`` have no named form.
     """
 
     def workflow_starters(self) -> Any:
@@ -1194,7 +1199,10 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
     def triggered_workflows(self) -> Any:
         """Every triggered workflow of the graph with its status, by starter,
         then name (``GET /v1/workflows/triggered``). The answer lists them in
-        ``starters``; validate it with ``models.TriggeredWorkflowList``."""
+        ``starters``; validate it with ``models.TriggeredWorkflowList``.
+
+        Deprecated: use ``client.workflows.named.list()`` or
+        ``client.workflows.named.all()``."""
         return self._workflows_client()._request(
             "GET", "/v1/workflows/triggered", params=self._workflows_scope()
         )
@@ -1207,6 +1215,8 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
         lag, counters, spend, last error) and the workflow's own status in
         ``details``. An unknown name answers
         ``404 triggered_workflow_not_found``.
+
+        Deprecated: use ``client.workflows.named.get(name)``.
         """
         return self._workflows_client()._request(
             "GET",
@@ -1277,6 +1287,8 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
 
         Answers at once with the triggered workflow (in ``starter``) and
         ``queued``; read :meth:`triggered_workflow` for the progress.
+
+        Deprecated: use ``client.workflows.named.run(name)``.
         """
         return self._workflows_client()._request(
             "POST",
@@ -1295,6 +1307,8 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
         ``400 workflow_pause_unsupported`` to a pause. Returns the triggered
         workflow. The same call again changes nothing, so a failed call is
         retried.
+
+        Deprecated: use ``client.workflows.named.pause(name, paused)``.
         """
         return self._workflows_client()._request(
             "POST",
@@ -1313,11 +1327,14 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
         limit: int | None = None,
         outcome: str | models.WorkflowRunOutcome | None = None,
     ) -> Any:
-        """The runs of a triggered workflow, newest first
-        (``GET /v1/workflows/triggered/runs``): :meth:`named_workflow_runs`
-        by starter and name, the compatibility view. ``search.embed`` and
+        """The runs of a triggered workflow, newest first, by starter and
+        name (``GET /v1/workflows/triggered/runs``). ``before`` is the
+        ``next_cursor`` of the previous page. ``search.embed`` and
         ``ontology.fit`` keep no runs (``400 workflow_param_invalid``).
         Validate the answer with ``models.WorkflowRunList``.
+
+        Deprecated: use ``client.workflows.named.runs(name)``, which reads
+        the earlier shape of an older server too.
         """
         return self._workflows_client()._request(
             "GET",
@@ -1334,10 +1351,11 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
         )
 
     def triggered_workflow_run(self, starter: str, name: str, run: str) -> Any:
-        """One run with its model calls in time order
-        (``GET /v1/workflows/triggered/runs/get``): :meth:`named_workflow_run`
-        by starter and name. Validate the answer with
-        ``models.WorkflowRunDetail``."""
+        """One run with its model calls in time order, by starter and name
+        (``GET /v1/workflows/triggered/runs/get``). Validate the answer with
+        ``models.WorkflowRunDetail``.
+
+        Deprecated: use ``client.workflows.named.get_run(name, run)``."""
         return self._workflows_client()._request(
             "GET",
             "/v1/workflows/triggered/runs/get",
@@ -1349,10 +1367,11 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
     def triggered_workflow_run_stats(
         self, starter: str, name: str, *, hours: int | None = None
     ) -> Any:
-        """The runs of a triggered workflow by hour
-        (``GET /v1/workflows/triggered/runs/stats``):
-        :meth:`named_workflow_run_stats` by starter and name. Validate the
-        answer with ``models.WorkflowRunStats``."""
+        """The runs of a triggered workflow by hour, by starter and name
+        (``GET /v1/workflows/triggered/runs/stats``). Validate the answer
+        with ``models.WorkflowRunStats``.
+
+        Deprecated: use ``client.workflows.named.run_stats(name)``."""
         return self._workflows_client()._request(
             "GET",
             "/v1/workflows/triggered/runs/stats",
@@ -1377,10 +1396,13 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
         values and review workflows: its origin, outcome, the queue before
         and after, what it finished, a sample, its steps and phases, and the
         usage of its model calls. Runs are kept 30 days. ``before`` is the
-        ``next_before`` of the previous page; ``limit`` is 1 to 200 (default
+        ``next_cursor`` of the previous page; ``limit`` is 1 to 200 (default
         50); ``outcome`` keeps the runs that ended so (``done``, ``more``,
         ``failed``, ``retried``, ``budget``, ``cancelled``, ``paused``).
         Validate the answer with ``models.WorkflowRunList``.
+
+        Deprecated: use ``client.workflows.named.runs(name)``, which returns
+        the model and reads the earlier shape of an older server too.
         """
         return self._workflows_client()._request(
             "GET",
@@ -1401,7 +1423,9 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
         its calls every 10 s, so the calls of a run that just ended can come
         a little later. A run the workflow does not have answers
         ``404 workflow_run_not_found``. Validate the answer with
-        ``models.WorkflowRunDetail``."""
+        ``models.WorkflowRunDetail``.
+
+        Deprecated: use ``client.workflows.named.get_run(name, run)``."""
         return self._workflows_client()._request(
             "GET",
             "/v1/workflows/named/runs/get",
@@ -1414,7 +1438,9 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
         they finished, calls, errors, tokens, cost, failed runs, the largest
         and the last queue, and the time the runs took. ``hours`` is 1 to
         168 (default 24). Validate the answer with
-        ``models.WorkflowRunStats``."""
+        ``models.WorkflowRunStats``.
+
+        Deprecated: use ``client.workflows.named.run_stats(name)``."""
         return self._workflows_client()._request(
             "GET",
             "/v1/workflows/named/runs/stats",
@@ -1438,9 +1464,11 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
 
         ``q`` keeps the documents whose name holds the text (any case);
         ``sort`` is ``review`` (the most review items first; the default),
-        ``name`` or ``recent``; ``after`` is the ``next_after`` of the
+        ``name`` or ``recent``; ``after`` is the ``next_cursor`` of the
         previous page; ``limit`` is 1 to 200 (default 50). Validate the
         answer with ``models.TriggeredDocumentPage``.
+
+        Deprecated: use ``client.workflows.named.documents(name)``.
         """
         return self._workflows_client()._request(
             "GET",
@@ -1465,6 +1493,8 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
         The suggestions an ``ontology.fit`` filed stay in the inbox. A
         ``workflow`` keeps its workflow instance ``starter.<name>`` and the
         facts its code wrote.
+
+        Deprecated: use ``client.workflows.named.delete(name, confirm=name)``.
         """
         return self._workflows_client()._request(
             "DELETE",
@@ -1489,7 +1519,7 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         api_key: str | None = None,
         graph: str | None = None,
         environment: str | None = None,
-        api_version: str = "2026-07-23",
+        api_version: str = "2026-10-21",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
@@ -4345,13 +4375,15 @@ class _EvalDatasetsNamespace:
     workflow tests, experiments and template evals share. An item of a
     ``values`` dataset holds an input ``text``, the ``values`` a correct run
     reads from it and the values it must ``leave_out``. A dataset exports as
-    a template's samples (``records`` and ``expected``)::
+    a template's samples (``records`` and ``expected``). A workflow test has
+    one dataset: saving the test again brings that dataset up to date::
 
         dataset = client.evals.datasets.create(
             "sinks", kind="values", source={"kind": "test", "id": test.id}
         )
         client.evals.datasets.add_items(dataset.id, [item])
         files = client.evals.datasets.export(dataset.id)
+        client.evals.datasets.delete(dataset.id)
     """
 
     def __init__(self, client: _BaseLbbClient) -> None:
@@ -4369,10 +4401,12 @@ class _EvalDatasetsNamespace:
         idempotency_key: str | None = None,
     ) -> models.EvalDataset:
         """Create a dataset (``POST /v1/evals/datasets``) with its first
-        ``items`` and the ``install`` it is graded with, or from a workflow
-        test's answers (``source={"kind": "test", "id": ...}``). At most 500
-        items. The client sends an idempotency key unless you pass one, so a
-        retry answers the same dataset."""
+        ``items`` and the ``install`` it is graded with, or save a workflow
+        test's answers (``source={"kind": "test", "id": ...}``). A test has
+        one dataset, which the test names (``test.dataset``): saving the test
+        again brings that dataset up to date and returns it with the same
+        id. At most 500 items. The client sends an idempotency key unless you
+        pass one, so a retry answers the same dataset."""
         body: dict[str, Any] = {"name": name, "kind": kind}
         if items is not None:
             body["items"] = [dict(item) for item in items]
@@ -4440,6 +4474,23 @@ class _EvalDatasetsNamespace:
             "GET",
             "/v1/evals/datasets/export",
             params={"id": dataset_id},
+        )
+
+    def delete(
+        self, dataset_id: str, *, idempotency_key: str | None = None
+    ) -> models.EvalDatasetDeleted:
+        """Delete a dataset and its items (``DELETE /v1/evals/datasets``).
+        A get or an export of it then raises :class:`LbbError` (404), and the
+        next save of its test makes a new dataset. A repeated delete returns
+        the same answer. The client sends an idempotency key unless you pass
+        one, so a retry is safe."""
+        return self._client._model_request(
+            models.EvalDatasetDeleted,
+            "DELETE",
+            "/v1/evals/datasets",
+            params={"id": dataset_id},
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("eval-datasets.delete"),
         )
 
 
@@ -5048,17 +5099,17 @@ class _ModelTrialsNamespace:
 class _WorkflowTestsNamespace:
     """Workflow tests: a ``values.extract`` workflow runs on chosen inputs and
     writes nothing to the graph. A person answers each value, and the answers
-    export as a dataset. A test goes ``queued``, ``running``, then ``done``,
-    ``failed`` or ``cancelled``::
+    save as the test's one Evals dataset. A test goes ``queued``,
+    ``running``, then ``done``, ``failed`` or ``cancelled``::
 
-        started = client.workflows.tests.create(
-            workflow={"starter": "values.extract", "name": "sinks"}, sample=6
-        )
+        started = client.workflows.tests.create(name="sinks", sample=6)
         test = client.workflows.tests.wait(started.id)
         client.workflows.tests.answer(
             test.id, test.inputs[0].iri, "width_cm", {"decision": "correct", "value": 45}
         )
-        dataset = client.workflows.tests.dataset(test.id)
+        dataset = client.evals.datasets.create(
+            "sinks answers", source={"kind": "test", "id": test.id}
+        )
     """
 
     def __init__(self, client: _BaseLbbClient) -> None:
@@ -5067,24 +5118,23 @@ class _WorkflowTestsNamespace:
     def create(
         self,
         *,
-        workflow: Mapping[str, str] | None = None,
+        name: str | None = None,
         install: Mapping[str, Any] | None = None,
         iris: Sequence[str] | None = None,
         sample: int | None = None,
         idempotency_key: str | None = None,
     ) -> models.WorkflowTest:
-        """Start a test (``POST /v1/workflows/triggered/tests``): of a
-        workflow of the graph (``workflow``: its ``starter`` and ``name``), or
-        of a workflow to create (``install``: the body of a create), on
-        ``iris`` (at most 20) or a ``sample`` of the watched class (default
-        6). The client sends an idempotency key unless you pass one, so a
-        retry answers the same test. Raises :class:`LbbError`
-        ``workflow_budget_exceeded`` (429) when the test may cost more than
-        the environment's budget has left, ``conflict`` (409) while a test of
-        the workflow is open."""
+        """Start a test (``POST /v1/workflows/named/tests``): of a workflow
+        of the graph (``name``), or of a workflow to create (``install``: the
+        body of a create), on ``iris`` (at most 20) or a ``sample`` of the
+        watched class (default 6). The client sends an idempotency key
+        unless you pass one, so a retry answers the same test. Raises
+        :class:`LbbError` ``workflow_budget_exceeded`` (429) when the test
+        may cost more than the environment's budget has left, ``conflict``
+        (409) while a test of the workflow is open."""
         body: dict[str, Any] = {}
-        if workflow is not None:
-            body["workflow"] = dict(workflow)
+        if name is not None:
+            body["name"] = name
         if install is not None:
             body["install"] = dict(install)
         if iris is not None:
@@ -5094,7 +5144,7 @@ class _WorkflowTestsNamespace:
         return self._client._model_request(
             models.WorkflowTest,
             "POST",
-            "/v1/workflows/triggered/tests",
+            "/v1/workflows/named/tests",
             body=body,
             idempotency_key=idempotency_key
             or self._client.idempotency_key("workflow-tests.create"),
@@ -5102,30 +5152,31 @@ class _WorkflowTestsNamespace:
 
     def get(self, test_id: str) -> models.WorkflowTest:
         """One test with its inputs' texts and its results
-        (``GET /v1/workflows/triggered/tests/get``)."""
+        (``GET /v1/workflows/named/tests/get``)."""
         return self._client._model_request(
             models.WorkflowTest,
             "GET",
-            "/v1/workflows/triggered/tests/get",
+            "/v1/workflows/named/tests/get",
             params={"id": test_id},
         )
 
     def list(
         self,
         *,
-        starter: str | None = None,
         name: str | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> models.WorkflowTestList:
         """One page of the graph's tests, newest first, without texts and
-        results (``GET /v1/workflows/triggered/tests``). Pass ``next_cursor``
-        as ``cursor`` for the next page; ``limit`` is 1 to 50 (default 10)."""
+        results (``GET /v1/workflows/named/tests``): every test, or the
+        tests of the workflow ``name``. Pass ``next_cursor`` as ``cursor``
+        for the next page; ``limit`` is 1 to 50 (default 10). :meth:`all`
+        reads every page."""
         return self._client._model_request(
             models.WorkflowTestList,
             "GET",
-            "/v1/workflows/triggered/tests",
-            params={"starter": starter, "name": name, "limit": limit, "cursor": cursor},
+            "/v1/workflows/named/tests",
+            params={"name": name, "limit": limit, "cursor": cursor},
         )
 
     def answer(
@@ -5138,13 +5189,13 @@ class _WorkflowTestsNamespace:
         idempotency_key: str | None = None,
     ) -> models.WorkflowTest:
         """A person's answer to one value of a read input
-        (``POST /v1/workflows/triggered/tests/answer``): ``accept``,
+        (``POST /v1/workflows/named/tests/answer``): ``accept``,
         ``reject``, ``correct`` with the right ``value``, or ``cant_tell``;
         ``None`` removes the answer. Writes nothing to the graph."""
         return self._client._model_request(
             models.WorkflowTest,
             "POST",
-            "/v1/workflows/triggered/tests/answer",
+            "/v1/workflows/named/tests/answer",
             body={
                 "id": test_id,
                 "iri": iri,
@@ -5157,25 +5208,317 @@ class _WorkflowTestsNamespace:
 
     def cancel(self, test_id: str) -> models.WorkflowTest:
         """Stop a queued or running test
-        (``POST /v1/workflows/triggered/tests/cancel``). What it read stays;
+        (``POST /v1/workflows/named/tests/cancel``). What it read stays;
         a test that ended stays as it is, so a retry is safe."""
         return self._client._model_request(
             models.WorkflowTest,
             "POST",
-            "/v1/workflows/triggered/tests/cancel",
+            "/v1/workflows/named/tests/cancel",
             params={"id": test_id},
             options={"retry": True},
         )
 
-    def dataset(self, test_id: str) -> models.WorkflowTestDataset:
-        """The test's answers as a dataset in the shape of a template's
-        samples: ``records`` and ``expected``
-        (``GET /v1/workflows/triggered/tests/dataset``)."""
+
+# How long ``workflows.tests.wait`` reads a test before it raises
+# :class:`TimeoutError`, in seconds (the TypeScript SDK's 10 minutes).
+_WORKFLOW_TEST_WAIT_TIMEOUT = 600.0
+
+
+@dataclass(frozen=True)
+class _EarlierList:
+    """The names a workflow list had before the list envelope (a server
+    older than ``Lbb-Version`` 2026-10-21): the field of the items, the field
+    of the next page's cursor, and the query parameter that took the
+    cursor."""
+
+    items: str
+    next: str | None = None
+    param: str | None = None
+
+
+_EARLIER_WORKFLOWS = _EarlierList("workflows")
+_EARLIER_RUNS = _EarlierList("runs", "next_before", "before")
+_EARLIER_QUEUE = _EarlierList("items", "next_after", "after")
+_EARLIER_DOCUMENTS = _EarlierList("documents", "next_after", "after")
+
+
+def _is_earlier_list(payload: Any, earlier: _EarlierList) -> bool:
+    return (
+        isinstance(payload, Mapping)
+        and not isinstance(payload.get("data"), list)
+        and isinstance(payload.get(earlier.items), list)
+    )
+
+
+def _earlier_params(
+    params: Mapping[str, Any], earlier: _EarlierList
+) -> dict[str, Any] | None:
+    """The query to send again to a server before the list envelope, which
+    ignored ``cursor``: the cursor under its earlier name. ``None`` when the
+    request had no cursor."""
+    if earlier.param is None or params.get("cursor") is None:
+        return None
+    again = {key: value for key, value in params.items() if key != "cursor"}
+    again[earlier.param] = params["cursor"]
+    return again
+
+
+def _list_envelope(payload: Mapping[str, Any], earlier: _EarlierList) -> dict[str, Any]:
+    """A workflow list in its earlier shape, in the list envelope."""
+    rest = {key: value for key, value in payload.items() if key != earlier.items}
+    after = rest.pop(earlier.next, None) if earlier.next is not None else None
+    cursor = None if after is None or isinstance(after, bool) else str(after)
+    envelope: dict[str, Any] = {
+        "object": "list",
+        "data": payload[earlier.items],
+        "has_more": cursor is not None,
+    }
+    if cursor is not None:
+        envelope["next_cursor"] = cursor
+    return {**envelope, **rest}
+
+
+class _NamedWorkflowsNamespace:
+    """The workflows of the graph by name (``/v1/workflows/named``).
+
+    A workflow has a target workflow type, shards, settings and one trigger:
+    a watch on a class, or a content trigger on the uploads of some media
+    types. The workflows LBB runs (documents, values, review) list here too,
+    with their ``lbb.*`` target. ``list``, ``runs``, ``queue`` and
+    ``documents`` answer in the list envelope (``data``, ``has_more``,
+    ``next_cursor``): pass ``next_cursor`` as ``cursor`` for the next page,
+    or iterate every item with ``all``, ``all_runs`` and ``all_documents``::
+
+        for workflow in client.workflows.named.all():
+            print(workflow.name, workflow.status.state)
+        page = client.workflows.named.runs("notes", outcome="failed")
+
+    A server older than the envelope answers the earlier shapes; the client
+    converts them, so each method returns the same models.
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def _list(
+        self,
+        model_cls: type[ModelT],
+        path: str,
+        params: Mapping[str, Any],
+        earlier: _EarlierList,
+    ) -> Any:
+        raise NotImplementedError
+
+    def list(
+        self, *, limit: int | None = None, cursor: str | None = None
+    ) -> models.NamedWorkflowList:
+        """One page of the graph's workflows by name, with their status
+        (``GET /v1/workflows/named``): at most ``limit`` (1 to 200, default
+        100) after ``cursor``, the ``next_cursor`` of the page before."""
+        return self._list(
+            models.NamedWorkflowList,
+            "/v1/workflows/named",
+            {"limit": limit, "cursor": cursor},
+            _EARLIER_WORKFLOWS,
+        )
+
+    def get(self, name: str) -> models.NamedWorkflow:
+        """One workflow: its target, shards, routing, window, trigger,
+        status and each shard's engine state (``GET /v1/workflows/named``
+        with ``name``). A name the graph does not have raises
+        :class:`LbbError` ``named_workflow_not_found`` (404)."""
         return self._client._model_request(
-            models.WorkflowTestDataset,
+            models.NamedWorkflow,
             "GET",
-            "/v1/workflows/triggered/tests/dataset",
-            params={"id": test_id},
+            "/v1/workflows/named",
+            params={"name": name},
+        )
+
+    def put(
+        self, body: models.NamedWorkflowRequest | Mapping[str, Any]
+    ) -> models.NamedWorkflow:
+        """Create or change a workflow of your worker
+        (``PUT /v1/workflows/named``): ``name``, ``workflow`` (the
+        ``workflow_type`` and ``version`` of your worker), one trigger in
+        ``triggers`` (a ``watch``, or a ``content`` trigger with its
+        ``media_types``), and optionally ``shards`` (1 to 16), ``route_by``,
+        ``window`` (1 to 128, default 4), ``batch`` and ``owns``. A change of
+        ``shards`` or ``route_by`` needs every shard's inbox empty
+        (``409 workflow_shards_busy``). The same request again changes
+        nothing, so a failed call is retried."""
+        return self._client._model_request(
+            models.NamedWorkflow,
+            "PUT",
+            "/v1/workflows/named",
+            body=body if isinstance(body, BaseModel) else dict(body),
+            options={"retry": True},
+        )
+
+    def delete(self, name: str, *, confirm: str) -> models.NamedWorkflowDeleteResponse:
+        """Delete a workflow's triggers (``DELETE /v1/workflows/named``);
+        ``confirm`` repeats the name. What it wrote stays, and so do the
+        engine identities of your worker's type."""
+        return self._client._model_request(
+            models.NamedWorkflowDeleteResponse,
+            "DELETE",
+            "/v1/workflows/named",
+            params={"name": name, "confirm": confirm},
+        )
+
+    def run(self, name: str) -> models.NamedWorkflowRunResponse:
+        """Run now (``POST /v1/workflows/named/run``): the watch reads every
+        instance of its class again and sends them with origin ``manual``; a
+        content trigger reads its content log again from the start. Answers
+        at once with ``queued``."""
+        return self._client._model_request(
+            models.NamedWorkflowRunResponse,
+            "POST",
+            "/v1/workflows/named/run",
+            params={"name": name},
+        )
+
+    def requeue(
+        self, name: str, request: models.WorkflowRequeueRequest | Mapping[str, Any]
+    ) -> models.WorkflowRequeueResponse:
+        """Send instances a turn of a shard could not do again later
+        (``POST /v1/workflows/named/requeue``): they go back into the
+        watch's queue on the asking shard, with origin ``requeue`` and a
+        backoff of 1, 4, then 16 minutes. The server takes the attempt from
+        the asking turn's message; past 3 the instances are exhausted and
+        not sent again. The same request again changes nothing more, so a
+        failed call is retried."""
+        return self._client._model_request(
+            models.WorkflowRequeueResponse,
+            "POST",
+            "/v1/workflows/named/requeue",
+            params={"name": name},
+            body=request if isinstance(request, BaseModel) else dict(request),
+            options={"retry": True},
+        )
+
+    def pause(self, name: str, paused: bool = True) -> models.NamedWorkflow:
+        """Pause (``paused=True``, the default) or resume a workflow
+        (``POST /v1/workflows/named/pause``): its trigger, and every shard
+        of your worker's type. A resume catches up. The same call again
+        changes nothing, so a failed call is retried."""
+        return self._client._model_request(
+            models.NamedWorkflow,
+            "POST",
+            "/v1/workflows/named/pause",
+            params={"name": name},
+            body={"paused": paused},
+            options={"retry": True},
+        )
+
+    def queue(
+        self,
+        name: str,
+        *,
+        trigger: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> models.NamedWorkflowQueue:
+        """What the workflow's trigger has not sent yet
+        (``GET /v1/workflows/named/queue``): each waiting instance with its
+        reason, shard and origin, the pass in progress, and per shard its
+        message in flight and its first unfinished turns. The items are a
+        page in the list envelope (``limit`` 1 to 100, default 50); the
+        queue moves as it drains, so a page is a view at one time.
+        ``trigger`` names the trigger (the workflow's own when absent)."""
+        return self._list(
+            models.NamedWorkflowQueue,
+            "/v1/workflows/named/queue",
+            {"name": name, "trigger": trigger, "cursor": cursor, "limit": limit},
+            _EARLIER_QUEUE,
+        )
+
+    def runs(
+        self,
+        name: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        outcome: str | models.WorkflowRunOutcome | None = None,
+    ) -> models.WorkflowRunList:
+        """One page of the workflow's runs, newest first
+        (``GET /v1/workflows/named/runs``).
+
+        A run is a turn of one of its shards (each attempt: one that failed
+        and runs again is ``retried``), or a step of LBB's own document,
+        values and review workflows: its origin, outcome, the queue before
+        and after, what it finished, a sample, its steps and phases, and the
+        usage of its model calls. Runs are kept 30 days. ``limit`` is 1 to
+        200 (default 50); ``outcome`` keeps the runs that ended so
+        (``done``, ``more``, ``failed``, ``retried``, ``budget``,
+        ``cancelled``, ``paused``)."""
+        return self._list(
+            models.WorkflowRunList,
+            "/v1/workflows/named/runs",
+            {
+                "name": name,
+                "cursor": cursor,
+                "limit": limit,
+                "outcome": _enum_value(outcome),
+            },
+            _EARLIER_RUNS,
+        )
+
+    def get_run(self, name: str, run: str) -> models.WorkflowRunDetail:
+        """One run with its model calls in time order, at most 1,000
+        (``GET /v1/workflows/named/runs/get``). A node writes its calls every
+        10 s, so the calls of a run that just ended can come a little later.
+        A run the workflow does not have raises :class:`LbbError`
+        ``workflow_run_not_found`` (404)."""
+        return self._client._model_request(
+            models.WorkflowRunDetail,
+            "GET",
+            "/v1/workflows/named/runs/get",
+            params={"name": name, "run": run},
+        )
+
+    def run_stats(self, name: str, *, hours: int | None = None) -> models.WorkflowRunStats:
+        """The workflow's runs by hour, oldest first, up to the current hour
+        (``GET /v1/workflows/named/runs/stats``): runs, what they finished,
+        calls, errors, tokens, cost, failed runs, the largest and the last
+        queue, and the time the runs took. ``hours`` is 1 to 168 (default
+        24)."""
+        return self._client._model_request(
+            models.WorkflowRunStats,
+            "GET",
+            "/v1/workflows/named/runs/stats",
+            params={"name": name, "hours": hours},
+        )
+
+    def documents(
+        self,
+        name: str,
+        *,
+        q: str | None = None,
+        sort: str | models.TriggeredDocumentSort | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> models.TriggeredDocumentPage:
+        """One page of the documents of a ``documents.link`` or
+        ``documents.map`` workflow (``GET /v1/workflows/named/documents``),
+        rows as in its ``details.documents`` (which lists only the 20 with
+        the most review items), and ``total``, the documents that match
+        ``q``.
+
+        ``q`` keeps the documents whose name holds the text (any case);
+        ``sort`` is ``review`` (the most review items first; the default),
+        ``name`` or ``recent``; ``limit`` is 1 to 200 (default 50). Another
+        workflow raises :class:`LbbError` ``workflow_param_invalid`` (400)."""
+        return self._list(
+            models.TriggeredDocumentPage,
+            "/v1/workflows/named/documents",
+            {
+                "name": name,
+                "q": q,
+                "sort": _enum_value(sort),
+                "cursor": cursor,
+                "limit": limit,
+            },
+            _EARLIER_DOCUMENTS,
         )
 
 
@@ -5183,6 +5526,13 @@ def _workflow_test_open(test: Any) -> bool:
     status = getattr(test, "status", None)
     value = getattr(status, "value", status)
     return value in ("queued", "running")
+
+
+def _workflow_test_timeout(test_id: str, test: Any) -> TimeoutError:
+    """The error ``wait`` raises when the test is still open at its timeout."""
+    return TimeoutError(
+        f"workflow test {test_id} is still {_enum_value(getattr(test, 'status', None))}"
+    )
 
 
 class _ModelSwitchesNamespace:

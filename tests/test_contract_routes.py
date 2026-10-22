@@ -49,6 +49,12 @@ _CLIENT_MODULES = (
 # routes — dynamic paths would be invisible here and are covered by the methods
 # that build them).
 _REQUEST_CALL = re.compile(r'_request\(\s*"([A-Z]+)"\s*,\s*"([^"]+)"')
+# `self._client._model_request(models.X, "GET", "/v1/…"` names its model
+# first; the workflow lists read through `self._list(models.X, "/v1/…"`.
+_MODEL_REQUEST_CALL = re.compile(
+    r'_model_request\(\s*[\w.]+\s*,\s*"([A-Z]+)"\s*,\s*"([^"]+)"'
+)
+_LIST_CALL = re.compile(r'\._list\(\s*models\.\w+\s*,\s*"([^"]+)"')
 
 _HTTP_METHODS = {"get", "head", "post", "put", "patch", "delete"}
 
@@ -72,6 +78,8 @@ def _spec_operations() -> set[tuple[str, str]]:
 def _client_routes() -> set[tuple[str, str]]:
     source = "\n".join(path.read_text() for path in _CLIENT_MODULES if path.is_file())
     routes = set(_REQUEST_CALL.findall(source))
+    routes.update(_MODEL_REQUEST_CALL.findall(source))
+    routes.update(("GET", path) for path in _LIST_CALL.findall(source))
     workflow = (_CLIENT_PACKAGE / "_workflow_execution.py").read_text()
     routes.update(
         ("POST", path)
@@ -91,6 +99,12 @@ class ContractRouteCoverage(unittest.TestCase):
         # Guards the extraction itself: if the client were refactored to build
         # routes dynamically, an empty set would make the coverage test vacuous.
         self.assertTrue(_client_routes(), "no _request routes parsed from the client package")
+        routes = _client_routes()
+        for route in (
+            ("POST", "/v1/workflows/named/tests"),
+            ("DELETE", "/v1/evals/datasets"),
+        ):
+            self.assertIn(route, routes, "a typed `_model_request` route was not parsed")
 
     def test_every_client_route_exists_in_contract(self) -> None:
         spec = _spec_operations() | _NATIVE_PROTOCOL_ROUTES
@@ -158,6 +172,11 @@ class ContractRouteCoverage(unittest.TestCase):
             "_QueryNamespace": "_AsyncQueryNamespace",
             "_SchemaNamespace": "_AsyncSchemaNamespace",
             "_EntityNamespace": "_AsyncEntityNamespace",
+            "_NamedWorkflowsNamespace": "_AsyncNamedWorkflowsNamespace",
+            "_EvalDatasetsNamespace": "_AsyncEvalDatasetsNamespace",
+            "_WorkflowTestsNamespace": "_AsyncWorkflowTestsNamespace",
+            "_ModelTrialsNamespace": "_AsyncModelTrialsNamespace",
+            "_ModelSwitchesNamespace": "_AsyncModelSwitchesNamespace",
         }
         missing: list[str] = []
         mismatches: list[str] = []

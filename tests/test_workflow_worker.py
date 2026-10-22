@@ -25,6 +25,7 @@ from lbb.workflows import (
     WorkflowResult,
     WorkflowStepContext,
     WorkflowWorker,
+    capture_activities,
     entity_ref,
     fan_in_identity,
     is_activity_refused,
@@ -403,6 +404,103 @@ def test_activity_calls_of_concurrent_turns_name_their_own_run() -> None:
     assert sorted(body["workflow"]["run_id"] for body in asked) == ["run-1", "run-2"]
     for done in fake.bodies("complete"):
         assert done["usage"]["calls"] == 1
+
+
+def answer_activities(fake: Fake) -> None:
+    used = {"model": "m", "tokens_in": 1, "tokens_out": 1, "cost_micro_usd": 1, "cached": False}
+    answers = {
+        "reason": {"value": {}, **used},
+        "decide": {"answers": {}, **used},
+        "embed": {"vectors": [[0.1]], "dim": 1, **used},
+    }
+    for name, answer in answers.items():
+        fake.routes[f"/v1/workflows/activities/{name}"] = (
+            lambda body, answer=answer: httpx.Response(200, json=answer)
+        )
+
+
+def activity_calls(fake: Fake) -> list[tuple[Any, Any, Any]]:
+    return [
+        (body.get("effect_id"), body.get("workflow"), body.get("test"))
+        for path, body in fake.calls
+        if "/activities/" in path
+    ]
+
+
+RUN = {"identity": "agent-1", "turn": 1, "run_id": "run-1"}
+OBJECT = {"type": "object"}
+QUESTIONS = {"kind": {"instructions": "?", "criteria": {"a": "a", "b": "b"}}}
+
+
+def test_a_call_in_a_step_names_the_steps_key_also_with_an_id_made_from_it() -> None:
+    fake = Fake([task()])
+    answer_activities(fake)
+
+    async def main() -> None:
+        async with fake.client() as client:
+            lbb = lbb_activities(client)
+
+            @workflow(name="counter", version="v1", initial_state={})
+            async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+                async def define(s: WorkflowStepContext) -> None:
+                    await lbb.reason("p", OBJECT, effect_id=s.effect_id)
+                    # More calls of one step, with ids made from the step's.
+                    await lbb.decide({}, QUESTIONS, effect_id=f"{s.effect_id}.2")
+                    await lbb.embed(["t"], effect_id=f"{s.effect_id}:texts")
+                    # An id that only starts with the step's text names no step.
+                    await lbb.reason("p", OBJECT, effect_id=f"{s.effect_id}x")
+
+                async def page(s: WorkflowStepContext) -> None:
+                    await lbb.reason("p", OBJECT, effect_id=f"{s.effect_id}.1")
+
+                await ctx.step("define", define)
+                # A step key with a dot: the longest step id that starts the call's wins.
+                await ctx.step("page", lambda s: None)
+                await ctx.step("page.2", page)
+                # A call outside a step names the turn and no step.
+                await lbb.reason("p", OBJECT)
+                return WorkflowResult(state=state)
+
+            assert await WorkflowWorker(client, [counter], worker="w").run_once()
+            # The steps go with the turn: outside a turn a call names no run and no step.
+            await lbb.reason("p", OBJECT, effect_id="prefix-1/define")
+
+    asyncio.run(main())
+    assert [(effect_id, workflow) for effect_id, workflow, _ in activity_calls(fake)] == [
+        ("prefix-1/define", {**RUN, "step": "define"}),
+        ("prefix-1/define.2", {**RUN, "step": "define"}),
+        ("prefix-1/define:texts", {**RUN, "step": "define"}),
+        ("prefix-1/definex", RUN),
+        ("prefix-1/page.2.1", {**RUN, "step": "page.2"}),
+        (None, RUN),
+        ("prefix-1/define", None),
+    ]
+
+
+def test_a_captures_calls_in_a_step_name_the_step_as_the_live_calls_do() -> None:
+    fake = Fake([task()])
+    answer_activities(fake)
+
+    async def main() -> None:
+        async with fake.client() as client:
+            capture = capture_activities(lbb_activities(client), workflow="sinks")
+
+            @workflow(name="counter", version="v1", initial_state={})
+            async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+                async def define(s: WorkflowStepContext) -> None:
+                    await capture.activities.reason("p", OBJECT, effect_id=s.effect_id)
+                    await capture.activities.decide({}, QUESTIONS, effect_id=f"{s.effect_id}.2")
+
+                await ctx.step("define", define)
+                return WorkflowResult(state=state)
+
+            assert await WorkflowWorker(client, [counter], worker="w").run_once()
+
+    asyncio.run(main())
+    assert activity_calls(fake) == [
+        ("prefix-1/define", {**RUN, "step": "define"}, {"workflow": "sinks"}),
+        ("prefix-1/define.2", {**RUN, "step": "define"}, {"workflow": "sinks"}),
+    ]
 
 
 def test_write_owned_to_another_graph_carries_no_fence() -> None:

@@ -9,7 +9,9 @@ make the same model calls (prompts, schema, questions) and the same outputs:
 values, sources, review items and counters. Then both are graded against the
 samples' answer key, and the bar of 2.6.8 holds. One rule differs by design:
 LBB's values.extract converts a number the text states in another unit, and
-the template sends it to review; record ``S 9.9`` holds such a number.
+the template sends it to review. The width and depth of the sample ``T-160``
+and the width of ``S 9.9`` are such numbers; the grades leave them out for
+both paths.
 """
 
 from __future__ import annotations
@@ -42,8 +44,35 @@ def _evals() -> Path | None:
 EVALS = _evals()
 pytestmark = pytest.mark.skipif(EVALS is None, reason="the template evals are not in this tree")
 SAMPLES = EXAMPLES / "values_extract" / "samples"
-# The record of a number in another unit: LBB converts it, the template reviews it.
-CONVERTED = "S 9.9"
+# The values a text states in another unit of the property's kind: LBB
+# converts them to the property's unit and writes them, the port sends them to
+# review. ``shown`` is the value as the text states it, ``written`` the value
+# LBB writes.
+CONVERTED = [
+    {"instance": "T-160", "property": "width_cm", "shown": "1.6 m", "written": 160},
+    {"instance": "T-160", "property": "depth_cm", "shown": "800 mm", "written": 80},
+    {"instance": "S 9.9", "property": "width_cm", "shown": "600 mm", "written": 60},
+]
+
+
+def _converted(instance: Any, prop: Any) -> bool:
+    return any(c["instance"] == instance and c["property"] == prop for c in CONVERTED)
+
+
+def _comparable(outputs: dict[str, Any]) -> dict[str, Any]:
+    """The outputs without the converted values and their sources."""
+    return {
+        name: {
+            "values": {k: v for k, v in o["values"].items() if not _converted(name, k)},
+            "sources": [s for s in o["sources"] if not _converted(name, s["property"])],
+        }
+        for name, o in outputs.items()
+    }
+
+
+def _besides(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The review items without those of the converted values."""
+    return [i for i in items if not _converted(i["instance"], i["question"]["property"])]
 
 
 def _load() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -88,7 +117,7 @@ def _run() -> dict[str, Any]:
         for r in records:
             if f"<{iris[r['name']]}>" not in query:
                 continue
-            row = {"s": iris[r["name"]], "class": "EquipmentItem", "label": r["name"]}
+            row = {"s": iris[r["name"]], "class": fixture["install"]["class"], "label": r["name"]}
             if r.get("text") is not None:
                 row["text"] = r["text"]
             row.update({k: str(v) for k, v in (r.get("box") or {}).items()})
@@ -264,21 +293,46 @@ def test_the_port_makes_the_model_calls_of_lbbs_values_extract() -> None:
     run = _run()
     assert run["reason"] == rust["reason"]
 
-    def width(calls: list[dict[str, Any]]) -> str:
-        decision = next(c for c in calls if c["instance"] == CONVERTED and c["kind"] == "decide")
+    def question(calls: list[dict[str, Any]], instance: str, prop: str) -> str:
+        decision = next(c for c in calls if c["instance"] == instance and c["kind"] == "decide")
         return next(
             q["instructions"]
             for q in decision["questions"].values()
-            if "Property: width_cm" in q["instructions"]
+            if f"\nProperty: {prop} " in q["instructions"]
         )
 
     # The question about a converted number shows the conversion in LBB's
-    # version only: the decision calls of S 9.9 differ there, and only there.
-    assert "\nValue: 600 mm (written as 60 cm)\n" in width(rust["calls"])
-    assert "\nValue: 600\n" in width(run["calls"])
+    # version only: those questions differ, and only those.
+    for c in CONVERTED:
+        shown, written = c["shown"], c["written"]
+        assert f"\nValue: {shown} (written as {written} cm)\n" in question(
+            rust["calls"], c["instance"], c["property"]
+        )
+        number = shown.split(" ")[0]
+        assert f"\nValue: {number}\n" in question(run["calls"], c["instance"], c["property"])
+
+    def converted_question(instance: str, instructions: str) -> bool:
+        return any(
+            c["instance"] == instance and f"\nProperty: {c['property']} " in instructions
+            for c in CONVERTED
+        )
 
     def same(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [c for c in calls if not (c["instance"] == CONVERTED and c["kind"] == "decide")]
+        """Every call, each decision call without its questions about converted
+        numbers: the other questions of those records compare too."""
+        return [
+            {
+                **c,
+                "questions": {
+                    qid: q
+                    for qid, q in c["questions"].items()
+                    if not converted_question(c["instance"], q["instructions"])
+                },
+            }
+            if c["kind"] == "decide"
+            else c
+            for c in calls
+        ]
 
     assert same(run["calls"]) == same(rust["calls"])
     counts = {
@@ -294,31 +348,30 @@ def test_the_port_writes_the_values_sources_and_review_items_of_lbbs_values_extr
     properties = fixture["install"]["properties"]
     outputs = _normal(run["outputs"], properties)
     rust_outputs = _normal(rust["outputs"], properties)
-    converted, rust_converted = outputs.pop(CONVERTED), rust_outputs.pop(CONVERTED)
-    assert outputs == rust_outputs
-
-    def besides(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [i for i in items if i["instance"] != CONVERTED]
-
-    assert besides(run["review"]) == besides(rust["review"])
-    # S 9.9: LBB writes 60 cm with the stated 600 mm; the port writes the
-    # material only and files the width for review, with LBB's reason.
-    assert rust_converted["values"]["width_cm"] == 60
-    assert "width_cm" not in converted["values"]
-    assert converted["values"]["material"] == "Keramik"
-    (item,) = [i for i in run["review"] if i["instance"] == CONVERTED]
-    assert item["rationale"].startswith(
-        "The unit is not confirmed: the text states mm; the property holds cm."
-    )
-    assert [i for i in rust["review"] if i["instance"] == CONVERTED] == []
+    assert _comparable(outputs) == _comparable(rust_outputs)
+    assert _besides(run["review"]) == _besides(rust["review"])
+    # A converted value: LBB writes it in the property's unit; the port does
+    # not write it and files it for review, with LBB's reason.
+    for c in CONVERTED:
+        name, prop = c["instance"], c["property"]
+        assert rust_outputs[name]["values"][prop] == c["written"], c
+        assert prop not in outputs[name]["values"], c
+        (item,) = [
+            i for i in run["review"] if i["instance"] == name and i["question"]["property"] == prop
+        ]
+        unit = c["shown"].split(" ")[1]
+        assert item["rationale"].startswith(
+            f"The unit is not confirmed: the text states {unit}; the property holds cm."
+        )
+    assert [i for i in rust["review"] if _converted(i["instance"], i["question"]["property"])] == []
     # The counters, but the commits (LBB commits per instance, the port per
-    # turn) and the converted width, which LBB writes and the port reviews.
+    # turn) and the converted values, which LBB writes and the port reviews.
     counters = {
         k: v for k, v in run["state"].items() if v != 0 and k not in ("commits", "removed")
     }
     expected = {k: v for k, v in rust["counters"].items() if k != "commits"}
-    expected["written"] -= 1
-    expected["review"] = expected.get("review", 0) + 1
+    expected["written"] -= len(CONVERTED)
+    expected["review"] = expected.get("review", 0) + len(CONVERTED)
     assert counters == expected
     # The refused instance goes back to the watch; LBB's counts it failed.
     name_of = {iri: name for name, iri in rust["iris"].items()}
@@ -367,19 +420,34 @@ def _grade(
 def test_the_grades_of_both_paths_on_the_samples_meet_the_bar() -> None:
     fixture, rust = _load()
     run = _run()
-    key = json.loads((SAMPLES / "expected.json").read_text())["records"]
+    full_key = json.loads((SAMPLES / "expected.json").read_text())["records"]
     prices = fixture["prices_micro_usd"]
     samples = [r["name"] for r in fixture["records"] if r.get("sample")]
     proposed = sum(len(fixture["answers"].get(n, {}).get("values") or []) for n in samples)
+    # The key's values the text states in another unit are the converted ones,
+    # and LBB writes each as the key states it, in the property's unit.
+    stated = [(r["name"], v["property"]) for r in full_key for v in r["values"] if v.get("stated")]
+    assert stated == [(c["instance"], c["property"]) for c in CONVERTED if c["instance"] in samples]
+    for r in full_key:
+        for v in r["values"]:
+            if v.get("stated"):
+                assert rust["outputs"][r["name"]]["values"][v["property"]] == v["value"]
+    # The grades leave the converted values out for both paths: the rule that
+    # differs by design.
+    key = [
+        {**r, "values": [v for v in r["values"] if not _converted(r["name"], v["property"])]}
+        for r in full_key
+    ]
 
     def grade_of(
         outputs: dict[str, Any], calls: list[dict[str, Any]], items: list[dict[str, Any]]
     ) -> dict[str, Any]:
         mine = [c for c in calls if c["instance"] in samples]
+        written = _comparable(outputs)
         return _grade(
             key,
-            {n: outputs[n]["values"] for n in samples},
-            sum(i["instance"] in samples for i in items),
+            {n: written[n]["values"] for n in samples},
+            sum(i["instance"] in samples for i in _besides(items)),
             proposed,
             sum(prices[c["kind"]] for c in mine),
             len(samples),
@@ -395,10 +463,10 @@ def test_the_grades_of_both_paths_on_the_samples_meet_the_bar() -> None:
     # The grades the record holds (docs/testing/retrieval-quality-ledger.md).
     assert rust_grade == {
         "precision": 1,
-        "recall": 0.9,
-        "review_share": 0.125,
+        "recall": 0.8333,
+        "review_share": 0.1667,
         "cost_per_instance_micro_usd": 1100,
-        "written": 18,
-        "correct": 18,
-        "expected": 20,
+        "written": 15,
+        "correct": 15,
+        "expected": 18,
     }

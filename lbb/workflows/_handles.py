@@ -191,15 +191,19 @@ class WorkflowBlobsNamespace:
 
 class WorkflowNamespace:
     """``client.workflows`` of an :class:`~lbb.AsyncLbbClient`: start an
-    instance of a workflow definition, address one by its id, the blobs of
-    the workflow engine, and the tests of a workflow."""
+    instance of a workflow definition, address one by its id, the workflows
+    of the graph by name, the blobs of the workflow engine, and the tests of
+    a workflow."""
 
     def __init__(self, client: AsyncLbbClient) -> None:
         # The client module imports this one when it needs it; this import
         # runs once both are loaded.
-        from .._async_client import _AsyncWorkflowTestsNamespace
+        from .._async_client import _AsyncNamedWorkflowsNamespace, _AsyncWorkflowTestsNamespace
 
         self._client = client
+        #: The workflows of the graph by name: list, read, change, run,
+        #: pause, delete, and their queue, runs and documents.
+        self.named = _AsyncNamedWorkflowsNamespace(client)
         #: Blobs: large step outputs and shared reads, keyed by their SHA-256.
         self.blobs = WorkflowBlobsNamespace(client)
         #: Tests: a workflow runs on chosen inputs and writes nothing; a

@@ -224,10 +224,13 @@ class _Program:
                 action.get("message", "raised")
             )
         elif "reason" in action:
+            # `effect_id`: true for the step's own, text for an id made from it.
+            made = action.get("effect_id")
+            suffix = made if isinstance(made, str) else ""
             await self.activities.reason(
                 action["reason"]["prompt"],
                 action["reason"]["schema"],
-                effect_id=step.effect_id if action.get("effect_id") else None,
+                effect_id=f"{step.effect_id}{suffix}" if made else None,
             )
         elif "blob_put" in action:
             await self.client.workflows.blobs.put(action["blob_put"], workflow_id=ctx.workflow_id)

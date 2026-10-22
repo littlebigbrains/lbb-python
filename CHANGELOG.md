@@ -2,8 +2,79 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- The earlier test routes, `/v1/workflows/triggered/tests*`, answer as
+  before until the release after the next one; their `starter` list
+  filter is ignored. An unknown workflow name answers `404
+  named_workflow_not_found` (before: `triggered_workflow_not_found`,
+  the same status).
+- A second save of a test keeps the items added to its dataset by hand,
+  and a delete takes the dataset off its test (`dataset` is `null`
+  again).
+- `client.workflows.tests` calls `/v1/workflows/named/tests*` (the server
+  keeps the routes of 0.30.0, `/v1/workflows/triggered/tests*`, until the
+  release after this one).
+  `create(name=...)` names a workflow of the graph (in place of
+  `workflow={"starter": ..., "name": ...}`), and `list(name=..., limit=...,
+  cursor=...)` takes no `starter`.
+- `models.WorkflowTest.dataset`: the id of the Evals dataset saved from the
+  test's answers, `None` until the first save.
+- `client.evals.datasets.create(name, source={"kind": "test", "id": ...})`
+  keeps one dataset per test: a later save of the test brings that dataset
+  up to date and returns it with the same id.
+- `client.evals.datasets.delete(dataset_id)` deletes a dataset and its
+  items (`DELETE /v1/evals/datasets`, with an idempotency key) and returns
+  `models.EvalDatasetDeleted`. A get or an export of it then raises
+  `LbbError` (404), and the next save of its test makes a new dataset.
+- `client.workflows.tests.all(name=...)` and `client.evals.datasets.all()`
+  read every page of the list: a generator on `LbbClient`, an async
+  generator on `AsyncLbbClient`. The methods of `AsyncLbbClient.evals.datasets`
+  are typed as coroutines of the generated models.
+- `client.workflows.tests.wait(test_id)` raises `TimeoutError` when the test
+  is still open after `timeout` seconds, now 600 by default, as in the
+  TypeScript SDK. `timeout=None` waits as long as the test runs.
+- `client.workflows.tests.dataset(test_id)` and `models.WorkflowTestDataset`
+  are removed. Save the test with `client.evals.datasets.create` and its
+  `source`, then read `client.evals.datasets.export(dataset.id)`.
+- The client sends `lbb-version: 2026-10-21` by default (`api_version=`).
+  On this version the workflow lists answer in the list envelope,
+  `{object: "list", data, has_more, next_cursor}`, with `limit` and
+  `cursor`. The flat methods return the server's JSON, so read `data` where
+  you read `workflows`, `items`, `runs` or `documents`, and `next_cursor`
+  where you read `next_before` or `next_after`. Pass
+  `api_version="2026-07-23"` to keep the earlier shapes.
+- `client.workflows.named` on `LbbClient` and `AsyncLbbClient`: the
+  workflows of the graph by name, with typed answers. `list(limit=,
+  cursor=)` and `all()`, `get(name)`, `put(body)`, `delete(name, confirm=)`,
+  `run(name)`, `pause(name, paused=)`, `requeue(name, request)`,
+  `queue(name, trigger=, cursor=,
+  limit=)`, `runs(name, cursor=, limit=, outcome=)` and `all_runs(name)`,
+  `get_run(name, run)`, `run_stats(name, hours=)`, and `documents(name, q=,
+  sort=, cursor=, limit=)` and `all_documents(name)`. On `AsyncLbbClient`
+  each method is awaited and the `all*` methods are async iterators. Each
+  list method reads both shapes: a server older than the envelope answers
+  the earlier shape, and the method returns it converted, with a `cursor`
+  that server ignored sent again as `before` or `after`.
+- `triggered_workflows`, `triggered_workflow`, `refresh_triggered_workflow`,
+  `pause_triggered_workflow`, `delete_triggered_workflow`,
+  `triggered_workflow_runs`, `triggered_workflow_run`,
+  `triggered_workflow_run_stats`, `triggered_workflow_documents`,
+  `named_workflow_runs`, `named_workflow_run` and `named_workflow_run_stats`
+  are deprecated; each docstring names its `workflows.named` method. They
+  keep working. `use_workflow_starter` and `preview_triggered_workflow` have
+  no named form and stay.
+
 ## 0.30.0 (2026-10-21)
 
+- `lbb.workflows`: activity calls name their step (`workflow.step`).
+  `reason`, `decide` and `embed` called in a step of a `WorkflowWorker` turn
+  send the step's key, so the call log names the step (`scope: live`). The
+  worker records each step's effect id when the step starts. A call whose
+  effect id is a step's, or starts with it followed by `.` or `:` (such as
+  `f"{s.effect_id}.2"`), names that step; a call with no such step names
+  none. `capture_activities` sends the step the same way. A data plane
+  before this field refuses it, so roll the data plane first.
 - `WorkflowWorker` stops a turn on `409 turn_lease_lost`, the code a turn
   route now answers when the attempt's token no longer holds its turn. It
   still stops on any other 409 or a 404, as an older server answers a lost

@@ -10,6 +10,7 @@ from collections.abc import (
     AsyncGenerator,
     AsyncIterable,
     AsyncIterator,
+    Awaitable,
     Callable,
     Iterable,
     Mapping,
@@ -24,6 +25,7 @@ from ._catalog import AccessNamespace, CatalogNamespace
 from ._client_base import (
     _ASK_STREAM_ENDED,
     _UPLOAD_CHUNK_BYTES,
+    _WORKFLOW_TEST_WAIT_TIMEOUT,
     DEFAULT_BASE_URL,
     DEFAULT_INTEGRATIONS_URL,
     DEFAULT_MAX_RETRIES,
@@ -47,17 +49,23 @@ from ._client_base import (
     _body_marks_terminal,
     _ChecksNamespace,
     _discard_download,
+    _earlier_params,
+    _EarlierList,
     _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
+    _EvalDatasetsNamespace,
     _EvalsNamespace,
     _FactsNamespace,
     _file_head,
     _FilesNamespace,
     _GraphNamespace,
+    _is_earlier_list,
     _jittered_backoff,
+    _list_envelope,
     _ModelSwitchesNamespace,
     _ModelTrialsNamespace,
+    _NamedWorkflowsNamespace,
     _OntologyNamespace,
     _OntologyStartersNamespace,
     _open_download,
@@ -77,6 +85,7 @@ from ._client_base import (
     _trial_settled,
     _trial_timeout,
     _workflow_test_open,
+    _workflow_test_timeout,
     _WorkflowTestsNamespace,
 )
 from ._workflow_execution import AsyncWorkflowTurnReader
@@ -1215,13 +1224,26 @@ class _AsyncModelsNamespace:
         self.switches = _AsyncModelSwitchesNamespace(client)
 
 
+async def _aevery(fetch: Callable[[str | None], Awaitable[Any]]) -> AsyncIterator[Any]:
+    """Every item of a list in the list envelope: ``await fetch(cursor)``
+    page by page, until ``has_more`` is false."""
+    cursor: str | None = None
+    while True:
+        page = await fetch(cursor)
+        for item in page.data:
+            yield item
+        if not page.has_more or not page.next_cursor:
+            return
+        cursor = page.next_cursor
+
+
 class _AsyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
     __doc__ = _WorkflowTestsNamespace.__doc__
 
     async def create(
         self,
         *,
-        workflow: Mapping[str, str] | None = None,
+        name: str | None = None,
         install: Mapping[str, Any] | None = None,
         iris: Sequence[str] | None = None,
         sample: int | None = None,
@@ -1230,7 +1252,7 @@ class _AsyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
         return cast(
             models.WorkflowTest,
             await super().create(
-                workflow=workflow,
+                name=name,
                 install=install,
                 iris=iris,
                 sample=sample,
@@ -1244,15 +1266,21 @@ class _AsyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
     async def list(
         self,
         *,
-        starter: str | None = None,
         name: str | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> models.WorkflowTestList:
         return cast(
             models.WorkflowTestList,
-            await super().list(starter=starter, name=name, limit=limit, cursor=cursor),
+            await super().list(name=name, limit=limit, cursor=cursor),
         )
+
+    def all(
+        self, *, name: str | None = None, limit: int | None = None
+    ) -> AsyncIterator[models.WorkflowTest]:
+        """Every test, or every test of the workflow ``name``, newest first:
+        :meth:`list` page after page (``limit`` tests per page)."""
+        return _aevery(lambda cursor: self.list(name=name, limit=limit, cursor=cursor))
 
     async def answer(
         self,
@@ -1271,17 +1299,21 @@ class _AsyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
     async def cancel(self, test_id: str) -> models.WorkflowTest:
         return cast(models.WorkflowTest, await super().cancel(test_id))
 
-    async def dataset(self, test_id: str) -> models.WorkflowTestDataset:
-        return cast(models.WorkflowTestDataset, await super().dataset(test_id))
-
     async def wait(
-        self, test_id: str, *, timeout: float | None = None, poll_interval: float = 1.0
+        self,
+        test_id: str,
+        *,
+        timeout: float | None = _WORKFLOW_TEST_WAIT_TIMEOUT,
+        poll_interval: float = 1.0,
     ) -> models.WorkflowTest:
         """Read the test until it ends (``done``, ``failed`` or
-        ``cancelled``) and return it. ``timeout`` (seconds) raises
-        :class:`TimeoutError`."""
+        ``cancelled``) and return it. Raises :class:`TimeoutError` when the
+        test is still open after ``timeout`` seconds (default 600; ``None``
+        waits as long as it takes)."""
         if poll_interval < 0:
             raise ValueError("poll_interval must be non-negative")
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout if timeout is not None else None
         while True:
@@ -1289,8 +1321,209 @@ class _AsyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
             if not _workflow_test_open(test):
                 return test
             if deadline is not None and loop.time() >= deadline:
-                raise TimeoutError(f"workflow test {test_id} is still {test.status}")
+                raise _workflow_test_timeout(test_id, test)
             await asyncio.sleep(poll_interval)
+
+
+class _AsyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
+    __doc__ = _NamedWorkflowsNamespace.__doc__
+
+    async def _list(
+        self,
+        model_cls: type[ModelT],
+        path: str,
+        params: Mapping[str, Any],
+        earlier: _EarlierList,
+    ) -> ModelT:
+        payload = await self._client._request("GET", path, params=params)
+        if _is_earlier_list(payload, earlier):
+            again = _earlier_params(params, earlier)
+            if again is not None:
+                payload = await self._client._request("GET", path, params=again)
+            if _is_earlier_list(payload, earlier):
+                payload = _list_envelope(payload, earlier)
+        return _parse_model(model_cls, payload)
+
+    async def list(
+        self, *, limit: int | None = None, cursor: str | None = None
+    ) -> models.NamedWorkflowList:
+        return cast(models.NamedWorkflowList, await super().list(limit=limit, cursor=cursor))
+
+    async def get(self, name: str) -> models.NamedWorkflow:
+        return cast(models.NamedWorkflow, await super().get(name))
+
+    async def put(
+        self, body: models.NamedWorkflowRequest | Mapping[str, Any]
+    ) -> models.NamedWorkflow:
+        return cast(models.NamedWorkflow, await super().put(body))
+
+    async def delete(self, name: str, *, confirm: str) -> models.NamedWorkflowDeleteResponse:
+        return cast(
+            models.NamedWorkflowDeleteResponse, await super().delete(name, confirm=confirm)
+        )
+
+    async def run(self, name: str) -> models.NamedWorkflowRunResponse:
+        return cast(models.NamedWorkflowRunResponse, await super().run(name))
+
+    async def pause(self, name: str, paused: bool = True) -> models.NamedWorkflow:
+        return cast(models.NamedWorkflow, await super().pause(name, paused))
+
+    async def requeue(
+        self, name: str, request: models.WorkflowRequeueRequest | Mapping[str, Any]
+    ) -> models.WorkflowRequeueResponse:
+        return cast(models.WorkflowRequeueResponse, await super().requeue(name, request))
+
+    async def queue(
+        self,
+        name: str,
+        *,
+        trigger: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> models.NamedWorkflowQueue:
+        return cast(
+            models.NamedWorkflowQueue,
+            await super().queue(name, trigger=trigger, cursor=cursor, limit=limit),
+        )
+
+    async def runs(
+        self,
+        name: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        outcome: str | models.WorkflowRunOutcome | None = None,
+    ) -> models.WorkflowRunList:
+        return cast(
+            models.WorkflowRunList,
+            await super().runs(name, cursor=cursor, limit=limit, outcome=outcome),
+        )
+
+    async def get_run(self, name: str, run: str) -> models.WorkflowRunDetail:
+        return cast(models.WorkflowRunDetail, await super().get_run(name, run))
+
+    async def run_stats(self, name: str, *, hours: int | None = None) -> models.WorkflowRunStats:
+        return cast(models.WorkflowRunStats, await super().run_stats(name, hours=hours))
+
+    async def documents(
+        self,
+        name: str,
+        *,
+        q: str | None = None,
+        sort: str | models.TriggeredDocumentSort | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> models.TriggeredDocumentPage:
+        return cast(
+            models.TriggeredDocumentPage,
+            await super().documents(name, q=q, sort=sort, cursor=cursor, limit=limit),
+        )
+
+    def all(self, *, limit: int | None = None) -> AsyncIterator[models.NamedWorkflow]:
+        """Every workflow of the graph, by name: :meth:`list` page by page."""
+        return _aevery(lambda cursor: self.list(limit=limit, cursor=cursor))
+
+    def all_runs(
+        self,
+        name: str,
+        *,
+        limit: int | None = None,
+        outcome: str | models.WorkflowRunOutcome | None = None,
+    ) -> AsyncIterator[models.WorkflowRunSummary]:
+        """Every run of the workflow kept, newest first: :meth:`runs` page by
+        page."""
+        return _aevery(
+            lambda cursor: self.runs(name, cursor=cursor, limit=limit, outcome=outcome)
+        )
+
+    def all_documents(
+        self,
+        name: str,
+        *,
+        q: str | None = None,
+        sort: str | models.TriggeredDocumentSort | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[Any]:
+        """Every document of a ``documents.link`` or ``documents.map``
+        workflow: :meth:`documents` page by page."""
+        return _aevery(
+            lambda cursor: self.documents(name, q=q, sort=sort, cursor=cursor, limit=limit)
+        )
+
+
+class _AsyncEvalDatasetsNamespace(_EvalDatasetsNamespace):
+    __doc__ = _EvalDatasetsNamespace.__doc__
+
+    async def create(
+        self,
+        name: str,
+        *,
+        kind: str = "values",
+        items: Sequence[Mapping[str, Any]] | None = None,
+        install: Mapping[str, Any] | None = None,
+        about: Sequence[str] | None = None,
+        source: Mapping[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.EvalDataset:
+        return cast(
+            models.EvalDataset,
+            await super().create(
+                name,
+                kind=kind,
+                items=items,
+                install=install,
+                about=about,
+                source=source,
+                idempotency_key=idempotency_key,
+            ),
+        )
+
+    async def list(
+        self, *, limit: int | None = None, cursor: str | None = None
+    ) -> models.EvalDatasetList:
+        return cast(models.EvalDatasetList, await super().list(limit=limit, cursor=cursor))
+
+    def all(self, *, limit: int | None = None) -> AsyncIterator[models.EvalDataset]:
+        """Every dataset, newest first, without their items: :meth:`list`
+        page after page (``limit`` datasets per page)."""
+        return _aevery(lambda cursor: self.list(limit=limit, cursor=cursor))
+
+    async def get(self, dataset_id: str) -> models.EvalDataset:
+        return cast(models.EvalDataset, await super().get(dataset_id))
+
+    async def add_items(
+        self,
+        dataset_id: str,
+        items: Sequence[Mapping[str, Any]],
+        *,
+        idempotency_key: str | None = None,
+    ) -> models.EvalDataset:
+        return cast(
+            models.EvalDataset,
+            await super().add_items(dataset_id, items, idempotency_key=idempotency_key),
+        )
+
+    async def export(self, dataset_id: str) -> models.EvalDatasetExport:
+        return cast(models.EvalDatasetExport, await super().export(dataset_id))
+
+    async def delete(
+        self, dataset_id: str, *, idempotency_key: str | None = None
+    ) -> models.EvalDatasetDeleted:
+        return cast(
+            models.EvalDatasetDeleted,
+            await super().delete(dataset_id, idempotency_key=idempotency_key),
+        )
+
+
+class _AsyncEvalsNamespace(_EvalsNamespace):
+    """Managed evals: traces, labels (thumbs up or down), goldens, runs, and
+    datasets (:attr:`datasets`). Each method returns an awaitable here."""
+
+    datasets: _AsyncEvalDatasetsNamespace
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        super().__init__(client)
+        self.datasets = _AsyncEvalDatasetsNamespace(client)
 
 
 class _AsyncFileChunks:
@@ -1329,7 +1562,7 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         api_key: str | None = None,
         graph: str | None = None,
         environment: str | None = None,
-        api_version: str = "2026-07-23",
+        api_version: str = "2026-10-21",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
@@ -1357,7 +1590,7 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         self.ontology = _AsyncOntologyNamespace(self)
         self.query = _AsyncQueryNamespace(self)
         self.schema = _AsyncSchemaNamespace(self)
-        self.evals = _EvalsNamespace(self)
+        self.evals = _AsyncEvalsNamespace(self)
         # Model checks: the call log, the judge's checks, and reviews. Each
         # method returns an awaitable here.
         self.checks = _ChecksNamespace(self)

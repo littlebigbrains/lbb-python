@@ -43,7 +43,7 @@ TIME = "2026-10-21T10:00:00Z"
 
 
 def iri_of(name: str) -> str:
-    digest = hashlib.sha256(f"EquipmentItem:{name}".encode()).hexdigest()[:32]
+    digest = hashlib.sha256(f"{DEFAULTS.class_name}:{name}".encode()).hexdigest()[:32]
     return f"https://littlebigbrain.com/e/{digest}"
 
 
@@ -409,7 +409,7 @@ class FakeLbb:
         values: dict[str, Any] = {}
         for commit in self.commits.values():
             for row in commit.get("entity_properties", []):
-                if row["type"] == "EquipmentItem" and row["name"] == name:
+                if row["type"] == DEFAULTS.class_name and row["name"] == name:
                     values.update(row["properties"])
         return values
 

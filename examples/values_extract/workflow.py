@@ -76,7 +76,7 @@ class Settings:
     """The settings: edit them for your class. The defaults fit the samples."""
 
     #: The class whose instances the workflow reads.
-    class_name: str = "EquipmentItem"
+    class_name: str = "Product"
     #: The property that holds each instance's text.
     text_field: str = "text"
     #: The properties to fill, with their types.
@@ -85,11 +85,13 @@ class Settings:
             "width_cm": "f64",
             "depth_cm": "f64",
             "material": "text",
-            "water_supply": "keyword",
+            "color": "keyword",
         }
     )
     #: One sentence about what the text is, for the models.
-    context: str = "Entries of the sanitary equipment list of a school building tender, in German."
+    context: str = (
+        "Product data sheets of office furniture and small appliances, in English and German."
+    )
     #: A value whose support is below this goes to review (from 0.5) or is dropped.
     gate: float = 0.8
     #: The unit of each number property (cm, mm, kg, m2, …), declared in the
