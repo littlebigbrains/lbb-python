@@ -3628,6 +3628,39 @@ class ModelCheckSpec2(BaseModel):
     relation: str
 
 
+class ModelChoiceDeleted(BaseModel):
+    """
+    `DELETE /v1/models/choices`: the choice was removed, and the use runs the
+    next level. A delete of no choice, or repeated, answers the same.
+    """
+
+    deleted: Annotated[bool, Field(description='Always `true`.')]
+    id: Annotated[str, Field(description="The row's id (`mch_…`).")]
+    object: Annotated[str, Field(description='`model_choice`.')]
+
+
+class ModelChoiceScope(Enum):
+    """
+    Where a choice applies.
+    """
+
+    environment = 'environment'
+    workflow = 'workflow'
+    test = 'test'
+    unknown = 'unknown'
+
+
+class ModelChoiceSource(Enum):
+    """
+    How a model was chosen.
+    """
+
+    person = 'person'
+    trial = 'trial'
+    default = 'default'
+    unknown = 'unknown'
+
+
 class ModelDataLineage(BaseModel):
     example_count: Annotated[int, Field(ge=0)]
     signal_from_seq: Annotated[
@@ -3966,6 +3999,17 @@ class ModelTrialStatus(Enum):
     done = 'done'
     stopped = 'stopped'
     failed = 'failed'
+
+
+class ModelUse(Enum):
+    """
+    A use of a model: the model slot a call fills. The call log names it on
+    each call (`ModelCall::model_use`, wire name `use`).
+    """
+
+    extract = 'extract'
+    decide = 'decide'
+    embed = 'embed'
 
 
 class NameSemantics(BaseModel):
@@ -10308,6 +10352,18 @@ class WorkflowTestInput(BaseModel):
     ] = None
 
 
+class WorkflowTestModels(BaseModel):
+    """
+    The models a test names for its run (`models` of the create), per use.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    decide: ModelTrialModel | None = None
+    extract: ModelTrialModel | None = None
+
+
 class WorkflowTestProperty(BaseModel):
     """
     One property a `values.extract` test reads: its name, value type and,
@@ -13130,6 +13186,26 @@ class ModelCalibrationThresholdEstimate(BaseModel):
     ] = None
 
 
+class ModelCallChoice(BaseModel):
+    """
+    Why a logged call used its model (`ModelCall::choice`): the row in force
+    when the call resolved its model, in the row's words.
+    """
+
+    fallback: Annotated[
+        bool | None,
+        Field(
+            description='A choice applied and could not serve on the node (no key, or its\nrecord did not read): the call used the next level that could, which\nthe other fields name.'
+        ),
+    ] = None
+    id: Annotated[
+        str | None,
+        Field(description="The row in force (`mch_…`); absent for a test's model."),
+    ] = None
+    scope: ModelChoiceScope
+    source: ModelChoiceSource
+
+
 class ModelCallOrigin(BaseModel):
     """
     Where a call came from.
@@ -13254,6 +13330,102 @@ class ModelChecksSummary(BaseModel):
     months: Annotated[
         list[str], Field(description='The months with a summary, oldest first.')
     ]
+
+
+class ModelChoice(BaseModel):
+    """
+    The choice of one use in one scope. A list gives the environment's rows
+    and the workflows' own; with `workflow` it gives the row in force for
+    each use of that workflow.
+    """
+
+    by: Annotated[
+        str | None,
+        Field(
+            description='Who set it (`account:<id>`, `key:<key id>`, `token`); `null` for a\ndefault row.'
+        ),
+    ] = None
+    choosable: Annotated[
+        bool,
+        Field(description="A person can choose the use's model (`false` for `embed`)."),
+    ]
+    created: Annotated[
+        str | None,
+        Field(
+            description='When the row was first set, RFC 3339; `null` for a default row.'
+        ),
+    ] = None
+    default: ModelTrialModel | None = None
+    graph: Annotated[
+        str | None,
+        Field(description='The graph of a `workflow` row; `null` for the environment.'),
+    ] = None
+    id: Annotated[
+        str,
+        Field(
+            description='`mch_` and 24 hex characters (a hash of the scope and the use).\nOpaque: the same scope and use keep it.'
+        ),
+    ]
+    model: ModelTrialModel | None = None
+    object: Annotated[str, Field(description='`model_choice`.')]
+    options: Annotated[
+        list[ModelTrialCandidate] | None,
+        Field(
+            description='The models the use can run on this server, with their efforts, list\nprices and whether the server holds their key.'
+        ),
+    ] = None
+    previous: ModelTrialModel | None = None
+    scope: ModelChoiceScope
+    since: Annotated[
+        str | None,
+        Field(
+            description='When the model was set, RFC 3339; `null` for a default row.'
+        ),
+    ] = None
+    source: ModelChoiceSource
+    use: ModelUse
+    workflow: Annotated[
+        str | None,
+        Field(
+            description='The workflow of a `workflow` row; `null` for the environment.'
+        ),
+    ] = None
+
+
+class ModelChoiceList(BaseModel):
+    """
+    `GET /v1/models/choices`: one page of choice rows.
+    """
+
+    data: list[ModelChoice]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; absent on the last page.'
+        ),
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+
+
+class ModelChoicePutRequest(BaseModel):
+    """
+    `PUT /v1/models/choices`: choose the model of a use, for the
+    environment, or for one workflow of the graph (`workflow`).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    model: Annotated[
+        ModelTrialModel,
+        Field(description="One of the row's `options`, with an effort it takes."),
+    ]
+    use: ModelUse
+    workflow: Annotated[
+        str | None,
+        Field(description='A named workflow of the graph; absent for the environment.'),
+    ] = None
 
 
 class ModelRunManifest(BaseModel):
@@ -16572,6 +16744,7 @@ class WorkflowTestCreateRequest(BaseModel):
     )
     install: TriggeredWorkflowRequest | None = None
     iris: list[str] | None = None
+    models: WorkflowTestModels | None = None
     name: Annotated[
         str | None,
         Field(
@@ -17788,6 +17961,7 @@ class ModelCall(BaseModel):
             description='When the call was made, in milliseconds since the Unix epoch.'
         ),
     ]
+    choice: ModelCallChoice | None = None
     effort: str | None = None
     error: str | None = None
     gates: Annotated[
@@ -17846,6 +18020,7 @@ class ModelCallRow(BaseModel):
 
     at_ms: int
     check: ModelCheckBrief | None = None
+    choice: ModelCallChoice | None = None
     error: Annotated[
         str | None, Field(description='Why the call failed, at most 160 characters.')
     ] = None
@@ -19248,6 +19423,12 @@ class WorkflowTest(BaseModel):
             description='The workflow exists on the graph; `false` for a test of a create\nrequest.'
         ),
     ]
+    models: Annotated[
+        dict[str, ModelTrialModel] | None,
+        Field(
+            description="The model of each use with its provider and effort (added\n2026-10-22): the one the create named (`models`), else the one the\nworkflow's model choices give it (`GET /v1/models/choices`). Fixed\nat the start: every call of the test runs it."
+        ),
+    ] = None
     object: Annotated[str, Field(description='`workflow_test`.')]
     results: Annotated[
         list[WorkflowTestResult] | None,

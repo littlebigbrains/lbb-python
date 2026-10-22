@@ -3465,6 +3465,104 @@ class ModelTrialsAndSwitchesTests(unittest.TestCase):
                 client.models.trials.wait(TRIAL_ID, until="forever")
 
 
+def choice_payload(use: str = "extract", scope: str = "environment") -> dict[str, Any]:
+    return {
+        "id": "mch_000000000000000000000001",
+        "object": "model_choice",
+        "created": "2026-10-22T09:00:00Z",
+        "use": use,
+        "scope": scope,
+        "graph": "crm" if scope == "workflow" else None,
+        "workflow": "products" if scope == "workflow" else None,
+        "model": HAIKU_LOW,
+        "source": "person",
+        "since": "2026-10-22T09:00:00Z",
+        "by": "token",
+        "default": {"provider": "anthropic", "model": "claude-sonnet-5-5", "effort": "medium"},
+        "choosable": True,
+        "options": [],
+    }
+
+
+class ModelChoicesTests(unittest.TestCase):
+    def test_choices_map_each_operation_to_its_route_with_typed_answers(self) -> None:
+        seen: list[httpx.Request] = []
+        page = {"object": "list", "data": [choice_payload()], "has_more": False}
+        responses = [
+            {"json": page},
+            {"json": {**page, "has_more": True, "next_cursor": "mch_1"}},
+            {"json": page},
+            {"json": choice_payload(scope="workflow")},
+            {"json": {"id": "mch_2", "object": "model_choice", "deleted": True}},
+        ]
+        with LbbClient("http://h", graph="crm", transport=capturing_transport(seen, responses)) as client:
+            listed = client.models.choices.list(workflow="products", use=model_module.ModelUse.extract)
+            rows = list(client.models.choices.all(limit=1))
+            chosen = client.models.choices.put(
+                use="extract",
+                model=model_module.ModelTrialModel(
+                    provider="anthropic", model="claude-haiku-5-5", effort="low"
+                ),
+                workflow="products",
+            )
+            back = client.models.choices.delete(use="decide")
+        self.assertEqual(listed.data[0].source.value, "person")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(chosen.scope.value, "workflow")
+        self.assertTrue(back.deleted)
+        self.assertTrue(seen[3].headers["idempotency-key"].startswith("models.choices.put:"))
+        self.assertTrue(seen[4].headers["idempotency-key"].startswith("models.choices.delete:"))
+        self.assertEqual(
+            [(request.method, request.url.path, dict(request.url.params)) for request in seen],
+            [
+                ("GET", "/v1/models/choices", {"graph": "crm", "workflow": "products", "use": "extract"}),
+                ("GET", "/v1/models/choices", {"graph": "crm", "limit": "1"}),
+                ("GET", "/v1/models/choices", {"graph": "crm", "limit": "1", "cursor": "mch_1"}),
+                ("PUT", "/v1/models/choices", {"graph": "crm"}),
+                ("DELETE", "/v1/models/choices", {"graph": "crm", "use": "decide"}),
+            ],
+        )
+        self.assertEqual(
+            json.loads(seen[3].content),
+            {"use": "extract", "model": HAIKU_LOW, "workflow": "products"},
+        )
+
+    def test_a_call_names_its_choice(self) -> None:
+        call = model_module.ModelCallChoice.model_validate(
+            {"id": "mch_1", "scope": "workflow", "source": "person"}
+        )
+        self.assertFalse(call.fallback)
+        test = model_module.ModelCallChoice.model_validate(
+            {"scope": "test", "source": "person", "fallback": True}
+        )
+        self.assertIsNone(test.id)
+        self.assertTrue(test.fallback)
+
+
+class AsyncModelChoicesTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_choices_list_put_and_delete(self) -> None:
+        seen: list[httpx.Request] = []
+        page = {"object": "list", "data": [choice_payload()], "has_more": False}
+        responses = [
+            {"json": page},
+            {"json": page},
+            {"json": choice_payload()},
+            {"json": {"id": "mch_1", "object": "model_choice", "deleted": True}},
+        ]
+        async with AsyncLbbClient(
+            "http://h", transport=capturing_transport(seen, responses)
+        ) as client:
+            listed = await client.models.choices.list()
+            rows = [row async for row in client.models.choices.all()]
+            await client.models.choices.put(use="extract", model=HAIKU_LOW)
+            await client.models.choices.delete(use="extract")
+        self.assertEqual(listed.data[0].use.value, "extract")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(
+            [request.method for request in seen], ["GET", "GET", "PUT", "DELETE"]
+        )
+
+
 class AsyncModelTrialsTests(unittest.IsolatedAsyncioTestCase):
     async def test_async_trials_wait_and_switch(self) -> None:
         seen: list[httpx.Request] = []

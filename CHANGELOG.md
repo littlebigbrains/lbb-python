@@ -2,6 +2,22 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- `client.models.choices`: the model each workflow use runs, for the
+  environment or for one workflow (`GET`, `PUT` and `DELETE
+  /v1/models/choices`), sync and async. `list` takes `workflow`, `use`,
+  `limit` and `cursor`; `all` pages through it; `put` takes `use`, `model`
+  and `workflow`; `delete` takes `use` and `workflow` and returns
+  `ModelChoiceDeleted`; both send an idempotency key unless you pass
+  `idempotency_key`. The uses are
+  `extract` (the reasoning model of an AI step) and `decide` (its decision
+  model); `embed` is listed and takes no choice. A logged call gains
+  `choice`: the row in force (`id`, `scope`, `source`) and `fallback`.
+  `client.workflows.tests.create` takes `models` (per use, `extract` or
+  `decide`): the test runs on those models, and the test's `models` names
+  the ones it ran.
+
 ## 0.31.0 (2026-10-22)
 
 - `client.workflows.named` reads the history of a workflow's settings and

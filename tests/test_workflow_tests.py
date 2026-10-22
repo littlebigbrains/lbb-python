@@ -186,3 +186,29 @@ class WorkflowTestOnARevisionTests(unittest.TestCase):
             json.loads(seen[0].content), {"name": "sinks", "revision": revision, "sample": 3}
         )
         self.assertEqual(test.revision, revision)
+
+
+class WorkflowTestOnOtherModelsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_a_test_on_other_models_sends_them_and_reads_them_back(self) -> None:
+        haiku = {"provider": "anthropic", "model": "claude-haiku-5-5", "effort": "low"}
+        answer = {**workflow_test("queued"), "models": {"extract": haiku}}
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, [answer])
+        ) as client:
+            test = client.workflows.tests.create(
+                name="sinks",
+                models={"extract": models.ModelTrialModel(**haiku)},
+                sample=3,
+            )
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"name": "sinks", "models": {"extract": haiku}, "sample": 3},
+        )
+        self.assertEqual(test.models["extract"].model, "claude-haiku-5-5")
+        seen.clear()
+        async with AsyncLbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, [answer])
+        ) as aclient:
+            await aclient.workflows.tests.create(name="sinks", models={"decide": haiku})
+        self.assertEqual(json.loads(seen[0].content)["models"], {"decide": haiku})
