@@ -1248,6 +1248,7 @@ class _AsyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
         *,
         name: str | None = None,
         install: Mapping[str, Any] | None = None,
+        revision: str | None = None,
         iris: Sequence[str] | None = None,
         sample: int | None = None,
         idempotency_key: str | None = None,
@@ -1257,6 +1258,7 @@ class _AsyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
             await super().create(
                 name=name,
                 install=install,
+                revision=revision,
                 iris=iris,
                 sample=sample,
                 idempotency_key=idempotency_key,
@@ -1439,6 +1441,25 @@ class _AsyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
             await super().documents(name, q=q, sort=sort, cursor=cursor, limit=limit),
         )
 
+    async def revisions(
+        self, name: str, *, cursor: str | None = None, limit: int | None = None
+    ) -> models.WorkflowRevisionList:
+        return cast(
+            models.WorkflowRevisionList,
+            await super().revisions(name, cursor=cursor, limit=limit),
+        )
+
+    async def get_revision(self, name: str, id: str) -> models.WorkflowRevision:
+        return cast(models.WorkflowRevision, await super().get_revision(name, id))
+
+    async def activate_revision(
+        self, name: str, id: str, *, expected_revision: str | None = None
+    ) -> models.NamedWorkflow:
+        return cast(
+            models.NamedWorkflow,
+            await super().activate_revision(name, id, expected_revision=expected_revision),
+        )
+
     def all(self, *, limit: int | None = None) -> AsyncIterator[models.NamedWorkflow]:
         """Every workflow of the graph, by name: :meth:`list` page by page."""
         return _aevery(lambda cursor: self.list(limit=limit, cursor=cursor))
@@ -1455,6 +1476,13 @@ class _AsyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
         return _aevery(
             lambda cursor: self.runs(name, cursor=cursor, limit=limit, outcome=outcome)
         )
+
+    def all_revisions(
+        self, name: str, *, limit: int | None = None
+    ) -> AsyncIterator[models.WorkflowRevision]:
+        """Every kept activation of the workflow's settings, newest first:
+        :meth:`revisions` page by page."""
+        return _aevery(lambda cursor: self.revisions(name, cursor=cursor, limit=limit))
 
     def all_run_results(
         self,
