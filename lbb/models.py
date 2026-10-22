@@ -5919,6 +5919,8 @@ class ReviewEvalOriginKind(Enum):
     check = 'check'
     calibration = 'calibration'
     test = 'test'
+    golden = 'golden'
+    unknown = 'unknown'
 
 
 class ReviewEvidence(BaseModel):
@@ -14586,11 +14588,34 @@ class ReviewEffects(BaseModel):
 
 class ReviewEvalOrigin(BaseModel):
     """
-    A model check, a calibration session or a test that filed an item.
+    A model check, a calibration session, a golden query or a test that
+    filed an item: the record that holds the answer as a label.
     """
 
-    id: str
+    id: Annotated[
+        str,
+        Field(description="The record: a check's call id, a session id, a golden id."),
+    ]
+    job: Annotated[
+        str | None, Field(description="A check's job (`rerank`, `route`, …).")
+    ] = None
     kind: ReviewEvalOriginKind
+    question: Annotated[
+        str | None,
+        Field(description="A calibration question's id in its session (`q3`)."),
+    ] = None
+    result: Annotated[
+        str | None,
+        Field(
+            description="A golden item's result id. Absent: the item asks about the answer of\nthe question as a whole."
+        ),
+    ] = None
+    trace: Annotated[
+        str | None,
+        Field(
+            description="A golden item's trace: the one it was filed from, which its label\ngoes to."
+        ),
+    ] = None
 
 
 class ReviewItemFields(BaseModel):
