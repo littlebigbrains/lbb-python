@@ -1,0 +1,123 @@
+{
+  "name": "schedule-message-goes-to-on-schedule",
+  "rule": "A message of type schedule goes to the schedule handler with the slot's time, the slots it passed over and the commit range since the previous run.",
+  "workflow": {
+    "type": "triggered",
+    "name": "digest",
+    "version": "v1",
+    "initial_state": {
+      "runs": 0
+    }
+  },
+  "on_instances": [
+    {
+      "raise": "workflow_error",
+      "message": "not a slot"
+    }
+  ],
+  "on_schedule": [
+    {
+      "return": {
+        "state": {
+          "last": {
+            "$message": "due_at"
+          },
+          "missed": {
+            "$message": "missed"
+          },
+          "since": {
+            "$message": "since_commit_seq"
+          },
+          "changed": {
+            "$message": "changed"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "digest",
+    "state": {},
+    "token": "token-d",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f4",
+    "turn": {
+      "workflow_id": "starter.digest",
+      "number": 2,
+      "message_id": "schedule-nightly-1792630800",
+      "message": {
+        "type": "schedule",
+        "workflow": "digest",
+        "graph": "crm",
+        "trigger": "nightly",
+        "due_at": "2026-10-22T01:00:00Z",
+        "previous_due_at": "2026-10-21T01:00:00Z",
+        "missed": 2,
+        "as_of_commit_seq": 9,
+        "since_commit_seq": 4,
+        "changed": true,
+        "origin": {
+          "kind": "schedule",
+          "trigger": "nightly",
+          "from_seq": 5,
+          "to_seq": 9,
+          "due_at_ms": 1792630800000
+        }
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.digest-2",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "workflow_id": "starter.digest",
+          "turn": 2,
+          "state": {
+            "last": "2026-10-22T01:00:00Z",
+            "missed": 2,
+            "since": 4,
+            "changed": true,
+            "runs": {
+              "$absent": true
+            }
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}

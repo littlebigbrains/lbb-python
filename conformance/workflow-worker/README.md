@@ -63,8 +63,8 @@ A scenario is one JSON object:
 ### The handler program
 
 `handler` is a list of operations that the harness runs in order with the
-SDK's context. A triggered workflow has `on_instances` and, optionally,
-`on_fan_in` instead.
+SDK's context. A triggered workflow has `on_instances`, `on_schedule` (the
+messages of a schedule's slots) or both, and optionally `on_fan_in`, instead.
 
 | Operation | Does |
 | --- | --- |
