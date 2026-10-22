@@ -4839,6 +4839,18 @@ def _trial_timeout(trial_id: str, trial: Any) -> TimeoutError:
     )
 
 
+#: One review item; ``REVIEWS_DETAIL_PATH`` is its earlier name, which a
+#: data plane older than ``/v1/reviews/get`` serves.
+REVIEWS_GET_PATH = "/v1/reviews/get"
+REVIEWS_DETAIL_PATH = "/v1/reviews/detail"
+
+
+def _missing_route(error: LbbError) -> bool:
+    """Whether an error is a data plane's answer to a route it does not
+    have (its catch-all 404, "no route for …"), not a handler's not-found."""
+    return error.status_code == 404 and str(error).startswith("no route for")
+
+
 class _ReviewsNamespace:
     """Review: questions for a person (human in the loop).
 
@@ -4913,8 +4925,10 @@ class _ReviewsNamespace:
         )
 
     def get(self, id: str) -> Any:
-        """One item with its question, evidence, answer and effects."""
-        return self._client._request("GET", "/v1/reviews/detail", params={"id": id})
+        """One item with its question, evidence, answer and effects
+        (``GET /v1/reviews/get``). A data plane older than that route is
+        read at its earlier name, ``/v1/reviews/detail``."""
+        return self._client._request("GET", REVIEWS_GET_PATH, params={"id": id})
 
     def answer(
         self,
@@ -4927,9 +4941,10 @@ class _ReviewsNamespace:
         idempotency_key: str | None = None,
     ) -> Any:
         """Answer an item. ``revision`` is the revision the person saw: an
-        item revised since answers ``409 review_stale``. With
-        ``idempotency_key``, a retry returns the item; the key with another
-        answer answers ``409 idempotency_conflict``."""
+        item revised since answers ``409 review_stale``. A retry sends the
+        same ``Idempotency-Key`` (``idempotency_key``, else one this call
+        makes) and returns the item; the key with another answer answers
+        ``409 idempotency_conflict``."""
         body: dict[str, Any] = {"answer": dict(answer)}
         if revision is not None:
             body["revision"] = revision
@@ -4942,7 +4957,7 @@ class _ReviewsNamespace:
             "/v1/reviews/answer",
             params={"id": id},
             body=body,
-            idempotency_key=idempotency_key,
+            idempotency_key=idempotency_key or self._client.idempotency_key("reviews.answer"),
         )
 
     def answer_batch(
@@ -4955,8 +4970,8 @@ class _ReviewsNamespace:
         idempotency_key: str | None = None,
     ) -> Any:
         """One answer for up to 500 items, each checked against its own
-        kind. With ``idempotency_key``, a retry returns the first
-        response."""
+        kind. A retry sends the same ``Idempotency-Key`` and returns the
+        first response."""
         body: dict[str, Any] = {"ids": list(ids), "answer": dict(answer)}
         if shown is not None:
             body["shown"] = list(shown)
@@ -4966,22 +4981,41 @@ class _ReviewsNamespace:
             "POST",
             "/v1/reviews/answer-batch",
             body=body,
-            idempotency_key=idempotency_key,
+            idempotency_key=idempotency_key or self._client.idempotency_key("reviews.answer_batch"),
         )
 
-    def withdraw(self, id: str, reason: str) -> Any:
-        """Withdraw an item as its producer."""
+    def withdraw(
+        self, id: str, reason: str, *, idempotency_key: str | None = None
+    ) -> Any:
+        """Withdraw an item as its producer. A retry sends the same
+        ``Idempotency-Key``."""
         return self._client._request(
-            "POST", "/v1/reviews/withdraw", params={"id": id}, body={"reason": reason}
+            "POST",
+            "/v1/reviews/withdraw",
+            params={"id": id},
+            body={"reason": reason},
+            idempotency_key=idempotency_key or self._client.idempotency_key("reviews.withdraw"),
         )
 
-    def comment(self, id: str, *, text: str, author: str | None = None) -> Any:
-        """Add a comment to an item's discussion."""
+    def comment(
+        self,
+        id: str,
+        *,
+        text: str,
+        author: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        """Add a comment to an item's discussion. A retry sends the same
+        ``Idempotency-Key``."""
         payload: dict[str, Any] = {"text": text}
         if author is not None:
             payload["author"] = author
         return self._client._request(
-            "POST", "/v1/reviews/comment", params={"id": id}, body=payload
+            "POST",
+            "/v1/reviews/comment",
+            params={"id": id},
+            body=payload,
+            idempotency_key=idempotency_key or self._client.idempotency_key("reviews.comment"),
         )
 
 

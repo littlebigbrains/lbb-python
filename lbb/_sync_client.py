@@ -21,8 +21,10 @@ from ._client_base import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_BUDGET_MS,
     DEFAULT_TIMEOUT,
+    REVIEWS_DETAIL_PATH,
     Body,
     LbbCapabilityError,
+    LbbError,
     ListPage,
     ModelT,
     QueryAskResult,
@@ -50,6 +52,7 @@ from ._client_base import (
     _is_earlier_list,
     _jittered_backoff,
     _list_envelope,
+    _missing_route,
     _ModelSwitchesNamespace,
     _ModelTrialsNamespace,
     _NamedWorkflowsNamespace,
@@ -559,6 +562,50 @@ class _SyncEvalsNamespace(_EvalsNamespace):
         self.datasets = _SyncEvalDatasetsNamespace(client)
 
 
+class _SyncReviewsNamespace(_ReviewsNamespace):
+    __doc__ = _ReviewsNamespace.__doc__
+
+    def all(
+        self,
+        *,
+        status: str | None = None,
+        kind: str | Sequence[str] | None = None,
+        scope: str | None = None,
+        origin_id: str | None = None,
+        workflow: str | None = None,
+        run: str | None = None,
+        limit: int | None = None,
+        key: str | Sequence[str] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Every item, the latest update first: :meth:`list` page by page,
+        with the same filters (``limit`` items a page)."""
+        cursor: str | None = None
+        while True:
+            page = self.list(
+                status=status,
+                kind=kind,
+                scope=scope,
+                origin_id=origin_id,
+                workflow=workflow,
+                run=run,
+                limit=limit,
+                cursor=cursor,
+                key=key,
+            )
+            yield from page["data"]
+            if not page.get("has_more") or not page.get("next_cursor"):
+                return
+            cursor = page["next_cursor"]
+
+    def get(self, id: str) -> Any:
+        try:
+            return super().get(id)
+        except LbbError as error:
+            if not _missing_route(error):
+                raise
+            return self._client._request("GET", REVIEWS_DETAIL_PATH, params={"id": id})
+
+
 class _SyncWorkflowsNamespace:
     """Workflows: the workflows of the graph by name (:attr:`named`), and
     tests of a workflow on chosen inputs (:attr:`tests`)."""
@@ -621,7 +668,7 @@ class LbbClient(_BaseLbbClient):
         # Model checks: the call log, the judge's checks, and reviews.
         self.checks = _ChecksNamespace(self)
         # Review: questions for a person, and their answers.
-        self.reviews = _ReviewsNamespace(self)
+        self.reviews = _SyncReviewsNamespace(self)
         # Model trials of other models on the graph's uses, and switches.
         self.models = _SyncModelsNamespace(self)
         # Tests of a workflow on chosen inputs, which write nothing.

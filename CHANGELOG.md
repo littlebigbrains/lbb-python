@@ -64,6 +64,14 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   are deprecated; each docstring names its `workflows.named` method. They
   keep working. `use_workflow_starter` and `preview_triggered_workflow` have
   no named form and stay.
+- `client.reviews.get` reads `GET /v1/reviews/get`, the new name of
+  `/v1/reviews/detail`. A data plane without the new route answers its
+  catch-all 404, and the client then reads `/v1/reviews/detail`.
+- `client.reviews.all(...)` reads every item with the filters of `list`: a
+  generator on `LbbClient`, an async generator on `AsyncLbbClient`.
+- `client.reviews.answer`, `answer_batch`, `withdraw` and `comment` send an
+  `Idempotency-Key`: yours (`idempotency_key`, new on `withdraw` and
+  `comment`), else one the call makes. So the client's retry is safe.
 
 ## 0.30.0 (2026-10-21)
 
