@@ -9776,6 +9776,12 @@ class WorkflowMessageOrigin(BaseModel):
         list[str] | None,
         Field(description='The request ids of the commits that caused it.'),
     ] = None
+    revision: Annotated[
+        str | None,
+        Field(
+            description="The settings revision of the named workflow whose watch sent the\nmessage (`wrev_…`): its settings when the watch wrote it. A\ncontinuation keeps its turn's."
+        ),
+    ] = None
     sha256: Annotated[
         str | None,
         Field(
@@ -9963,6 +9969,44 @@ class WorkflowReviewTrigger(BaseModel):
             description="The workflow whose items' answers arrive. Absent: this workflow."
         ),
     ] = None
+
+
+class WorkflowRevisionAction(Enum):
+    """
+    How an activation moved the binding.
+    """
+
+    create = 'create'
+    change = 'change'
+    activate = 'activate'
+    existing = 'existing'
+
+
+class WorkflowRevisionActivateRequest(BaseModel):
+    """
+    `POST /v1/workflows/named/revisions/activate`: make a kept revision the
+    workflow's settings.
+    """
+
+    expected_revision: Annotated[
+        str | None,
+        Field(
+            description='The revision the caller read as bound: another one answers `409\nworkflow_revision_conflict`.'
+        ),
+    ] = None
+    id: Annotated[str, Field(description='The revision to activate.')]
+    name: Annotated[str, Field(description="The workflow's name.")]
+
+
+class WorkflowRevisionRequest(BaseModel):
+    """
+    The request a revision resolves from: the body of the `PUT` route that
+    makes it (`route` `named` for `PUT /v1/workflows/named`, `triggered`
+    for `PUT /v1/workflows/triggered`). An activation sends it again.
+    """
+
+    body: Any
+    route: str
 
 
 class WorkflowRunHour(BaseModel):
@@ -16172,6 +16216,83 @@ class WorkflowQueuePass(BaseModel):
     ]
 
 
+class WorkflowRevision(BaseModel):
+    """
+    One revision of a workflow's settings, with the facts of one
+    activation (`GET /v1/workflows/named/revisions`: the activation of the
+    item; `…/revisions/get`: the newest kept activation of the revision,
+    none when the history keeps none).
+    """
+
+    action: WorkflowRevisionAction | None = None
+    activated_at: str | None = None
+    activated_by: Annotated[
+        str | None,
+        Field(
+            description='The key (`key:<id>`) or the account (`account:<id>`) that asked;\nabsent for an `existing` activation.'
+        ),
+    ] = None
+    activation: Annotated[
+        int | None,
+        Field(description="The activation's number in the workflow's history.", ge=0),
+    ] = None
+    available: Annotated[
+        bool,
+        Field(
+            description='The settings are kept and read: `false` for a history row whose\nrevision was deleted (it raced a collection), which has no\n`target`, `settings` or `request`.'
+        ),
+    ]
+    bound: Annotated[
+        bool, Field(description="The workflow's binding names this revision now.")
+    ]
+    created: Annotated[
+        str, Field(description='When the revision was first written (RFC 3339).')
+    ]
+    id: Annotated[
+        str, Field(description='`wrev_` and 32 hex characters: the hash of `settings`.')
+    ]
+    object: Annotated[str, Field(description='`workflow_revision`.')]
+    previous_revision: Annotated[
+        str | None, Field(description='The revision the activation replaced.')
+    ] = None
+    request: WorkflowRevisionRequest | None = None
+    settings: Annotated[
+        Any | None,
+        Field(
+            description='The settings a person set, as the hash covers them: the template,\nthe trigger, `params`, `gate`, the owned outputs, the budget and,\nfor a workflow of your worker, its batch and routing. `null` when\nnot `available`.'
+        ),
+    ] = None
+    source: Annotated[
+        str | None,
+        Field(description='`calibration` for a gate applied from its measurement.'),
+    ] = None
+    starter: Annotated[
+        str,
+        Field(
+            description='The starter workflow it was made from (`workflow`, `values.extract`,\n…).'
+        ),
+    ]
+    target: WorkflowTypeRef | None = None
+    workflow: Annotated[str, Field(description="The workflow's name.")]
+
+
+class WorkflowRevisionList(BaseModel):
+    """
+    `GET /v1/workflows/named/revisions?name=&cursor=&limit=`: the history,
+    newest activation first, in the list envelope.
+    """
+
+    data: list[WorkflowRevision]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page (an activation number); absent on\nthe last page.'
+        ),
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+
+
 class WorkflowRunInput(BaseModel):
     """
     One input as a run records it: its IRI and label, what the run did with
@@ -16346,6 +16467,12 @@ class WorkflowRunSummary(BaseModel):
             ge=0,
         ),
     ] = None
+    revision: Annotated[
+        str | None,
+        Field(
+            description="The settings revision the run ran on (`wrev_…`, added 2026-10-21):\nfor a step of the Rust path the settings it read first, for an\nengine run the revision its message was sent with (its origin's\n`revision`). Absent for an identity of no named workflow and for a\nmessage without one. A summary keeps it after the revision is\ncollected."
+        ),
+    ] = None
     sample: Annotated[
         list[str] | None,
         Field(
@@ -16449,6 +16576,12 @@ class WorkflowTestCreateRequest(BaseModel):
         str | None,
         Field(
             description='The name of a workflow of the graph (`GET /v1/workflows/named`).'
+        ),
+    ] = None
+    revision: Annotated[
+        str | None,
+        Field(
+            description="With `name`: a kept revision of the workflow's settings\n(`GET /v1/workflows/named/revisions`) to run on instead of the one\nin use, so two revisions compare on the same inputs without either\nbeing activated. `404 workflow_revision_not_found` for one the\nworkflow does not keep."
         ),
     ] = None
     sample: Annotated[int | None, Field(ge=0)] = None
@@ -19120,6 +19253,12 @@ class WorkflowTest(BaseModel):
         list[WorkflowTestResult] | None,
         Field(description='One result per read input, in input order.'),
     ] = None
+    revision: Annotated[
+        str | None,
+        Field(
+            description="The settings revision the test ran on (`wrev_…`, added 2026-10-21):\nthe one it named (`revision` of the create), else the workflow's.\nAbsent for a test of a create request. A run summary with the same\nrevision ran on the same settings."
+        ),
+    ] = None
     settings: WorkflowTestSettings
     status: WorkflowTestStatus
     uses: Annotated[
@@ -19850,6 +19989,12 @@ class NamedWorkflow(BaseModel):
     One workflow with triggers (`GET /v1/workflows/named?name=`).
     """
 
+    active_revision: Annotated[
+        str | None,
+        Field(
+            description='The settings revision the workflow runs on (`wrev_…`):\n`GET /v1/workflows/named/revisions` lists its history, and\n`POST /v1/workflows/named/revisions/activate` moves it.'
+        ),
+    ] = None
     batch: Annotated[int | None, Field(ge=0)] = None
     budget_usd_per_month: float | None = None
     created: Annotated[
@@ -20100,6 +20245,12 @@ class TriggeredWorkflow(BaseModel):
     One triggered workflow (`GET /v1/workflows/triggered?starter=&name=`).
     """
 
+    active_revision: Annotated[
+        str | None,
+        Field(
+            description='The settings revision the workflow runs on (`wrev_…`;\n`GET /v1/workflows/named/revisions` lists its history). Absent for\n`search.embed` and `ontology.fit`, which keep no revisions.'
+        ),
+    ] = None
     batch: Annotated[int | None, Field(ge=0)] = None
     created_at: str | None = None
     details: Annotated[

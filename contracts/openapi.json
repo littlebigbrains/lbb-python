@@ -18567,6 +18567,13 @@
       "NamedWorkflow": {
         "description": "One workflow with triggers (`GET /v1/workflows/named?name=`).",
         "properties": {
+          "active_revision": {
+            "description": "The settings revision the workflow runs on (`wrev_…`):\n`GET /v1/workflows/named/revisions` lists its history, and\n`POST /v1/workflows/named/revisions/activate` moves it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "batch": {
             "format": "int32",
             "minimum": 0,
@@ -35671,6 +35678,13 @@
       "TriggeredWorkflow": {
         "description": "One triggered workflow (`GET /v1/workflows/triggered?starter=&name=`).",
         "properties": {
+          "active_revision": {
+            "description": "The settings revision the workflow runs on (`wrev_…`;\n`GET /v1/workflows/named/revisions` lists its history). Absent for\n`search.embed` and `ontology.fit`, which keep no revisions.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "batch": {
             "format": "int32",
             "minimum": 0,
@@ -38294,6 +38308,13 @@
             },
             "type": "array"
           },
+          "revision": {
+            "description": "The settings revision of the named workflow whose watch sent the\nmessage (`wrev_…`): its settings when the watch wrote it. A\ncontinuation keeps its turn's.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "sha256": {
             "description": "A `content` origin: the SHA-256 of the content, lowercase hex.",
             "type": [
@@ -38751,6 +38772,199 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "WorkflowRevision": {
+        "description": "One revision of a workflow's settings, with the facts of one\nactivation (`GET /v1/workflows/named/revisions`: the activation of the\nitem; `…/revisions/get`: the newest kept activation of the revision,\nnone when the history keeps none).",
+        "properties": {
+          "action": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowRevisionAction"
+              }
+            ]
+          },
+          "activated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activated_by": {
+            "description": "The key (`key:<id>`) or the account (`account:<id>`) that asked;\nabsent for an `existing` activation.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activation": {
+            "description": "The activation's number in the workflow's history.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "available": {
+            "description": "The settings are kept and read: `false` for a history row whose\nrevision was deleted (it raced a collection), which has no\n`target`, `settings` or `request`.",
+            "type": "boolean"
+          },
+          "bound": {
+            "description": "The workflow's binding names this revision now.",
+            "type": "boolean"
+          },
+          "created": {
+            "description": "When the revision was first written (RFC 3339).",
+            "type": "string"
+          },
+          "id": {
+            "description": "`wrev_` and 32 hex characters: the hash of `settings`.",
+            "type": "string"
+          },
+          "object": {
+            "description": "`workflow_revision`.",
+            "type": "string"
+          },
+          "previous_revision": {
+            "description": "The revision the activation replaced.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "request": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowRevisionRequest"
+              }
+            ]
+          },
+          "settings": {
+            "description": "The settings a person set, as the hash covers them: the template,\nthe trigger, `params`, `gate`, the owned outputs, the budget and,\nfor a workflow of your worker, its batch and routing. `null` when\nnot `available`."
+          },
+          "source": {
+            "description": "`calibration` for a gate applied from its measurement.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "starter": {
+            "description": "The starter workflow it was made from (`workflow`, `values.extract`,\n…).",
+            "type": "string"
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTypeRef",
+                "description": "The workflow type and version that receive the work."
+              }
+            ]
+          },
+          "workflow": {
+            "description": "The workflow's name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "workflow",
+          "starter",
+          "available",
+          "bound"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevisionAction": {
+        "description": "How an activation moved the binding.",
+        "enum": [
+          "create",
+          "change",
+          "activate",
+          "existing"
+        ],
+        "type": "string"
+      },
+      "WorkflowRevisionActivateRequest": {
+        "description": "`POST /v1/workflows/named/revisions/activate`: make a kept revision the\nworkflow's settings.",
+        "properties": {
+          "expected_revision": {
+            "description": "The revision the caller read as bound: another one answers `409\nworkflow_revision_conflict`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "The revision to activate.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The workflow's name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "id"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevisionList": {
+        "description": "`GET /v1/workflows/named/revisions?name=&cursor=&limit=`: the history,\nnewest activation first, in the list envelope.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRevision"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` for the next page (an activation number); absent on\nthe last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object": {
+            "description": "`list`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevisionRequest": {
+        "description": "The request a revision resolves from: the body of the `PUT` route that\nmakes it (`route` `named` for `PUT /v1/workflows/named`, `triggered`\nfor `PUT /v1/workflows/triggered`). An activation sends it again.",
+        "properties": {
+          "body": {},
+          "route": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "route",
+          "body"
+        ],
         "type": "object"
       },
       "WorkflowRun": {
@@ -39396,6 +39610,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "revision": {
+            "description": "The settings revision the run ran on (`wrev_…`, added 2026-10-21):\nfor a step of the Rust path the settings it read first, for an\nengine run the revision its message was sent with (its origin's\n`revision`). Absent for an identity of no named workflow and for a\nmessage without one. A summary keeps it after the revision is\ncollected.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "sample": {
             "description": "At most 20 names of what the run processed: the turn result's\n`sample` (a list of text); for the document workflows of the Rust\npath the documents' names, else instance IRIs.",
             "items": {
@@ -39935,6 +40156,13 @@
             },
             "type": "array"
           },
+          "revision": {
+            "description": "The settings revision the test ran on (`wrev_…`, added 2026-10-21):\nthe one it named (`revision` of the create), else the workflow's.\nAbsent for a test of a create request. A run summary with the same\nrevision ran on the same settings.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "settings": {
             "$ref": "#/components/schemas/WorkflowTestSettings"
           },
@@ -40073,6 +40301,13 @@
           },
           "name": {
             "description": "The name of a workflow of the graph (`GET /v1/workflows/named`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "description": "With `name`: a kept revision of the workflow's settings\n(`GET /v1/workflows/named/revisions`) to run on instead of the one\nin use, so two revisions compare on the same inputs without either\nbeing activated. `404 workflow_revision_not_found` for one the\nworkflow does not keep.",
             "type": [
               "string",
               "null"
@@ -123922,6 +124157,883 @@
           }
         ],
         "summary": "Send the instances a turn of a shard could not do again later: they go back into the watch's queue on the same shard, with origin `requeue` (the attempt, the asking turn and message, the first error) and a backoff of one minute, then four, then sixteen. The attempt is one more than the asking message's (`origin.attempt` of a requeue); past 3 the instances are exhausted, not sent again, and counted in the workflow's `exhausted`. Record the failure in the turn's result, ask for the requeue, and complete the turn. A repeat from the same turn queues nothing again (the items wait with this attempt already); past 3 attempts a repeat counts the same items in `exhausted` again. It takes no `Idempotency-Key`",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/named/revisions": {
+      "get": {
+        "operationId": "get_v1_workflows_named_revisions",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the workflow's name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next_cursor` of the page before",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "revisions per page, 1 to 100 (default 20)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRevisionList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The history of a workflow's settings, newest activation first: each item is a revision (the settings a person set, hashed into its `wrev_` id, and the request that makes it) with the facts of one activation (`activation`, `action`, `activated_at`, `activated_by`, `previous_revision`, `bound`). A revision activated twice is listed twice. The history keeps the newest 100 activations. 404 `named_workflow_not_found`",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/named/revisions/activate": {
+      "post": {
+        "operationId": "post_v1_workflows_named_revisions_activate",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowRevisionActivateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamedWorkflow"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Make a kept revision the workflow's settings: its request goes through the change path again, with every check a change makes, and must produce the revision (409 `workflow_revision_stale`). With `expected_revision`, another bound revision answers 409 `workflow_revision_conflict`. Activating the bound revision changes nothing. Runs in flight keep the revision they started on",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/named/revisions/get": {
+      "get": {
+        "operationId": "get_v1_workflows_named_revisions_get",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the workflow's name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the revision id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRevision"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One revision of a workflow's settings, with the facts of its newest kept activation. 404 `workflow_revision_not_found` for an id the workflow does not keep (a run summary keeps the id after its revision is collected)",
         "tags": [
           "workflows"
         ]

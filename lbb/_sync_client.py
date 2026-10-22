@@ -414,6 +414,7 @@ class _SyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
         *,
         name: str | None = None,
         install: Mapping[str, Any] | None = None,
+        revision: str | None = None,
         iris: Sequence[str] | None = None,
         sample: int | None = None,
         idempotency_key: str | None = None,
@@ -423,6 +424,7 @@ class _SyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
             super().create(
                 name=name,
                 install=install,
+                revision=revision,
                 iris=iris,
                 sample=sample,
                 idempotency_key=idempotency_key,
@@ -528,6 +530,13 @@ class _SyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
         return _every(
             lambda cursor: self.runs(name, cursor=cursor, limit=limit, outcome=outcome)
         )
+
+    def all_revisions(
+        self, name: str, *, limit: int | None = None
+    ) -> Iterator[models.WorkflowRevision]:
+        """Every kept activation of the workflow's settings, newest first:
+        :meth:`revisions` page by page."""
+        return _every(lambda cursor: self.revisions(name, cursor=cursor, limit=limit))
 
     def all_run_results(
         self,

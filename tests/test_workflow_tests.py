@@ -171,3 +171,18 @@ class AsyncWorkflowTestsTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WorkflowTestOnARevisionTests(unittest.TestCase):
+    def test_a_test_on_a_named_revision_sends_it_and_reads_it_back(self) -> None:
+        seen: list[httpx.Request] = []
+        revision = "wrev_00000000000000000000000000000001"
+        answer = {**workflow_test("queued"), "revision": revision}
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, [answer])
+        ) as client:
+            test = client.workflows.tests.create(name="sinks", revision=revision, sample=3)
+        self.assertEqual(
+            json.loads(seen[0].content), {"name": "sinks", "revision": revision, "sample": 3}
+        )
+        self.assertEqual(test.revision, revision)

@@ -4,6 +4,13 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `client.workflows.named` reads the history of a workflow's settings and
+  uses earlier settings again: `revisions(name, cursor=, limit=)`,
+  `all_revisions(name)`, `get_revision(name, id)` and
+  `activate_revision(name, id, expected_revision=)`. A workflow has
+  `active_revision`, and a run summary and a test have `revision`.
+  `client.workflows.tests.create` takes `revision` (with `name`) to test a
+  kept revision without activating it.
 - `lbb.workflows.Worker` reports what each run did with each input (the
   run's results) when the claim names `results_max`: `write_owned` reports
   each subject `written` (or `no_value` when it sets nothing) with its

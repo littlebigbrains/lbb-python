@@ -17,6 +17,8 @@ from lbb.models import (
     NamedWorkflowList,
     NamedWorkflowQueue,
     TriggeredDocumentPage,
+    WorkflowRevision,
+    WorkflowRevisionList,
     WorkflowRunDetail,
     WorkflowRunList,
     WorkflowRunStats,
@@ -476,3 +478,87 @@ class AsyncNamedWorkflowsTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+FIRST = "wrev_00000000000000000000000000000001"
+SECOND = "wrev_00000000000000000000000000000002"
+
+
+def revision(id: str, activation: int, bound: bool = False) -> dict[str, Any]:
+    return {
+        "id": id,
+        "object": "workflow_revision",
+        "created": "2026-10-21T09:00:00Z",
+        "workflow": "notes",
+        "starter": "workflow",
+        "available": True,
+        "target": {"workflow_type": "word-count", "version": "v1"},
+        "settings": {"batch": activation},
+        "request": {"route": "named", "body": REQUEST},
+        "activation": activation,
+        "action": "change",
+        "activated_at": "2026-10-21T09:00:00Z",
+        "activated_by": "key:k1",
+        "bound": bound,
+    }
+
+
+REVISION_ANSWERS: list[dict[str, Any]] = [
+    {"object": "list", "data": [revision(SECOND, 2, True)], "has_more": True, "next_cursor": "2"},
+    {"object": "list", "data": [revision(FIRST, 1)], "has_more": False},
+    revision(FIRST, 1),
+    {**WORKFLOW, "active_revision": FIRST},
+]
+REVISION_ROUTES = [
+    ("GET", "/v1/workflows/named/revisions", {"graph": "crm", "name": "notes", "limit": "1"}),
+    (
+        "GET",
+        "/v1/workflows/named/revisions",
+        {"graph": "crm", "name": "notes", "cursor": "2", "limit": "1"},
+    ),
+    ("GET", "/v1/workflows/named/revisions/get", {"graph": "crm", "name": "notes", "id": FIRST}),
+    ("POST", "/v1/workflows/named/revisions/activate", {"graph": "crm"}),
+]
+
+
+class WorkflowRevisionsTests(unittest.TestCase):
+    def test_the_history_reads_page_by_page_and_an_activation_names_the_revision(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, REVISION_ANSWERS)
+        ) as client:
+            named = client.workflows.named
+            ids = [item.id for item in named.all_revisions("notes", limit=1)]
+            one = named.get_revision("notes", FIRST)
+            workflow = named.activate_revision("notes", FIRST, expected_revision=SECOND)
+        self.assertEqual(
+            [(r.method, r.url.path, dict(r.url.params)) for r in seen], REVISION_ROUTES
+        )
+        self.assertEqual(ids, [SECOND, FIRST])
+        self.assertIsInstance(one, WorkflowRevision)
+        self.assertEqual((one.activation, one.bound, one.request.route), (1, False, "named"))
+        self.assertEqual(
+            json.loads(seen[3].content),
+            {"name": "notes", "id": FIRST, "expected_revision": SECOND},
+        )
+        self.assertEqual(workflow.active_revision, FIRST)
+
+
+class AsyncWorkflowRevisionsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_the_async_namespace_awaits_each_revision_method(self) -> None:
+        seen: list[httpx.Request] = []
+        # The two pages, one page again, the revision, the workflow.
+        answers = REVISION_ANSWERS[:2] + REVISION_ANSWERS[1:]
+        async with AsyncLbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, answers)
+        ) as client:
+            named = client.workflows.named
+            ids = [item.id async for item in named.all_revisions("notes", limit=1)]
+            page = await named.revisions("notes", limit=1)
+            one = await named.get_revision("notes", FIRST)
+            workflow = await named.activate_revision("notes", FIRST)
+        self.assertEqual(ids, [SECOND, FIRST])
+        self.assertIsInstance(page, WorkflowRevisionList)
+        self.assertEqual(one.id, FIRST)
+        self.assertEqual(json.loads(seen[-1].content), {"name": "notes", "id": FIRST})
+        self.assertEqual(workflow.active_revision, FIRST)

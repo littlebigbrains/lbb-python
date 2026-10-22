@@ -5164,6 +5164,7 @@ class _WorkflowTestsNamespace:
         *,
         name: str | None = None,
         install: Mapping[str, Any] | None = None,
+        revision: str | None = None,
         iris: Sequence[str] | None = None,
         sample: int | None = None,
         idempotency_key: str | None = None,
@@ -5171,16 +5172,22 @@ class _WorkflowTestsNamespace:
         """Start a test (``POST /v1/workflows/named/tests``): of a workflow
         of the graph (``name``), or of a workflow to create (``install``: the
         body of a create), on ``iris`` (at most 20) or a ``sample`` of the
-        watched class (default 6). The client sends an idempotency key
-        unless you pass one, so a retry answers the same test. Raises
-        :class:`LbbError` ``workflow_budget_exceeded`` (429) when the test
-        may cost more than the environment's budget has left, ``conflict``
-        (409) while a test of the workflow is open."""
+        watched class (default 6). With ``name``, ``revision`` runs the test
+        on a kept revision of the workflow's settings instead of the one in
+        use, and activates nothing; the test's ``revision`` names the one it
+        ran on. The client sends an idempotency key unless you pass one, so
+        a retry answers the same test. Raises :class:`LbbError`
+        ``workflow_budget_exceeded`` (429) when the test may cost more than
+        the environment's budget has left, ``conflict`` (409) while a test of
+        the workflow is open, ``workflow_revision_not_found`` (404) for a
+        revision the workflow does not keep."""
         body: dict[str, Any] = {}
         if name is not None:
             body["name"] = name
         if install is not None:
             body["install"] = dict(install)
+        if revision is not None:
+            body["revision"] = revision
         if iris is not None:
             body["iris"] = [str(iri) for iri in iris]
         if sample is not None:
@@ -5518,6 +5525,64 @@ class _NamedWorkflowsNamespace:
             "GET",
             "/v1/workflows/named/runs/get",
             params={"name": name, "run": run},
+        )
+
+    def revisions(
+        self, name: str, *, cursor: str | None = None, limit: int | None = None
+    ) -> models.WorkflowRevisionList:
+        """One page of the history of the workflow's settings, newest
+        activation first (``GET /v1/workflows/named/revisions``).
+
+        Each item is a revision (the settings a person set, hashed into its
+        ``wrev_`` id, and the ``request`` that makes it) with the facts of
+        one activation: ``activation``, ``action`` (``create``, ``change``,
+        ``activate`` or ``existing``), ``activated_at``, ``activated_by``,
+        ``previous_revision`` and ``bound`` (this activation is the one in
+        use). A revision activated twice is listed twice. The history keeps
+        the newest 100 activations; ``limit`` is 1 to 100 (default 20)."""
+        return self._client._model_request(
+            models.WorkflowRevisionList,
+            "GET",
+            "/v1/workflows/named/revisions",
+            params={"name": name, "cursor": cursor, "limit": limit},
+        )
+
+    def get_revision(self, name: str, id: str) -> models.WorkflowRevision:
+        """One revision of the workflow's settings, with the facts of its
+        newest kept activation (``GET /v1/workflows/named/revisions/get``).
+        Compare two revisions by their ``settings``. A revision the workflow
+        does not keep raises :class:`LbbError` ``workflow_revision_not_found``
+        (404); a run summary keeps its ``revision`` after that."""
+        return self._client._model_request(
+            models.WorkflowRevision,
+            "GET",
+            "/v1/workflows/named/revisions/get",
+            params={"name": name, "id": id},
+        )
+
+    def activate_revision(
+        self, name: str, id: str, *, expected_revision: str | None = None
+    ) -> models.NamedWorkflow:
+        """Make a kept revision the workflow's settings
+        (``POST /v1/workflows/named/revisions/activate``).
+
+        Its request goes through the change path again, with every check a
+        change makes, and must produce the revision: :class:`LbbError`
+        ``workflow_revision_stale`` (409) when the graph now reads the
+        settings differently. With ``expected_revision``, another active
+        revision raises ``workflow_revision_conflict`` (409). Activating the
+        active revision changes nothing, so a failed call is retried. Work
+        that waits or runs keeps the revision it started with. Returns the
+        workflow, whose ``active_revision`` names the revision."""
+        body: dict[str, Any] = {"name": name, "id": id}
+        if expected_revision is not None:
+            body["expected_revision"] = expected_revision
+        return self._client._model_request(
+            models.NamedWorkflow,
+            "POST",
+            "/v1/workflows/named/revisions/activate",
+            body=body,
+            options={"retry": True},
         )
 
     def run_stats(self, name: str, *, hours: int | None = None) -> models.WorkflowRunStats:
