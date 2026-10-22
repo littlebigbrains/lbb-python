@@ -17,6 +17,11 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   `client.workflows.tests.create` takes `models` (per use, `extract` or
   `decide`): the test runs on those models, and the test's `models` names
   the ones it ran.
+- `triggered_workflow(on_schedule=...)` (or `@workflow.on_schedule`)
+  handles the slots of a workflow with a schedule trigger (`type:
+  "schedule"`: the slot's time, the slots skipped, the commit range since the
+  last run and `changed`), and `on_instances` becomes optional. A schedule
+  message without `on_schedule` fails the turn for good.
 
 ## 0.31.0 (2026-10-22)
 

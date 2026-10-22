@@ -2,9 +2,10 @@
 
 A triggered workflow of the starter workflow ``workflow`` sends the new and
 changed instances of the class it watches to a workflow of your worker, as
-trigger messages of type ``instances``. :func:`triggered_workflow` defines
-that workflow: it checks each message and hands it to ``on_instances`` with
-the workflow's state. :func:`write_owned` commits what your code owns on the
+trigger messages of type ``instances``, and a workflow with a schedule sends
+one message of type ``schedule`` per slot. :func:`triggered_workflow`
+defines that workflow: it checks each message and hands it to
+``on_instances`` or ``on_schedule`` with the workflow's state. :func:`write_owned` commits what your code owns on the
 instances with ``replace_owned``, inside a named step, with the step's effect
 id as the commit's idempotency key. The TypeScript SDK has the same calls
 (``sdk/typescript/src/triggered-workflow-worker.ts``).
@@ -41,6 +42,8 @@ S = TypeVar("S")
 
 #: The ``type`` of every trigger message.
 TRIGGER_MESSAGE_TYPE = "instances"
+#: The ``type`` of a schedule slot's message.
+SCHEDULE_MESSAGE_TYPE = "schedule"
 
 _REASONS = {reason.value for reason in models.WorkflowTriggerReason}
 
@@ -120,6 +123,9 @@ InstancesHandler = Callable[
     [WorkflowContext, models.WorkflowTriggerMessage, S], Awaitable["WorkflowResult[S] | None"]
 ]
 FanInHandler = Callable[[WorkflowContext, Any, S], Awaitable["WorkflowResult[S] | None"]]
+ScheduleHandler = Callable[
+    [WorkflowContext, models.WorkflowScheduleMessage, S], Awaitable["WorkflowResult[S] | None"]
+]
 
 
 class TriggeredWorkflowDefinition(WorkflowDefinition[S, Any]):
@@ -134,12 +140,28 @@ class TriggeredWorkflowDefinition(WorkflowDefinition[S, Any]):
         name: str,
         version: str,
         initial_state: S,
-        on_instances: InstancesHandler[S],
+        on_instances: InstancesHandler[S] | None,
         on_fan_in: FanInHandler[S] | None = None,
+        on_schedule: ScheduleHandler[S] | None = None,
     ) -> None:
         super().__init__(name, version, initial_state, self._on_message)
         self._on_instances = on_instances
         self._on_fan_in = on_fan_in
+        self._on_schedule = on_schedule
+
+    def on_schedule(self, handler: ScheduleHandler[S]) -> ScheduleHandler[S]:
+        """Set the handler of a schedule's slots (``{"schedule": {"cron": ...}}``
+        or ``{"schedule": {"every": ...}}``).
+
+        One message per slot: the slot's time (``due_at``), the slots skipped
+        since the previous run (``missed``) and the commits since it
+        (``since_commit_seq`` to ``as_of_commit_seq``, read at
+        ``as_of_commit_seq``). A run that only reads changes returns at once
+        when ``message.changed`` is false. A schedule message without this
+        handler fails the turn.
+        """
+        self._on_schedule = handler
+        return handler
 
     def on_fan_in(self, handler: FanInHandler[S]) -> FanInHandler[S]:
         """Set the handler of the workflow's fan-in identity
@@ -166,7 +188,27 @@ class TriggeredWorkflowDefinition(WorkflowDefinition[S, Any]):
             if turn is None:
                 return WorkflowResult(state=state)
             return WorkflowResult(state=turn.state, result=turn.result)
-        turn = await self._on_instances(ctx, parse_trigger_message(message), state)
+        if isinstance(message, Mapping) and message.get("type") == SCHEDULE_MESSAGE_TYPE:
+            if self._on_schedule is None:
+                raise WorkflowError(
+                    f"{self.name} received a schedule slot (it has a schedule trigger)"
+                    " but defines no on_schedule"
+                )
+            try:
+                slot = models.WorkflowScheduleMessage.model_validate(message)
+            except ValueError as error:
+                raise WorkflowError(f"The message is not a schedule message: {error}") from error
+            turn = await self._on_schedule(ctx, slot, state)
+            if turn is None:
+                return WorkflowResult(state=state)
+            return WorkflowResult(state=turn.state, result=turn.result)
+        parsed = parse_trigger_message(message)
+        if self._on_instances is None:
+            raise WorkflowError(
+                f"{self.name} received instances (it has a watch or a content trigger)"
+                " but defines no on_instances"
+            )
+        turn = await self._on_instances(ctx, parsed, state)
         if turn is None:
             return WorkflowResult(state=state)
         continuation = turn.continuation
@@ -187,8 +229,19 @@ def triggered_workflow(
     name: str,
     version: str,
     initial_state: Any = None,
+    on_instances: InstancesHandler[Any] | None = None,
+    on_fan_in: FanInHandler[Any] | None = None,
+    on_schedule: ScheduleHandler[Any],
+) -> TriggeredWorkflowDefinition[Any]: ...
+@overload
+def triggered_workflow(
+    *,
+    name: str,
+    version: str,
+    initial_state: Any = None,
     on_instances: InstancesHandler[Any],
     on_fan_in: FanInHandler[Any] | None = None,
+    on_schedule: ScheduleHandler[Any] | None = None,
 ) -> TriggeredWorkflowDefinition[Any]: ...
 def triggered_workflow(
     *,
@@ -197,6 +250,7 @@ def triggered_workflow(
     initial_state: Any = None,
     on_instances: InstancesHandler[Any] | None = None,
     on_fan_in: FanInHandler[Any] | None = None,
+    on_schedule: ScheduleHandler[Any] | None = None,
 ) -> Any:
     """Define the workflow of a developer workflow.
 
@@ -207,15 +261,19 @@ def triggered_workflow(
     ``message.instances`` at ``message.as_of_commit_seq`` (or later), do the
     work inside ``ctx.step``, and write with :func:`write_owned`. Drop what
     you wrote for ``message.removed``. It returns a ``WorkflowResult``, or
-    ``None`` to keep the state. Use it as a decorator::
+    ``None`` to keep the state. ``on_schedule(ctx, message, state)`` handles
+    one slot of a schedule (see :meth:`TriggeredWorkflowDefinition.on_schedule`).
+    Use it as a decorator::
 
         @triggered_workflow(name="word-count", version="v1")
         async def word_count(ctx, message, state):
             ...
     """
     initial = {} if initial_state is None else initial_state
-    if on_instances is not None:
-        return TriggeredWorkflowDefinition(name, version, initial, on_instances, on_fan_in)
+    if on_instances is not None or on_schedule is not None:
+        return TriggeredWorkflowDefinition(
+            name, version, initial, on_instances, on_fan_in, on_schedule
+        )
 
     def define(handler: InstancesHandler[Any]) -> TriggeredWorkflowDefinition[Any]:
         return TriggeredWorkflowDefinition(name, version, initial, handler, on_fan_in)

@@ -9776,6 +9776,12 @@ class WorkflowMessageOrigin(BaseModel):
         int | None,
         Field(description='How many times the item was sent before (a requeue).', ge=0),
     ] = None
+    due_at_ms: Annotated[
+        int | None,
+        Field(
+            description="A `schedule` origin: the slot's time, in milliseconds since the Unix\nepoch."
+        ),
+    ] = None
     event: Annotated[
         str | None, Field(description='The event of the data plane that sent it.')
     ] = None
@@ -10195,6 +10201,129 @@ class WorkflowRunsIn(Enum):
 
     lbb = 'lbb'
     worker = 'worker'
+
+
+class WorkflowScheduleMessage(BaseModel):
+    """
+    The message of one schedule slot (`type: "schedule"`): the slot's time,
+    the slots skipped since the last run, and the commit range since the
+    last run.
+    """
+
+    as_of_commit_seq: Annotated[
+        int,
+        Field(
+            description="The graph's published commit when the slot was sent: read at this\ncommit or later.",
+            ge=0,
+        ),
+    ]
+    changed: Annotated[
+        bool,
+        Field(
+            description='Whether a commit was published since the previous run\n(`since_commit_seq < as_of_commit_seq`).'
+        ),
+    ]
+    due_at: Annotated[
+        str,
+        Field(
+            description="The slot's time (RFC 3339, UTC); for a run now, the time it was\nasked."
+        ),
+    ]
+    graph: Annotated[str, Field(description='The graph id.')]
+    manual: Annotated[
+        bool | None,
+        Field(
+            description='A run now (`POST /v1/workflows/named/run`), outside the slots.'
+        ),
+    ] = None
+    missed: Annotated[
+        int, Field(description='Slots skipped since the previous run.', ge=0)
+    ]
+    origin: WorkflowMessageOrigin | None = None
+    previous_due_at: Annotated[
+        str | None,
+        Field(
+            description="The time of the previous run's slot; absent for the first run."
+        ),
+    ] = None
+    since_commit_seq: Annotated[
+        int,
+        Field(
+            description="The previous run's `as_of_commit_seq` (the first run: the published\ncommit when the trigger was made). The changes since the previous\nrun are the commits after it, up to `as_of_commit_seq`.",
+            ge=0,
+        ),
+    ]
+    trigger: Annotated[str, Field(description="The trigger's id.")]
+    type: Annotated[str, Field(description='Always `schedule`.')]
+    workflow: Annotated[str, Field(description="The workflow's name.")]
+
+
+class WorkflowScheduleResolved(BaseModel):
+    """
+    A schedule trigger as the server resolved it: the stored form (a cron
+    expression names its `timezone`) and where its slots stand.
+    """
+
+    cron: str | None = None
+    every: str | None = None
+    jitter: str | None = None
+    last_due_at: Annotated[
+        str | None, Field(description='The time of the last slot sent or skipped.')
+    ] = None
+    missed: Annotated[
+        int | None,
+        Field(
+            description="Slots skipped since the last run (a run that had not finished, the\nbudget, a downtime); the next run's `missed`.",
+            ge=0,
+        ),
+    ] = None
+    next_due_at: Annotated[
+        str | None,
+        Field(
+            description="The next slot's time, RFC 3339 (absent while the workflow is\npaused)."
+        ),
+    ] = None
+    offset: str | None = None
+    timezone: str | None = None
+
+
+class WorkflowScheduleTrigger(BaseModel):
+    """
+    A schedule trigger: a `cron` expression in a `timezone`, or a period
+    (`every`, with an `offset`) in UTC, and an optional `jitter`. Exactly one
+    of `cron` and `every`. Slots come at least 5 minutes apart.
+    """
+
+    cron: Annotated[
+        str | None,
+        Field(
+            description='Five fields (minute, hour, day of month, month, day of week): `*`,\nlists, ranges, steps, month and day names, Sunday as 0 or 7. As in\nVixie cron and cronie, when either day field starts with `*` a day\nmatches both; otherwise it matches either.\n`@hourly`, `@daily`, `@weekly`, `@monthly` and `@yearly` too.'
+        ),
+    ] = None
+    every: Annotated[
+        str | None,
+        Field(
+            description='A period of whole minutes (`5m`, `6h`, `7d`), 5 minutes to 366 days:\nslots at `offset + k * every` since the Unix epoch, in UTC.'
+        ),
+    ] = None
+    jitter: Annotated[
+        str | None,
+        Field(
+            description="Each slot is sent a fixed delay after its time, below this: at most 1\nhour and half the shortest gap between slots. The message keeps the\nslot's time."
+        ),
+    ] = None
+    offset: Annotated[
+        str | None,
+        Field(
+            description='With `every`: whole minutes from 0 to less than `every`. Default 0.'
+        ),
+    ] = None
+    timezone: Annotated[
+        str | None,
+        Field(
+            description='An IANA time zone name for `cron` (`Europe/Berlin`). Default `UTC`.'
+        ),
+    ] = None
 
 
 class WorkflowScopeTruth(Enum):
@@ -16795,9 +16924,8 @@ class WorkflowTestResult(BaseModel):
 
 class WorkflowTrigger(BaseModel):
     """
-    One trigger of a workflow: a watch or a content trigger, exactly one of
-    them, and at most one review trigger beside it. A schedule (design only)
-    is refused with `400 workflow_trigger_unsupported`.
+    One trigger of a workflow: a watch, a content trigger or a schedule,
+    exactly one of them, and at most one review trigger beside it.
     """
 
     content: WorkflowContentTrigger | None = None
@@ -16808,12 +16936,7 @@ class WorkflowTrigger(BaseModel):
         ),
     ] = None
     review: WorkflowReviewTrigger | None = None
-    schedule: Annotated[
-        dict[str, Any] | None,
-        Field(
-            description='Design only: a timer trigger. Refused in this release\n(`workflow_trigger_unsupported`).'
-        ),
-    ] = None
+    schedule: WorkflowScheduleTrigger | None = None
     watch: WorkflowWatch | None = None
 
 
@@ -16865,13 +16988,17 @@ class WorkflowTriggerMessage(BaseModel):
 
 class WorkflowTriggerResolved(BaseModel):
     """
-    A trigger as the server resolved it: a watch or a content trigger.
+    A trigger as the server resolved it: a watch, a content trigger, a
+    schedule or a review trigger.
     """
 
     content: WorkflowContentTrigger | None = None
     id: str
-    kind: Annotated[str, Field(description='`watch`, `content` or `review`.')]
+    kind: Annotated[
+        str, Field(description='`watch`, `content`, `schedule` or `review`.')
+    ]
     review: WorkflowReviewTrigger | None = None
+    schedule: WorkflowScheduleResolved | None = None
     watch: WorkflowWatchResolved | None = None
 
 
@@ -18319,7 +18446,7 @@ class NamedWorkflowRequest(BaseModel):
     triggers: Annotated[
         list[WorkflowTrigger],
         Field(
-            description="Exactly one trigger in this release: a watch or a content trigger.\nA workflow keeps its trigger's kind; to change it, delete the\nworkflow and create it again."
+            description="Exactly one trigger in this release: a watch, a content trigger or a\nschedule, and a review trigger beside it. A workflow keeps its\ntrigger's kind; to change it, delete the workflow and create it\nagain."
         ),
     ]
     window: Annotated[

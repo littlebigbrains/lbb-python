@@ -362,12 +362,18 @@ def _definition(scenario: dict[str, Any], program: _Program) -> Any:
     async def on_fan_in(ctx: WorkflowContext, message: Any, state: Any) -> Any:
         return await program.run(scenario["on_fan_in"], ctx, state, message)
 
+    async def on_schedule(ctx: WorkflowContext, message: Any, state: Any) -> Any:
+        return await program.run(
+            scenario["on_schedule"], ctx, state, message.model_dump(mode="json", by_alias=True)
+        )
+
     return triggered_workflow(
         name=spec["name"],
         version=spec["version"],
         initial_state=spec.get("initial_state"),
-        on_instances=on_instances,
+        on_instances=on_instances if "on_instances" in scenario else None,
         on_fan_in=on_fan_in if "on_fan_in" in scenario else None,
+        on_schedule=on_schedule if "on_schedule" in scenario else None,
     )
 
 
