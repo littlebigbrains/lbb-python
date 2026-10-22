@@ -12,6 +12,7 @@ from typing import Any, cast
 import httpx
 
 from . import models
+from . import models as _models  # for a function whose `models` names the models a test runs
 from ._catalog import AccessNamespace, CatalogNamespace
 from ._client_base import (
     _ASK_STREAM_ENDED,
@@ -53,6 +54,7 @@ from ._client_base import (
     _jittered_backoff,
     _list_envelope,
     _missing_route,
+    _ModelChoicesNamespace,
     _ModelSwitchesNamespace,
     _ModelTrialsNamespace,
     _NamedWorkflowsNamespace,
@@ -385,13 +387,69 @@ class _SyncModelSwitchesNamespace(_ModelSwitchesNamespace):
         return cast(models.ModelSwitchListResponse, super().revert(job))
 
 
+class _SyncModelChoicesNamespace(_ModelChoicesNamespace):
+    __doc__ = _ModelChoicesNamespace.__doc__
+
+    def list(
+        self,
+        *,
+        workflow: str | None = None,
+        use: str | models.ModelUse | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> models.ModelChoiceList:
+        return cast(
+            models.ModelChoiceList,
+            super().list(workflow=workflow, use=use, limit=limit, cursor=cursor),
+        )
+
+    def all(
+        self,
+        *,
+        workflow: str | None = None,
+        use: str | models.ModelUse | None = None,
+        limit: int | None = None,
+    ) -> Iterator[models.ModelChoice]:
+        """Every row: :meth:`list` page by page, with the same filters."""
+        return _every(
+            lambda cursor: self.list(workflow=workflow, use=use, limit=limit, cursor=cursor)
+        )
+
+    def put(
+        self,
+        *,
+        use: str | models.ModelUse,
+        model: TrialCandidate,
+        workflow: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.ModelChoice:
+        return cast(
+            models.ModelChoice,
+            super().put(use=use, model=model, workflow=workflow, idempotency_key=idempotency_key),
+        )
+
+    def delete(
+        self,
+        *,
+        use: str | models.ModelUse,
+        workflow: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.ModelChoiceDeleted:
+        return cast(
+            models.ModelChoiceDeleted,
+            super().delete(use=use, workflow=workflow, idempotency_key=idempotency_key),
+        )
+
+
 class _SyncModelsNamespace:
     """The models of the graph's uses: trials of other models
-    (:attr:`trials`), and switches (:attr:`switches`)."""
+    (:attr:`trials`), switches (:attr:`switches`), and the model choices of
+    the workflow uses (:attr:`choices`)."""
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self.trials = _SyncModelTrialsNamespace(client)
         self.switches = _SyncModelSwitchesNamespace(client)
+        self.choices = _SyncModelChoicesNamespace(client)
 
 
 def _every(fetch: Callable[[str | None], Any]) -> Iterator[Any]:
@@ -415,16 +473,18 @@ class _SyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
         name: str | None = None,
         install: Mapping[str, Any] | None = None,
         revision: str | None = None,
+        models: Mapping[str, TrialCandidate] | None = None,
         iris: Sequence[str] | None = None,
         sample: int | None = None,
         idempotency_key: str | None = None,
-    ) -> models.WorkflowTest:
+    ) -> _models.WorkflowTest:
         return cast(
-            models.WorkflowTest,
+            _models.WorkflowTest,
             super().create(
                 name=name,
                 install=install,
                 revision=revision,
+                models=models,
                 iris=iris,
                 sample=sample,
                 idempotency_key=idempotency_key,

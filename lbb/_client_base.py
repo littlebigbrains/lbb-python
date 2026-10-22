@@ -39,6 +39,7 @@ import httpx
 from pydantic import BaseModel, RootModel
 
 from . import models
+from . import models as _models  # for a function whose `models` names the models a test runs
 from ._version import __version__
 
 DEFAULT_BASE_URL = "http://127.0.0.1:7400"
@@ -5165,17 +5166,22 @@ class _WorkflowTestsNamespace:
         name: str | None = None,
         install: Mapping[str, Any] | None = None,
         revision: str | None = None,
+        models: Mapping[str, TrialCandidate] | None = None,
         iris: Sequence[str] | None = None,
         sample: int | None = None,
         idempotency_key: str | None = None,
-    ) -> models.WorkflowTest:
+    ) -> _models.WorkflowTest:
         """Start a test (``POST /v1/workflows/named/tests``): of a workflow
         of the graph (``name``), or of a workflow to create (``install``: the
         body of a create), on ``iris`` (at most 20) or a ``sample`` of the
         watched class (default 6). With ``name``, ``revision`` runs the test
         on a kept revision of the workflow's settings instead of the one in
         use, and activates nothing; the test's ``revision`` names the one it
-        ran on. The client sends an idempotency key unless you pass one, so
+        ran on. ``models`` runs the test on other models, per use
+        (``{"extract": {"provider": "anthropic", "model": "claude-haiku-5-5",
+        "effort": "low"}}``), one of each use's ``options`` in
+        ``client.models.choices.list()``; the test's ``models`` names the
+        ones it ran. The client sends an idempotency key unless you pass one, so
         a retry answers the same test. Raises :class:`LbbError`
         ``workflow_budget_exceeded`` (429) when the test may cost more than
         the environment's budget has left, ``conflict`` (409) while a test of
@@ -5188,12 +5194,14 @@ class _WorkflowTestsNamespace:
             body["install"] = dict(install)
         if revision is not None:
             body["revision"] = revision
+        if models is not None:
+            body["models"] = {use: _trial_candidate(model) for use, model in models.items()}
         if iris is not None:
             body["iris"] = [str(iri) for iri in iris]
         if sample is not None:
             body["sample"] = sample
         return self._client._model_request(
-            models.WorkflowTest,
+            _models.WorkflowTest,
             "POST",
             "/v1/workflows/named/tests",
             body=body,
@@ -5723,6 +5731,112 @@ class _ModelSwitchesNamespace:
             "POST",
             "/v1/models/switches/revert",
             params={"job": _enum_value(job)},
+        )
+
+
+class _ModelChoicesNamespace:
+    """Model choices: which model each use of a workflow runs, for the
+    environment or for one workflow of the graph. ``extract`` is the
+    reasoning model of an AI step (``values.extract``'s values, the
+    ``reason`` activity), ``decide`` its decision model (the support of a
+    value, the ``decide`` activity); ``embed`` is listed with its model and
+    takes no choice. A call runs a test's model, else its workflow's choice,
+    else the environment's, else the use's default, and names the choice in
+    the call log (``choice``).
+
+    Example::
+
+        [extract] = client.models.choices.list(use="extract").data
+        client.models.choices.put(
+            use="extract",
+            model={"provider": "anthropic", "model": "claude-haiku-5-5", "effort": "low"},
+            workflow="products",
+        )
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def list(
+        self,
+        *,
+        workflow: str | None = None,
+        use: str | models.ModelUse | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> models.ModelChoiceList:
+        """One page of rows (``GET /v1/models/choices``). Without
+        ``workflow``: the environment's row of each use, then each workflow's
+        own choice on the graph. With ``workflow``: the row in force for each
+        of its uses (its own, else the environment's, else the default,
+        ``source: default``). Each row lists the models its use can run
+        (``options``, with efforts, list prices and ``available``). Raises
+        :class:`LbbError` (404) ``named_workflow_not_found`` for a workflow
+        the graph does not have."""
+        return self._client._model_request(
+            models.ModelChoiceList,
+            "GET",
+            "/v1/models/choices",
+            params={
+                "workflow": workflow,
+                "use": _enum_value(use),
+                "limit": limit,
+                "cursor": cursor,
+            },
+        )
+
+    def put(
+        self,
+        *,
+        use: str | models.ModelUse,
+        model: TrialCandidate,
+        workflow: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.ModelChoice:
+        """Choose the model of a use (``PUT /v1/models/choices``), for the
+        environment or for one ``workflow``: the next calls run it (a step of
+        LBB's workflows from its next step; other nodes within 30 s). The
+        model is one of the row's ``options``, with an effort it takes. The
+        client sends an idempotency key unless you pass one, so a retry
+        answers the saved row; the same key with another body raises
+        ``idempotency_conflict`` (409).
+
+        Raises :class:`LbbError`: 400 ``model_choice_unsupported`` for
+        ``embed`` or a model the use cannot run, 409
+        ``model_choice_unavailable`` when the server holds no key for the
+        provider or cannot price the model, 404 ``named_workflow_not_found``.
+        """
+        body: dict[str, Any] = {"use": _enum_value(use), "model": _trial_candidate(model)}
+        if workflow is not None:
+            body["workflow"] = workflow
+        return self._client._model_request(
+            models.ModelChoice,
+            "PUT",
+            "/v1/models/choices",
+            body=body,
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("models.choices.put"),
+        )
+
+    def delete(
+        self,
+        *,
+        use: str | models.ModelUse,
+        workflow: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.ModelChoiceDeleted:
+        """Remove a choice (``DELETE /v1/models/choices``): the use runs the
+        next level (a workflow's use the environment's choice, the
+        environment's use its default). Returns ``{id, object, deleted}``,
+        also for a choice that was not there. The client sends an
+        idempotency key unless you pass one."""
+        return self._client._model_request(
+            models.ModelChoiceDeleted,
+            "DELETE",
+            "/v1/models/choices",
+            params={"use": _enum_value(use), "workflow": workflow},
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("models.choices.delete"),
         )
 
 

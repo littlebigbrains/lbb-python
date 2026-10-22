@@ -16151,6 +16151,17 @@
             "format": "int64",
             "type": "integer"
           },
+          "choice": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelCallChoice",
+                "description": "Why the call used its model (added 2026-10-22): the model choice in\nforce, in the words of its row (`GET /v1/models/choices`). Calls of\n`values.extract` and the activity calls carry it."
+              }
+            ]
+          },
           "effort": {
             "type": [
               "string",
@@ -16263,6 +16274,33 @@
         },
         "required": [
           "queued"
+        ],
+        "type": "object"
+      },
+      "ModelCallChoice": {
+        "description": "Why a logged call used its model (`ModelCall::choice`): the row in force\nwhen the call resolved its model, in the row's words.",
+        "properties": {
+          "fallback": {
+            "description": "A choice applied and could not serve on the node (no key, or its\nrecord did not read): the call used the next level that could, which\nthe other fields name.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "The row in force (`mch_…`); absent for a test's model.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ModelChoiceScope"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelChoiceSource"
+          }
+        },
+        "required": [
+          "scope",
+          "source"
         ],
         "type": "object"
       },
@@ -16497,6 +16535,17 @@
               },
               {
                 "$ref": "#/components/schemas/ModelCheckBrief"
+              }
+            ]
+          },
+          "choice": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelCallChoice",
+                "description": "Why the call used its model (`ModelCall::choice`)."
               }
             ]
           },
@@ -17209,6 +17258,215 @@
           "calls"
         ],
         "type": "object"
+      },
+      "ModelChoice": {
+        "description": "The choice of one use in one scope. A list gives the environment's rows\nand the workflows' own; with `workflow` it gives the row in force for\neach use of that workflow.",
+        "properties": {
+          "by": {
+            "description": "Who set it (`account:<id>`, `key:<key id>`, `token`); `null` for a\ndefault row.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "choosable": {
+            "description": "A person can choose the use's model (`false` for `embed`).",
+            "type": "boolean"
+          },
+          "created": {
+            "description": "When the row was first set, RFC 3339; `null` for a default row.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelTrialModel",
+                "description": "The use's default model: what a delete of the environment's row goes\nback to."
+              }
+            ]
+          },
+          "graph": {
+            "description": "The graph of a `workflow` row; `null` for the environment.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "`mch_` and 24 hex characters (a hash of the scope and the use).\nOpaque: the same scope and use keep it.",
+            "type": "string"
+          },
+          "model": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelTrialModel",
+                "description": "The model the use runs: absent when the server runs no model for it."
+              }
+            ]
+          },
+          "object": {
+            "description": "`model_choice`.",
+            "type": "string"
+          },
+          "options": {
+            "description": "The models the use can run on this server, with their efforts, list\nprices and whether the server holds their key.",
+            "items": {
+              "$ref": "#/components/schemas/ModelTrialCandidate"
+            },
+            "type": "array"
+          },
+          "previous": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelTrialModel",
+                "description": "The model before the last change."
+              }
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ModelChoiceScope"
+          },
+          "since": {
+            "description": "When the model was set, RFC 3339; `null` for a default row.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelChoiceSource"
+          },
+          "use": {
+            "$ref": "#/components/schemas/ModelUse"
+          },
+          "workflow": {
+            "description": "The workflow of a `workflow` row; `null` for the environment.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "use",
+          "scope",
+          "source",
+          "choosable"
+        ],
+        "type": "object"
+      },
+      "ModelChoiceDeleted": {
+        "description": "`DELETE /v1/models/choices`: the choice was removed, and the use runs the\nnext level. A delete of no choice, or repeated, answers the same.",
+        "properties": {
+          "deleted": {
+            "description": "Always `true`.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "The row's id (`mch_…`).",
+            "type": "string"
+          },
+          "object": {
+            "description": "`model_choice`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "ModelChoiceList": {
+        "description": "`GET /v1/models/choices`: one page of choice rows.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ModelChoice"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` for the next page; absent on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object": {
+            "description": "`list`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "ModelChoicePutRequest": {
+        "additionalProperties": false,
+        "description": "`PUT /v1/models/choices`: choose the model of a use, for the\nenvironment, or for one workflow of the graph (`workflow`).",
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelTrialModel",
+            "description": "One of the row's `options`, with an effort it takes."
+          },
+          "use": {
+            "$ref": "#/components/schemas/ModelUse"
+          },
+          "workflow": {
+            "description": "A named workflow of the graph; absent for the environment.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "use",
+          "model"
+        ],
+        "type": "object"
+      },
+      "ModelChoiceScope": {
+        "description": "Where a choice applies.",
+        "enum": [
+          "environment",
+          "workflow",
+          "test",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "ModelChoiceSource": {
+        "description": "How a model was chosen.",
+        "enum": [
+          "person",
+          "trial",
+          "default",
+          "unknown"
+        ],
+        "type": "string"
       },
       "ModelDataLineage": {
         "properties": {
@@ -18499,6 +18757,15 @@
           "done",
           "stopped",
           "failed"
+        ],
+        "type": "string"
+      },
+      "ModelUse": {
+        "description": "A use of a model: the model slot a call fills. The call log names it on\neach call (`ModelCall::model_use`, wire name `use`).",
+        "enum": [
+          "extract",
+          "decide",
+          "embed"
         ],
         "type": "string"
       },
@@ -40145,6 +40412,16 @@
             "description": "The workflow exists on the graph; `false` for a test of a create\nrequest.",
             "type": "boolean"
           },
+          "models": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModelTrialModel"
+            },
+            "description": "The model of each use with its provider and effort (added\n2026-10-22): the one the create named (`models`), else the one the\nworkflow's model choices give it (`GET /v1/models/choices`). Fixed\nat the start: every call of the test runs it.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "object": {
             "description": "`workflow_test`.",
             "type": "string"
@@ -40299,6 +40576,17 @@
             },
             "type": "array"
           },
+          "models": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTestModels",
+                "description": "The models to run the test on, per use, in place of the ones the\nworkflow's model choices give it: a model of the use's `options`\n(`GET /v1/models/choices`), with an effort it takes. The test writes\nnothing, so a model is tried on the workflow's inputs before it is\nchosen. `400 model_choice_unsupported`, `409 model_choice_unavailable`\nas for a choice."
+              }
+            ]
+          },
           "name": {
             "description": "The name of a workflow of the graph (`GET /v1/workflows/named`).",
             "type": [
@@ -40384,6 +40672,35 @@
           "data",
           "has_more"
         ],
+        "type": "object"
+      },
+      "WorkflowTestModels": {
+        "additionalProperties": false,
+        "description": "The models a test names for its run (`models` of the create), per use.",
+        "properties": {
+          "decide": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelTrialModel",
+                "description": "The decision model that scores their support."
+              }
+            ]
+          },
+          "extract": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelTrialModel",
+                "description": "The reasoning model that reads values."
+              }
+            ]
+          }
+        },
         "type": "object"
       },
       "WorkflowTestProperty": {
@@ -87433,6 +87750,888 @@
           }
         ],
         "summary": "The graph's checks in one month by job and model (checks, mean score, right, partly, wrong, reviewed, corrected), the judge and its agreement with people, the months with checks, today's check budget of the stack, and whether this node can check calls",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/choices": {
+      "delete": {
+        "operationId": "delete_v1_models_choices",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the use: `extract` or `decide`",
+            "in": "query",
+            "name": "use",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "a workflow of the graph; absent for the environment",
+            "in": "query",
+            "name": "workflow",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelChoiceDeleted"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a choice: the use runs the next level (a workflow's use the environment's choice, the environment's use its default). Answers `{id, object: \"model_choice\", deleted: true}`; a delete of no choice, or repeated, answers the same. Takes `Idempotency-Key` as `PUT` does",
+        "tags": [
+          "system"
+        ]
+      },
+      "get": {
+        "operationId": "get_v1_models_choices",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "a named workflow of the graph: the rows in force for it",
+            "in": "query",
+            "name": "workflow",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one use: `extract`, `decide` or `embed`",
+            "in": "query",
+            "name": "use",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next_cursor` of the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "rows, 1 to 200; default 50",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelChoiceList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Which model each use of a workflow runs. Without `workflow`: the environment's row of each use (`extract`, `decide`, `embed`), then each workflow's own choice on the graph. With `workflow`: the row in force for each use of that workflow, its own, else the environment's, else the use's default (`source: default`). A row names its `scope` (`environment` or `workflow`), the `model`, how it was chosen (`source`: `person`, or `default`), `since`, `by`, the model before (`previous`), the use's `default` and the models it can run on this server (`options`, with efforts, list prices and whether the server holds their key). 404 `named_workflow_not_found`",
+        "tags": [
+          "system"
+        ]
+      },
+      "put": {
+        "operationId": "put_v1_models_choices",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelChoicePutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelChoice"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Choose the model of a use, for the environment or for one workflow of the graph (`workflow`): from the next call on (a step of LBB's workflows from its next step; other nodes within 30 s), the use runs that model and each call names the choice in the call log (`choice`). The model is one of the row's `options`, with an effort it takes. The same request again changes nothing. Takes `Idempotency-Key`: a repeat answers the saved row, and the same key with another request is 409 `idempotency_conflict`. 400 `model_choice_unsupported` (`param` `use` for `embed` or an unknown use, `model` for a model the use cannot run), 409 `model_choice_unavailable` when this server holds no key for the provider or cannot price the model, 404 `named_workflow_not_found`",
         "tags": [
           "system"
         ]

@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING
 
 from lbb import AsyncLbbClient, LbbClient, QueryAskResult, QueryAskStreamEvent
 from lbb.models import (
+    ModelChoice,
+    ModelChoiceDeleted,
+    ModelChoiceList,
     ModelSwitch,
     ModelTrial,
     ModelTrialStartResponse,
@@ -37,6 +40,13 @@ if TYPE_CHECKING:
         assert_type(started, ModelTrialStartResponse)
         assert_type(client.models.trials.wait(started.trials[0].id), ModelTrial)
         assert_type(client.models.switches.create(trial="t"), ModelSwitch)
+        assert_type(client.models.choices.list(use="extract"), ModelChoiceList)
+        assert_type(
+            client.models.choices.put(
+                use="extract", model={"provider": "mock", "model": "mock-candidate"}
+            ),
+            ModelChoice,
+        )
 
     async def async_dx_types(client: AsyncLbbClient) -> None:
         assert_type(await client.ontology.view(counts=True), OntologyView)
@@ -51,3 +61,4 @@ if TYPE_CHECKING:
         )
         assert_type(await client.models.trials.wait("t"), ModelTrial)
         assert_type(await client.models.switches.create(trial="t"), ModelSwitch)
+        assert_type(await client.models.choices.delete(use="extract"), ModelChoiceDeleted)
