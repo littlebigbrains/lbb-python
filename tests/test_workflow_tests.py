@@ -1,5 +1,5 @@
 """Workflow tests (``client.workflows.tests``): each method's route, query,
-body and idempotency key, and ``wait`` (sync and async)."""
+body and idempotency key, ``all`` and ``wait`` (sync and async)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from lbb import AsyncLbbClient, LbbClient
+from lbb import AsyncLbbClient, LbbClient, models
 
 ID = "wtest_1791967648726a1b2c3d4e5f6"
 
@@ -42,6 +42,7 @@ def workflow_test(status: str) -> dict[str, Any]:
         },
         "estimate_micro_usd": 1100,
         "cost_micro_usd": 0,
+        "dataset": None,
     }
 
 
@@ -50,25 +51,21 @@ ANSWERS: list[dict[str, Any]] = [
     workflow_test("running"),
     workflow_test("done"),
     {"object": "list", "data": [workflow_test("done")], "has_more": False},
+    {"object": "list", "data": [workflow_test("done")], "has_more": True, "next_cursor": ID},
+    {"object": "list", "data": [workflow_test("done")], "has_more": False},
     workflow_test("done"),
     workflow_test("cancelled"),
-    {
-        "kind": "values",
-        "test": ID,
-        "fingerprint": "ab" * 16,
-        "records": [],
-        "expected": {"about": [], "install": {"properties": {}}, "records": []},
-    },
 ]
 
 ROUTES = [
-    ("POST", "/v1/workflows/triggered/tests"),
-    ("GET", "/v1/workflows/triggered/tests/get"),
-    ("GET", "/v1/workflows/triggered/tests/get"),
-    ("GET", "/v1/workflows/triggered/tests"),
-    ("POST", "/v1/workflows/triggered/tests/answer"),
-    ("POST", "/v1/workflows/triggered/tests/cancel"),
-    ("GET", "/v1/workflows/triggered/tests/dataset"),
+    ("POST", "/v1/workflows/named/tests"),
+    ("GET", "/v1/workflows/named/tests/get"),
+    ("GET", "/v1/workflows/named/tests/get"),
+    ("GET", "/v1/workflows/named/tests"),
+    ("GET", "/v1/workflows/named/tests"),
+    ("GET", "/v1/workflows/named/tests"),
+    ("POST", "/v1/workflows/named/tests/answer"),
+    ("POST", "/v1/workflows/named/tests/cancel"),
 ]
 
 
@@ -87,11 +84,8 @@ def capturing_transport(
 class WorkflowTestsTests(unittest.TestCase):
     def check(self, seen: list[httpx.Request], answers: list[Any]) -> None:
         self.assertEqual([(r.method, r.url.path) for r in seen], ROUTES)
-        create, answer = seen[0], seen[4]
-        self.assertEqual(
-            json.loads(create.content),
-            {"workflow": {"starter": "values.extract", "name": "sinks"}, "sample": 3},
-        )
+        create, answer = seen[0], seen[6]
+        self.assertEqual(json.loads(create.content), {"name": "sinks", "sample": 3})
         self.assertTrue(create.headers["idempotency-key"].startswith("workflow-tests.create:"))
         self.assertEqual(
             json.loads(answer.content),
@@ -103,13 +97,18 @@ class WorkflowTestsTests(unittest.TestCase):
             },
         )
         self.assertTrue(answer.headers["idempotency-key"].startswith("workflow-tests.answer:"))
-        self.assertEqual(seen[3].url.params["name"], "sinks")
-        self.assertEqual(seen[5].url.params["id"], ID)
+        self.assertEqual(dict(seen[3].url.params), {"graph": "crm", "name": "sinks"})
+        self.assertEqual(dict(seen[4].url.params), {"graph": "crm", "name": "sinks", "limit": "1"})
+        self.assertEqual(seen[5].url.params["cursor"], ID)
+        self.assertEqual(seen[7].url.params["id"], ID)
         self.assertEqual(answers[0].status.value, "queued")
         self.assertEqual(answers[1].status.value, "done")
+        self.assertIsNone(answers[1].dataset)
+        self.assertIsInstance(answers[2], models.WorkflowTestList)
         self.assertEqual(answers[2].data[0].id, ID)
-        self.assertEqual(answers[4].status.value, "cancelled")
-        self.assertEqual(answers[5].test, ID)
+        self.assertEqual([test.id for test in answers[3]], [ID, ID])
+        self.assertIsInstance(answers[3][0], models.WorkflowTest)
+        self.assertEqual(answers[5].status.value, "cancelled")
 
     def test_each_method_sends_its_route_body_and_key(self) -> None:
         seen: list[httpx.Request] = []
@@ -118,14 +117,26 @@ class WorkflowTestsTests(unittest.TestCase):
         ) as client:
             tests = client.workflows.tests
             answers = [
-                tests.create(workflow={"starter": "values.extract", "name": "sinks"}, sample=3),
+                tests.create(name="sinks", sample=3),
                 tests.wait(ID, poll_interval=0),
                 tests.list(name="sinks"),
+                list(tests.all(name="sinks", limit=1)),
                 tests.answer(ID, "lbb:e/1", "width_cm", {"decision": "correct", "value": 45}),
                 tests.cancel(ID),
-                tests.dataset(ID),
             ]
+            self.assertFalse(hasattr(tests, "dataset"))
         self.check(seen, answers)
+
+    def test_wait_raises_when_the_test_is_still_open_at_its_timeout(self) -> None:
+        seen: list[httpx.Request] = []
+        running = [workflow_test("running")] * 2
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, running)
+        ) as client:
+            with self.assertRaises(TimeoutError) as raised:
+                client.workflows.tests.wait(ID, timeout=0, poll_interval=0)
+        self.assertEqual(str(raised.exception), f"workflow test {ID} is still running")
+        self.assertEqual(len(seen), 1)
 
 
 class AsyncWorkflowTestsTests(unittest.IsolatedAsyncioTestCase):
@@ -136,16 +147,26 @@ class AsyncWorkflowTestsTests(unittest.IsolatedAsyncioTestCase):
         ) as client:
             tests = client.workflows.tests
             answers = [
-                await tests.create(
-                    workflow={"starter": "values.extract", "name": "sinks"}, sample=3
-                ),
+                await tests.create(name="sinks", sample=3),
                 await tests.wait(ID, poll_interval=0),
                 await tests.list(name="sinks"),
+                [test async for test in tests.all(name="sinks", limit=1)],
                 await tests.answer(ID, "lbb:e/1", "width_cm", {"decision": "correct", "value": 45}),
                 await tests.cancel(ID),
-                await tests.dataset(ID),
             ]
+            self.assertFalse(hasattr(tests, "dataset"))
         WorkflowTestsTests.check(self, seen, answers)  # type: ignore[arg-type]
+
+    async def test_wait_raises_when_the_test_is_still_open_at_its_timeout(self) -> None:
+        seen: list[httpx.Request] = []
+        running = [workflow_test("running")] * 2
+        async with AsyncLbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, running)
+        ) as client:
+            with self.assertRaises(TimeoutError) as raised:
+                await client.workflows.tests.wait(ID, timeout=0, poll_interval=0)
+        self.assertEqual(str(raised.exception), f"workflow test {ID} is still running")
+        self.assertEqual(len(seen), 1)
 
 
 if __name__ == "__main__":

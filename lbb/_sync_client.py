@@ -15,6 +15,7 @@ from . import models
 from ._catalog import AccessNamespace, CatalogNamespace
 from ._client_base import (
     _ASK_STREAM_ENDED,
+    _WORKFLOW_TEST_WAIT_TIMEOUT,
     DEFAULT_BASE_URL,
     DEFAULT_INTEGRATIONS_URL,
     DEFAULT_MAX_RETRIES,
@@ -37,15 +38,21 @@ from ._client_base import (
     _BaseLbbClient,
     _body_marks_terminal,
     _ChecksNamespace,
+    _earlier_params,
+    _EarlierList,
     _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
+    _EvalDatasetsNamespace,
     _EvalsNamespace,
     _file_head,
     _FilesNamespace,
+    _is_earlier_list,
     _jittered_backoff,
+    _list_envelope,
     _ModelSwitchesNamespace,
     _ModelTrialsNamespace,
+    _NamedWorkflowsNamespace,
     _OntologyNamespace,
     _parse_model,
     _QueryNamespace,
@@ -62,6 +69,7 @@ from ._client_base import (
     _trial_settled,
     _trial_timeout,
     _workflow_test_open,
+    _workflow_test_timeout,
     _WorkflowTestsNamespace,
     _write_chunks,
 )
@@ -383,13 +391,25 @@ class _SyncModelsNamespace:
         self.switches = _SyncModelSwitchesNamespace(client)
 
 
+def _every(fetch: Callable[[str | None], Any]) -> Iterator[Any]:
+    """Every item of a list in the list envelope: ``fetch(cursor)`` page by
+    page, until ``has_more`` is false."""
+    cursor: str | None = None
+    while True:
+        page = fetch(cursor)
+        yield from page.data
+        if not page.has_more or not page.next_cursor:
+            return
+        cursor = page.next_cursor
+
+
 class _SyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
     __doc__ = _WorkflowTestsNamespace.__doc__
 
     def create(
         self,
         *,
-        workflow: Mapping[str, str] | None = None,
+        name: str | None = None,
         install: Mapping[str, Any] | None = None,
         iris: Sequence[str] | None = None,
         sample: int | None = None,
@@ -398,7 +418,7 @@ class _SyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
         return cast(
             models.WorkflowTest,
             super().create(
-                workflow=workflow,
+                name=name,
                 install=install,
                 iris=iris,
                 sample=sample,
@@ -412,15 +432,21 @@ class _SyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
     def list(
         self,
         *,
-        starter: str | None = None,
         name: str | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> models.WorkflowTestList:
         return cast(
             models.WorkflowTestList,
-            super().list(starter=starter, name=name, limit=limit, cursor=cursor),
+            super().list(name=name, limit=limit, cursor=cursor),
         )
+
+    def all(
+        self, *, name: str | None = None, limit: int | None = None
+    ) -> Iterator[models.WorkflowTest]:
+        """Every test, or every test of the workflow ``name``, newest first:
+        :meth:`list` page after page (``limit`` tests per page)."""
+        return _every(lambda cursor: self.list(name=name, limit=limit, cursor=cursor))
 
     def answer(
         self,
@@ -439,31 +465,108 @@ class _SyncWorkflowTestsNamespace(_WorkflowTestsNamespace):
     def cancel(self, test_id: str) -> models.WorkflowTest:
         return cast(models.WorkflowTest, super().cancel(test_id))
 
-    def dataset(self, test_id: str) -> models.WorkflowTestDataset:
-        return cast(models.WorkflowTestDataset, super().dataset(test_id))
-
     def wait(
-        self, test_id: str, *, timeout: float | None = None, poll_interval: float = 1.0
+        self,
+        test_id: str,
+        *,
+        timeout: float | None = _WORKFLOW_TEST_WAIT_TIMEOUT,
+        poll_interval: float = 1.0,
     ) -> models.WorkflowTest:
         """Read the test until it ends (``done``, ``failed`` or
-        ``cancelled``) and return it. ``timeout`` (seconds) raises
-        :class:`TimeoutError`."""
+        ``cancelled``) and return it. Raises :class:`TimeoutError` when the
+        test is still open after ``timeout`` seconds (default 600; ``None``
+        waits as long as it takes)."""
         if poll_interval < 0:
             raise ValueError("poll_interval must be non-negative")
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
         deadline = time.monotonic() + timeout if timeout is not None else None
         while True:
             test = self.get(test_id)
             if not _workflow_test_open(test):
                 return test
             if deadline is not None and time.monotonic() >= deadline:
-                raise TimeoutError(f"workflow test {test_id} is still {test.status}")
+                raise _workflow_test_timeout(test_id, test)
             time.sleep(poll_interval)
 
 
-class _SyncWorkflowsNamespace:
-    """Workflows: tests of a workflow on chosen inputs (:attr:`tests`)."""
+class _SyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
+    __doc__ = _NamedWorkflowsNamespace.__doc__
+
+    def _list(
+        self,
+        model_cls: type[ModelT],
+        path: str,
+        params: Mapping[str, Any],
+        earlier: _EarlierList,
+    ) -> ModelT:
+        payload = self._client._request("GET", path, params=params)
+        if _is_earlier_list(payload, earlier):
+            again = _earlier_params(params, earlier)
+            if again is not None:
+                payload = self._client._request("GET", path, params=again)
+            if _is_earlier_list(payload, earlier):
+                payload = _list_envelope(payload, earlier)
+        return _parse_model(model_cls, payload)
+
+    def all(self, *, limit: int | None = None) -> Iterator[models.NamedWorkflow]:
+        """Every workflow of the graph, by name: :meth:`list` page by page."""
+        return _every(lambda cursor: self.list(limit=limit, cursor=cursor))
+
+    def all_runs(
+        self,
+        name: str,
+        *,
+        limit: int | None = None,
+        outcome: str | models.WorkflowRunOutcome | None = None,
+    ) -> Iterator[models.WorkflowRunSummary]:
+        """Every run of the workflow kept, newest first: :meth:`runs` page by
+        page."""
+        return _every(
+            lambda cursor: self.runs(name, cursor=cursor, limit=limit, outcome=outcome)
+        )
+
+    def all_documents(
+        self,
+        name: str,
+        *,
+        q: str | None = None,
+        sort: str | models.TriggeredDocumentSort | None = None,
+        limit: int | None = None,
+    ) -> Iterator[Any]:
+        """Every document of a ``documents.link`` or ``documents.map``
+        workflow: :meth:`documents` page by page."""
+        return _every(
+            lambda cursor: self.documents(name, q=q, sort=sort, cursor=cursor, limit=limit)
+        )
+
+
+class _SyncEvalDatasetsNamespace(_EvalDatasetsNamespace):
+    __doc__ = _EvalDatasetsNamespace.__doc__
+
+    def all(self, *, limit: int | None = None) -> Iterator[models.EvalDataset]:
+        """Every dataset, newest first, without their items: :meth:`list`
+        page after page (``limit`` datasets per page)."""
+        return _every(lambda cursor: self.list(limit=limit, cursor=cursor))
+
+
+class _SyncEvalsNamespace(_EvalsNamespace):
+    __doc__ = _EvalsNamespace.__doc__
+    datasets: _SyncEvalDatasetsNamespace
 
     def __init__(self, client: _BaseLbbClient) -> None:
+        super().__init__(client)
+        self.datasets = _SyncEvalDatasetsNamespace(client)
+
+
+class _SyncWorkflowsNamespace:
+    """Workflows: the workflows of the graph by name (:attr:`named`), and
+    tests of a workflow on chosen inputs (:attr:`tests`)."""
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        #: The workflows of the graph by name: list, read, change, run,
+        #: pause, delete, and their queue, runs and documents.
+        self.named = _SyncNamedWorkflowsNamespace(client)
         self.tests = _SyncWorkflowTestsNamespace(client)
 
 
@@ -474,7 +577,7 @@ class LbbClient(_BaseLbbClient):
     ontology: _SyncOntologyNamespace
     query: _SyncQueryNamespace
     schema: _SchemaNamespace
-    evals: _EvalsNamespace
+    evals: _SyncEvalsNamespace
     checks: _ChecksNamespace
     embeddings: _EmbeddingsNamespace
     integrations: IntegrationsNamespace
@@ -486,7 +589,7 @@ class LbbClient(_BaseLbbClient):
         api_key: str | None = None,
         graph: str | None = None,
         environment: str | None = None,
-        api_version: str = "2026-07-23",
+        api_version: str = "2026-10-21",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
@@ -514,7 +617,7 @@ class LbbClient(_BaseLbbClient):
         self.ontology = _SyncOntologyNamespace(self)
         self.query = _SyncQueryNamespace(self)
         self.schema = _SchemaNamespace(self)
-        self.evals = _EvalsNamespace(self)
+        self.evals = _SyncEvalsNamespace(self)
         # Model checks: the call log, the judge's checks, and reviews.
         self.checks = _ChecksNamespace(self)
         # Review: questions for a person, and their answers.

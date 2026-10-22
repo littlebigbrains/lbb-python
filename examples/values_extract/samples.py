@@ -1,6 +1,7 @@
 """The samples of values-extract, for ``python -m values_extract try``: six
-invented entries of a sanitary equipment list (``samples/records.json``),
-committed as instances of the class the settings name, each with its text.
+invented product data sheets of office furniture and small appliances
+(``samples/records.json``), committed as instances of the class the settings
+name, each with its text.
 The same samples as the TypeScript template's."""
 
 from __future__ import annotations

@@ -97,9 +97,11 @@ class ActivityUnit(Enum):
 class ActivityWorkflow(BaseModel):
     """
     The run of a workflow turn that an activity call belongs to
-    (`workflow` of `POST /v1/workflows/activities/*`). The TypeScript SDK
-    sets it from the step context. The server checks its shape only: the
-    work token names the graph only, so the instance object is not read.
+    (`workflow` of `POST /v1/workflows/activities/*`). The SDKs set it from
+    the step context. The caller names its workflow and turn; the server
+    checks the shape, and counts the call under the named workflow that
+    owns the identity when the graph has one. It does not check that the
+    caller holds the turn: the work token names the graph only.
     """
 
     model_config = ConfigDict(
@@ -121,6 +123,12 @@ class ActivityWorkflow(BaseModel):
         str | None,
         Field(
             description="The run's id (`run.id` of the claimed task's turn): it names the same\nidentity and turn."
+        ),
+    ] = None
+    step: Annotated[
+        str | None,
+        Field(
+            description="The key of the step that makes the call (`ctx.step`'s key, 1 to 128\ncharacters of `A-Z a-z 0-9 _ . -`): the call log names it (`step`)\nwith `scope: live`. Added 2026-10-21; an older server refuses the\nfield."
         ),
     ] = None
     turn: Annotated[int, Field(description="The turn's number, at least 1.", ge=0)]
@@ -1519,6 +1527,17 @@ class EntityView(BaseModel):
     id: str
     name: str
     type: str
+
+
+class EvalDatasetDeleted(BaseModel):
+    """
+    `DELETE /v1/evals/datasets?id=`: the dataset was deleted. A delete
+    repeated answers the same.
+    """
+
+    deleted: Annotated[bool, Field(description='Always `true`.')]
+    id: str
+    object: Annotated[str, Field(description='`eval_dataset`.')]
 
 
 class EvalDatasetInstall(BaseModel):
@@ -8958,18 +8977,23 @@ class TrainModelResponse(BaseModel):
 
 class TriggeredDocumentPage(BaseModel):
     """
-    `GET /v1/workflows/triggered/documents`: one page of the documents of a
-    `documents.link` or `documents.map` workflow. Each row has the fields
-    of a row of the workflow's `details.documents`.
+    `GET /v1/workflows/named/documents`: one page of the documents of a
+    `documents.link` or `documents.map` workflow, in the list envelope. Each
+    row has the fields of a row of the workflow's `details.documents`. A
+    request with `Lbb-Version` before 2026-10-21 gets the earlier shape:
+    `documents` and `next_after` in place of `object`, `data`, `has_more`
+    and `next_cursor`.
     """
 
-    documents: list[Any]
-    next_after: Annotated[
+    data: list[Any]
+    has_more: bool
+    next_cursor: Annotated[
         str | None,
         Field(
-            description='Pass as `after` for the next page; absent on the last page.'
+            description='Pass as `cursor` for the next page; absent on the last page.'
         ),
     ] = None
+    object: Annotated[str, Field(description='`list`.')]
     total: Annotated[
         int, Field(description='The documents that match `q`, on every page.', ge=0)
     ]
@@ -12773,10 +12797,11 @@ class ModelActivityDay(BaseModel):
 class ModelActivityWorkflow(BaseModel):
     """
     One workflow, job and model on one graph over the month: the calls of the
-    `workflows` feature, per workflow and job. `workflow` is the triggered
-    workflow's name, `@activities` for the workflow activities (a developer
-    workflow's code calls them without naming its workflow), or `*` (with
-    `graph` `*`) for the workflows past the ledger's bound. Added
+    `workflows` feature, per workflow and job. `workflow` is the workflow's
+    name: a triggered workflow's own calls, and the activity calls a turn of
+    a named workflow makes (the request's `workflow` names the turn; since
+    2026-10-21). `@activities` holds the activity calls outside such a turn,
+    and `*` (with `graph` `*`) the workflows past the ledger's bound. Added
     2026-10-11: a month recorded before has no rows.
     """
 
@@ -13039,6 +13064,12 @@ class ModelCallOrigin(BaseModel):
     run: ModelCallRun | None = None
     trace_id: Annotated[
         str | None, Field(description='The eval trace of the request, when it has one.')
+    ] = None
+    workflow: Annotated[
+        str | None,
+        Field(
+            description="The named workflow the call counts under (added 2026-10-21): the\nworkflow LBB runs (`starters/<name>`), the workflow whose turn made\nan activity call, or the workflow a test names. Absent for a call of\nno workflow. The model activity, Evals and the workflow page read\nit, not the run's identity."
+        ),
     ] = None
 
 
@@ -16206,7 +16237,7 @@ class WorkflowStep(BaseModel):
 
 class WorkflowTestAnswerRequest(BaseModel):
     """
-    `POST /v1/workflows/triggered/tests/answer`: a person's answer to one
+    `POST /v1/workflows/named/tests/answer`: a person's answer to one
     property of one read input; `answer: null` removes it.
     """
 
@@ -16221,11 +16252,11 @@ class WorkflowTestAnswerRequest(BaseModel):
 
 class WorkflowTestCreateRequest(BaseModel):
     """
-    `POST /v1/workflows/triggered/tests`: run a workflow on chosen inputs.
-    Name a workflow of the graph (`workflow`), or a workflow to create
-    (`install`, the body of `PUT /v1/workflows/triggered`); and the inputs
-    (`iris`, at most 20), or a sample of the watched class's first instances
-    (`sample`, 1 to 20, default 6).
+    `POST /v1/workflows/named/tests`: run a workflow on chosen inputs. Name
+    a workflow of the graph (`name`), or a workflow to create (`install`,
+    the body that creates it from its template); and the inputs (`iris`, at
+    most 20), or a sample of the watched class's first instances (`sample`,
+    1 to 20, default 6).
     """
 
     model_config = ConfigDict(
@@ -16233,6 +16264,12 @@ class WorkflowTestCreateRequest(BaseModel):
     )
     install: TriggeredWorkflowRequest | None = None
     iris: list[str] | None = None
+    name: Annotated[
+        str | None,
+        Field(
+            description='The name of a workflow of the graph (`GET /v1/workflows/named`).'
+        ),
+    ] = None
     sample: Annotated[int | None, Field(ge=0)] = None
     workflow: WorkflowTestWorkflow | None = None
 
@@ -17453,7 +17490,7 @@ class ModelCall(BaseModel):
     step: Annotated[
         str | None,
         Field(
-            description='The step of the workflow that made the call (added 2026-10-20):\n`values` or `support` for `values.extract`.'
+            description='The step of the workflow that made the call (added 2026-10-20):\n`values` or `support` for `values.extract`, the step key the SDK\nsends (`workflow.step`) for an activity call inside a turn.'
         ),
     ] = None
     truncated: Annotated[
@@ -17463,7 +17500,7 @@ class ModelCall(BaseModel):
     use: Annotated[
         str | None,
         Field(
-            description="The model use the call served (added 2026-10-20): `extract` for an\nAI step's reasoning call, `decide` for its decision call. Calls of\n`values.extract` carry it."
+            description="The model use the call served (added 2026-10-20): `extract` for an\nAI step's reasoning call and for a `reason` activity call, `decide`\nfor a decision call and a `decide` activity call. Calls of\n`values.extract` and the activity calls carry it."
         ),
     ] = None
 
@@ -18790,15 +18827,21 @@ class WorkflowRunDetail(BaseModel):
 
 class WorkflowRunList(BaseModel):
     """
-    A page of a workflow's runs, newest first.
+    A page of a workflow's runs, newest first, in the list envelope. A
+    request with `Lbb-Version` before 2026-10-21 gets the earlier shape:
+    `runs` and `next_before` in place of `object`, `data`, `has_more` and
+    `next_cursor`.
     """
 
-    next_before: Annotated[
+    data: list[WorkflowRunSummary]
+    has_more: bool
+    next_cursor: Annotated[
         str | None,
         Field(
-            description='Pass as `before` for the next page; absent on the last page.'
+            description='Pass as `cursor` for the next page; absent on the last page.'
         ),
     ] = None
+    object: Annotated[str, Field(description='`list`.')]
     repaired: Annotated[
         int | None,
         Field(
@@ -18806,7 +18849,6 @@ class WorkflowRunList(BaseModel):
             ge=0,
         ),
     ] = None
-    runs: list[WorkflowRunSummary]
 
 
 class WorkflowStartRequest(BaseModel):
@@ -18837,6 +18879,12 @@ class WorkflowTest(BaseModel):
     created: Annotated[str, Field(description='When it was started, RFC 3339.')]
     created_by: Annotated[
         str | None, Field(description='Who started it, when known.')
+    ] = None
+    dataset: Annotated[
+        str | None,
+        Field(
+            description='The id of the Evals dataset saved from the test\'s answers\n(`POST /v1/evals/datasets` with `source: {kind: "test", id}`); `null`\nuntil the first save. A test has one dataset: a later save brings it\nup to date with the answers.'
+        ),
     ] = None
     error: Annotated[
         str | None, Field(description='Why it failed, at most 500 characters.')
@@ -18884,7 +18932,7 @@ class WorkflowTest(BaseModel):
 
 class WorkflowTestList(BaseModel):
     """
-    `GET /v1/workflows/triggered/tests`: the graph's tests, newest first.
+    `GET /v1/workflows/named/tests`: the graph's tests, newest first.
     """
 
     data: list[WorkflowTest]
@@ -19283,7 +19331,9 @@ class EvalDatasetCreateRequest(BaseModel):
     """
     `POST /v1/evals/datasets`: create a dataset with its first items, or
     from a source: `source: {kind: "test", id}` makes the answers of that
-    workflow test the items, and its settings the `install`.
+    workflow test the items, and its settings the `install`. A test has one
+    dataset (the test's `dataset`): a save of a test whose dataset exists
+    brings that dataset up to date and answers it.
     """
 
     model_config = ConfigDict(
@@ -19594,10 +19644,26 @@ class NamedWorkflow(BaseModel):
 
     batch: Annotated[int | None, Field(ge=0)] = None
     budget_usd_per_month: float | None = None
+    created: Annotated[
+        str | None,
+        Field(description='When it was created, RFC 3339 (the same as `created_at`).'),
+    ] = None
     created_at: str | None = None
+    details: Annotated[
+        Any | None,
+        Field(
+            description="The workflow's own status, on a read of one workflow (`?name=`): for a\nworkflow your worker runs `DeveloperWorkflowDetails` (the message in\nflight, the instances waiting); for LBB's own its steps' status (the\ndocuments of `documents.link`, the properties of `values.extract`).\nA list and a workflow with a content trigger leave it out."
+        ),
+    ] = None
     fan_in: NamedWorkflowFanIn | None = None
     gate: WorkflowGate | None = None
-    name: str
+    name: Annotated[
+        str,
+        Field(
+            description="The workflow's id: unique on the graph, and the key of every\n`/v1/workflows/named*` route."
+        ),
+    ]
+    object: Annotated[str | None, Field(description='`workflow`.')] = None
     on_exhausted: Annotated[
         WorkflowOnExhausted | None,
         Field(
@@ -19655,33 +19721,49 @@ class NamedWorkflow(BaseModel):
 
 class NamedWorkflowList(BaseModel):
     """
-    `GET /v1/workflows/named`: the graph's workflows with triggers, by name.
+    `GET /v1/workflows/named`: the graph's workflows, by name, in the list
+    envelope (`limit` 1 to 200, default 100; `cursor`). A request with
+    `Lbb-Version` before 2026-10-21 gets the earlier shape: every workflow
+    in `workflows`.
     """
 
-    workflows: list[NamedWorkflow]
+    data: list[NamedWorkflow]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; absent on the last page.'
+        ),
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
 
 
 class NamedWorkflowQueue(BaseModel):
     """
-    `GET /v1/workflows/named/queue?name=&trigger=&after=&limit=`: what a
+    `GET /v1/workflows/named/queue?name=&trigger=&cursor=&limit=`: what a
     watch has not sent yet, with origins, the pass in progress, and per
-    shard its unfinished turns and its running turn's progress.
+    shard its unfinished turns and its running turn's progress. The items
+    are a page in the list envelope; the other fields describe the queue. A
+    request with `Lbb-Version` before 2026-10-21 gets the earlier shape:
+    `items` and an integer `next_after` in place of `object`, `data`,
+    `has_more` and `next_cursor`.
     """
 
-    items: Annotated[
+    data: Annotated[
         list[WorkflowQueueItem],
         Field(
-            description='From position `after`, at most `limit` (1 to 100, default 50):\ninstances first, then removed instances, in send order.'
+            description='From the position `cursor` names, at most `limit` (1 to 100, default\n50): instances first, then removed instances, in send order.'
         ),
     ]
+    has_more: bool
     name: str
-    next_after: Annotated[
-        int | None,
+    next_cursor: Annotated[
+        str | None,
         Field(
-            description='The position to pass as `after` for the next page. The queue moves\nas it drains, so a page is a view at one time.',
-            ge=0,
+            description='Pass as `cursor` for the next page; absent on the last page. The\nqueue moves as it drains, so a page is a view at one time.'
         ),
     ] = None
+    object: Annotated[str, Field(description='`list`.')]
     pass_: Annotated[WorkflowQueuePass | None, Field(alias='pass')] = None
     pending: Annotated[
         int,
@@ -19959,24 +20041,6 @@ class WorkflowRun(BaseModel):
     state: WorkflowState
     steps: list[WorkflowStepView]
     updated_at_ms: int
-
-
-class WorkflowTestDataset(BaseModel):
-    """
-    `GET /v1/workflows/triggered/tests/dataset`: a test's answers as an Evals
-    dataset of kind `values`, in the shape of a template's samples: the
-    inputs (`records.json`) and the answer key (`expected.json`). An input
-    is in it when a person answered at least one of its properties; only
-    answered properties are, and `cant_tell` answers are not.
-    `POST /v1/evals/datasets` with `source: {kind: "test", id}` stores the
-    same items as a dataset.
-    """
-
-    expected: EvalDatasetExpected
-    fingerprint: str
-    kind: EvalDatasetKind
-    records: list[EvalDatasetRecord]
-    test: Annotated[str, Field(description="The test's id.")]
 
 
 class WorkflowTurnClaimResponse(BaseModel):

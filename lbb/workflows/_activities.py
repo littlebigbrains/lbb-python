@@ -7,9 +7,10 @@ Pass the step's ``effect_id`` and a step that runs again after a crash gets
 the answer it got the first time, at no cost. The other activities are thin
 helpers over routes the client already has: parsed pages, SPARQL, owned
 writes, review items and ontology changes. A model activity called from a
-step of a :class:`~lbb.workflows.WorkflowWorker` turn names the turn's run
-(``workflow``), so the call log links the call to the run, and its usage adds
-up for the turn's completion: the worker's code does nothing for it.
+step of a :class:`~lbb.workflows.WorkflowWorker` turn names the turn's run and
+the step (``workflow``), so the call log links the call to the run and the
+step, and its usage adds up for the turn's completion: the worker's code does
+nothing for it.
 Reference: ``docs/reference/workflow-activities.md``.
 """
 
@@ -194,7 +195,8 @@ class LbbActivities:
         effect id a retry is safe (a repeat returns the kept answer), so 5xx
         and network failures are retried; without one only a ``429`` the
         server returns before it runs the request is."""
-        # The turn of the step that makes the call (none outside a turn).
+        # The turn of the step that makes the call (none outside a turn), and
+        # the step whose effect id is the call's or starts it (none for another id).
         turn = _activity_turn(effect_id)
         fields: dict[str, Any] = {}
         if effect_id is not None:
@@ -203,6 +205,9 @@ class LbbActivities:
             fields["label"] = label
         if turn is not None:
             workflow = dict(turn.workflow)
+            step = turn.step_of(effect_id)
+            if step is not None:
+                workflow["step"] = step
             if instance is not None:
                 workflow["instance"] = instance
             fields["workflow"] = models.ActivityWorkflow(**workflow)

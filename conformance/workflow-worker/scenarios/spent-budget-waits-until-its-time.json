@@ -93,7 +93,13 @@
         "method": "POST",
         "path": "/v1/workflows/activities/reason",
         "body": {
-          "effect_id": "stable/define"
+          "effect_id": "stable/define",
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1",
+            "step": "define"
+          }
         }
       },
       "response": {

@@ -3,12 +3,14 @@
 The Python port of the workflow template `values-extract`
 (`sdk/templates/values-extract` in the LBB repository). It fills properties of
 a class from the text of its instances. Each value comes with the words of the
-text that state it: `width_cm` 60 and `depth_cm` 40 from `ca. 60x40 cm`.
+text that state it: `width_cm` 120 and `depth_cm` 80 from `120 x 80 cm`.
 
 The rules are those of the TypeScript template and of LBB's own
 `values.extract@v1`: the same prompts, checks, review items and counters. On
 the samples with the mock models of its test, the port writes the values of
-the answer key (`samples/expected.json`).
+the answer key (`samples/expected.json`). It gives a person the four values
+it cannot confirm: two sizes in another unit, one without a unit, and one
+below the gate.
 
 A value between 0.5 and the gate becomes a `value` review item, one per
 property of an instance, under LBB's key (`value_item_key`). A person's

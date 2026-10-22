@@ -1,16 +1,26 @@
 """The runs of named workflows, their compatibility view by starter and
-name, and the documents of the document workflows: each method's route and
-query, on the client and on a ``graph(name)`` (sync and async)."""
+name, and the documents of the document workflows: each flat method's route
+and query, on the client and on a ``graph(name)`` (sync and async), and the
+``client.workflows.named`` namespace with its list envelope."""
 
 from __future__ import annotations
 
+import json
 import unittest
 from typing import Any
 
 import httpx
 
 from lbb import AsyncLbbClient, LbbClient
-from lbb.models import TriggeredDocumentPage, WorkflowRunDetail, WorkflowRunList, WorkflowRunStats
+from lbb.models import (
+    NamedWorkflow,
+    NamedWorkflowList,
+    NamedWorkflowQueue,
+    TriggeredDocumentPage,
+    WorkflowRunDetail,
+    WorkflowRunList,
+    WorkflowRunStats,
+)
 
 RUN = {
     "v": 1,
@@ -77,14 +87,25 @@ def expected_params(graph: str) -> list[dict[str, str]]:
 
 
 ANSWERS: list[dict[str, Any]] = [
-    {"runs": [RUN], "next_before": RUN["id"], "repaired": 1},
-    {"runs": []},
+    {
+        "object": "list",
+        "data": [RUN],
+        "has_more": True,
+        "next_cursor": RUN["id"],
+        "repaired": 1,
+    },
+    {"object": "list", "data": [], "has_more": False},
     {"run": RUN, "calls": [], "calls_truncated": False},
     {"hours": [{"hour_start_ms": 1791964800000, "runs": 1, "calls": 2}]},
-    {"runs": []},
+    {"object": "list", "data": [], "has_more": False},
     {"run": RUN, "calls": [], "calls_truncated": False},
     {"hours": []},
-    {"documents": [{"sha256": "ab12", "name": "D17 schedule"}], "total": 1},
+    {
+        "object": "list",
+        "data": [{"sha256": "ab12", "name": "D17 schedule"}],
+        "has_more": False,
+        "total": 1,
+    },
 ]
 
 
@@ -119,10 +140,10 @@ class WorkflowRunsTests(unittest.TestCase):
                 [dict(request.url.params) for request in seen], expected_params(graph)
             )
             page = WorkflowRunList.model_validate(answers[0])
-            self.assertEqual(page.runs[0].outcome.value, "more")
-            self.assertEqual(page.runs[0].turn, 412)
-            self.assertEqual(page.runs[0].usage.calls, 2)
-            self.assertEqual(page.next_before, RUN["id"])
+            self.assertEqual(page.data[0].outcome.value, "more")
+            self.assertEqual(page.data[0].turn, 412)
+            self.assertEqual(page.data[0].usage.calls, 2)
+            self.assertEqual(page.next_cursor, RUN["id"])
             self.assertEqual(page.repaired, 1)
             detail = WorkflowRunDetail.model_validate(answers[2])
             self.assertEqual(detail.run.identity, "starter.rooms")
@@ -143,6 +164,237 @@ class AsyncWorkflowRunsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([dict(request.url.params) for request in seen], expected_params("crm"))
         self.assertEqual(answers[2]["run"]["id"], RUN["id"])
 
+
+WORKFLOW = {
+    "object": "workflow",
+    "name": "notes",
+    "created": "2026-10-21T09:00:00Z",
+    "starter": "workflow",
+    "workflow": {"workflow_type": "word-count", "version": "v1"},
+    "runs_in": "worker",
+    "shards": 2,
+    "window": 4,
+    "owns": {},
+    "triggers": [{"id": "watch", "kind": "watch", "watch": {"class": "urn:Note", "fields": []}}],
+    "paused": False,
+    "status": {"state": "ready", "pending": 0},
+}
+ITEM = {
+    "iri": "https://littlebigbrain.com/e/aa",
+    "reason": "changed",
+    "shard": 1,
+    "origin": {"kind": "commit", "trigger": "watch", "from_seq": 4, "to_seq": 5},
+}
+QUEUE_FIELDS = {"name": "notes", "trigger": "watch", "pending": 30}
+NAMED_ANSWERS: list[dict[str, Any]] = [
+    {"object": "list", "data": [WORKFLOW], "has_more": True, "next_cursor": "notes"},
+    {"object": "list", "data": [{**WORKFLOW, "name": "sinks"}], "has_more": False},
+    WORKFLOW,
+    WORKFLOW,
+    {"workflow": WORKFLOW, "queued": True},
+    {**WORKFLOW, "paused": True},
+    {"object": "list", "data": [ITEM], "has_more": True, "next_cursor": "25", **QUEUE_FIELDS},
+    {"object": "list", "data": [RUN], "has_more": False},
+    {"run": RUN, "calls": [], "calls_truncated": False},
+    {"hours": []},
+    {"object": "list", "data": [{"sha256": "ab12"}], "has_more": False, "total": 1},
+    {"deleted": True},
+]
+NAMED_ROUTES = [
+    ("GET", "/v1/workflows/named", {"graph": "crm", "limit": "1"}),
+    ("GET", "/v1/workflows/named", {"graph": "crm", "limit": "1", "cursor": "notes"}),
+    ("GET", "/v1/workflows/named", {"graph": "crm", "name": "notes"}),
+    ("PUT", "/v1/workflows/named", {"graph": "crm"}),
+    ("POST", "/v1/workflows/named/run", {"graph": "crm", "name": "notes"}),
+    ("POST", "/v1/workflows/named/pause", {"graph": "crm", "name": "notes"}),
+    (
+        "GET",
+        "/v1/workflows/named/queue",
+        {"graph": "crm", "name": "notes", "trigger": "watch", "cursor": "0", "limit": "25"},
+    ),
+    (
+        "GET",
+        "/v1/workflows/named/runs",
+        {"graph": "crm", "name": "notes", "limit": "20", "outcome": "failed"},
+    ),
+    ("GET", "/v1/workflows/named/runs/get", {"graph": "crm", "name": "notes", "run": RUN["id"]}),
+    ("GET", "/v1/workflows/named/runs/stats", {"graph": "crm", "name": "notes", "hours": "48"}),
+    (
+        "GET",
+        "/v1/workflows/named/documents",
+        {"graph": "crm", "name": "plans", "q": "plan", "sort": "recent", "limit": "10"},
+    ),
+    ("DELETE", "/v1/workflows/named", {"graph": "crm", "name": "notes", "confirm": "notes"}),
+]
+REQUEST = {
+    "name": "notes",
+    "workflow": {"workflow_type": "word-count", "version": "v1"},
+    "triggers": [{"watch": {"class": "Note"}}],
+}
+# A server before the list envelope: the earlier names, and a cursor it
+# ignores (`cursor` is sent again as `before` and `after`).
+EARLIER_ANSWERS: list[dict[str, Any]] = [
+    {"workflows": [WORKFLOW]},
+    {"runs": [RUN], "next_before": RUN["id"], "repaired": 1},
+    {"runs": [RUN], "next_before": RUN["id"]},
+    {"runs": []},
+    {"items": [ITEM], "next_after": 25, **QUEUE_FIELDS},
+    {"items": [ITEM], "next_after": 25, **QUEUE_FIELDS},
+    {"items": [], "next_after": None, **QUEUE_FIELDS},
+    {"documents": [{"sha256": "ab12"}], "next_after": "ab12", "total": 2},
+]
+EARLIER_ROUTES = [
+    ("/v1/workflows/named", {"graph": "crm"}),
+    ("/v1/workflows/named/runs", {"graph": "crm", "name": "notes"}),
+    ("/v1/workflows/named/runs", {"graph": "crm", "name": "notes", "cursor": RUN["id"]}),
+    ("/v1/workflows/named/runs", {"graph": "crm", "name": "notes", "before": RUN["id"]}),
+    ("/v1/workflows/named/queue", {"graph": "crm", "name": "notes"}),
+    ("/v1/workflows/named/queue", {"graph": "crm", "name": "notes", "cursor": "25"}),
+    ("/v1/workflows/named/queue", {"graph": "crm", "name": "notes", "after": "25"}),
+    ("/v1/workflows/named/documents", {"graph": "crm", "name": "plans"}),
+]
+
+
+class NamedWorkflowsTests(unittest.TestCase):
+    def test_each_method_reads_its_route_and_returns_its_model(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, NAMED_ANSWERS)
+        ) as client:
+            named = client.workflows.named
+            names = [workflow.name for workflow in named.all(limit=1)]
+            one = named.get("notes")
+            put = named.put(REQUEST)
+            ran = named.run("notes")
+            paused = named.pause("notes")
+            queue = named.queue("notes", trigger="watch", cursor="0", limit=25)
+            runs = named.runs("notes", limit=20, outcome="failed")
+            detail = named.get_run("notes", RUN["id"])
+            stats = named.run_stats("notes", hours=48)
+            documents = named.documents("plans", q="plan", sort="recent", limit=10)
+            deleted = named.delete("notes", confirm="notes")
+        self.assertEqual(
+            [(r.method, r.url.path, dict(r.url.params)) for r in seen], NAMED_ROUTES
+        )
+        self.assertEqual(seen[0].headers["lbb-version"], "2026-10-21")
+        self.assertEqual(json.loads(seen[3].content), REQUEST)
+        self.assertEqual(json.loads(seen[5].content), {"paused": True})
+        self.assertEqual(names, ["notes", "sinks"])
+        self.assertIsInstance(one, NamedWorkflow)
+        self.assertEqual(one.object, "workflow")
+        self.assertEqual(one.created, "2026-10-21T09:00:00Z")
+        self.assertEqual(put.shards, 2)
+        self.assertTrue(ran.queued)
+        self.assertTrue(paused.paused)
+        self.assertIsInstance(queue, NamedWorkflowQueue)
+        self.assertEqual((queue.has_more, queue.next_cursor, queue.pending), (True, "25", 30))
+        self.assertEqual(queue.data[0].shard, 1)
+        self.assertEqual(runs.data[0].turn, 412)
+        self.assertEqual(detail.run.identity, "starter.rooms")
+        self.assertEqual(stats.hours, [])
+        self.assertEqual(documents.total, 1)
+        self.assertTrue(deleted.deleted)
+
+    def test_lists_of_a_server_before_the_envelope_read_as_the_envelope(self) -> None:
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, EARLIER_ANSWERS)
+        ) as client:
+            named = client.workflows.named
+            listed = named.list()
+            first = named.runs("notes")
+            second = named.runs("notes", cursor=first.next_cursor)
+            queue = named.queue("notes")
+            rest = named.queue("notes", cursor=queue.next_cursor)
+            documents = named.documents("plans")
+        self.assertEqual([(r.url.path, dict(r.url.params)) for r in seen], EARLIER_ROUTES)
+        self.assertIsInstance(listed, NamedWorkflowList)
+        self.assertEqual(
+            (listed.object, listed.data[0].name, listed.has_more), ("list", "notes", False)
+        )
+        self.assertEqual((first.has_more, first.next_cursor, first.repaired), (True, RUN["id"], 1))
+        self.assertEqual((second.data, second.has_more, second.next_cursor), ([], False, None))
+        self.assertEqual((queue.next_cursor, queue.pending, queue.data[0].shard), ("25", 30, 1))
+        self.assertEqual((rest.data, rest.has_more, rest.next_cursor), ([], False, None))
+        self.assertEqual((documents.next_cursor, documents.total), ("ab12", 2))
+
+
+    def test_requeue_sends_the_failed_instances_and_is_retried(self) -> None:
+        seen: list[httpx.Request] = []
+        answer = {
+            "attempt": 1,
+            "not_before": "2026-10-21T12:01:00.000000Z",
+            "requeued": ["https://x.test/e/1"],
+            "exhausted": [],
+        }
+        with LbbClient("http://h", graph="crm", transport=capturing_transport(seen, [answer])) as client:
+            report = client.workflows.named.requeue(
+                "notes",
+                {
+                    "workflow_id": "starter.notes",
+                    "turn": 3,
+                    "items": [{"instance": "https://x.test/e/1", "error": "timeout"}],
+                },
+            )
+        self.assertEqual(report.requeued, ["https://x.test/e/1"])
+        self.assertEqual(seen[0].url.path, "/v1/workflows/named/requeue")
+        self.assertEqual(dict(seen[0].url.params), {"graph": "crm", "name": "notes"})
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {
+                "workflow_id": "starter.notes",
+                "turn": 3,
+                "items": [{"instance": "https://x.test/e/1", "error": "timeout"}],
+            },
+        )
+
+
+class AsyncNamedWorkflowsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_the_async_namespace_awaits_each_method(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, NAMED_ANSWERS)
+        ) as client:
+            named = client.workflows.named
+            names = [workflow.name async for workflow in named.all(limit=1)]
+            one = await named.get("notes")
+            put = await named.put(REQUEST)
+            ran = await named.run("notes")
+            paused = await named.pause("notes")
+            queue = await named.queue("notes", trigger="watch", cursor="0", limit=25)
+            runs = await named.runs("notes", limit=20, outcome="failed")
+            detail = await named.get_run("notes", RUN["id"])
+            stats = await named.run_stats("notes", hours=48)
+            documents = await named.documents("plans", q="plan", sort="recent", limit=10)
+            deleted = await named.delete("notes", confirm="notes")
+        self.assertEqual(
+            [(r.method, r.url.path, dict(r.url.params)) for r in seen], NAMED_ROUTES
+        )
+        self.assertEqual(names, ["notes", "sinks"])
+        self.assertEqual((one.name, put.shards, ran.queued, paused.paused), ("notes", 2, True, True))
+        self.assertEqual(queue.next_cursor, "25")
+        self.assertEqual(runs.data[0].turn, 412)
+        self.assertEqual(detail.run.identity, "starter.rooms")
+        self.assertEqual(stats.hours, [])
+        self.assertEqual(documents.total, 1)
+        self.assertTrue(deleted.deleted)
+
+    async def test_async_lists_of_a_server_before_the_envelope(self) -> None:
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, EARLIER_ANSWERS)
+        ) as client:
+            named = client.workflows.named
+            listed = await named.list()
+            runs = [run.id async for run in named.all_runs("notes")]
+            queue = await named.queue("notes")
+            rest = await named.queue("notes", cursor=queue.next_cursor)
+            documents = await named.documents("plans")
+        self.assertEqual([(r.url.path, dict(r.url.params)) for r in seen], EARLIER_ROUTES)
+        self.assertEqual(listed.data[0].name, "notes")
+        self.assertEqual(runs, [RUN["id"]])
+        self.assertEqual((queue.next_cursor, rest.has_more), ("25", False))
+        self.assertEqual(documents.next_cursor, "ab12")
 
 if __name__ == "__main__":
     unittest.main()

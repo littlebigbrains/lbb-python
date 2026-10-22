@@ -419,7 +419,8 @@ def is_fan_in_identity(id: str) -> bool:
 @dataclass
 class _ActivityTurn:
     """The run of a turn this process runs: the ``workflow`` its activity
-    calls name, and what those calls used, added up for the completion."""
+    calls name, what those calls used, added up for the completion, and the
+    steps whose function ran in this attempt."""
 
     workflow: dict[str, Any]
     usage: dict[str, int] = field(
@@ -431,10 +432,35 @@ class _ActivityTurn:
             "cost_micro_usd": 0,
         }
     )
+    #: Each step whose function ran in this attempt: its effect id and its
+    #: key. At most 64 (the steps of a turn), cleared when the turn ends.
+    steps: dict[str, str] = field(default_factory=dict)
 
     def add(self, **used: int) -> None:
         for key, value in used.items():
             self.usage[key] = self.usage.get(key, 0) + value
+
+    def step_of(self, effect_id: str | None) -> str | None:
+        """The key of the step that makes an activity call: the step whose
+        effect id is ``effect_id``, else the step with the longest effect id
+        that ``effect_id`` starts with followed by ``.`` or ``:`` (an id made
+        from it, such as ``f"{s.effect_id}.2"``). ``None`` when no step of the
+        turn matches. The lookup reads the step runner's record and parses no
+        step from the id."""
+        if effect_id is None:
+            return None
+        exact = self.steps.get(effect_id)
+        if exact is not None:
+            return exact
+        found: tuple[str, str] | None = None
+        for step_id, key in self.steps.items():
+            if (
+                effect_id[len(step_id) : len(step_id) + 1] in (".", ":")
+                and effect_id.startswith(step_id)
+                and (found is None or len(step_id) > len(found[0]))
+            ):
+                found = (step_id, key)
+        return found[1] if found is not None else None
 
     def reported(self) -> models.WorkflowRunUsage | None:
         """The usage a turn reports, or nothing when it made no activity call."""
@@ -1090,9 +1116,12 @@ class _Turn:
             timeout_ms / 1000, self.lose, TimeoutError(f"Operation {key} timed out")
         )
         watch_progress()
+        effect_id = f"{self.task.effect_prefix}/{key}"
+        # An activity call with this id, or one made from it, names the step.
+        self.activity.steps[effect_id] = key
         try:
             step = WorkflowStepContext(
-                effect_id=f"{self.task.effect_prefix}/{key}",
+                effect_id=effect_id,
                 fence=models.WorkflowFence(**self._lease),
                 graph=self._graph,
                 checkpoint=_copy(cursor),
@@ -1158,6 +1187,7 @@ class _Turn:
         finally:
             if _RUNNING.get(prefix) is self.activity:
                 del _RUNNING[prefix]
+            self.activity.steps.clear()
             _CURRENT.reset(token)
             self._stop_heartbeat()
             if self._reader is not None:
