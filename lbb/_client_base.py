@@ -4883,11 +4883,14 @@ class _ReviewsNamespace:
         limit: int | None = None,
         cursor: str | None = None,
         key: str | Sequence[str] | None = None,
+        eval_id: str | None = None,
     ) -> Any:
         """One page of items, the latest update first: ``{object: "list",
         data, has_more, next_cursor}``. ``kind`` is one kind or several;
-        ``key`` one producer key or several (at most 100). Pass
-        ``next_cursor`` as ``cursor`` for the next page."""
+        ``key`` one producer key or several (at most 100); ``eval_id`` the
+        items of one owner record Evals filed for (a calibration session, a
+        model call's check, a golden). Pass ``next_cursor`` as ``cursor``
+        for the next page."""
         if kind is not None and not isinstance(kind, str):
             kind = ",".join(_enum_value(each) for each in kind)
         if key is not None and not isinstance(key, str):
@@ -4905,6 +4908,7 @@ class _ReviewsNamespace:
                 "limit": limit,
                 "cursor": cursor,
                 "key": key,
+                "eval_id": eval_id,
             },
         )
 
@@ -4914,14 +4918,20 @@ class _ReviewsNamespace:
         status: str | None = None,
         origin_id: str | None = None,
         type: str | None = None,
+        eval_id: str | None = None,
     ) -> Any:
         """The live items of every kind grouped by pattern, the largest
         first, by their ``rev_`` ids. ``status`` is ``open``, ``answered``
-        or ``withdrawn``."""
+        or ``withdrawn``; ``eval_id`` keeps the items of one owner record."""
         return self._client._request(
             "GET",
             "/v1/reviews/patterns",
-            params={"status": status, "origin_id": origin_id, "type": type},
+            params={
+                "status": status,
+                "origin_id": origin_id,
+                "type": type,
+                "eval_id": eval_id,
+            },
         )
 
     def get(self, id: str) -> Any:

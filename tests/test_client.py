@@ -3091,6 +3091,23 @@ class ModelChecksAndTuningTests(unittest.TestCase):
             json.loads(seen[3].content), {"ids": ["rev_2"], "answer": {"decision": "accept"}}
         )
 
+    def test_reviews_list_and_patterns_take_the_owner_record_of_an_eval_item(self) -> None:
+        seen: list[httpx.Request] = []
+        responses = [
+            {"json": {"object": "list", "data": [], "has_more": False}},
+            {"json": {"patterns": [], "total": 0}},
+            {"json": {"object": "list", "data": [], "has_more": False}},
+        ]
+        with LbbClient("http://h", transport=capturing_transport(seen, responses)) as client:
+            client.reviews.list(origin_id="evals:calibration", eval_id="s1")
+            client.reviews.patterns(status="open", eval_id="s1")
+            self.assertEqual(list(client.reviews.all(eval_id="call_1")), [])
+        self.assertEqual(
+            dict(seen[0].url.params), {"origin_id": "evals:calibration", "eval_id": "s1"}
+        )
+        self.assertEqual(dict(seen[1].url.params), {"status": "open", "eval_id": "s1"})
+        self.assertEqual(dict(seen[2].url.params), {"eval_id": "call_1"})
+
     def test_reviews_all_pages_and_writes_send_a_key_of_their_own(self) -> None:
         seen: list[httpx.Request] = []
         item = {"id": "rev_1", "object": "review_item", "kind": "value", "status": "open"}

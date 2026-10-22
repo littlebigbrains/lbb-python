@@ -25912,13 +25912,42 @@
         "type": "object"
       },
       "ReviewEvalOrigin": {
-        "description": "A model check, a calibration session or a test that filed an item.",
+        "description": "A model check, a calibration session, a golden query or a test that\nfiled an item: the record that holds the answer as a label.",
         "properties": {
           "id": {
+            "description": "The record: a check's call id, a session id, a golden id.",
             "type": "string"
+          },
+          "job": {
+            "description": "A check's job (`rerank`, `route`, …).",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "kind": {
             "$ref": "#/components/schemas/ReviewEvalOriginKind"
+          },
+          "question": {
+            "description": "A calibration question's id in its session (`q3`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "description": "A golden item's result id. Absent: the item asks about the answer of\nthe question as a whole.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trace": {
+            "description": "A golden item's trace: the one it was filed from, which its label\ngoes to.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -25932,7 +25961,9 @@
         "enum": [
           "check",
           "calibration",
-          "test"
+          "test",
+          "golden",
+          "unknown"
         ],
         "type": "string"
       },
@@ -106260,6 +106291,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "The items of one owner record Evals filed for: a calibration session, a model call's check, a golden",
+            "in": "query",
+            "name": "eval_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -108291,6 +108331,15 @@
             "description": "facts | links | ontology | other",
             "in": "query",
             "name": "type",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The items of one owner record Evals filed for: a calibration session, a model call's check, a golden",
+            "in": "query",
+            "name": "eval_id",
             "required": false,
             "schema": {
               "type": "string"

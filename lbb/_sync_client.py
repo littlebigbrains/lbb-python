@@ -576,6 +576,7 @@ class _SyncReviewsNamespace(_ReviewsNamespace):
         run: str | None = None,
         limit: int | None = None,
         key: str | Sequence[str] | None = None,
+        eval_id: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """Every item, the latest update first: :meth:`list` page by page,
         with the same filters (``limit`` items a page)."""
@@ -591,6 +592,7 @@ class _SyncReviewsNamespace(_ReviewsNamespace):
                 limit=limit,
                 cursor=cursor,
                 key=key,
+                eval_id=eval_id,
             )
             yield from page["data"]
             if not page.get("has_more") or not page.get("next_cursor"):

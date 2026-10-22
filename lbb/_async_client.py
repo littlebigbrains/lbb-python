@@ -1468,6 +1468,7 @@ class _AsyncReviewsNamespace(_ReviewsNamespace):
         run: str | None = None,
         limit: int | None = None,
         key: str | Sequence[str] | None = None,
+        eval_id: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Every item, the latest update first: :meth:`list` page by page,
         with the same filters (``limit`` items a page)."""
@@ -1483,6 +1484,7 @@ class _AsyncReviewsNamespace(_ReviewsNamespace):
                 limit=limit,
                 cursor=cursor,
                 key=key,
+                eval_id=eval_id,
             )
             for item in page["data"]:
                 yield item
