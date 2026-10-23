@@ -783,6 +783,12 @@ class WorkflowContext:
         is a Python keyword.)"""
         return WorkflowResult(state=state, result=result, continuation={"message": message})
 
+    async def blob_json(self, key: str) -> Any:
+        """The JSON value of workflow blob ``key`` (``GET /v1/workflows/blobs``),
+        with the worker's client. A blob's bytes never change, so a read
+        outside a step reads the same value on every attempt."""
+        return await self._turn._client.workflows.blobs.get_json(key)
+
     async def sparql(self, request: str | Mapping[str, Any], *, timeout: float = 30.0) -> Any:
         """SELECT or ASK for this live attempt, with its execution credential
         (``POST /v1/query/sparql-text``). Needs the worker's

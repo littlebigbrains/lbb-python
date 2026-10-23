@@ -22,6 +22,15 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   "schedule"`: the slot's time, the slots skipped, the commit range since the
   last run and `changed`), and `on_instances` becomes optional. A schedule
   message without `on_schedule` fails the turn for good.
+- `triggered_workflow(on_events=...)` (or `@workflow.on_events`) handles
+  the batches of a workflow with a stream trigger (`type: "events"`): the
+  worker reads the batch's blob and calls `on_events(ctx, events, message,
+  state)` with the events in order. A batch without `on_events` fails the
+  turn for good.
+- `client.workflows.named.send_events(name, events)` (sync and async) sends
+  1 to 500 events to a workflow with a stream trigger (`POST
+  /v1/workflows/named/events`). Each event's `id` is its idempotency key,
+  so a refused send is sent again as it is.
 
 ## 0.31.0 (2026-10-22)
 

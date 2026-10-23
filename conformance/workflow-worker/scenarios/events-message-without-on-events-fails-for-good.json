@@ -1,0 +1,95 @@
+{
+  "name": "events-message-without-on-events-fails-for-good",
+  "rule": "A triggered workflow without an events handler fails a batch of events for good, before it reads the blob: a retry would meet the same handler.",
+  "workflow": {
+    "type": "triggered",
+    "name": "orders",
+    "version": "v1",
+    "initial_state": {
+      "seen": 0
+    }
+  },
+  "on_instances": [
+    {
+      "keep": true
+    }
+  ],
+  "task": {
+    "workflow_type": "orders",
+    "state": {},
+    "token": "token-e",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f4",
+    "turn": {
+      "workflow_id": "starter.orders.1",
+      "number": 2,
+      "message_id": "stream-stream-3",
+      "message": {
+        "type": "events",
+        "workflow": "orders",
+        "graph": "crm",
+        "trigger": "stream",
+        "shard": 1,
+        "count": 2,
+        "bytes": 311,
+        "blob": "orders/batch-1",
+        "first_received_at": "2026-10-21T10:00:00.120000Z",
+        "last_received_at": "2026-10-21T10:00:04.870000Z",
+        "origin": {
+          "kind": "stream",
+          "trigger": "stream",
+          "requests": [
+            "req-7"
+          ]
+        }
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.orders.1-2",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/fail",
+        "body": {
+          "workflow_id": "starter.orders.1",
+          "turn": 2,
+          "token": "token-e",
+          "non_retryable": true
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}

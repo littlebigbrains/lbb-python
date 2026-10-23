@@ -2,10 +2,12 @@
 
 A triggered workflow of the starter workflow ``workflow`` sends the new and
 changed instances of the class it watches to a workflow of your worker, as
-trigger messages of type ``instances``, and a workflow with a schedule sends
-one message of type ``schedule`` per slot. :func:`triggered_workflow`
+trigger messages of type ``instances``, a workflow with a schedule sends
+one message of type ``schedule`` per slot, and a workflow with a stream
+sends its events in batches (``events``). :func:`triggered_workflow`
 defines that workflow: it checks each message and hands it to
-``on_instances`` or ``on_schedule`` with the workflow's state. :func:`write_owned` commits what your code owns on the
+``on_instances``, ``on_schedule`` or ``on_events`` with the workflow's
+state. :func:`write_owned` commits what your code owns on the
 instances with ``replace_owned``, inside a named step, with the step's effect
 id as the commit's idempotency key. The TypeScript SDK has the same calls
 (``sdk/typescript/src/triggered-workflow-worker.ts``).
@@ -44,6 +46,8 @@ S = TypeVar("S")
 TRIGGER_MESSAGE_TYPE = "instances"
 #: The ``type`` of a schedule slot's message.
 SCHEDULE_MESSAGE_TYPE = "schedule"
+#: The ``type`` of a stream batch's message.
+EVENTS_MESSAGE_TYPE = "events"
 
 _REASONS = {reason.value for reason in models.WorkflowTriggerReason}
 
@@ -126,6 +130,15 @@ FanInHandler = Callable[[WorkflowContext, Any, S], Awaitable["WorkflowResult[S] 
 ScheduleHandler = Callable[
     [WorkflowContext, models.WorkflowScheduleMessage, S], Awaitable["WorkflowResult[S] | None"]
 ]
+EventsHandler = Callable[
+    [
+        WorkflowContext,
+        list[models.WorkflowEventRecord],
+        models.WorkflowEventsMessage,
+        S,
+    ],
+    Awaitable["WorkflowResult[S] | None"],
+]
 
 
 class TriggeredWorkflowDefinition(WorkflowDefinition[S, Any]):
@@ -143,11 +156,13 @@ class TriggeredWorkflowDefinition(WorkflowDefinition[S, Any]):
         on_instances: InstancesHandler[S] | None,
         on_fan_in: FanInHandler[S] | None = None,
         on_schedule: ScheduleHandler[S] | None = None,
+        on_events: EventsHandler[S] | None = None,
     ) -> None:
         super().__init__(name, version, initial_state, self._on_message)
         self._on_instances = on_instances
         self._on_fan_in = on_fan_in
         self._on_schedule = on_schedule
+        self._on_events = on_events
 
     def on_schedule(self, handler: ScheduleHandler[S]) -> ScheduleHandler[S]:
         """Set the handler of a schedule's slots (``{"schedule": {"cron": ...}}``
@@ -161,6 +176,20 @@ class TriggeredWorkflowDefinition(WorkflowDefinition[S, Any]):
         handler fails the turn.
         """
         self._on_schedule = handler
+        return handler
+
+    def on_events(self, handler: EventsHandler[S]) -> EventsHandler[S]:
+        """Set the handler of a stream's batches (``{"stream": {"max_wait": ...}}``).
+
+        ``handler(ctx, events, message, state)`` gets up to the workflow's
+        ``batch`` events of one shard, in the order the stream received
+        them; the events of one ``key`` are always on one shard. The SDK
+        reads the batch's blob first. An event id comes once within the
+        stream's dedupe window (24 hours, at most 100,000 ids): when a
+        producer can send an id again after it, make the work idempotent. A
+        batch without this handler fails the turn.
+        """
+        self._on_events = handler
         return handler
 
     def on_fan_in(self, handler: FanInHandler[S]) -> FanInHandler[S]:
@@ -202,6 +231,27 @@ class TriggeredWorkflowDefinition(WorkflowDefinition[S, Any]):
             if turn is None:
                 return WorkflowResult(state=state)
             return WorkflowResult(state=turn.state, result=turn.result)
+        if isinstance(message, Mapping) and message.get("type") == EVENTS_MESSAGE_TYPE:
+            if self._on_events is None:
+                raise WorkflowError(
+                    f"{self.name} received a batch of events (it has a stream trigger)"
+                    " but defines no on_events"
+                )
+            try:
+                batch = models.WorkflowEventsMessage.model_validate(message)
+            except ValueError as error:
+                raise WorkflowError(f"The message is not a batch of events: {error}") from error
+            stored = await ctx.blob_json(batch.blob)
+            try:
+                events = models.WorkflowEventsBatch.model_validate(stored).events
+            except ValueError as error:
+                raise WorkflowError(
+                    f"The blob {batch.blob} holds no batch of events: {error}"
+                ) from error
+            turn = await self._on_events(ctx, list(events), batch, state)
+            if turn is None:
+                return WorkflowResult(state=state)
+            return WorkflowResult(state=turn.state, result=turn.result)
         parsed = parse_trigger_message(message)
         if self._on_instances is None:
             raise WorkflowError(
@@ -232,6 +282,18 @@ def triggered_workflow(
     on_instances: InstancesHandler[Any] | None = None,
     on_fan_in: FanInHandler[Any] | None = None,
     on_schedule: ScheduleHandler[Any],
+    on_events: EventsHandler[Any] | None = None,
+) -> TriggeredWorkflowDefinition[Any]: ...
+@overload
+def triggered_workflow(
+    *,
+    name: str,
+    version: str,
+    initial_state: Any = None,
+    on_instances: InstancesHandler[Any] | None = None,
+    on_fan_in: FanInHandler[Any] | None = None,
+    on_schedule: ScheduleHandler[Any] | None = None,
+    on_events: EventsHandler[Any],
 ) -> TriggeredWorkflowDefinition[Any]: ...
 @overload
 def triggered_workflow(
@@ -242,6 +304,7 @@ def triggered_workflow(
     on_instances: InstancesHandler[Any],
     on_fan_in: FanInHandler[Any] | None = None,
     on_schedule: ScheduleHandler[Any] | None = None,
+    on_events: EventsHandler[Any] | None = None,
 ) -> TriggeredWorkflowDefinition[Any]: ...
 def triggered_workflow(
     *,
@@ -251,6 +314,7 @@ def triggered_workflow(
     on_instances: InstancesHandler[Any] | None = None,
     on_fan_in: FanInHandler[Any] | None = None,
     on_schedule: ScheduleHandler[Any] | None = None,
+    on_events: EventsHandler[Any] | None = None,
 ) -> Any:
     """Define the workflow of a developer workflow.
 
@@ -262,7 +326,9 @@ def triggered_workflow(
     work inside ``ctx.step``, and write with :func:`write_owned`. Drop what
     you wrote for ``message.removed``. It returns a ``WorkflowResult``, or
     ``None`` to keep the state. ``on_schedule(ctx, message, state)`` handles
-    one slot of a schedule (see :meth:`TriggeredWorkflowDefinition.on_schedule`).
+    one slot of a schedule (see :meth:`TriggeredWorkflowDefinition.on_schedule`),
+    and ``on_events(ctx, events, message, state)`` one batch of a stream (see
+    :meth:`TriggeredWorkflowDefinition.on_events`).
     Use it as a decorator::
 
         @triggered_workflow(name="word-count", version="v1")
@@ -270,9 +336,9 @@ def triggered_workflow(
             ...
     """
     initial = {} if initial_state is None else initial_state
-    if on_instances is not None or on_schedule is not None:
+    if on_instances is not None or on_schedule is not None or on_events is not None:
         return TriggeredWorkflowDefinition(
-            name, version, initial, on_instances, on_fan_in, on_schedule
+            name, version, initial, on_instances, on_fan_in, on_schedule, on_events
         )
 
     def define(handler: InstancesHandler[Any]) -> TriggeredWorkflowDefinition[Any]:

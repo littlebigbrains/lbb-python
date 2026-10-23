@@ -5469,6 +5469,28 @@ class _NamedWorkflowsNamespace:
             options={"retry": True},
         )
 
+    def send_events(
+        self, name: str, events: Sequence[models.WorkflowEvent | Mapping[str, Any]]
+    ) -> models.WorkflowEventsReceipt:
+        """Send 1 to 500 events to a workflow with a stream trigger
+        (``POST /v1/workflows/named/events``).
+
+        Each event's ``id`` is its idempotency key: the stream drops an id it
+        received in the last 24 hours (at most 100,000 ids), so a failed call
+        is retried with the same events. A ``429``
+        (``workflow_stream_rate_limited`` past the workflow's rate,
+        ``workflow_stream_full`` past its backlog) is retried after its
+        ``Retry-After``.
+        """
+        return self._client._model_request(
+            models.WorkflowEventsReceipt,
+            "POST",
+            "/v1/workflows/named/events",
+            params={"name": name},
+            body={"events": [_coerce_body(event) for event in events]},
+            options={"retry": True},
+        )
+
     def queue(
         self,
         name: str,

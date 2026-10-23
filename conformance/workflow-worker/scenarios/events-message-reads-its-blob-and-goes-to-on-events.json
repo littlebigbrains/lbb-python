@@ -1,0 +1,166 @@
+{
+  "name": "events-message-reads-its-blob-and-goes-to-on-events",
+  "rule": "A message of type events reads the batch's blob first and goes to the events handler with the events in their order and the message beside them.",
+  "workflow": {
+    "type": "triggered",
+    "name": "orders",
+    "version": "v1",
+    "initial_state": {
+      "seen": 0
+    }
+  },
+  "on_instances": [
+    {
+      "raise": "workflow_error",
+      "message": "not a batch"
+    }
+  ],
+  "on_events": [
+    {
+      "return": {
+        "state": {
+          "first": {
+            "$message": "events.0.id"
+          },
+          "second": {
+            "$message": "events.1.id"
+          },
+          "key": {
+            "$message": "events.0.key"
+          },
+          "request": {
+            "$message": "events.1.request_id"
+          },
+          "shard": {
+            "$message": "shard"
+          },
+          "count": {
+            "$message": "count"
+          }
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "orders",
+    "state": {},
+    "token": "token-e",
+    "lease_ms": 60000,
+    "effect_prefix": "e0f4",
+    "turn": {
+      "workflow_id": "starter.orders.1",
+      "number": 2,
+      "message_id": "stream-stream-3",
+      "message": {
+        "type": "events",
+        "workflow": "orders",
+        "graph": "crm",
+        "trigger": "stream",
+        "shard": 1,
+        "count": 2,
+        "bytes": 311,
+        "blob": "orders/batch-1",
+        "first_received_at": "2026-10-21T10:00:00.120000Z",
+        "last_received_at": "2026-10-21T10:00:04.870000Z",
+        "origin": {
+          "kind": "stream",
+          "trigger": "stream",
+          "requests": [
+            "req-7"
+          ]
+        }
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-starter.orders.1-2",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/v1/workflows/blobs",
+        "query": {
+          "key": "orders/batch-1"
+        }
+      },
+      "response": {
+        "body": {
+          "events": [
+            {
+              "id": "evt_1",
+              "key": "customer-42",
+              "type": "order.paid",
+              "data": {
+                "order": "A-1007"
+              },
+              "received_at": "2026-10-21T10:00:00.120000Z",
+              "request_id": "req-7"
+            },
+            {
+              "id": "evt_2",
+              "key": "customer-42",
+              "type": "order.shipped",
+              "data": {
+                "order": "A-1007"
+              },
+              "received_at": "2026-10-21T10:00:04.870000Z",
+              "request_id": "req-7"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/complete",
+        "body": {
+          "workflow_id": "starter.orders.1",
+          "turn": 2,
+          "state": {
+            "first": "evt_1",
+            "second": "evt_2",
+            "key": "customer-42",
+            "request": "req-7",
+            "shard": 1,
+            "count": 2,
+            "seen": {
+              "$absent": true
+            }
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": []
+  },
+  "client_graph": "crm"
+}

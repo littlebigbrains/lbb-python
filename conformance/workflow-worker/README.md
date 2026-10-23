@@ -64,7 +64,10 @@ A scenario is one JSON object:
 
 `handler` is a list of operations that the harness runs in order with the
 SDK's context. A triggered workflow has `on_instances`, `on_schedule` (the
-messages of a schedule's slots) or both, and optionally `on_fan_in`, instead.
+messages of a schedule's slots), `on_events` (the batches of a stream; the
+program reads the message with the batch's events beside it, as
+`{"$message": "events.0.id"}`) or several, and optionally `on_fan_in`,
+instead.
 
 | Operation | Does |
 | --- | --- |
@@ -96,11 +99,12 @@ Actions in a step's `do`:
 
 A value anywhere in the program can be `{"$ref": "key.path"}` (the output of
 step `key`, then the dotted path into it), `{"$message": "path"}` or
-`{"$state": "path"}` (the turn's message or state; `""` is the whole value),
-`{"$repeat": n, "of": template}` (a list of `n` copies of the template, each
-text's `{i}` replaced by its index) or `{"$chars": n, "char": c}` (a text of
-`n` times `c`, default `q`). A step's `do` can also hold `{"review": request}`:
-the activities' `review` inside the step.
+`{"$state": "path"}` (the turn's message or state; `""` is the whole value; a
+number indexes a list), `{"$repeat": n, "of": template}` (a list of `n`
+copies of the template, each text's `{i}` replaced by its index) or
+`{"$chars": n, "char": c}` (a text of `n` times `c`, default `q`). A step's
+`do` can also hold `{"review": request}`: the activities' `review` inside the
+step.
 
 ### `task` and the exchanges
 

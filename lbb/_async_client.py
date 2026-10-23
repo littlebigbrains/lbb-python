@@ -1435,6 +1435,11 @@ class _AsyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
     async def pause(self, name: str, paused: bool = True) -> models.NamedWorkflow:
         return cast(models.NamedWorkflow, await super().pause(name, paused))
 
+    async def send_events(
+        self, name: str, events: Sequence[models.WorkflowEvent | Mapping[str, Any]]
+    ) -> models.WorkflowEventsReceipt:
+        return cast(models.WorkflowEventsReceipt, await super().send_events(name, events))
+
     async def requeue(
         self, name: str, request: models.WorkflowRequeueRequest | Mapping[str, Any]
     ) -> models.WorkflowRequeueResponse:
