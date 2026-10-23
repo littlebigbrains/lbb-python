@@ -9518,6 +9518,91 @@ class WorkflowContentTrigger(BaseModel):
     ]
 
 
+class WorkflowEvent(BaseModel):
+    """
+    One event a client sends.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    data: Annotated[
+        Any | None, Field(description='Any JSON, at most 64 KiB serialized.')
+    ] = None
+    id: Annotated[
+        str,
+        Field(
+            description="1 to 128 of `A-Z a-z 0-9 _ . : -`: the event's idempotency key. An id\nthe stream received in its dedupe window is dropped."
+        ),
+    ]
+    key: Annotated[
+        str | None,
+        Field(
+            description='The events of one key go to one shard, in order. Absent: the id.'
+        ),
+    ] = None
+    time: Annotated[str | None, Field(description="The producer's time, RFC 3339.")] = (
+        None
+    )
+    type: Annotated[
+        str | None, Field(description="The event's type, at most 128 characters.")
+    ] = None
+
+
+class WorkflowEventRecord(BaseModel):
+    """
+    An event as the stream keeps it and as a batch holds it: the event, when
+    the stream received it and the id of the request that sent it.
+    """
+
+    data: Any | None = None
+    id: str
+    key: str | None = None
+    received_at: Annotated[str, Field(description='RFC 3339.')]
+    request_id: str | None = None
+    time: str | None = None
+    type: str | None = None
+
+
+class WorkflowEventsBatch(BaseModel):
+    """
+    The blob of a batch: its events, in the order of the stream.
+    """
+
+    events: list[WorkflowEventRecord]
+
+
+class WorkflowEventsReceipt(BaseModel):
+    """
+    What a send of events answers: the stream took them.
+    """
+
+    object: Annotated[str, Field(description='`workflow_events`.')]
+    received: Annotated[
+        int,
+        Field(
+            description='Events the request held. Repeats of an id are dropped later, when\nthe trigger reads them.',
+            ge=0,
+        ),
+    ]
+    received_at: Annotated[
+        str, Field(description='When the stream took them, RFC 3339.')
+    ]
+    trigger: str
+    workflow: str
+
+
+class WorkflowEventsRequest(BaseModel):
+    """
+    `POST /v1/workflows/named/events?name=`: 1 to 500 events.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    events: list[WorkflowEvent]
+
+
 class WorkflowExecutionOperation(Enum):
     """
     One explicit operation of a workflow execution credential. `file_read`
@@ -10416,6 +10501,47 @@ class WorkflowStepView(BaseModel):
     ready_at_ms: int
     state: WorkflowStepState
     worker: str | None = None
+
+
+class WorkflowStreamResolved(BaseModel):
+    """
+    A stream trigger as the server resolved it: its wait and where its
+    events stand.
+    """
+
+    backlog: Annotated[
+        int, Field(description='Events received and not yet sent.', ge=0)
+    ]
+    backlog_bytes: Annotated[int, Field(description='Their bytes.', ge=0)]
+    dedupe_since: Annotated[
+        str | None,
+        Field(
+            description='How far back the dedupe window reaches (RFC 3339): an id received\nsince then is dropped when it comes again.'
+        ),
+    ] = None
+    duplicates: Annotated[
+        int, Field(description='Events dropped as repeats of an id.', ge=0)
+    ]
+    max_wait: str
+    received: Annotated[
+        int, Field(description='Events the stream took (repeats not counted).', ge=0)
+    ]
+    sent: Annotated[int, Field(description='Events sent in messages.', ge=0)]
+
+
+class WorkflowStreamTrigger(BaseModel):
+    """
+    A stream trigger: the events a client sends to the workflow
+    (`POST /v1/workflows/named/events`), in batches of the workflow's `batch`
+    events, or fewer once the first event waited `max_wait`.
+    """
+
+    max_wait: Annotated[
+        str | None,
+        Field(
+            description='How long the first event of a partial batch waits: `1s` to `15m`.\nDefault `10s`.'
+        ),
+    ] = None
 
 
 class WorkflowTask(BaseModel):
@@ -16338,6 +16464,30 @@ class WorkflowClaimResponse(BaseModel):
     task: WorkflowTask | None = None
 
 
+class WorkflowEventsMessage(BaseModel):
+    """
+    The message of a batch of events (`type: "events"`). The events are in
+    the blob `blob` (`GET /v1/workflows/blobs?key=`); the SDKs read it before
+    the handler runs.
+    """
+
+    blob: Annotated[
+        str, Field(description="The batch's blob key (`WorkflowEventsBatch`).")
+    ]
+    bytes: Annotated[int, Field(description='Their bytes, serialized.', ge=0)]
+    count: Annotated[int, Field(description='Events in the batch.', ge=0)]
+    first_received_at: str
+    graph: str
+    last_received_at: str
+    origin: WorkflowMessageOrigin | None = None
+    shard: Annotated[
+        int, Field(description="The shard the events' keys route to.", ge=0)
+    ]
+    trigger: str
+    type: Annotated[str, Field(description='Always `events`.')]
+    workflow: str
+
+
 class WorkflowExecutionCredential(BaseModel):
     """
     Short-lived data-plane authority for one validated workflow turn attempt.
@@ -16924,8 +17074,8 @@ class WorkflowTestResult(BaseModel):
 
 class WorkflowTrigger(BaseModel):
     """
-    One trigger of a workflow: a watch, a content trigger or a schedule,
-    exactly one of them, and at most one review trigger beside it.
+    One trigger of a workflow: a watch, a content trigger, a schedule or a
+    stream, exactly one of them, and at most one review trigger beside it.
     """
 
     content: WorkflowContentTrigger | None = None
@@ -16937,6 +17087,7 @@ class WorkflowTrigger(BaseModel):
     ] = None
     review: WorkflowReviewTrigger | None = None
     schedule: WorkflowScheduleTrigger | None = None
+    stream: WorkflowStreamTrigger | None = None
     watch: WorkflowWatch | None = None
 
 
@@ -16989,16 +17140,17 @@ class WorkflowTriggerMessage(BaseModel):
 class WorkflowTriggerResolved(BaseModel):
     """
     A trigger as the server resolved it: a watch, a content trigger, a
-    schedule or a review trigger.
+    schedule, a stream or a review trigger.
     """
 
     content: WorkflowContentTrigger | None = None
     id: str
     kind: Annotated[
-        str, Field(description='`watch`, `content`, `schedule` or `review`.')
+        str, Field(description='`watch`, `content`, `schedule`, `stream` or `review`.')
     ]
     review: WorkflowReviewTrigger | None = None
     schedule: WorkflowScheduleResolved | None = None
+    stream: WorkflowStreamResolved | None = None
     watch: WorkflowWatchResolved | None = None
 
 
@@ -18446,7 +18598,7 @@ class NamedWorkflowRequest(BaseModel):
     triggers: Annotated[
         list[WorkflowTrigger],
         Field(
-            description="Exactly one trigger in this release: a watch, a content trigger or a\nschedule, and a review trigger beside it. A workflow keeps its\ntrigger's kind; to change it, delete the workflow and create it\nagain."
+            description="Exactly one trigger in this release: a watch, a content trigger, a\nschedule or a stream, and a review trigger beside it. A workflow keeps its\ntrigger's kind; to change it, delete the workflow and create it\nagain."
         ),
     ]
     window: Annotated[

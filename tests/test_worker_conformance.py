@@ -58,7 +58,12 @@ def _merge(base: Any, overrides: Any) -> Any:
 
 def _path(value: Any, path: str) -> Any:
     for part in [p for p in path.split(".") if p]:
-        value = value[part] if isinstance(value, Mapping) else getattr(value, part)
+        if isinstance(value, Mapping):
+            value = value[part]
+        elif isinstance(value, list):
+            value = value[int(part)]
+        else:
+            value = getattr(value, part)
     return value
 
 
@@ -367,6 +372,12 @@ def _definition(scenario: dict[str, Any], program: _Program) -> Any:
             scenario["on_schedule"], ctx, state, message.model_dump(mode="json", by_alias=True)
         )
 
+    async def on_events(ctx: WorkflowContext, events: Any, message: Any, state: Any) -> Any:
+        # The program reads the batch's message with its events beside it.
+        value = message.model_dump(mode="json", by_alias=True)
+        value["events"] = [event.model_dump(mode="json", by_alias=True) for event in events]
+        return await program.run(scenario["on_events"], ctx, state, value)
+
     return triggered_workflow(
         name=spec["name"],
         version=spec["version"],
@@ -374,6 +385,7 @@ def _definition(scenario: dict[str, Any], program: _Program) -> Any:
         on_instances=on_instances if "on_instances" in scenario else None,
         on_fan_in=on_fan_in if "on_fan_in" in scenario else None,
         on_schedule=on_schedule if "on_schedule" in scenario else None,
+        on_events=on_events if "on_events" in scenario else None,
     )
 
 

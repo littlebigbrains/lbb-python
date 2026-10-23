@@ -19225,7 +19225,7 @@
             ]
           },
           "triggers": {
-            "description": "Exactly one trigger in this release: a watch, a content trigger or a\nschedule, and a review trigger beside it. A workflow keeps its\ntrigger's kind; to change it, delete the workflow and create it\nagain.",
+            "description": "Exactly one trigger in this release: a watch, a content trigger, a\nschedule or a stream, and a review trigger beside it. A workflow keeps its\ntrigger's kind; to change it, delete the workflow and create it\nagain.",
             "items": {
               "$ref": "#/components/schemas/WorkflowTrigger"
             },
@@ -37455,6 +37455,219 @@
         ],
         "type": "object"
       },
+      "WorkflowEvent": {
+        "additionalProperties": false,
+        "description": "One event a client sends.",
+        "properties": {
+          "data": {
+            "description": "Any JSON, at most 64 KiB serialized."
+          },
+          "id": {
+            "description": "1 to 128 of `A-Z a-z 0-9 _ . : -`: the event's idempotency key. An id\nthe stream received in its dedupe window is dropped.",
+            "type": "string"
+          },
+          "key": {
+            "description": "The events of one key go to one shard, in order. Absent: the id.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time": {
+            "description": "The producer's time, RFC 3339.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "description": "The event's type, at most 128 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "WorkflowEventRecord": {
+        "description": "An event as the stream keeps it and as a batch holds it: the event, when\nthe stream received it and the id of the request that sent it.",
+        "properties": {
+          "data": {},
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "received_at": {
+            "description": "RFC 3339.",
+            "type": "string"
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "received_at"
+        ],
+        "type": "object"
+      },
+      "WorkflowEventsBatch": {
+        "description": "The blob of a batch: its events, in the order of the stream.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEventRecord"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      },
+      "WorkflowEventsMessage": {
+        "description": "The message of a batch of events (`type: \"events\"`). The events are in\nthe blob `blob` (`GET /v1/workflows/blobs?key=`); the SDKs read it before\nthe handler runs.",
+        "properties": {
+          "blob": {
+            "description": "The batch's blob key (`WorkflowEventsBatch`).",
+            "type": "string"
+          },
+          "bytes": {
+            "description": "Their bytes, serialized.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "description": "Events in the batch.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "first_received_at": {
+            "type": "string"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "last_received_at": {
+            "type": "string"
+          },
+          "origin": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowMessageOrigin"
+              }
+            ]
+          },
+          "shard": {
+            "description": "The shard the events' keys route to.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "type": {
+            "description": "Always `events`.",
+            "type": "string"
+          },
+          "workflow": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "workflow",
+          "graph",
+          "trigger",
+          "shard",
+          "count",
+          "bytes",
+          "blob",
+          "first_received_at",
+          "last_received_at"
+        ],
+        "type": "object"
+      },
+      "WorkflowEventsReceipt": {
+        "description": "What a send of events answers: the stream took them.",
+        "properties": {
+          "object": {
+            "description": "`workflow_events`.",
+            "type": "string"
+          },
+          "received": {
+            "description": "Events the request held. Repeats of an id are dropped later, when\nthe trigger reads them.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "received_at": {
+            "description": "When the stream took them, RFC 3339.",
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "workflow": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "workflow",
+          "trigger",
+          "received",
+          "received_at"
+        ],
+        "type": "object"
+      },
+      "WorkflowEventsRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/workflows/named/events?name=`: 1 to 500 events.",
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEvent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      },
       "WorkflowExecutionCredential": {
         "description": "Short-lived data-plane authority for one validated workflow turn attempt.\nThe bearer is distinct from the original workflow control credential and\ncontains no raw turn lease secret. Do not persist it in workflow state or\ncheckpoints. Every execution still freshly validates the live lease.",
         "properties": {
@@ -40479,6 +40692,73 @@
         ],
         "type": "object"
       },
+      "WorkflowStreamResolved": {
+        "description": "A stream trigger as the server resolved it: its wait and where its\nevents stand.",
+        "properties": {
+          "backlog": {
+            "description": "Events received and not yet sent.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "backlog_bytes": {
+            "description": "Their bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dedupe_since": {
+            "description": "How far back the dedupe window reaches (RFC 3339): an id received\nsince then is dropped when it comes again.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duplicates": {
+            "description": "Events dropped as repeats of an id.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_wait": {
+            "type": "string"
+          },
+          "received": {
+            "description": "Events the stream took (repeats not counted).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sent": {
+            "description": "Events sent in messages.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_wait",
+          "backlog",
+          "backlog_bytes",
+          "received",
+          "sent",
+          "duplicates"
+        ],
+        "type": "object"
+      },
+      "WorkflowStreamTrigger": {
+        "description": "A stream trigger: the events a client sends to the workflow\n(`POST /v1/workflows/named/events`), in batches of the workflow's `batch`\nevents, or fewer once the first event waited `max_wait`.",
+        "properties": {
+          "max_wait": {
+            "description": "How long the first event of a partial batch waits: `1s` to `15m`.\nDefault `10s`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "WorkflowTask": {
         "properties": {
           "activity": {
@@ -41150,7 +41430,7 @@
         "type": "object"
       },
       "WorkflowTrigger": {
-        "description": "One trigger of a workflow: a watch, a content trigger or a schedule,\nexactly one of them, and at most one review trigger beside it.",
+        "description": "One trigger of a workflow: a watch, a content trigger, a schedule or a\nstream, exactly one of them, and at most one review trigger beside it.",
         "properties": {
           "content": {
             "oneOf": [
@@ -41189,6 +41469,17 @@
               {
                 "$ref": "#/components/schemas/WorkflowScheduleTrigger",
                 "description": "One run per slot of a timer: a cron expression in a time zone, or a\nperiod in UTC. A schedule trigger's id defaults to `schedule`."
+              }
+            ]
+          },
+          "stream": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowStreamTrigger",
+                "description": "The events a client sends (`POST /v1/workflows/named/events`), run in\nbatches. A stream trigger's id defaults to `stream`."
               }
             ]
           },
@@ -41306,7 +41597,7 @@
         "type": "string"
       },
       "WorkflowTriggerResolved": {
-        "description": "A trigger as the server resolved it: a watch, a content trigger, a\nschedule or a review trigger.",
+        "description": "A trigger as the server resolved it: a watch, a content trigger, a\nschedule, a stream or a review trigger.",
         "properties": {
           "content": {
             "oneOf": [
@@ -41323,7 +41614,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "`watch`, `content`, `schedule` or `review`.",
+            "description": "`watch`, `content`, `schedule`, `stream` or `review`.",
             "type": "string"
           },
           "review": {
@@ -41345,6 +41636,17 @@
               {
                 "$ref": "#/components/schemas/WorkflowScheduleResolved",
                 "description": "A schedule as stored, and its next and last slot."
+              }
+            ]
+          },
+          "stream": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowStreamResolved",
+                "description": "A stream: its wait and where its events stand."
               }
             ]
           },
@@ -124335,7 +124637,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create or change a workflow of your worker with one trigger. A watch sends the class's new, changed and removed instances as messages to `shards` engine identities (1 to 16, default 1), routed by `route_by` (a field; default the instance IRI) so the changes of one key stay in order, at most `window` messages queued per shard (1 to 128, default 4). A content trigger (`content.media_types`) sends each upload of those media types as it is logged, without a wait for a publication: one content per message, routed by its SHA-256, with origin `content`. A schedule (`schedule`: a cron expression in a time zone, or `every` with an `offset` in UTC, at least 5 minutes apart) sends one message per slot to one identity, with the published commit and whether the graph changed since the last slot. Each message names its origin. The same request again is a no-op; a workflow keeps its trigger's kind. 400 `workflow_trigger_unsupported` for more than one trigger; 400 `workflow_param_invalid` for an `lbb.*` target; 409 `workflow_shards_busy` for a change of `shards` or `route_by` while a shard's inbox holds messages; 409 `workflow_cycle`, `workflow_owns_conflict`; 503 `workflows_disabled`. The PUT replaces the whole workflow, so a repeat with the same body changes nothing: it needs no `Idempotency-Key`",
+        "summary": "Create or change a workflow of your worker with one trigger. A watch sends the class's new, changed and removed instances as messages to `shards` engine identities (1 to 16, default 1), routed by `route_by` (a field; default the instance IRI) so the changes of one key stay in order, at most `window` messages queued per shard (1 to 128, default 4). A content trigger (`content.media_types`) sends each upload of those media types as it is logged, without a wait for a publication: one content per message, routed by its SHA-256, with origin `content`. A schedule (`schedule`: a cron expression in a time zone, or `every` with an `offset` in UTC, at least 5 minutes apart) sends one message per slot to one identity, with the published commit and whether the graph changed since the last slot. A stream (`stream`) takes the events a client sends to `POST /v1/workflows/named/events` and sends them in batches of up to `batch` events (default 100) or after `max_wait` (default 10s), routed by each event's `key`; its `shards` stay as made. Each message names its origin. The same request again is a no-op; a workflow keeps its trigger's kind. 400 `workflow_trigger_unsupported` for more than one trigger; 400 `workflow_param_invalid` for an `lbb.*` target; 409 `workflow_shards_busy` for a change of `shards` or `route_by` while a shard's inbox holds messages; 409 `workflow_cycle`, `workflow_owns_conflict`; 503 `workflows_disabled`. The PUT replaces the whole workflow, so a repeat with the same body changes nothing: it needs no `Idempotency-Key`",
         "tags": [
           "workflows"
         ]
@@ -124652,6 +124954,305 @@
           }
         ],
         "summary": "One page of the documents of a `documents.link` or `documents.map` workflow, by the workflow's name, rows as in its `details.documents` (which lists only the 20 with the most review items). 400 `workflow_param_invalid` for another workflow, and for a `cursor` whose document is gone; 404 `named_workflow_not_found`",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/named/events": {
+      "post": {
+        "operationId": "post_v1_workflows_named_events",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the workflow's name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowEventsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEventsReceipt"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send 1 to 500 events (at most 4 MiB, an event's `data` at most 64 KiB) to a workflow with a stream trigger. Each event's `id` is its idempotency key, so this route takes no `Idempotency-Key`: an id the stream saw in the last 24 hours, or among its last 100,000 ids, is dropped, and a producer that sends again after that window must make its processing idempotent. Events of one `key` go to one shard in the order received. 429 `workflow_stream_rate_limited` past 100 events per second (bursts of 500) on a node, 429 `workflow_stream_full` past 10,000 events or 64 MiB not yet sent, both with `Retry-After`; 400 `workflow_param_invalid` for a workflow without a stream",
         "tags": [
           "workflows"
         ]
@@ -126722,7 +127323,7 @@
             "bearer": []
           }
         ],
-        "summary": "Run a workflow now: its watch reads every instance of the class again and sends them with origin `manual`; a content trigger reads its content log again from the start; a schedule sends one message now, outside its slots. Answers at once (`queued`). A repeat while the run waits adds nothing; a repeat after the pass started starts the pass again from its first instance. It takes no `Idempotency-Key`",
+        "summary": "Run a workflow now: its watch reads every instance of the class again and sends them with origin `manual`; a content trigger reads its content log again from the start; a schedule sends one message now, outside its slots; a stream sends its partial batches now. Answers at once (`queued`). A repeat while the run waits adds nothing; a repeat after the pass started starts the pass again from its first instance. It takes no `Idempotency-Key`",
         "tags": [
           "workflows"
         ]
