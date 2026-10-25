@@ -287,6 +287,30 @@ holds no other turn. `lbb_activities(client)` has `reason`, `decide` and
 The guide is
 [Run a worker in Python](https://docs.littlebigbrain.com/guides/python-worker/).
 
+## Legacy local search methods
+
+`LbbLocalClient` runs `lbb-testctl` subprocesses against local storage. Its
+`semantic_search`, `build_embedding_index`, `embedding_index_inspect`,
+`inspect_embedding_index`, and `embedding_search` methods are deprecated for
+new integrations. They use the older records/Base-backed search engine, not
+the class-declared embedding search served by `POST /v1/search`.
+
+These methods and their CLI arguments remain unchanged in this release.
+Their removal requires a separately announced SDK/CLI version transition;
+there is no removal version set yet. `LbbLocalClient`'s other methods are
+unaffected by this search deprecation.
+
+For new local integrations, run `lbb-server` against your local storage and
+connect `LbbClient` or `AsyncLbbClient` to its HTTP endpoint. Declare searchable
+classes with `client.embeddings.declare(...)`, inspect them with
+`client.embeddings.get(...)`, and search with
+`client.embeddings.search("query text", ...)`. The
+[search by meaning guide](https://docs.littlebigbrain.com/guides/search-by-meaning/)
+describes the supported setup. These APIs have different input and ranking
+contracts: legacy fusion options, explicit record vectors and old index-build
+requests have no automatic conversion or equivalent local subprocess method.
+Use `client.sparql(...)` for RDF relationships, paths and filters.
+
 ## Next steps
 
 - [Search by meaning](https://docs.littlebigbrain.com/guides/search-by-meaning/): choose which facts to embed, find records from a text description, and search inside a SPARQL query with `search:similarTo`.

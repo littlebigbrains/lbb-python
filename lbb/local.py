@@ -29,6 +29,15 @@ class LbbCommandError(RuntimeError):
 
 @dataclass(frozen=True)
 class LbbLocalClient:
+    """Local ``lbb-testctl`` subprocess client.
+
+    The legacy record-search and embedding-index methods are deprecated for
+    new integrations, with no removal version set. They keep their existing
+    CLI contracts. For class-declared embedding search, run ``lbb-server``
+    locally and use ``LbbClient.embeddings``; the request/ranking contracts
+    differ and are not automatically converted. See the SDK README.
+    """
+
     root: str | Path
     tenant: str
     graph: str
@@ -84,24 +93,29 @@ class LbbLocalClient:
         return self._request_file(("ontology", "resolve", *self._scope_args()), request)
 
     def semantic_search(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Deprecated legacy fusion search; keeps the ``graph search`` contract."""
         return self._request_file(("graph", "search", *self._scope_args()), request)
 
     def build_embedding_index(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Deprecated legacy record index build; not a class embedding declaration."""
         return self._request_file(
             ("graph", "embeddings", "build", *self._scope_args()),
             request,
         )
 
     def embedding_index_inspect(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Deprecated legacy record index inspection; preserves its CLI output."""
         return self._request_file(
             ("graph", "embeddings", "inspect", *self._scope_args()),
             request,
         )
 
     def inspect_embedding_index(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Deprecated alias of :meth:`embedding_index_inspect`."""
         return self.embedding_index_inspect(request)
 
     def embedding_search(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Deprecated legacy record-vector search; keeps its existing CLI contract."""
         return self._request_file(
             ("graph", "embeddings", "search", *self._scope_args()),
             request,

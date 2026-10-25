@@ -4,6 +4,14 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Deprecate the local records/Base-backed search methods
+  `LbbLocalClient.semantic_search`, `build_embedding_index`,
+  `embedding_index_inspect`, `inspect_embedding_index`, and `embedding_search`
+  for new integrations. Their behavior, CLI arguments and public exports stay
+  unchanged; no removal version is set. New integrations use an HTTP client
+  with a local or hosted `lbb-server`, class-declared `client.embeddings`, and
+  SPARQL. Legacy fusion, explicit record vectors and manual index builds have
+  no automatic conversion to that contract; see the README migration notes.
 - `client.models.choices`: the model each workflow use runs, for the
   environment or for one workflow (`GET`, `PUT` and `DELETE
   /v1/models/choices`), sync and async. `list` takes `workflow`, `use`,
