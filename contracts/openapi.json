@@ -4062,6 +4062,105 @@
         ],
         "type": "object"
       },
+      "CurrentGraphStatus": {
+        "description": "RDF and class observations from one graph incarnation. Their commit observations\nmay differ during concurrent writes; they are not an atomic transaction snapshot.",
+        "properties": {
+          "class_embeddings": {
+            "$ref": "#/components/schemas/StatusClassEmbeddings"
+          },
+          "complete": {
+            "description": "All requested diagnostics were inspected, independently of readiness/lag.",
+            "type": "boolean"
+          },
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rdf": {
+            "$ref": "#/components/schemas/StatusRdfPublication"
+          }
+        },
+        "required": [
+          "epoch",
+          "complete",
+          "rdf",
+          "class_embeddings"
+        ],
+        "type": "object"
+      },
+      "CurrentStatusResponse": {
+        "description": "Selected only by `version=status/1` during the pre-release compatibility phase.\n`ok` confirms that this status request completed, not database/model health.",
+        "properties": {
+          "auth_required": {
+            "type": "boolean"
+          },
+          "bind": {
+            "type": "string"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "graph_status": {
+            "$ref": "#/components/schemas/CurrentGraphStatus"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "object": {
+            "example": "status",
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "service": {
+            "type": "string"
+          },
+          "snapshot_cache": {
+            "$ref": "#/components/schemas/StatusSnapshotCache"
+          },
+          "storage": {
+            "type": "string"
+          },
+          "uptime_seconds": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "$ref": "#/components/schemas/CurrentStatusVersion"
+          }
+        },
+        "required": [
+          "object",
+          "version",
+          "ok",
+          "complete",
+          "service",
+          "mode",
+          "uptime_seconds",
+          "bind",
+          "storage",
+          "auth_required",
+          "graph",
+          "graph_status",
+          "snapshot_cache"
+        ],
+        "type": "object"
+      },
+      "CurrentStatusVersion": {
+        "enum": [
+          "status/1"
+        ],
+        "type": "string"
+      },
       "CustomerBoundary": {
         "additionalProperties": false,
         "properties": {
@@ -4519,6 +4618,303 @@
           "level",
           "status",
           "effect"
+        ],
+        "type": "object"
+      },
+      "DemoCaseIssue": {
+        "enum": [
+          "malformed_result",
+          "unexpected_binding_shape",
+          "unexpected_term_shape",
+          "unexpected_rdf_term",
+          "duplicate_distinct_row",
+          "expected_terms_differ",
+          "result_budget"
+        ],
+        "type": "string"
+      },
+      "DemoCasePayloads": {
+        "description": "Case evidence is returned only after the final graph-incarnation proof.",
+        "enum": [
+          "available",
+          "withheld"
+        ],
+        "type": "string"
+      },
+      "DemoClassEmbeddingChecks": {
+        "enum": [
+          "not_requested"
+        ],
+        "type": "string"
+      },
+      "DemoCurrentCaseResult": {
+        "properties": {
+          "actual_result": {
+            "$ref": "#/components/schemas/DemoSparqlResult",
+            "description": "At most max_result_bytes, preserved even for a wrong/unsupported term."
+          },
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected": {
+            "items": {
+              "$ref": "#/components/schemas/RecordReferenceTerm"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "issue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DemoCaseIssue"
+              }
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/DemoRunOutcome"
+          },
+          "query": {
+            "type": "string"
+          },
+          "query_kind": {
+            "$ref": "#/components/schemas/DemoQueryKind"
+          },
+          "served_at_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          },
+          "variable": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "actual_result",
+          "epoch",
+          "expected",
+          "id",
+          "issue",
+          "label",
+          "outcome",
+          "query",
+          "query_kind",
+          "served_at_seq",
+          "variable"
+        ],
+        "type": "object"
+      },
+      "DemoCurrentRunResponse": {
+        "description": "The fixed demo/1 RDF roster is identity-store, auth-outage and sso-customer\non semantic_graph. Known unported datasets are unavailable, not empty passes.\nEvery completed case uses exactly the response's one epoch/commit pin.",
+        "properties": {
+          "case_payloads": {
+            "$ref": "#/components/schemas/DemoCasePayloads"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/DemoCurrentCaseResult"
+            },
+            "type": "array"
+          },
+          "class_embedding_checks": {
+            "$ref": "#/components/schemas/DemoClassEmbeddingChecks"
+          },
+          "complete": {
+            "description": "All three cases completed with interpretable answers, independently of\nwhether those answers matched. Timeout/partial/unavailable is false.",
+            "type": "boolean"
+          },
+          "completed_case_count": {
+            "description": "Unknown when case payloads are withheld after an interrupted run.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "dataset_id": {
+            "type": "string"
+          },
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expected_case_count": {
+            "description": "Unknown (null) for a known dataset without a current case definition.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "graph": {
+            "$ref": "#/components/schemas/GraphKey"
+          },
+          "issue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DemoRunIssue"
+              }
+            ]
+          },
+          "limits": {
+            "$ref": "#/components/schemas/DemoRunLimits"
+          },
+          "object": {
+            "$ref": "#/components/schemas/DemoRunObject"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/DemoRunOutcome"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "served_at_seq": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommitSeq"
+              }
+            ]
+          },
+          "version": {
+            "$ref": "#/components/schemas/DemoRunVersion"
+          }
+        },
+        "required": [
+          "case_payloads",
+          "cases",
+          "class_embedding_checks",
+          "complete",
+          "completed_case_count",
+          "dataset_id",
+          "epoch",
+          "expected_case_count",
+          "graph",
+          "issue",
+          "limits",
+          "object",
+          "outcome",
+          "passed",
+          "served_at_seq",
+          "version"
+        ],
+        "type": "object"
+      },
+      "DemoQueryKind": {
+        "enum": [
+          "sparql_select"
+        ],
+        "type": "string"
+      },
+      "DemoResultFormat": {
+        "enum": [
+          "application/sparql-results+json"
+        ],
+        "type": "string"
+      },
+      "DemoRunIssue": {
+        "enum": [
+          "missing_graph",
+          "publication_pending",
+          "metadata_unavailable",
+          "diagnostic_budget",
+          "definition_unavailable",
+          "query_unavailable",
+          "snapshot_changed",
+          "result_budget",
+          "timeout"
+        ],
+        "type": "string"
+      },
+      "DemoRunLimits": {
+        "description": "Diagnostic limits, not validity bounds on RDF data, ontologies or manifests.",
+        "properties": {
+          "deadline_millis": {
+            "description": "Cooperative IO/elapsed budget. Late synchronous completion cannot pass;\nthis does not claim that an operating-system thread is forcibly stopped.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_cases": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_ontology_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_query_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_result_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_rows_per_case": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_cases",
+          "max_rows_per_case",
+          "max_result_bytes",
+          "max_query_bytes",
+          "max_ontology_bytes",
+          "deadline_millis"
+        ],
+        "type": "object"
+      },
+      "DemoRunObject": {
+        "enum": [
+          "demo_run"
+        ],
+        "type": "string"
+      },
+      "DemoRunOutcome": {
+        "enum": [
+          "passed",
+          "failed",
+          "unavailable"
+        ],
+        "type": "string"
+      },
+      "DemoRunVersion": {
+        "enum": [
+          "demo/1"
+        ],
+        "type": "string"
+      },
+      "DemoSparqlResult": {
+        "description": "The engine's result document, preserved verbatim like SparqlTextResponse.\nAn unavailable malformed-result case can carry the reported document as\nevidence; no lexical RDF value is converted through an application number.",
+        "properties": {
+          "document": {
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/DemoResultFormat"
+          }
+        },
+        "required": [
+          "format",
+          "document"
         ],
         "type": "object"
       },
@@ -12878,6 +13274,7 @@
             ]
           },
           "include_indexes": {
+            "description": "Opt in to deprecated BM25/ANN family lineage inspection. RDF publication\nstatus is always reported independently; this does not inspect current\nclass-declared embeddings. HTTP and CLI defaults are false.",
             "type": "boolean"
           },
           "max_clusters": {
@@ -12935,7 +13332,7 @@
             "$ref": "#/components/schemas/GraphKey"
           },
           "index_caught_up": {
-            "description": "One-shot \"has the published generation caught up to head?\" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff the published generation is served at the head commit;\n`Some(false)` when publication is still pending or absent; `None` when\nindexes were not inspected (`include_indexes=false`).\n\nThis is a **publication lag** signal, not a statement about index\ncontent. A generation whose BM25/ANN families are published as empty\nroots — the steady state when the deployment runs without the search\nstack — is caught up while holding no documents. Read\n`index_lineage.bm25_empty` / `ann_empty` to tell the two apart.",
+            "description": "One-shot \"has the published RDF base caught up to head?\" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff the validated RDF generation is served at the head commit;\n`Some(false)` when publication is still pending or absent. This is\nreported even when legacy index inspection is disabled. The optional\nrepresentation remains for wire compatibility with earlier servers.\n\nThis is a **publication lag** signal, not a statement about index\ncontent, class embedding readiness, or model/configuration coverage.\n`include_indexes=true` separately reports legacy BM25/ANN lineage when\npresent; its watermarks never determine this RDF signal.",
             "type": [
               "boolean",
               "null"
@@ -12957,7 +13354,7 @@
             "type": "integer"
           },
           "published_lag_commits": {
-            "description": "Commit distance from the graph head to the pinned published generation.",
+            "description": "Commit distance from the graph head to its validated published RDF base.",
             "minimum": 0,
             "type": "integer"
           },
@@ -34843,6 +35240,230 @@
           "valid_time",
           "derived_from",
           "previous"
+        ],
+        "type": "object"
+      },
+      "StatusAvailability": {
+        "enum": [
+          "available",
+          "unavailable"
+        ],
+        "type": "string"
+      },
+      "StatusClassEmbeddings": {
+        "properties": {
+          "attempted_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/StatusAvailability"
+          },
+          "complete": {
+            "description": "True only when every configured recipe and its named versions were inspected.\nThis is diagnostic coverage, not a claim that all embeddings are ready.",
+            "type": "boolean"
+          },
+          "configured_count": {
+            "description": "Unknown when the roster could not be read, including a missing roster.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "embeddings": {
+            "items": {
+              "$ref": "#/components/schemas/StatusEmbeddingDiagnostic"
+            },
+            "type": "array"
+          },
+          "inspected_count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "issue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StatusIssue"
+              }
+            ]
+          },
+          "max_embeddings": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "metadata_budget_bytes": {
+            "description": "Total control-object bytes admitted for this class inspection.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "availability",
+          "issue",
+          "complete",
+          "configured_count",
+          "attempted_count",
+          "inspected_count",
+          "model_id",
+          "next_model_id",
+          "embeddings",
+          "max_embeddings",
+          "metadata_budget_bytes"
+        ],
+        "type": "object"
+      },
+      "StatusEmbeddingDiagnostic": {
+        "properties": {
+          "availability": {
+            "$ref": "#/components/schemas/StatusAvailability"
+          },
+          "issue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StatusIssue"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EmbeddingStatus",
+                "description": "Existing class status semantics; recall is not inspected on this bounded read."
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "availability",
+          "issue",
+          "status"
+        ],
+        "type": "object"
+      },
+      "StatusIssue": {
+        "description": "A diagnostic failure, without backend keys, credentials or raw storage errors.",
+        "enum": [
+          "missing",
+          "invalid_metadata",
+          "changed",
+          "budget",
+          "storage_unavailable"
+        ],
+        "type": "string"
+      },
+      "StatusRdfPublication": {
+        "properties": {
+          "availability": {
+            "$ref": "#/components/schemas/StatusAvailability"
+          },
+          "issue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/StatusIssue"
+              }
+            ]
+          },
+          "publication_caught_up": {
+            "description": "Validated RDF coverage only; says nothing about class embedding readiness.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "published_lag_commits": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SnapshotView"
+              }
+            ]
+          }
+        },
+        "required": [
+          "availability",
+          "issue",
+          "snapshot",
+          "publication_caught_up",
+          "published_lag_commits"
+        ],
+        "type": "object"
+      },
+      "StatusResponseSelector": {
+        "description": "Accepted selectors during the finite source/release transition. The\nresponse version stays CurrentStatusVersion and never claims legacy shape.",
+        "enum": [
+          "status/1",
+          "legacy"
+        ],
+        "type": "string"
+      },
+      "StatusSnapshotCache": {
+        "properties": {
+          "budget_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entries": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pinned_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pinned_ceiling_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "total_bytes",
+          "pinned_bytes",
+          "pinned_ceiling_bytes",
+          "budget_bytes"
         ],
         "type": "object"
       },
@@ -65761,11 +66382,25 @@
             }
           },
           {
-            "description": "Dataset id",
+            "description": "semantic_graph has three fixed current cases; other known datasets are unavailable",
             "in": "query",
             "name": "dataset",
             "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "demo/1 for the typed current response; legacy or absent retains the temporary compatibility response",
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "default": "legacy",
+              "enum": [
+                "demo/1",
+                "legacy"
+              ],
               "type": "string"
             }
           }
@@ -65775,7 +66410,34 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/DemoCurrentRunResponse"
+                    },
+                    {
+                      "description": "Temporary unversioned/version=legacy response; never returned for demo/1",
+                      "properties": {
+                        "cases": {
+                          "items": {
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "dataset": {
+                          "type": "object"
+                        },
+                        "passed": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "dataset",
+                        "passed",
+                        "cases"
+                      ],
+                      "type": "object"
+                    }
+                  ]
                 }
               }
             },
@@ -65993,7 +66655,7 @@
             "bearer": []
           }
         ],
-        "summary": "Run canned checks against a demo dataset",
+        "summary": "version=demo/1: three exact RDF fixture checks on one epoch/commit, without models, durable writes or legacy search; temporary unversioned/legacy compatibility follows the finite release receipt",
         "tags": [
           "demo"
         ]
@@ -81785,6 +82447,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "deprecated": true,
+            "description": "Opt in to deprecated legacy BM25/ANN lineage (default false). RDF publication status is reported independently; this does not inspect current class embeddings.",
+            "in": "query",
+            "name": "include_indexes",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -82010,7 +82683,7 @@
             "bearer": []
           }
         ],
-        "summary": "Graph footprint, WAL tail, and index coverage",
+        "summary": "Graph footprint, WAL tail, and RDF publication coverage",
         "tags": [
           "graph"
         ]
@@ -115631,6 +116304,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "status/1 for the typed current response; legacy or absent retains the compatibility response until the unified API release transition",
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/StatusResponseSelector",
+              "default": "legacy"
+            }
           }
         ],
         "responses": {
@@ -115638,7 +116321,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/CurrentStatusResponse"
+                    },
+                    {
+                      "description": "Temporary unversioned/version=legacy compatibility response; not returned for version=status/1",
+                      "required": [
+                        "persisted_index",
+                        "graph_status"
+                      ],
+                      "type": "object"
+                    }
+                  ]
                 }
               }
             },
@@ -115856,7 +116551,7 @@
             "bearer": []
           }
         ],
-        "summary": "Server, graph, and persisted-index status",
+        "summary": "Server status; version=status/1 inspects bounded RDF publication and current class embeddings without legacy indexes. Unversioned/legacy compatibility is temporary; see the status response transition release gate",
         "tags": [
           "system"
         ]
