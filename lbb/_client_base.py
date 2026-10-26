@@ -20,6 +20,7 @@ from __future__ import annotations
 import codecs
 import contextlib
 import enum
+import inspect
 import json
 import mimetypes
 import os
@@ -130,7 +131,7 @@ class LbbError(RuntimeError):
 
 
 class LbbCapabilityError(RuntimeError):
-    """Raised before upload when the server lacks a required additive capability."""
+    """Raised when the server cannot supply a required additive capability."""
 
     def __init__(self, capability: str) -> None:
         self.capability = capability
@@ -6144,9 +6145,134 @@ class _EmbeddingsNamespace:
         return self._client._request("PUT", "/v1/search/settings", body=body)
 
 
+def _checked_record_response(payload: Any, *, typed: bool = False) -> Any:
+    # Older servers ignore the new query version on native-id reads and can
+    # return a legacy 200 response. Never mistake that for an exact record.
+    if inspect.isawaitable(payload):
+
+        async def checked() -> Any:
+            return _checked_record_response(await payload, typed=typed)
+
+        return checked()
+    if (
+        not isinstance(payload, dict)
+        or payload.get("object") != "record"
+        or payload.get("version") != "records/1"
+        or payload.get("complete") is not True
+    ):
+        raise LbbCapabilityError("records/1 complete reads")
+    return _parse_model(models.RecordReadResponse, payload) if typed else payload
+
+
 class _EntityNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
+
+    def retrieve(
+        self,
+        *,
+        iri: str | None = None,
+        id: str | None = None,
+        type: str | None = None,
+        key: str | None = None,
+        schema_revision: str | None = None,
+        consistency: str | None = None,
+        as_of_commit_seq: int | None = None,
+        limits: models.RecordReadLimits | dict[str, int] | None = None,
+    ) -> Any:
+        """Retrieve an exact RDF record with ``version=records/1``.
+
+        Supply exactly one of ``iri``, native ``id``, or schema-bound
+        ``type`` and ``key``. Literals retain lexical strings and RDF
+        datatype/language. A section exceeding its limit refuses the whole
+        read; a successful response never silently truncates.
+        """
+        return _checked_record_response(
+            self._client._request(
+                "GET",
+                "/v1/graph/entity",
+                params=self._retrieve_params(
+                    iri,
+                    id,
+                    type,
+                    key,
+                    schema_revision,
+                    consistency,
+                    as_of_commit_seq,
+                    limits,
+                ),
+            )
+        )
+
+    def retrieve_model(
+        self,
+        *,
+        iri: str | None = None,
+        id: str | None = None,
+        type: str | None = None,
+        key: str | None = None,
+        schema_revision: str | None = None,
+        consistency: str | None = None,
+        as_of_commit_seq: int | None = None,
+        limits: models.RecordReadLimits | dict[str, int] | None = None,
+    ) -> models.RecordReadResponse:
+        """An exact RDF record validated as ``RecordReadResponse``."""
+        return _checked_record_response(
+            self._client._request(
+                "GET",
+                "/v1/graph/entity",
+                params=self._retrieve_params(
+                    iri,
+                    id,
+                    type,
+                    key,
+                    schema_revision,
+                    consistency,
+                    as_of_commit_seq,
+                    limits,
+                ),
+            ),
+            typed=True,
+        )
+
+    def _retrieve_params(
+        self,
+        iri: str | None,
+        id: str | None,
+        type: str | None,
+        key: str | None,
+        schema_revision: str | None,
+        consistency: str | None,
+        as_of_commit_seq: int | None,
+        limits: models.RecordReadLimits | dict[str, int] | None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "version": "records/1",
+            "iri": iri,
+            "id": id,
+            "type": type,
+            "key": key,
+            "schema_revision": schema_revision,
+            "consistency": self._client._resolve_consistency(consistency),
+            "as_of_commit_seq": as_of_commit_seq,
+        }
+        if limits is not None:
+            values = (
+                limits.model_dump(exclude_unset=True)
+                if isinstance(limits, models.RecordReadLimits)
+                else limits
+            )
+            allowed = {
+                "properties",
+                "outgoing",
+                "incoming",
+                "assertions",
+                "assertion_statements",
+            }
+            if set(values) - allowed:
+                raise ValueError("unknown record read limit")
+            params.update({f"max_{name}": value for name, value in values.items()})
+        return {name: value for name, value in params.items() if value is not None}
 
     def detail(
         self,

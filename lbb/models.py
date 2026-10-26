@@ -5639,6 +5639,105 @@ class ReasonActivityResponse(BaseModel):
     ]
 
 
+class RecordIriSelectorKind(Enum):
+    iri = 'iri'
+
+
+class RecordKeySelectorKind(Enum):
+    key = 'key'
+
+
+class RecordLiteralTerm(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    field_direction: Annotated[
+        str | None,
+        Field(
+            alias='@direction',
+            description='RDF 1.2 directional language literals retain their direction explicitly.',
+        ),
+    ] = None
+    field_language: Annotated[str | None, Field(alias='@language')] = None
+    field_type: Annotated[str | None, Field(alias='@type')] = None
+    field_value: Annotated[str, Field(alias='@value')]
+
+
+class RecordNativeIdSelectorKind(Enum):
+    native_id = 'native_id'
+
+
+class RecordObject(Enum):
+    record = 'record'
+
+
+class RecordReadLimits(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    assertion_statements: Annotated[int | None, Field(ge=0)] = 256
+    assertions: Annotated[int | None, Field(ge=0)] = 50
+    incoming: Annotated[int | None, Field(ge=0)] = 100
+    outgoing: Annotated[int | None, Field(ge=0)] = 100
+    properties: Annotated[int | None, Field(ge=0)] = 256
+
+
+class RecordReferenceTerm(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    field_id: Annotated[str, Field(alias='@id')]
+
+
+class RecordSchemaAvailability(Enum):
+    available = 'available'
+    snapshot_unavailable = 'snapshot_unavailable'
+
+
+class RecordSelector1(BaseModel):
+    """
+    Full IRIs are authoritative. Stable keys require an explicitly activated
+    class binding and resolve on the same configuration pin as the read.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: RecordIriSelectorKind
+    value: str
+
+
+class RecordSelector2(BaseModel):
+    """
+    Full IRIs are authoritative. Stable keys require an explicitly activated
+    class binding and resolve on the same configuration pin as the read.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    kind: RecordNativeIdSelectorKind
+    value: str
+
+
+class RecordSelector3(BaseModel):
+    """
+    Full IRIs are authoritative. Stable keys require an explicitly activated
+    class binding and resolve on the same configuration pin as the read.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    key: str
+    kind: RecordKeySelectorKind
+    type: str
+
+
+class RecordsVersion(Enum):
+    records_1 = 'records/1'
+
+
 class ReferenceDatasetSource(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -14881,6 +14980,25 @@ class RdfSchemaSummaryResponse(BaseModel):
     type_counts: list[RdfSchemaTermCount]
 
 
+class RecordReadRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_schema_revision: Annotated[
+        str | None,
+        Field(
+            description='Refuse a key/current-schema read if the exact active configuration has\nchanged. This is an opaque token, not an ontology version number.'
+        ),
+    ] = None
+    limits: RecordReadLimits | None = None
+    selector: Annotated[
+        RecordSelector1 | RecordSelector2 | RecordSelector3,
+        Field(
+            description='Full IRIs are authoritative. Stable keys require an explicitly activated\nclass binding and resolve on the same configuration pin as the read.'
+        ),
+    ]
+
+
 class ReferenceDatasetRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -21759,6 +21877,70 @@ class HybridSubquery(BaseModel):
     weight: float | None = None
 
 
+class RecordAssertion(BaseModel):
+    """
+    Raw statement-node facts are authoritative, including malformed/multivalued
+    reification. Optional membership never claims which source supplied support.
+    """
+
+    described: RecordTriple | None = None
+    described_triple_present: bool | None = None
+    id: Annotated[
+        RecordReferenceTerm | RecordLiteralTerm | RecordQuotedTripleTerm,
+        Field(
+            description='Exact RDF terms. Literal lexical forms are always JSON strings: large\nintegers, decimal precision and timezone spelling never pass through f64.'
+        ),
+    ]
+    statements: list[RecordTriple]
+
+
+class RecordQuotedTripleTerm(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    field_triple: Annotated[RecordTriple, Field(alias='@triple')]
+
+
+class RecordReadResponse(BaseModel):
+    assertions: list[RecordAssertion]
+    complete: Annotated[
+        bool,
+        Field(
+            description='U1 refuses the complete request with `record_read_limit` if any section\ncannot fit. Successful reads are complete; paging is a U4 exit.'
+        ),
+    ]
+    id: str
+    incoming: list[RecordTriple]
+    native_entity_id: str | None = None
+    object: RecordObject
+    outgoing: list[RecordTriple]
+    properties: list[RecordTriple]
+    schema_binding: RecordSchemaAvailability
+    schema_revision: str | None = None
+    snapshot: SnapshotView
+    types: list[str]
+    version: RecordsVersion
+
+
+class RecordTriple(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    object: Annotated[
+        RecordReferenceTerm | RecordLiteralTerm | RecordQuotedTripleTerm,
+        Field(
+            description='Exact RDF terms. Literal lexical forms are always JSON strings: large\nintegers, decimal precision and timezone spelling never pass through f64.'
+        ),
+    ]
+    predicate: str
+    subject: Annotated[
+        RecordReferenceTerm | RecordLiteralTerm | RecordQuotedTripleTerm,
+        Field(
+            description='Exact RDF terms. Literal lexical forms are always JSON strings: large\nintegers, decimal precision and timezone spelling never pass through f64.'
+        ),
+    ]
+
+
 class RoutingHead(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -22252,6 +22434,15 @@ class SparqlSelectRequest(BaseModel):
     ] = None
 
 
+class EntityReadResponse(RootModel[EntityDetailResponse | RecordReadResponse]):
+    root: Annotated[
+        EntityDetailResponse | RecordReadResponse,
+        Field(
+            description='The existing entity resource selects its additive wire response only when\nthe caller explicitly requests `records/1`.'
+        ),
+    ]
+
+
 SchemaAuditResult.model_rebuild()
 CaptureBatch1.model_rebuild()
 CaptureBatch2.model_rebuild()
@@ -22264,6 +22455,9 @@ FullTextSearchRequest.model_rebuild()
 GraphRecallRequest.model_rebuild()
 HybridMultiSearchRequest.model_rebuild()
 HybridSubquery.model_rebuild()
+RecordAssertion.model_rebuild()
+RecordQuotedTripleTerm.model_rebuild()
+RecordReadResponse.model_rebuild()
 RowChange.model_rebuild()
 SearchEngineOptions.model_rebuild()
 SearchFilterExpr20.model_rebuild()

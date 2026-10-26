@@ -4,6 +4,8 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Add `client.entities.retrieve` and `retrieve_model`, sync and async, for versioned `records/1` reads with caller IRIs, exact RDF values, independent assertions, snapshot/schema pins and whole-read limits. Existing `entities.detail` is unchanged.
+
 - Deprecate the local records/Base-backed search methods
   `LbbLocalClient.semantic_search`, `build_embedding_index`,
   `embedding_index_inspect`, `inspect_embedding_index`, and `embedding_search`
