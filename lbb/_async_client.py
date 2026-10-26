@@ -496,7 +496,6 @@ class _AsyncQueryNamespace(_QueryNamespace):
         )
 
 
-
 class _AsyncFactsNamespace(_FactsNamespace):
     async def create_model(
         self, body: Body, *, idempotency_key: str | None = None
@@ -893,6 +892,33 @@ class _AsyncGraphNamespace(_AsyncStarterWorkflowMethods, _GraphNamespace):
 
 
 class _AsyncEntityNamespace(_EntityNamespace):
+
+    async def retrieve_model(
+        self,
+        *,
+        iri: str | None = None,
+        id: str | None = None,
+        type: str | None = None,
+        key: str | None = None,
+        schema_revision: str | None = None,
+        consistency: str | None = None,
+        as_of_commit_seq: int | None = None,
+        limits: models.RecordReadLimits | dict[str, int] | None = None,
+    ) -> models.RecordReadResponse:
+        return cast(
+            models.RecordReadResponse,
+            await super().retrieve_model(
+                iri=iri,
+                id=id,
+                type=type,
+                key=key,
+                schema_revision=schema_revision,
+                consistency=consistency,
+                as_of_commit_seq=as_of_commit_seq,
+                limits=limits,
+            ),
+        )
+
     async def detail_model(
         self,
         *,

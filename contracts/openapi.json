@@ -7488,6 +7488,17 @@
         ],
         "type": "object"
       },
+      "EntityReadResponse": {
+        "description": "The existing entity resource selects its additive wire response only when\nthe caller explicitly requests `records/1`.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/EntityDetailResponse"
+          },
+          {
+            "$ref": "#/components/schemas/RecordReadResponse"
+          }
+        ]
+      },
       "EntitySelector": {
         "properties": {
           "entity_id": {
@@ -25026,6 +25037,360 @@
           "cached"
         ],
         "type": "object"
+      },
+      "RecordAssertion": {
+        "description": "Raw statement-node facts are authoritative, including malformed/multivalued\nreification. Optional membership never claims which source supplied support.",
+        "properties": {
+          "described": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecordTriple"
+              }
+            ]
+          },
+          "described_triple_present": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/RecordTerm"
+          },
+          "statements": {
+            "items": {
+              "$ref": "#/components/schemas/RecordTriple"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "statements"
+        ],
+        "type": "object"
+      },
+      "RecordIriSelectorKind": {
+        "enum": [
+          "iri"
+        ],
+        "type": "string"
+      },
+      "RecordKeySelectorKind": {
+        "enum": [
+          "key"
+        ],
+        "type": "string"
+      },
+      "RecordLiteralTerm": {
+        "additionalProperties": false,
+        "properties": {
+          "@direction": {
+            "description": "RDF 1.2 directional language literals retain their direction explicitly.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "@language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "@type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "@value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "@value"
+        ],
+        "type": "object"
+      },
+      "RecordNativeIdSelectorKind": {
+        "enum": [
+          "native_id"
+        ],
+        "type": "string"
+      },
+      "RecordObject": {
+        "enum": [
+          "record"
+        ],
+        "type": "string"
+      },
+      "RecordQuotedTripleTerm": {
+        "additionalProperties": false,
+        "properties": {
+          "@triple": {
+            "$ref": "#/components/schemas/RecordTriple"
+          }
+        },
+        "required": [
+          "@triple"
+        ],
+        "type": "object"
+      },
+      "RecordReadLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "assertion_statements": {
+            "default": 256,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "assertions": {
+            "default": 50,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "incoming": {
+            "default": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "outgoing": {
+            "default": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "properties": {
+            "default": 256,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "RecordReadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_schema_revision": {
+            "description": "Refuse a key/current-schema read if the exact active configuration has\nchanged. This is an opaque token, not an ontology version number.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limits": {
+            "$ref": "#/components/schemas/RecordReadLimits"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/RecordSelector"
+          }
+        },
+        "required": [
+          "selector"
+        ],
+        "type": "object"
+      },
+      "RecordReadResponse": {
+        "properties": {
+          "assertions": {
+            "items": {
+              "$ref": "#/components/schemas/RecordAssertion"
+            },
+            "type": "array"
+          },
+          "complete": {
+            "description": "U1 refuses the complete request with `record_read_limit` if any section\ncannot fit. Successful reads are complete; paging is a U4 exit.",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "incoming": {
+            "items": {
+              "$ref": "#/components/schemas/RecordTriple"
+            },
+            "type": "array"
+          },
+          "native_entity_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EntityId"
+              }
+            ]
+          },
+          "object": {
+            "$ref": "#/components/schemas/RecordObject"
+          },
+          "outgoing": {
+            "items": {
+              "$ref": "#/components/schemas/RecordTriple"
+            },
+            "type": "array"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/RecordTriple"
+            },
+            "type": "array"
+          },
+          "schema_binding": {
+            "$ref": "#/components/schemas/RecordSchemaAvailability"
+          },
+          "schema_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotView"
+          },
+          "types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "version": {
+            "$ref": "#/components/schemas/RecordsVersion"
+          }
+        },
+        "required": [
+          "object",
+          "version",
+          "id",
+          "snapshot",
+          "schema_binding",
+          "types",
+          "properties",
+          "outgoing",
+          "incoming",
+          "assertions",
+          "complete"
+        ],
+        "type": "object"
+      },
+      "RecordReferenceTerm": {
+        "additionalProperties": false,
+        "properties": {
+          "@id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "@id"
+        ],
+        "type": "object"
+      },
+      "RecordSchemaAvailability": {
+        "enum": [
+          "available",
+          "snapshot_unavailable"
+        ],
+        "type": "string"
+      },
+      "RecordSelector": {
+        "description": "Full IRIs are authoritative. Stable keys require an explicitly activated\nclass binding and resolve on the same configuration pin as the read.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/RecordIriSelectorKind"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/RecordNativeIdSelectorKind"
+              },
+              "value": {
+                "$ref": "#/components/schemas/EntityId"
+              }
+            },
+            "required": [
+              "value",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "kind": {
+                "$ref": "#/components/schemas/RecordKeySelectorKind"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "key",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "RecordTerm": {
+        "description": "Exact RDF terms. Literal lexical forms are always JSON strings: large\nintegers, decimal precision and timezone spelling never pass through f64.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RecordReferenceTerm"
+          },
+          {
+            "$ref": "#/components/schemas/RecordLiteralTerm"
+          },
+          {
+            "$ref": "#/components/schemas/RecordQuotedTripleTerm"
+          }
+        ]
+      },
+      "RecordTriple": {
+        "additionalProperties": false,
+        "properties": {
+          "object": {
+            "$ref": "#/components/schemas/RecordTerm"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/RecordTerm"
+          }
+        },
+        "required": [
+          "subject",
+          "predicate",
+          "object"
+        ],
+        "type": "object"
+      },
+      "RecordsVersion": {
+        "enum": [
+          "records/1"
+        ],
+        "type": "string"
       },
       "ReferenceDatasetRequest": {
         "additionalProperties": false,
@@ -77636,7 +78001,79 @@
             }
           },
           {
-            "description": "Entity id",
+            "description": "records/1 for lossless records; omit for the existing native entity view",
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Authoritative full RDF IRI; requires version=records/1",
+            "in": "query",
+            "name": "iri",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Expected opaque schema revision for records/1; unavailable historical binding is refused",
+            "in": "query",
+            "name": "schema_revision",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "records/1 property statement bound (default 256, maximum 10000); excess refuses the whole read",
+            "in": "query",
+            "name": "max_properties",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "records/1 outgoing statement bound (default 100, maximum 10000)",
+            "in": "query",
+            "name": "max_outgoing",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "records/1 incoming statement bound (default 100, maximum 10000)",
+            "in": "query",
+            "name": "max_incoming",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "records/1 independent assertion bound (default 50, maximum 100)",
+            "in": "query",
+            "name": "max_assertions",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "records/1 statement bound per assertion (default 256, maximum 10000)",
+            "in": "query",
+            "name": "max_assertion_statements",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Native entity id; alternative to full iri or type+key in records/1",
             "in": "query",
             "name": "id",
             "required": false,
@@ -77645,7 +78082,7 @@
             }
           },
           {
-            "description": "Entity type for name-addressed lookup",
+            "description": "records/1: activated class alias or IRI, paired with key; legacy: entity type for name/key lookup",
             "in": "query",
             "name": "type",
             "required": false,
@@ -77654,7 +78091,7 @@
             }
           },
           {
-            "description": "Entity canonical name for name-addressed lookup",
+            "description": "Legacy native entity name; forbidden with records/1",
             "in": "query",
             "name": "name",
             "required": false,
@@ -77663,7 +78100,7 @@
             }
           },
           {
-            "description": "External entity key; takes precedence over name",
+            "description": "records/1: exact stable key paired with type; legacy: external key taking precedence over name",
             "in": "query",
             "name": "key",
             "required": false,
@@ -77690,7 +78127,7 @@
             }
           },
           {
-            "description": "Maximum RDF relationships per direction (default 1000, ceiling 10000)",
+            "description": "Legacy native view only: maximum RDF relationships per direction (default 1000, ceiling 10000)",
             "in": "query",
             "name": "edges",
             "required": false,
@@ -77699,7 +78136,7 @@
             }
           },
           {
-            "description": "Evidence entries per relationship, newest commit first (default 5, 0 to 20; 0 reads none)",
+            "description": "Legacy native view only: evidence entries per relationship, newest commit first (default 5, 0 to 20; 0 reads none)",
             "in": "query",
             "name": "evidence",
             "required": false,
@@ -77713,7 +78150,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EntityDetailResponse"
+                  "$ref": "#/components/schemas/EntityReadResponse"
                 }
               }
             },
@@ -77931,7 +78368,7 @@
             "bearer": []
           }
         ],
-        "summary": "Native entity attributes and relationships from the graph-owned RDF view, each relationship with its evidence; unavailable provenance sections are explicitly listed",
+        "summary": "Entity read from one RDF snapshot; version=records/1 returns exact RDF terms, caller IRIs and independent assertion metadata, while the default preserves the native entity view",
         "tags": [
           "graph"
         ]

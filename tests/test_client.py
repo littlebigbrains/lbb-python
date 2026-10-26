@@ -266,6 +266,20 @@ def entity_detail_payload() -> dict[str, Any]:
     }
 
 
+def record_read_payload() -> dict[str, Any]:
+    return {
+        "object": "record", "version": "records/1",
+        "id": "https://example.org/people/alice", "snapshot": SNAPSHOT,
+        "schema_revision": None, "schema_binding": "snapshot_unavailable",
+        "types": [], "outgoing": [], "incoming": [], "assertions": [], "complete": True,
+        "properties": [{
+            "subject": {"@id": "https://example.org/people/alice"},
+            "predicate": "https://example.org/id",
+            "object": {"@value": "9007199254740993", "@type": "http://www.w3.org/2001/XMLSchema#integer"},
+        }],
+    }
+
+
 def capturing_transport(
     captured: list[httpx.Request],
     responses: ResponseSpec | list[ResponseSpec] | None = None,
@@ -2339,6 +2353,64 @@ class SyncClientTests(unittest.TestCase):
         self.assertTrue(seen[0].headers["idempotency-key"].startswith("sparql-update:"))
         self.assertEqual(seen[1].headers["idempotency-key"], "catalog-2026-10-03")
 
+    def test_entities_retrieve_preserves_exact_terms_and_query_selectors(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = record_read_payload()
+        with LbbClient(
+            "http://h",
+            graph="people",
+            default_consistency="strong",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = client.entities.retrieve(
+                iri=payload["id"], as_of_commit_seq=7, limits={"assertions": 20}
+            )
+            typed = client.entities.retrieve_model(
+                type="Person", key=" a/é ", schema_revision="schema-v1:checked"
+            )
+        self.assertEqual(raw, payload)
+        self.assertIsInstance(typed, model_module.RecordReadResponse)
+        self.assertEqual(
+            typed.model_dump(by_alias=True, exclude_none=True)["properties"][0][
+                "object"
+            ]["@value"],
+            "9007199254740993",
+        )
+        self.assertEqual(seen[0].url.path, "/v1/graph/entity")
+        self.assertEqual(
+            dict(seen[0].url.params),
+            {
+                "graph": "people",
+                "version": "records/1",
+                "iri": payload["id"],
+                "consistency": "strong",
+                "as_of_commit_seq": "7",
+                "max_assertions": "20",
+            },
+        )
+        self.assertEqual(seen[1].url.params["key"], " a/é ")
+        self.assertEqual(seen[1].url.params["schema_revision"], "schema-v1:checked")
+
+    def test_entities_retrieve_refuses_legacy_or_incomplete_success(self) -> None:
+        for payload in [
+            entity_detail_payload(),
+            {**record_read_payload(), "complete": False},
+        ]:
+            seen: list[httpx.Request] = []
+            with LbbClient(
+                "http://h",
+                transport=capturing_transport(
+                    seen, [{"json": payload}, {"json": payload}]
+                ),
+            ) as client:
+                for method in (
+                    client.entities.retrieve,
+                    client.entities.retrieve_model,
+                ):
+                    with self.assertRaises(LbbCapabilityError):
+                        method(id="native-id")
+            self.assertEqual(len(seen), 2)
+
     def test_entities_detail_reads_one_record_at_a_commit(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
@@ -2346,7 +2418,8 @@ class SyncClientTests(unittest.TestCase):
             graph="support",
             default_consistency="strong",
             transport=capturing_transport(
-                seen, [{"json": entity_detail_payload()}, {"json": entity_detail_payload()}]
+                seen,
+                [{"json": entity_detail_payload()}, {"json": entity_detail_payload()}],
             ),
         ) as client:
             raw = client.entities.detail(type="Ticket", key="4821", edges=50, evidence=3)
@@ -4160,6 +4233,50 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen[0].url.path, "/v1/models/activity")
         self.assertEqual(seen[0].url.params.get("month"), "2026-10")
         self.assertNotIn("month", seen[1].url.params)
+
+    async def test_async_entities_retrieve_refuses_legacy_or_incomplete_success(
+        self,
+    ) -> None:
+        for payload in [
+            entity_detail_payload(),
+            {**record_read_payload(), "complete": False},
+        ]:
+            seen: list[httpx.Request] = []
+            async with AsyncLbbClient(
+                "http://h",
+                transport=capturing_transport(
+                    seen, [{"json": payload}, {"json": payload}]
+                ),
+            ) as client:
+                for method in (
+                    client.entities.retrieve,
+                    client.entities.retrieve_model,
+                ):
+                    with self.assertRaises(LbbCapabilityError):
+                        await method(id="native-id")
+            self.assertEqual(len(seen), 2)
+
+    async def test_async_entities_retrieve_preserves_exact_terms(self) -> None:
+        seen: list[httpx.Request] = []
+        payload = record_read_payload()
+        async with AsyncLbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = await client.entities.retrieve(iri=payload["id"])
+            typed = await client.entities.retrieve_model(
+                iri=payload["id"], as_of_commit_seq=7
+            )
+        self.assertEqual(raw, payload)
+        self.assertIsInstance(typed, model_module.RecordReadResponse)
+        self.assertEqual(
+            typed.model_dump(by_alias=True, exclude_none=True)["properties"][0][
+                "object"
+            ]["@value"],
+            "9007199254740993",
+        )
+        self.assertEqual(seen[0].url.params["version"], "records/1")
+        self.assertEqual(seen[1].url.params["as_of_commit_seq"], "7")
 
     async def test_async_sparql_search_update_and_entity_detail(self) -> None:
         seen: list[httpx.Request] = []
