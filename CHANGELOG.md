@@ -2,8 +2,20 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.32.0 (2026-10-26)
 
+- `client.status(version="status/1")` reads the current RDF and class
+  diagnostics and checks their shape; `client.status_model()` returns them
+  as `models.CurrentStatusResponse`. `status()` without `version` answers as
+  before. `version="legacy"` asks for the earlier shape and raises
+  `LbbCapabilityError` when the server answers another one.
+- `client.demo_run(dataset=..., version=...)` runs the fixed RDF fixture
+  checks (`POST /v1/demo/run`, dataset `semantic_graph` by default) and
+  checks the answer; `client.demo_run_model()` returns
+  `models.DemoCurrentRunResponse`. It sends `version="demo/1"` by default
+  and needs the server capability `rdf_demo_checks_v1`: an older server
+  raises `LbbCapabilityError`. `version="legacy"` returns the earlier
+  answer. Both are on `LbbClient` and `AsyncLbbClient`.
 - Add `client.entities.retrieve` and `retrieve_model`, sync and async, for versioned `records/1` reads with caller IRIs, exact RDF values, independent assertions, snapshot/schema pins and whole-read limits. Existing `entities.detail` is unchanged.
 
 - Deprecate the local records/Base-backed search methods

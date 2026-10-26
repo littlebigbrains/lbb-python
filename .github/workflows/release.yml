@@ -86,6 +86,11 @@ jobs:
           PY
       - name: Publish littlebigbrain to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Two syncs can queue two runs of one version at the gate. The
+          # second skips the files the first uploaded, so github-release
+          # still runs.
+          skip-existing: true
 
   github-release:
     needs: [preflight, publish-pypi]
