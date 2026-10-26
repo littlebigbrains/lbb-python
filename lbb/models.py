@@ -10367,6 +10367,12 @@ class WorkflowRevisionActivateRequest(BaseModel):
             description='The revision the caller read as bound: another one answers `409\nworkflow_revision_conflict`.'
         ),
     ] = None
+    experiment: Annotated[
+        str | None,
+        Field(
+            description="An experiment whose B this activation applies (`exp_…`, added\n2026-10-26): its revision change on this workflow. The activation\nchecks that the workflow still runs the experiment's A (409\n`experiment_outdated`); when B's revision is bound already, it\nchanges nothing."
+        ),
+    ] = None
     id: Annotated[str, Field(description='The revision to activate.')]
     name: Annotated[str, Field(description="The workflow's name.")]
 
@@ -13873,6 +13879,12 @@ class ModelChoice(BaseModel):
         ),
     ] = None
     default: ModelTrialModel | None = None
+    experiment: Annotated[
+        str | None,
+        Field(
+            description='The experiment whose B a person applied with this choice (`exp_…`,\nadded 2026-10-26); absent when the model was set otherwise.'
+        ),
+    ] = None
     graph: Annotated[
         str | None,
         Field(description='The graph of a `workflow` row; `null` for the environment.'),
@@ -13934,6 +13946,12 @@ class ModelChoicePutRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+    experiment: Annotated[
+        str | None,
+        Field(
+            description="An experiment whose B this write applies (`exp_…`, added\n2026-10-26): its model change for `use` on `workflow`. The write\nchecks that the workflow still runs the experiment's A (409\n`experiment_outdated`); when it runs B already, it changes nothing.\nThe row then names the experiment."
+        ),
+    ] = None
     model: Annotated[
         ModelTrialModel,
         Field(description="One of the row's `options`, with an effort it takes."),

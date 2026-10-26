@@ -3557,6 +3557,9 @@ def choice_payload(use: str = "extract", scope: str = "environment") -> dict[str
     }
 
 
+EXPERIMENT = "exp_1791967648726a1b2c3d4e5f6"
+
+
 class ModelChoicesTests(unittest.TestCase):
     def test_choices_map_each_operation_to_its_route_with_typed_answers(self) -> None:
         seen: list[httpx.Request] = []
@@ -3600,6 +3603,19 @@ class ModelChoicesTests(unittest.TestCase):
             {"use": "extract", "model": HAIKU_LOW, "workflow": "products"},
         )
 
+    def test_a_choice_applies_an_experiments_b_and_the_row_names_it(self) -> None:
+        seen: list[httpx.Request] = []
+        responses = [{"json": {**choice_payload(scope="workflow"), "experiment": EXPERIMENT}}]
+        with LbbClient("http://h", graph="crm", transport=capturing_transport(seen, responses)) as client:
+            row = client.models.choices.put(
+                use="extract", model=HAIKU_LOW, workflow="products", experiment=EXPERIMENT
+            )
+        self.assertEqual(row.experiment, EXPERIMENT)
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"use": "extract", "model": HAIKU_LOW, "workflow": "products", "experiment": EXPERIMENT},
+        )
+
     def test_a_call_names_its_choice(self) -> None:
         call = model_module.ModelCallChoice.model_validate(
             {"id": "mch_1", "scope": "workflow", "source": "person"}
@@ -3621,6 +3637,7 @@ class AsyncModelChoicesTests(unittest.IsolatedAsyncioTestCase):
             {"json": page},
             {"json": choice_payload()},
             {"json": {"id": "mch_1", "object": "model_choice", "deleted": True}},
+            {"json": choice_payload(scope="workflow")},
         ]
         async with AsyncLbbClient(
             "http://h", transport=capturing_transport(seen, responses)
@@ -3629,11 +3646,15 @@ class AsyncModelChoicesTests(unittest.IsolatedAsyncioTestCase):
             rows = [row async for row in client.models.choices.all()]
             await client.models.choices.put(use="extract", model=HAIKU_LOW)
             await client.models.choices.delete(use="extract")
+            await client.models.choices.put(
+                use="extract", model=HAIKU_LOW, workflow="products", experiment=EXPERIMENT
+            )
         self.assertEqual(listed.data[0].use.value, "extract")
         self.assertEqual(len(rows), 1)
         self.assertEqual(
-            [request.method for request in seen], ["GET", "GET", "PUT", "DELETE"]
+            [request.method for request in seen], ["GET", "GET", "PUT", "DELETE", "PUT"]
         )
+        self.assertEqual(json.loads(seen[-1].content)["experiment"], EXPERIMENT)
 
 
 class AsyncModelTrialsTests(unittest.IsolatedAsyncioTestCase):
