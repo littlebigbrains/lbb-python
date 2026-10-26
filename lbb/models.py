@@ -861,6 +861,10 @@ class ConformanceViolationKind(Enum):
     range_mismatch = 'range_mismatch'
 
 
+class CurrentStatusVersion(Enum):
+    status_1 = 'status/1'
+
+
 class CustomerBoundary(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -1077,6 +1081,93 @@ class DecorationStatus(BaseModel):
         ),
     ]
     status: Annotated[str, Field(description='`enforced` | `advisory` | `reserved`.')]
+
+
+class DemoCaseIssue(Enum):
+    malformed_result = 'malformed_result'
+    unexpected_binding_shape = 'unexpected_binding_shape'
+    unexpected_term_shape = 'unexpected_term_shape'
+    unexpected_rdf_term = 'unexpected_rdf_term'
+    duplicate_distinct_row = 'duplicate_distinct_row'
+    expected_terms_differ = 'expected_terms_differ'
+    result_budget = 'result_budget'
+
+
+class DemoCasePayloads(Enum):
+    """
+    Case evidence is returned only after the final graph-incarnation proof.
+    """
+
+    available = 'available'
+    withheld = 'withheld'
+
+
+class DemoClassEmbeddingChecks(Enum):
+    not_requested = 'not_requested'
+
+
+class DemoQueryKind(Enum):
+    sparql_select = 'sparql_select'
+
+
+class DemoResultFormat(Enum):
+    application_sparql_results_json = 'application/sparql-results+json'
+
+
+class DemoRunIssue(Enum):
+    missing_graph = 'missing_graph'
+    publication_pending = 'publication_pending'
+    metadata_unavailable = 'metadata_unavailable'
+    diagnostic_budget = 'diagnostic_budget'
+    definition_unavailable = 'definition_unavailable'
+    query_unavailable = 'query_unavailable'
+    snapshot_changed = 'snapshot_changed'
+    result_budget = 'result_budget'
+    timeout = 'timeout'
+
+
+class DemoRunLimits(BaseModel):
+    """
+    Diagnostic limits, not validity bounds on RDF data, ontologies or manifests.
+    """
+
+    deadline_millis: Annotated[
+        int,
+        Field(
+            description='Cooperative IO/elapsed budget. Late synchronous completion cannot pass;\nthis does not claim that an operating-system thread is forcibly stopped.',
+            ge=0,
+        ),
+    ]
+    max_cases: Annotated[int, Field(ge=0)]
+    max_ontology_bytes: Annotated[int, Field(ge=0)]
+    max_query_bytes: Annotated[int, Field(ge=0)]
+    max_result_bytes: Annotated[int, Field(ge=0)]
+    max_rows_per_case: Annotated[int, Field(ge=0)]
+
+
+class DemoRunObject(Enum):
+    demo_run = 'demo_run'
+
+
+class DemoRunOutcome(Enum):
+    passed = 'passed'
+    failed = 'failed'
+    unavailable = 'unavailable'
+
+
+class DemoRunVersion(Enum):
+    demo_1 = 'demo/1'
+
+
+class DemoSparqlResult(BaseModel):
+    """
+    The engine's result document, preserved verbatim like SparqlTextResponse.
+    An unavailable malformed-result case can carry the reported document as
+    evidence; no lexical RDF value is converted through an application number.
+    """
+
+    document: str
+    format: DemoResultFormat
 
 
 class DerivationKey(BaseModel):
@@ -8421,6 +8512,54 @@ class StarterWorkflowTryRequest(BaseModel):
     ]
 
 
+class StatusAvailability(Enum):
+    available = 'available'
+    unavailable = 'unavailable'
+
+
+class StatusIssue(Enum):
+    """
+    A diagnostic failure, without backend keys, credentials or raw storage errors.
+    """
+
+    missing = 'missing'
+    invalid_metadata = 'invalid_metadata'
+    changed = 'changed'
+    budget = 'budget'
+    storage_unavailable = 'storage_unavailable'
+
+
+class StatusRdfPublication(BaseModel):
+    availability: StatusAvailability
+    issue: StatusIssue | None
+    publication_caught_up: Annotated[
+        bool | None,
+        Field(
+            description='Validated RDF coverage only; says nothing about class embedding readiness.'
+        ),
+    ]
+    published_lag_commits: Annotated[int | None, Field(ge=0)]
+    snapshot: SnapshotView | None
+
+
+class StatusResponseSelector(Enum):
+    """
+    Accepted selectors during the finite source/release transition. The
+    response version stays CurrentStatusVersion and never claims legacy shape.
+    """
+
+    status_1 = 'status/1'
+    legacy = 'legacy'
+
+
+class StatusSnapshotCache(BaseModel):
+    budget_bytes: Annotated[int, Field(ge=0)]
+    entries: Annotated[int, Field(ge=0)]
+    pinned_bytes: Annotated[int, Field(ge=0)]
+    pinned_ceiling_bytes: Annotated[int, Field(ge=0)]
+    total_bytes: Annotated[int, Field(ge=0)]
+
+
 class StreamErrorEvent(BaseModel):
     """
     A streamed response ended with an error: the status, code and message of
@@ -11725,6 +11864,25 @@ class CustomerOwnership(BaseModel):
     version: Annotated[int, Field(ge=0)]
 
 
+class DemoCurrentCaseResult(BaseModel):
+    actual_result: Annotated[
+        DemoSparqlResult,
+        Field(
+            description='At most max_result_bytes, preserved even for a wrong/unsupported term.'
+        ),
+    ]
+    epoch: Annotated[int, Field(ge=0)]
+    expected: list[RecordReferenceTerm]
+    id: str
+    issue: DemoCaseIssue | None
+    label: str
+    outcome: DemoRunOutcome
+    query: str
+    query_kind: DemoQueryKind
+    served_at_seq: Annotated[int, Field(ge=0)]
+    variable: str
+
+
 class Derivation(DerivationKey):
     """
     One derivation as the server keeps it.
@@ -12928,7 +13086,12 @@ class GraphListResponse(BaseModel):
 
 class GraphMetadataRequest(BaseModel):
     dim: Annotated[int | None, Field(ge=0)] = None
-    include_indexes: bool | None = None
+    include_indexes: Annotated[
+        bool | None,
+        Field(
+            description='Opt in to deprecated BM25/ANN family lineage inspection. RDF publication\nstatus is always reported independently; this does not inspect current\nclass-declared embeddings. HTTP and CLI defaults are false.'
+        ),
+    ] = None
     max_clusters: Annotated[int | None, Field(ge=0)] = None
     provider: (
         EmbeddingProviderConfig1
@@ -12946,7 +13109,7 @@ class GraphMetadataResponse(BaseModel):
     index_caught_up: Annotated[
         bool | None,
         Field(
-            description='One-shot "has the published generation caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff the published generation is served at the head commit;\n`Some(false)` when publication is still pending or absent; `None` when\nindexes were not inspected (`include_indexes=false`).\n\nThis is a **publication lag** signal, not a statement about index\ncontent. A generation whose BM25/ANN families are published as empty\nroots — the steady state when the deployment runs without the search\nstack — is caught up while holding no documents. Read\n`index_lineage.bm25_empty` / `ann_empty` to tell the two apart.'
+            description='One-shot "has the published RDF base caught up to head?" signal, so a\nbulk-import caller does not hand-assemble the predicate.\n`Some(true)` iff the validated RDF generation is served at the head commit;\n`Some(false)` when publication is still pending or absent. This is\nreported even when legacy index inspection is disabled. The optional\nrepresentation remains for wire compatibility with earlier servers.\n\nThis is a **publication lag** signal, not a statement about index\ncontent, class embedding readiness, or model/configuration coverage.\n`include_indexes=true` separately reports legacy BM25/ANN lineage when\npresent; its watermarks never determine this RDF signal.'
         ),
     ] = None
     index_lineage: IndexLineage | None = None
@@ -12954,7 +13117,7 @@ class GraphMetadataResponse(BaseModel):
     published_lag_commits: Annotated[
         int,
         Field(
-            description='Commit distance from the graph head to the pinned published generation.',
+            description='Commit distance from the graph head to its validated published RDF base.',
             ge=0,
         ),
     ]
@@ -16393,6 +16556,13 @@ class StateEntry(BaseModel):
     valid_time: ValidTime
 
 
+class StatusEmbeddingDiagnostic(BaseModel):
+    availability: StatusAvailability
+    issue: StatusIssue | None
+    name: str
+    status: EmbeddingStatus | None
+
+
 class SuggestionAnchor(BaseModel):
     """
     The ontology element a suggestion is attached to. `name` is the class,
@@ -17602,6 +17772,48 @@ class CreateGraphResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     graph: GraphKey
     ontology_version: Annotated[int, Field(ge=0)]
+
+
+class DemoCurrentRunResponse(BaseModel):
+    """
+    The fixed demo/1 RDF roster is identity-store, auth-outage and sso-customer
+    on semantic_graph. Known unported datasets are unavailable, not empty passes.
+    Every completed case uses exactly the response's one epoch/commit pin.
+    """
+
+    case_payloads: DemoCasePayloads
+    cases: list[DemoCurrentCaseResult]
+    class_embedding_checks: DemoClassEmbeddingChecks
+    complete: Annotated[
+        bool,
+        Field(
+            description='All three cases completed with interpretable answers, independently of\nwhether those answers matched. Timeout/partial/unavailable is false.'
+        ),
+    ]
+    completed_case_count: Annotated[
+        int | None,
+        Field(
+            description='Unknown when case payloads are withheld after an interrupted run.',
+            ge=0,
+        ),
+    ]
+    dataset_id: str
+    epoch: Annotated[int | None, Field(ge=0)]
+    expected_case_count: Annotated[
+        int | None,
+        Field(
+            description='Unknown (null) for a known dataset without a current case definition.',
+            ge=0,
+        ),
+    ]
+    graph: GraphKey
+    issue: DemoRunIssue | None
+    limits: DemoRunLimits
+    object: DemoRunObject
+    outcome: DemoRunOutcome
+    passed: bool
+    served_at_seq: CommitSeq | None
+    version: DemoRunVersion
 
 
 class DeveloperWorkflowDetails(BaseModel):
@@ -19489,6 +19701,37 @@ class StarterWorkflowCatalog(BaseModel):
     starters: list[StarterWorkflow]
 
 
+class StatusClassEmbeddings(BaseModel):
+    attempted_count: Annotated[int, Field(ge=0)]
+    availability: StatusAvailability
+    complete: Annotated[
+        bool,
+        Field(
+            description='True only when every configured recipe and its named versions were inspected.\nThis is diagnostic coverage, not a claim that all embeddings are ready.'
+        ),
+    ]
+    configured_count: Annotated[
+        int | None,
+        Field(
+            description='Unknown when the roster could not be read, including a missing roster.',
+            ge=0,
+        ),
+    ]
+    embeddings: list[StatusEmbeddingDiagnostic]
+    inspected_count: Annotated[int, Field(ge=0)]
+    issue: StatusIssue | None
+    max_embeddings: Annotated[int, Field(ge=0)]
+    metadata_budget_bytes: Annotated[
+        int,
+        Field(
+            description='Total control-object bytes admitted for this class inspection.',
+            ge=0,
+        ),
+    ]
+    model_id: str | None
+    next_model_id: str | None
+
+
 class SuggestionPatternGroup(BaseModel):
     """
     The suggestions of one pattern.
@@ -20124,6 +20367,44 @@ class CommitResponse(BaseModel):
             description='Property fields actually written by this commit, per entity (canonical\nfield names, resolved against the ontology). Lets a writer confirm a\nproperty landed without a follow-up read. Present only on a fresh commit\nthat carried `entity_properties`; empty on idempotent replays and no-ops.'
         ),
     ] = None
+
+
+class CurrentGraphStatus(BaseModel):
+    """
+    RDF and class observations from one graph incarnation. Their commit observations
+    may differ during concurrent writes; they are not an atomic transaction snapshot.
+    """
+
+    class_embeddings: StatusClassEmbeddings
+    complete: Annotated[
+        bool,
+        Field(
+            description='All requested diagnostics were inspected, independently of readiness/lag.'
+        ),
+    ]
+    epoch: Annotated[int | None, Field(ge=0)]
+    rdf: StatusRdfPublication
+
+
+class CurrentStatusResponse(BaseModel):
+    """
+    Selected only by `version=status/1` during the pre-release compatibility phase.
+    `ok` confirms that this status request completed, not database/model health.
+    """
+
+    auth_required: bool
+    bind: str
+    complete: bool
+    graph: GraphKey
+    graph_status: CurrentGraphStatus
+    mode: str
+    object: Annotated[str, Field(examples=['status'])]
+    ok: bool
+    service: str
+    snapshot_cache: StatusSnapshotCache
+    storage: str
+    uptime_seconds: Annotated[int, Field(ge=0)]
+    version: CurrentStatusVersion
 
 
 class DiscoveryApprovalRequest(BaseModel):

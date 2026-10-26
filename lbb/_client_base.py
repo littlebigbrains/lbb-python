@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import IO, Any, Final, Generic, Literal, TypedDict, TypeVar
+from typing import IO, Any, Final, Generic, Literal, NoReturn, TypedDict, TypeVar
 
 import httpx
 from pydantic import BaseModel, RootModel
@@ -2393,11 +2393,57 @@ class _BaseLbbClient(_StarterWorkflowMethods):
             params={"min_tail_commits": min_tail_commits, "max_segments": max_segments},
         )
 
+    def demo_run(
+        self,
+        *,
+        dataset: str | None = None,
+        version: Literal["demo/1", "legacy"] = "demo/1"
+    ) -> Any:
+        """Run pinned RDF fixture checks, explicitly selecting and validating demo/1.
+
+        A missing/partial/unsupported fixture never passes. This calls no model.
+        Explicit legacy follows the finite response compatibility transition.
+        """
+        dataset = "semantic_graph" if dataset is None else dataset
+        if version not in ("demo/1", "legacy"):
+            raise ValueError("demo version must be demo/1 or legacy")
+        if version == "demo/1":
+            return _demo_current_response(self, dataset=dataset)
+        return _checked_demo_response(
+            self._request(
+                "POST", "/v1/demo/run", params={"version": version, "dataset": dataset}
+            ),
+            version=version,
+        )
+
+    def demo_run_model(
+        self, *, dataset: str | None = None
+    ) -> models.DemoCurrentRunResponse:
+        """Typed demo/1 result; also awaitable on the async client."""
+        return _demo_current_response(
+            self, dataset="semantic_graph" if dataset is None else dataset, typed=True
+        )
+
     # --- inspection ---
 
-    def status(self) -> Any:
-        """Server, graph, and persisted-index status."""
-        return self._request("GET", "/v1/status")
+    def status(self, *, version: Literal["status/1", "legacy"] | None = None) -> Any:
+        """Status diagnostics. Explicit ``status/1`` is shape/version checked.
+
+        Omitting ``version`` retains the temporary legacy compatibility response.
+        Complete diagnostics and RDF/class readiness are independent signals.
+        """
+        if version not in (None, "status/1", "legacy"):
+            raise ValueError("status version must be status/1 or legacy")
+        payload = self._request("GET", "/v1/status", params={"version": version})
+        return _checked_status_response(payload, version=version)
+
+    def status_model(self) -> models.CurrentStatusResponse:
+        """Typed bounded current status; refuses an older server's legacy 200."""
+        return _checked_status_response(
+            self._request("GET", "/v1/status", params={"version": "status/1"}),
+            version="status/1",
+            typed=True,
+        )
 
     def metadata(
         self,
@@ -6143,6 +6189,424 @@ class _EmbeddingsNamespace:
             elif value is not None:
                 body[name] = value
         return self._client._request("PUT", "/v1/search/settings", body=body)
+
+
+def _demo_current_response(client: Any, *, dataset: str, typed: bool = False) -> Any:
+    # Await async preflight before even constructing/executing its POST. A
+    # permissive older server must not run a legacy demo as an implicit fallback.
+    capability = client._require_capability("rdf_demo_checks_v1")
+    if inspect.isawaitable(capability):
+
+        async def checked() -> Any:
+            await capability
+            return await _checked_demo_response(
+                client._request(
+                    "POST",
+                    "/v1/demo/run",
+                    params={"version": "demo/1", "dataset": dataset},
+                ),
+                version="demo/1",
+                typed=typed,
+                expected_dataset=dataset,
+            )
+
+        return checked()
+    return _checked_demo_response(
+        client._request(
+            "POST", "/v1/demo/run", params={"version": "demo/1", "dataset": dataset}
+        ),
+        version="demo/1",
+        typed=typed,
+        expected_dataset=dataset,
+    )
+
+
+def _checked_demo_response(
+    payload: Any,
+    *,
+    version: str,
+    typed: bool = False,
+    expected_dataset: str | None = None
+) -> Any:
+    if inspect.isawaitable(payload):
+
+        async def checked() -> Any:
+            return _checked_demo_response(
+                await payload,
+                version=version,
+                typed=typed,
+                expected_dataset=expected_dataset,
+            )
+
+        return checked()
+    if version == "legacy":
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("dataset"), dict)
+            or not isinstance(payload.get("passed"), bool)
+            or not isinstance(payload.get("cases"), list)
+            or payload.get("version") == "demo/1"
+        ):
+            raise LbbCapabilityError("legacy demo response")
+        return payload
+    if (
+        not isinstance(payload, dict)
+        or payload.get("object") != "demo_run"
+        or payload.get("version") != "demo/1"
+        or payload.get("dataset_id") != expected_dataset
+    ):
+        raise LbbCapabilityError("demo/1 exact RDF checks")
+    # Generated named models enforce field/enum types; cross-field checks below
+    # reject contradictory success, partial counts, and mixed snapshot pins.
+    try:
+        validated = _parse_model(models.DemoCurrentRunResponse, payload)
+    except (ValueError, TypeError) as error:
+        raise LbbCapabilityError("demo/1 exact RDF checks") from error
+    required = {
+        "object",
+        "version",
+        "graph",
+        "dataset_id",
+        "epoch",
+        "served_at_seq",
+        "outcome",
+        "passed",
+        "complete",
+        "expected_case_count",
+        "completed_case_count",
+        "case_payloads",
+        "cases",
+        "issue",
+        "class_embedding_checks",
+        "limits",
+    }
+    if (
+        not required.issubset(payload)
+        or not isinstance(payload["passed"], bool)
+        or not isinstance(payload["complete"], bool)
+    ):
+        raise LbbCapabilityError("demo/1 exact RDF checks")
+    def count(value: object) -> bool:
+        return (
+            isinstance(value, int)
+            and not isinstance(value, bool)
+            and value >= 0
+        )
+    def iri(value: object) -> bool:
+        return (
+            isinstance(value, str)
+            and bool(re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", value))
+            and not re.search(r'[<>"{}|^`\\\x00-\x20]', value)
+        )
+
+    def refuse() -> NoReturn:
+        raise LbbCapabilityError("demo/1 exact RDF checks")
+
+    bounds = {
+        "max_cases": 3,
+        "max_rows_per_case": 2,
+        "max_query_bytes": 8192,
+        "max_result_bytes": 8192,
+        "max_ontology_bytes": 1048576,
+        "deadline_millis": 5000,
+    }
+    if (
+        payload.get("limits") != bounds
+        or payload.get("class_embedding_checks") != "not_requested"
+    ):
+        refuse()
+    epoch, seq, cases = (
+        payload.get("epoch"),
+        payload.get("served_at_seq"),
+        payload.get("cases"),
+    )
+    if (
+        (epoch is not None and not count(epoch))
+        or (seq is not None and not count(seq))
+        or (epoch is None and seq is not None)
+        or not isinstance(cases, list)
+        or len(cases) > 3
+    ):
+        refuse()
+    if payload.get("expected_case_count") != (
+        3 if payload.get("dataset_id") == "semantic_graph" else None
+    ):
+        refuse()
+    if payload.get("case_payloads") == "withheld":
+        if (
+            payload.get("issue") is None
+            or payload.get("completed_case_count") is not None
+            or cases
+            or epoch is not None
+            or seq is not None
+            or payload.get("complete") is not False
+            or payload.get("passed") is not False
+            or payload.get("outcome") != "unavailable"
+            or payload.get("dataset_id") != "semantic_graph"
+            and payload.get("issue") != "definition_unavailable"
+        ):
+            refuse()
+        return validated if typed else payload
+    if (
+        payload.get("case_payloads") != "available"
+        or payload.get("issue") is not None
+        or payload.get("dataset_id") != "semantic_graph"
+        or payload.get("completed_case_count") != 3
+        or len(cases) != 3
+        or not count(epoch)
+        or not count(seq)
+    ):
+        refuse()
+    seen: set[str] = set()
+    for case in cases:
+        if not isinstance(case, dict):
+            refuse()
+        if not {
+            "id",
+            "label",
+            "query_kind",
+            "query",
+            "variable",
+            "expected",
+            "actual_result",
+            "outcome",
+            "issue",
+            "epoch",
+            "served_at_seq",
+        }.issubset(case):
+            refuse()
+        case_id = case.get("id")
+        expected = case.get("expected")
+        result = case.get("actual_result")
+        if (
+            case_id not in ("identity-store", "auth-outage", "sso-customer")
+            or case_id in seen
+            or case.get("query_kind") != "sparql_select"
+            or not isinstance(case.get("query"), str)
+            or not case["query"]
+            or len(case["query"].encode()) > 8192
+            or case.get("variable")
+            != ("database" if case_id == "identity-store" else "customer")
+            or not isinstance(expected, list)
+            or len(expected) != 1
+            or not isinstance(expected[0], dict)
+            or set(expected[0]) != {"@id"}
+            or not iri(expected[0].get("@id"))
+            or not count(case.get("epoch"))
+            or not count(case.get("served_at_seq"))
+            or case.get("epoch") != epoch
+            or case.get("served_at_seq") != seq
+            or (
+                case.get("issue") is not None
+                if case.get("outcome") == "passed"
+                else case.get("issue") is None
+            )
+            or not isinstance(result, dict)
+            or result.get("format") != "application/sparql-results+json"
+            or not isinstance(result.get("document"), str)
+            or len(result["document"].encode()) > 8192
+        ):
+            refuse()
+        if case.get("outcome") == "passed":
+            try:
+                document = json.loads(result["document"])
+                rows = document["results"]["bindings"]
+                if (
+                    document["head"]["vars"] != [case["variable"]]
+                    or not isinstance(rows, list)
+                    or len(rows) > 2
+                ):
+                    refuse()
+                actual = []
+                for row in rows:
+                    if not isinstance(row, dict) or set(row) != {case["variable"]}:
+                        refuse()
+                    term = row[case["variable"]]
+                    if (
+                        not isinstance(term, dict)
+                        or set(term) != {"type", "value"}
+                        or term.get("type") != "uri"
+                        or not iri(term.get("value"))
+                    ):
+                        refuse()
+                    actual.append(term["value"])
+                if (
+                    not actual
+                    or len(set(actual)) != len(actual)
+                    or set(actual) != {expected[0]["@id"]}
+                ):
+                    refuse()
+            except (ValueError, KeyError, TypeError):
+                refuse()
+        seen.add(case_id)
+    completed = len(cases) == 3 and all(
+        case.get("outcome") != "unavailable" for case in cases
+    )
+    expected_outcome = (
+        "unavailable"
+        if payload.get("issue") is not None or not completed
+        else (
+            "failed"
+            if any(case.get("outcome") == "failed" for case in cases)
+            else "passed"
+        )
+    )
+    if (
+        payload.get("issue") is None
+        and len(cases) < 3
+        or payload.get("outcome") != expected_outcome
+        or payload.get("complete") != (payload.get("issue") is None and completed)
+        or payload.get("passed") != (expected_outcome == "passed")
+    ):
+        refuse()
+    return validated if typed else payload
+
+
+def _validate_current_status(payload: Any) -> models.CurrentStatusResponse:
+    """Validate JSON types without coercion and retain mandatory null observations."""
+
+    def require(condition: bool) -> None:
+        if not condition:
+            raise ValueError("inconsistent status/1 diagnostics")
+
+    require(isinstance(payload, dict))
+    # JSON-mode strict validation accepts the wire's enum strings but never
+    # turns a bool/string/float into an integer or defaults a required field.
+    validated = models.CurrentStatusResponse.model_validate_json(
+        json.dumps(payload, allow_nan=False), strict=True
+    )
+    graph = payload["graph_status"]
+    rdf = graph["rdf"]
+    classes = graph["class_embeddings"]
+    rows = classes["embeddings"]
+    for owner, fields in [
+        (graph, {"epoch"}),
+        (rdf, {"issue", "snapshot", "publication_caught_up", "published_lag_commits"}),
+        (classes, {"issue", "configured_count", "model_id", "next_model_id"}),
+        *[(row, {"issue", "status"}) for row in rows],
+    ]:
+        require(fields.issubset(owner))
+    require(payload["ok"] is True)
+    require(payload["complete"] == graph["complete"])
+    require(
+        graph["complete"]
+        == (rdf["availability"] == "available" and classes["complete"])
+    )
+    require(classes["attempted_count"] == len(rows))
+    require(
+        classes["inspected_count"]
+        <= classes["attempted_count"]
+        <= classes["max_embeddings"]
+    )
+    require(len({row["name"] for row in rows}) == len(rows))
+    successes = 0
+    for row in rows:
+        status = row["status"]
+        if row["availability"] == "available":
+            require(row["issue"] is None and isinstance(status, dict))
+            require(
+                status["name"] == row["name"]
+                and status["class"] == status["recipe"]["class"]
+            )
+            successes += 1
+            recipe = status["recipe"]
+            # Optional non-null fields retain their OpenAPI meaning: generated
+            # optional Python annotations must not turn explicit null into a
+            # default for fields omitted by older compatible manifests.
+            if "metric" in recipe:
+                require(recipe["metric"] in ("cosine", "dot", "l2"))
+            if "title" in recipe:
+                require(isinstance(recipe["title"], list))
+            for name in ("serving", "building"):
+                version = status.get(name)
+                if version is None:
+                    continue
+                if "stored_bytes" in version:
+                    require(
+                        isinstance(version["stored_bytes"], int)
+                        and not isinstance(version["stored_bytes"], bool)
+                    )
+                backfill = version.get("backfill")
+                if backfill is not None and "rescan" in backfill:
+                    require(isinstance(backfill["rescan"], bool))
+        else:
+            require(row["issue"] is not None and status is None)
+    require(classes["inspected_count"] == successes)
+    configured = classes["configured_count"]
+    if configured is None:
+        require(
+            classes["availability"] == "unavailable" and classes["issue"] is not None
+        )
+        require(classes["complete"] is False and classes["attempted_count"] == 0)
+    else:
+        require(
+            classes["availability"] == "available"
+            and classes["attempted_count"] <= configured
+        )
+        require(classes["complete"] == (classes["inspected_count"] == configured))
+        require((classes["issue"] is None) == classes["complete"])
+    if rdf["availability"] == "available":
+        snapshot = rdf["snapshot"]
+        require(rdf["issue"] is None and isinstance(snapshot, dict))
+        require(isinstance(rdf["publication_caught_up"], bool))
+        require(
+            isinstance(rdf["published_lag_commits"], int)
+            and not isinstance(rdf["published_lag_commits"], bool)
+        )
+        if "stale" in snapshot:
+            require(isinstance(snapshot["stale"], bool))
+        served = snapshot.get("served_at_seq")
+        committed = snapshot["commit_seq"]
+        require(served is None or served <= committed)
+        require(
+            rdf["publication_caught_up"] == (served is not None and served == committed)
+        )
+        require(
+            rdf["published_lag_commits"]
+            == committed - (0 if served is None else served)
+        )
+    else:
+        require(rdf["issue"] is not None and rdf["snapshot"] is None)
+        require(
+            rdf["publication_caught_up"] is None
+            and rdf["published_lag_commits"] is None
+        )
+    if graph["epoch"] is None:
+        require(rdf["availability"] == "unavailable" and configured is None)
+    return validated
+
+
+def _checked_status_response(
+    payload: Any, *, version: str | None, typed: bool = False
+) -> Any:
+    if inspect.isawaitable(payload):
+
+        async def checked() -> Any:
+            return _checked_status_response(await payload, version=version, typed=typed)
+
+        return checked()
+    if version == "status/1":
+        if (
+            not isinstance(payload, dict)
+            or payload.get("object") != "status"
+            or payload.get("version") != "status/1"
+        ):
+            raise LbbCapabilityError("status/1 diagnostics")
+        # Validate even the dictionary-returning helper: a server that ignored
+        # version selection must never become a typed current status by accident.
+        try:
+            validated = _validate_current_status(payload)
+        except (ValueError, TypeError, KeyError) as error:
+            raise LbbCapabilityError("status/1 diagnostics") from error
+        return validated if typed else payload
+    if version == "legacy" and (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("persisted_index"), dict)
+        or not isinstance(payload.get("graph_status"), dict)
+        or payload.get("version") == "status/1"
+    ):
+        raise LbbCapabilityError("legacy status response")
+    return payload
 
 
 def _checked_record_response(payload: Any, *, typed: bool = False) -> Any:
