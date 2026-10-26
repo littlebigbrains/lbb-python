@@ -1,0 +1,207 @@
+{
+  "about": [
+    "The cases every grader of extracted values runs: grading.ts here, the copy of the Python tests (sdk/python/tests/value_grading.py) and lbb-server's experiment score. Each grader must give the expected counts and grades.",
+    "items grade one item: its labels (values, leave_out), the values written (written) and sent to review (review), by property. runs grade several records with grade().",
+    "The rules: docs/architecture/experiments.md, Scoring. A number matches by value (only the digits 0 to 9 make a number); a text matches the value or one of accept, trimmed and in lower case (a written null is the text null). A written value of a property the item does not label is unlabeled and counts in no score. Labels of one property in values are alternatives. A null in values labels nothing; a null in leave_out means no value at all. A value sent to review is not written."
+  ],
+  "items": [
+    {
+      "case": "A number matches by value, also as text.",
+      "values": [{ "property": "width_cm", "value": 60 }],
+      "written": { "width_cm": "60" },
+      "expect": { "correct": 1, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "A number with a fraction matches the same number.",
+      "values": [{ "property": "width_cm", "value": 60 }],
+      "written": { "width_cm": 60.0 },
+      "expect": { "correct": 1, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "Another number is wrong, and the label is missed.",
+      "values": [{ "property": "width_cm", "value": 60 }],
+      "written": { "width_cm": 65 },
+      "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
+    },
+    {
+      "case": "Text that is no number does not match a number.",
+      "values": [{ "property": "width_cm", "value": 60 }],
+      "written": { "width_cm": "sixty" },
+      "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
+    },
+    {
+      "case": "Only a decimal number is a number: hexadecimal text is no number.",
+      "values": [{ "property": "width_cm", "value": 60 }],
+      "written": { "width_cm": "0x3C" },
+      "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
+    },
+    {
+      "case": "Only the digits 0 to 9 make a number: digits of another script are no number.",
+      "values": [{ "property": "width_cm", "value": 12 }],
+      "written": { "width_cm": "\u0661\u0662" },
+      "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
+    },
+    {
+      "case": "A written null is the text null, not the text none.",
+      "values": [{ "property": "material", "value": "none" }],
+      "written": { "material": null },
+      "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
+    },
+    {
+      "case": "A written null matches the label text null.",
+      "values": [{ "property": "material", "value": "null" }],
+      "written": { "material": null },
+      "expect": { "correct": 1, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "A text matches one of accept, trimmed and in lower case.",
+      "values": [{ "property": "material", "value": "oak veneer", "accept": ["oak veneer", "oak"] }],
+      "written": { "material": " Oak " },
+      "expect": { "correct": 1, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "accept holds other spellings: the value itself matches when accept leaves it out.",
+      "values": [{ "property": "material", "value": "Aluminium", "accept": ["aluminum"] }],
+      "written": { "material": "aluminium" },
+      "expect": { "correct": 1, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "Another text is wrong.",
+      "values": [{ "property": "material", "value": "oak veneer", "accept": ["oak veneer", "oak"] }],
+      "written": { "material": "steel" },
+      "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
+    },
+    {
+      "case": "A yes or no matches as its text.",
+      "values": [{ "property": "adjustable", "value": true }],
+      "written": { "adjustable": "true" },
+      "expect": { "correct": 1, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "A null in leave_out: any value of the property is wrong.",
+      "values": [],
+      "leave_out": [{ "property": "color", "value": null }],
+      "written": { "color": "black" },
+      "expect": { "correct": 0, "wrong": 1, "missed": 0, "unlabeled": 0, "review": 0, "precision": 0, "recall": 1, "score": 0 }
+    },
+    {
+      "case": "A value that leave_out names is wrong, beside a label in values.",
+      "values": [{ "property": "material", "value": "oak veneer" }],
+      "leave_out": [{ "property": "material", "value": "steel" }],
+      "written": { "material": "Steel" },
+      "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
+    },
+    {
+      "case": "leave_out alone labels its property: another value of it is wrong too.",
+      "values": [],
+      "leave_out": [{ "property": "width_cm", "value": 90 }],
+      "written": { "width_cm": 80 },
+      "expect": { "correct": 0, "wrong": 1, "missed": 0, "unlabeled": 0, "review": 0, "precision": 0, "recall": 1, "score": 0 }
+    },
+    {
+      "case": "A value of a property the item does not label is unlabeled, in no score.",
+      "values": [{ "property": "width_cm", "value": 60 }],
+      "written": { "width_cm": 60, "color": "red" },
+      "expect": { "correct": 1, "wrong": 0, "missed": 0, "unlabeled": 1, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "A value sent to review is not written: its label is missed.",
+      "values": [{ "property": "width_cm", "value": 60 }],
+      "written": {},
+      "review": { "width_cm": 60 },
+      "expect": { "correct": 0, "wrong": 0, "missed": 1, "unlabeled": 0, "review": 1, "precision": 1, "recall": 0, "score": 0 }
+    },
+    {
+      "case": "No label and nothing written is right.",
+      "values": [],
+      "written": {},
+      "expect": { "correct": 0, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "A null in values labels nothing.",
+      "values": [{ "property": "width_cm", "value": null }],
+      "written": { "width_cm": 60 },
+      "expect": { "correct": 0, "wrong": 0, "missed": 0, "unlabeled": 1, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "Labels of one property are alternatives: the property is expected once.",
+      "values": [
+        { "property": "width_cm", "value": 60 },
+        { "property": "width_cm", "value": 600 }
+      ],
+      "written": { "width_cm": 600 },
+      "expect": { "correct": 1, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "Part right: precision 1 of 2, recall 1 of 3.",
+      "values": [
+        { "property": "width_cm", "value": 60 },
+        { "property": "depth_cm", "value": 24 },
+        { "property": "material", "value": "bamboo" }
+      ],
+      "written": { "width_cm": 60, "depth_cm": 25 },
+      "expect": { "correct": 1, "wrong": 1, "missed": 2, "unlabeled": 0, "review": 0, "precision": 0.5, "recall": 0.3333, "score": 0.4 }
+    },
+    {
+      "case": "An item the arm did not answer scores 0, and its labels are missed.",
+      "values": [
+        { "property": "width_cm", "value": 60 },
+        { "property": "material", "value": "bamboo" }
+      ],
+      "written": {},
+      "failed": true,
+      "expect": { "correct": 0, "wrong": 0, "missed": 2, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
+    }
+  ],
+  "runs": [
+    {
+      "case": "Two records: an unlabeled value counts in no grade, a null in leave_out counts wrong.",
+      "key": [
+        {
+          "name": "a",
+          "values": [
+            { "property": "width_cm", "value": 60 },
+            { "property": "material", "value": "bamboo" }
+          ],
+          "leave_out": [{ "property": "color", "value": null }]
+        },
+        { "name": "b", "values": [{ "property": "width_cm", "value": 90 }] }
+      ],
+      "written": {
+        "a": { "width_cm": 60, "material": "oak", "color": "black", "brand": "x" },
+        "b": { "width_cm": "90" }
+      },
+      "reviewItems": 1,
+      "proposed": 6,
+      "cost": 1200,
+      "instances": 2,
+      "expect": {
+        "precision": 0.5,
+        "recall": 0.6667,
+        "review_share": 0.1667,
+        "cost_per_instance_micro_usd": 600,
+        "written": 4,
+        "correct": 2,
+        "expected": 3
+      }
+    },
+    {
+      "case": "No records: every grade has its value for nothing.",
+      "key": [],
+      "written": {},
+      "reviewItems": 0,
+      "proposed": 0,
+      "cost": 0,
+      "instances": 0,
+      "expect": {
+        "precision": 1,
+        "recall": 1,
+        "review_share": 0,
+        "cost_per_instance_micro_usd": 0,
+        "written": 0,
+        "correct": 0,
+        "expected": 0
+      }
+    }
+  ]
+}

@@ -2,6 +2,17 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- `models.choices.put` takes `experiment` (an `exp_…` id) with `workflow`, and
+  `workflows.named.activate_revision` takes `experiment`, sync and async: the
+  write applies that experiment's B. The server answers `409
+  experiment_outdated` when the workflow no longer runs the experiment's A;
+  when it runs B already, nothing changes. A choice row names its experiment
+  (`experiment`).
+  Use `experiment` only after every node runs the version with experiments: an
+  earlier node ignores it on an activation and skips the check of A.
+
 ## 0.32.0 (2026-10-26)
 
 - `client.status(version="status/1")` reads the current RDF and class

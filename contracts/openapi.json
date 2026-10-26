@@ -17699,6 +17699,13 @@
               }
             ]
           },
+          "experiment": {
+            "description": "The experiment whose B a person applied with this choice (`exp_…`,\nadded 2026-10-26); absent when the model was set otherwise.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "graph": {
             "description": "The graph of a `workflow` row; `null` for the environment.",
             "type": [
@@ -17835,6 +17842,13 @@
         "additionalProperties": false,
         "description": "`PUT /v1/models/choices`: choose the model of a use, for the\nenvironment, or for one workflow of the graph (`workflow`).",
         "properties": {
+          "experiment": {
+            "description": "An experiment whose B this write applies (`exp_…`, added\n2026-10-26): its model change for `use` on `workflow`. The write\nchecks that the workflow still runs the experiment's A (409\n`experiment_outdated`); when it runs B already, it changes nothing.\nThe row then names the experiment.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "model": {
             "$ref": "#/components/schemas/ModelTrialModel",
             "description": "One of the row's `options`, with an effort it takes."
@@ -40376,6 +40390,13 @@
         "properties": {
           "expected_revision": {
             "description": "The revision the caller read as bound: another one answers `409\nworkflow_revision_conflict`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "experiment": {
+            "description": "An experiment whose B this activation applies (`exp_…`, added\n2026-10-26): its revision change on this workflow. The activation\nchecks that the workflow still runs the experiment's A (409\n`experiment_outdated`); when B's revision is bound already, it\nchanges nothing.",
             "type": [
               "string",
               "null"

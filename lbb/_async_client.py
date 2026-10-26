@@ -1280,12 +1280,17 @@ class _AsyncModelChoicesNamespace(_ModelChoicesNamespace):
         use: str | models.ModelUse,
         model: TrialCandidate,
         workflow: str | None = None,
+        experiment: str | None = None,
         idempotency_key: str | None = None,
     ) -> models.ModelChoice:
         return cast(
             models.ModelChoice,
             await super().put(
-                use=use, model=model, workflow=workflow, idempotency_key=idempotency_key
+                use=use,
+                model=model,
+                workflow=workflow,
+                experiment=experiment,
+                idempotency_key=idempotency_key,
             ),
         )
 
@@ -1546,11 +1551,18 @@ class _AsyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
         return cast(models.WorkflowRevision, await super().get_revision(name, id))
 
     async def activate_revision(
-        self, name: str, id: str, *, expected_revision: str | None = None
+        self,
+        name: str,
+        id: str,
+        *,
+        expected_revision: str | None = None,
+        experiment: str | None = None,
     ) -> models.NamedWorkflow:
         return cast(
             models.NamedWorkflow,
-            await super().activate_revision(name, id, expected_revision=expected_revision),
+            await super().activate_revision(
+                name, id, expected_revision=expected_revision, experiment=experiment
+            ),
         )
 
     def all(self, *, limit: int | None = None) -> AsyncIterator[models.NamedWorkflow]:

@@ -421,11 +421,18 @@ class _SyncModelChoicesNamespace(_ModelChoicesNamespace):
         use: str | models.ModelUse,
         model: TrialCandidate,
         workflow: str | None = None,
+        experiment: str | None = None,
         idempotency_key: str | None = None,
     ) -> models.ModelChoice:
         return cast(
             models.ModelChoice,
-            super().put(use=use, model=model, workflow=workflow, idempotency_key=idempotency_key),
+            super().put(
+                use=use,
+                model=model,
+                workflow=workflow,
+                experiment=experiment,
+                idempotency_key=idempotency_key,
+            ),
         )
 
     def delete(

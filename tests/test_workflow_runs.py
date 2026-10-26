@@ -556,9 +556,14 @@ class AsyncWorkflowRevisionsTests(unittest.IsolatedAsyncioTestCase):
             ids = [item.id async for item in named.all_revisions("notes", limit=1)]
             page = await named.revisions("notes", limit=1)
             one = await named.get_revision("notes", FIRST)
-            workflow = await named.activate_revision("notes", FIRST)
+            workflow = await named.activate_revision(
+                "notes", FIRST, experiment="exp_1791967648726a1b2c3d4e5f6"
+            )
         self.assertEqual(ids, [SECOND, FIRST])
         self.assertIsInstance(page, WorkflowRevisionList)
         self.assertEqual(one.id, FIRST)
-        self.assertEqual(json.loads(seen[-1].content), {"name": "notes", "id": FIRST})
+        self.assertEqual(
+            json.loads(seen[-1].content),
+            {"name": "notes", "id": FIRST, "experiment": "exp_1791967648726a1b2c3d4e5f6"},
+        )
         self.assertEqual(workflow.active_revision, FIRST)

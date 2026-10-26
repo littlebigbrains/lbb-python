@@ -5638,7 +5638,12 @@ class _NamedWorkflowsNamespace:
         )
 
     def activate_revision(
-        self, name: str, id: str, *, expected_revision: str | None = None
+        self,
+        name: str,
+        id: str,
+        *,
+        expected_revision: str | None = None,
+        experiment: str | None = None,
     ) -> models.NamedWorkflow:
         """Make a kept revision the workflow's settings
         (``POST /v1/workflows/named/revisions/activate``).
@@ -5650,10 +5655,17 @@ class _NamedWorkflowsNamespace:
         revision raises ``workflow_revision_conflict`` (409). Activating the
         active revision changes nothing, so a failed call is retried. Work
         that waits or runs keeps the revision it started with. Returns the
-        workflow, whose ``active_revision`` names the revision."""
+        workflow, whose ``active_revision`` names the revision.
+
+        With ``experiment`` (an ``exp_…`` id), the activation applies that
+        experiment's B, whose change is ``id``. The workflow must still run
+        the experiment's A: else :class:`LbbError` ``experiment_outdated``
+        (409). When B's revision is active already, nothing changes."""
         body: dict[str, Any] = {"name": name, "id": id}
         if expected_revision is not None:
             body["expected_revision"] = expected_revision
+        if experiment is not None:
+            body["experiment"] = experiment
         return self._client._model_request(
             models.NamedWorkflow,
             "POST",
@@ -5860,6 +5872,7 @@ class _ModelChoicesNamespace:
         use: str | models.ModelUse,
         model: TrialCandidate,
         workflow: str | None = None,
+        experiment: str | None = None,
         idempotency_key: str | None = None,
     ) -> models.ModelChoice:
         """Choose the model of a use (``PUT /v1/models/choices``), for the
@@ -5874,10 +5887,18 @@ class _ModelChoicesNamespace:
         ``embed`` or a model the use cannot run, 409
         ``model_choice_unavailable`` when the server holds no key for the
         provider or cannot price the model, 404 ``named_workflow_not_found``.
+
+        With ``experiment`` (an ``exp_…`` id) and ``workflow``, the choice
+        applies that experiment's B: ``use`` and ``model`` are B's change.
+        The workflow must still run the experiment's A, else 409
+        ``experiment_outdated``; when it runs B already, nothing changes. The
+        row then names the experiment.
         """
         body: dict[str, Any] = {"use": _enum_value(use), "model": _trial_candidate(model)}
         if workflow is not None:
             body["workflow"] = workflow
+        if experiment is not None:
+            body["experiment"] = experiment
         return self._client._model_request(
             models.ModelChoice,
             "PUT",

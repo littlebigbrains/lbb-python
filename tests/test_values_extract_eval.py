@@ -30,6 +30,7 @@ from lbb.entities import ENTITY_ID_KEY_SENTINEL
 
 # The fake puts sdk/python/examples on the path of the example's modules.
 from values_extract_fake import EXAMPLES, FakeLbb, message, serve  # isort: skip
+from value_grading import grade  # isort: skip
 from values_extract.workflow import Settings  # isort: skip
 
 
@@ -378,45 +379,6 @@ def test_the_port_writes_the_values_sources_and_review_items_of_lbbs_values_extr
     assert [name_of[iri] for iri in run["fake"].requeued] == ["S 9.3"]
 
 
-def _matches(got: Any, want: dict[str, Any]) -> bool:
-    if want["value"] is None:
-        return False
-    if isinstance(want["value"], (int, float)):
-        try:
-            return float(got) == want["value"]
-        except (TypeError, ValueError):
-            return False
-    accepted = want.get("accept") or [str(want["value"]).lower()]
-    return str(got).strip().lower() in accepted
-
-
-def _grade(
-    key: list[dict[str, Any]],
-    written: dict[str, dict[str, Any]],
-    review_items: int,
-    proposed: int,
-    cost: float,
-    instances: int,
-) -> dict[str, Any]:
-    """The grades of ``sdk/templates/_evals/grading.ts``."""
-    written_n = correct = expected = 0
-    for record in key:
-        expected += len(record["values"])
-        for prop, value in written.get(record["name"], {}).items():
-            written_n += 1
-            if any(w["property"] == prop and _matches(value, w) for w in record["values"]):
-                correct += 1
-    return {
-        "precision": _round(correct / written_n) if written_n else 1,
-        "recall": _round(correct / expected) if expected else 1,
-        "review_share": _round(review_items / proposed) if proposed else 0,
-        "cost_per_instance_micro_usd": _round(cost / instances) if instances else 0,
-        "written": written_n,
-        "correct": correct,
-        "expected": expected,
-    }
-
-
 def test_the_grades_of_both_paths_on_the_samples_meet_the_bar() -> None:
     fixture, rust = _load()
     run = _run()
@@ -444,7 +406,7 @@ def test_the_grades_of_both_paths_on_the_samples_meet_the_bar() -> None:
     ) -> dict[str, Any]:
         mine = [c for c in calls if c["instance"] in samples]
         written = _comparable(outputs)
-        return _grade(
+        return grade(
             key,
             {n: written[n]["values"] for n in samples},
             sum(i["instance"] in samples for i in _besides(items)),
