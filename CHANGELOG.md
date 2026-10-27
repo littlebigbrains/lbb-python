@@ -2,7 +2,18 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## Unreleased — 0.33.0
+
+- **Breaking local-search retirement:** `LbbLocalClient.semantic_search`,
+  `build_embedding_index`, `embedding_index_inspect`, `inspect_embedding_index`
+  and `embedding_search` retain their signatures but now raise the exported
+  `LbbLocalSearchRetiredError` before request-file or subprocess access. The
+  matching testctl generation retains old arguments only as explicit
+  `legacy_search_retired` refusals before backend/file reads. Execute legacy
+  behavior only with Python 0.32 and a matching older binary. Supported new
+  retrieval uses RDF/SPARQL and class-declared embeddings over HTTP; BM25,
+  fusion, record vectors and manual builds have no automatic conversion.
+  Source/release preparation only; publication remains a separate protected gate.
 
 - `models.choices.put` takes `experiment` (an `exp_…` id) with `workflow`, and
   `workflows.named.activate_revision` takes `experiment`, sync and async: the
