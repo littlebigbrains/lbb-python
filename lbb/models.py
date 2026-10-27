@@ -5915,6 +5915,31 @@ class ReasonActivityResponse(BaseModel):
     ]
 
 
+class RecordCommitObject(Enum):
+    record_commit = 'record_commit'
+
+
+class RecordCommitProjection(BaseModel):
+    """
+    Counts exact visible RDF statements,including scaffolding and metadata.
+    Independent support can change durably while both counts remain zero.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    added: Annotated[int, Field(ge=0)]
+    removed: Annotated[int, Field(ge=0)]
+
+
+class RecordCommitScope(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    owner: str
+    scope: str
+
+
 class RecordIriSelectorKind(Enum):
     iri = 'iri'
 
@@ -5965,6 +5990,14 @@ class RecordReferenceTerm(BaseModel):
     field_id: Annotated[str, Field(alias='@id')]
 
 
+class RecordResolvedIds(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    entities: list[str]
+    relationships: list[str]
+
+
 class RecordSchemaAvailability(Enum):
     available = 'available'
     snapshot_unavailable = 'snapshot_unavailable'
@@ -6007,6 +6040,14 @@ class RecordSelector3(BaseModel):
     )
     key: str
     kind: RecordKeySelectorKind
+    type: str
+
+
+class RecordWriteKeyReference(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    key: str
     type: str
 
 
@@ -15512,6 +15553,35 @@ class RdfSchemaSummaryResponse(BaseModel):
     type_counts: list[RdfSchemaTermCount]
 
 
+class RecordCommitReceipt(BaseModel):
+    """
+    Durable acceptance fields retained unchanged on idempotent replay.
+    Publication and embedding progress remain separate status resources.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    commit_seq: Annotated[int, Field(ge=0)]
+    epoch: str
+    no_op: bool
+    projection: RecordCommitProjection
+    resolved_ids: RecordResolvedIds
+    schema_revision: str
+    scope: RecordCommitScope
+    visibility_token: str
+
+
+class RecordCommitResult(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    idempotent_replay: bool
+    object: RecordCommitObject
+    receipt: RecordCommitReceipt
+    version: RecordsVersion
+
+
 class RecordReadRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -21322,6 +21392,10 @@ class GraphCommitResponse(BaseModel):
     ] = None
 
 
+class GraphCommitResponseBody(RootModel[GraphCommitResponse | RecordCommitResult]):
+    root: GraphCommitResponse | RecordCommitResult
+
+
 class GraphImportLine(RootModel[TripletInput | EntityPropertiesInput]):
     root: Annotated[
         TripletInput | EntityPropertiesInput,
@@ -22687,6 +22761,121 @@ class RecordAssertion(BaseModel):
     statements: list[RecordTriple]
 
 
+class RecordCommitRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    conditions: RecordMutationConditions | None = None
+    entities: list[RecordEntityMutation] | None = None
+    owner: Annotated[
+        str | None,
+        Field(
+            description='Requested scope only. Current authenticated authority must approve it;\nbody text cannot grant a source owner or integration authority.'
+        ),
+    ] = None
+    relationships: list[RecordRelationshipMutation] | None = None
+    replace_scope: Annotated[
+        bool | None,
+        Field(
+            description='Complete desired support. Relationship entries require full tuple and\nexplicit asserted; their set metadata is complete. Empty replacement\nremains a valid source-scope clear.'
+        ),
+    ] = None
+    schema_revision: str | None = None
+    scope: str | None = None
+    version: RecordsVersion
+
+
+class RecordEntityMutation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    add: (
+        dict[
+            str,
+            RecordReferenceTerm
+            | RecordLiteralTerm
+            | RecordQuotedTripleTerm
+            | str
+            | int
+            | float
+            | bool
+            | list[
+                str
+                | bool
+                | RecordReferenceTerm
+                | RecordLiteralTerm
+                | RecordQuotedTripleTerm
+                | int
+                | float
+            ],
+        ]
+        | None
+    ) = None
+    delete: Annotated[
+        bool | None,
+        Field(
+            description='Ordinary deletion affects only the authorized scope. It is not erasure\nand grants no all-support administrative power.'
+        ),
+    ] = None
+    id: str | None = None
+    key: str | None = None
+    remove: (
+        dict[
+            str,
+            RecordReferenceTerm
+            | RecordLiteralTerm
+            | RecordQuotedTripleTerm
+            | str
+            | int
+            | float
+            | bool
+            | list[
+                str
+                | bool
+                | RecordReferenceTerm
+                | RecordLiteralTerm
+                | RecordQuotedTripleTerm
+                | int
+                | float
+            ],
+        ]
+        | None
+    ) = None
+    set: (
+        dict[
+            str,
+            RecordReferenceTerm
+            | RecordLiteralTerm
+            | RecordQuotedTripleTerm
+            | str
+            | int
+            | float
+            | bool
+            | list[
+                str
+                | bool
+                | RecordReferenceTerm
+                | RecordLiteralTerm
+                | RecordQuotedTripleTerm
+                | int
+                | float
+            ],
+        ]
+        | None
+    ) = None
+    type: str | None = None
+    unset: list[str] | None = None
+
+
+class RecordMutationConditions(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    absent: list[RecordTriple] | None = None
+    expected_commit_seq: Annotated[int | None, Field(ge=0)] = None
+    present: list[RecordTriple] | None = None
+
+
 class RecordQuotedTripleTerm(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -22713,6 +22902,90 @@ class RecordReadResponse(BaseModel):
     snapshot: SnapshotView
     types: list[str]
     version: RecordsVersion
+
+
+class RecordRelationshipMutation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    add: (
+        dict[
+            str,
+            RecordReferenceTerm
+            | RecordLiteralTerm
+            | RecordQuotedTripleTerm
+            | str
+            | int
+            | float
+            | bool
+            | list[
+                str
+                | bool
+                | RecordReferenceTerm
+                | RecordLiteralTerm
+                | RecordQuotedTripleTerm
+                | int
+                | float
+            ],
+        ]
+        | None
+    ) = None
+    asserted: Annotated[
+        bool | None,
+        Field(
+            description="Omitted on ordinary patches preserves the selected support's state;\nnew support defaults true. Complete scope replacement requires this\nexplicitly alongside the full tuple, even for an existing claim."
+        ),
+    ] = None
+    delete: bool | None = None
+    id: str
+    remove: (
+        dict[
+            str,
+            RecordReferenceTerm
+            | RecordLiteralTerm
+            | RecordQuotedTripleTerm
+            | str
+            | int
+            | float
+            | bool
+            | list[
+                str
+                | bool
+                | RecordReferenceTerm
+                | RecordLiteralTerm
+                | RecordQuotedTripleTerm
+                | int
+                | float
+            ],
+        ]
+        | None
+    ) = None
+    set: (
+        dict[
+            str,
+            RecordReferenceTerm
+            | RecordLiteralTerm
+            | RecordQuotedTripleTerm
+            | str
+            | int
+            | float
+            | bool
+            | list[
+                str
+                | bool
+                | RecordReferenceTerm
+                | RecordLiteralTerm
+                | RecordQuotedTripleTerm
+                | int
+                | float
+            ],
+        ]
+        | None
+    ) = None
+    source: str | RecordWriteKeyReference | None = None
+    target: str | RecordWriteKeyReference | None = None
+    type: str | None = None
+    unset: list[str] | None = None
 
 
 class RecordTriple(BaseModel):
@@ -23227,6 +23500,15 @@ class SparqlSelectRequest(BaseModel):
     ] = None
 
 
+class GraphCommitRequestBody(RootModel[TripletCommitFile | RecordCommitRequest]):
+    root: Annotated[
+        TripletCommitFile | RecordCommitRequest,
+        Field(
+            description='An absent body version selects legacy. Explicit records/1 selects strict records; no fallback or graph activation.'
+        ),
+    ]
+
+
 class EntityReadResponse(RootModel[EntityDetailResponse | RecordReadResponse]):
     root: Annotated[
         EntityDetailResponse | RecordReadResponse,
@@ -23249,6 +23531,9 @@ GraphRecallRequest.model_rebuild()
 HybridMultiSearchRequest.model_rebuild()
 HybridSubquery.model_rebuild()
 RecordAssertion.model_rebuild()
+RecordCommitRequest.model_rebuild()
+RecordEntityMutation.model_rebuild()
+RecordMutationConditions.model_rebuild()
 RecordQuotedTripleTerm.model_rebuild()
 RecordReadResponse.model_rebuild()
 RowChange.model_rebuild()
