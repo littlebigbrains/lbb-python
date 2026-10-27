@@ -15,6 +15,11 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   fusion, record vectors and manual builds have no automatic conversion.
   Source/release preparation only; publication remains a separate protected gate.
 
+- `FilePage.ocr_required` and `FileParse.ocr_pages` (generated models): a page
+  with fewer than 16 characters of text, whose images cover at least 40% of
+  it, reads `ocr_required: true`. The file's parse counts such pages in
+  `ocr_pages`.
+
 - `LbbActivities.reason` takes `attempt` (1 to 10). It says which attempt of one
   reading the call is. A workflow that retries a failed answer sends `2` on its
   retry, under its own `effect_id`. The call log names it (`attempt` on a

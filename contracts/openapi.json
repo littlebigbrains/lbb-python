@@ -10914,6 +10914,10 @@
             },
             "type": "array"
           },
+          "ocr_required": {
+            "description": "The page has fewer than 16 characters of text (white space not\ncounted) and images that cover at least 40% of it: a scan, or a page\nof pictures. The parse read almost no text from it, and OCR is not\nbuilt. Absent (false) for every other page, so the pages of a file\nwith a text layer keep their bytes.",
+            "type": "boolean"
+          },
           "page": {
             "format": "int32",
             "minimum": 0,
@@ -11044,6 +11048,15 @@
           "error": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "ocr_pages": {
+            "description": "The pages that need OCR (`ocr_required` is true on them). Absent\nwhen none does, and for a parse that wrote no page flags.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
               "null"
             ]
           },
