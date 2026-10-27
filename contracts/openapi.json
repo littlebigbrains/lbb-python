@@ -25962,6 +25962,96 @@
         ],
         "type": "object"
       },
+      "RdfImportCommitObject": {
+        "enum": [
+          "rdf_import_commit"
+        ],
+        "type": "string"
+      },
+      "RdfImportCommitProjection": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "removed"
+        ],
+        "type": "object"
+      },
+      "RdfImportCommitReceipt": {
+        "additionalProperties": false,
+        "description": "Original durable CoreV1 fields. Publication/follower state is read separately.",
+        "properties": {
+          "commit_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "no_op": {
+            "type": "boolean"
+          },
+          "projection": {
+            "$ref": "#/components/schemas/RdfImportCommitProjection"
+          },
+          "schema_revision": {
+            "type": "string"
+          },
+          "visibility_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "epoch",
+          "commit_seq",
+          "visibility_token",
+          "schema_revision",
+          "no_op",
+          "projection"
+        ],
+        "type": "object"
+      },
+      "RdfImportCommitResult": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotent_replay": {
+            "type": "boolean"
+          },
+          "object": {
+            "$ref": "#/components/schemas/RdfImportCommitObject"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/RdfImportCommitReceipt"
+          }
+        },
+        "required": [
+          "object",
+          "receipt",
+          "idempotent_replay"
+        ],
+        "type": "object"
+      },
+      "RdfImportResponse": {
+        "description": "The existing route has disjoint ordinary-bulk and explicit bounded results.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/GraphRdfImportResponse"
+          },
+          {
+            "$ref": "#/components/schemas/RdfImportCommitResult"
+          }
+        ]
+      },
       "RdfSchemaObjectKind": {
         "description": "The RDF node kind of a bounded observed-schema statement object.",
         "enum": [
@@ -83981,6 +84071,15 @@
             }
           },
           {
+            "description": "Presence selects the strict support binding: retain the original epoch and required Idempotency-Key on retry; application/n-triples only, fixed application/default scope, no bootstrap or legacy fallback. Returns rdf_import_commit with original acceptance fields, not bulk counts. Other bulk controls are unsupported in this binding.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "RDF statements per internal commit (default 1000000, the cap: one commit per fully-buffered request; clamped 1-1000000)",
             "in": "query",
             "name": "batch",
@@ -84076,7 +84175,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GraphRdfImportResponse"
+                  "$ref": "#/components/schemas/RdfImportResponse"
                 }
               }
             },
@@ -84317,7 +84416,7 @@
             "bearer": []
           }
         ],
-        "summary": "Bulk-ingest N-Triples, Turtle, N-Quads, or TriG through the fixed RDF_TRIPLE relation; RDF terms and named-graph labels are preserved as edge metadata",
+        "summary": "Import RDF: ordinary bulk statistics, or explicit epoch-bound atomic N-Triples acceptance on an existing support head",
         "tags": [
           "graph"
         ]
