@@ -13228,6 +13228,28 @@
         ],
         "type": "object"
       },
+      "GraphCommitRequestBody": {
+        "description": "An absent body version selects legacy. Explicit records/1 selects strict records; no fallback or graph activation.",
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TripletCommitFile"
+              },
+              {
+                "not": {
+                  "required": [
+                    "version"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "$ref": "#/components/schemas/RecordCommitRequest"
+          }
+        ]
+      },
       "GraphCommitResolution": {
         "description": "How `GET /v1/graph/commit-at` placed the moment.",
         "enum": [
@@ -13315,6 +13337,16 @@
           "commit"
         ],
         "type": "object"
+      },
+      "GraphCommitResponseBody": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/GraphCommitResponse"
+          },
+          {
+            "$ref": "#/components/schemas/RecordCommitResult"
+          }
+        ]
       },
       "GraphDeleteResponse": {
         "properties": {
@@ -26219,6 +26251,207 @@
         ],
         "type": "object"
       },
+      "RecordCommitObject": {
+        "enum": [
+          "record_commit"
+        ],
+        "type": "string"
+      },
+      "RecordCommitProjection": {
+        "additionalProperties": false,
+        "description": "Counts exact visible RDF statements,including scaffolding and metadata.\nIndependent support can change durably while both counts remain zero.",
+        "properties": {
+          "added": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "removed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "removed"
+        ],
+        "type": "object"
+      },
+      "RecordCommitReceipt": {
+        "additionalProperties": false,
+        "description": "Durable acceptance fields retained unchanged on idempotent replay.\nPublication and embedding progress remain separate status resources.",
+        "properties": {
+          "commit_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "no_op": {
+            "type": "boolean"
+          },
+          "projection": {
+            "$ref": "#/components/schemas/RecordCommitProjection"
+          },
+          "resolved_ids": {
+            "$ref": "#/components/schemas/RecordResolvedIds"
+          },
+          "schema_revision": {
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/RecordCommitScope"
+          },
+          "visibility_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "epoch",
+          "commit_seq",
+          "visibility_token",
+          "schema_revision",
+          "scope",
+          "resolved_ids",
+          "no_op",
+          "projection"
+        ],
+        "type": "object"
+      },
+      "RecordCommitRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "$ref": "#/components/schemas/RecordMutationConditions"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/RecordEntityMutation"
+            },
+            "type": "array"
+          },
+          "owner": {
+            "description": "Requested scope only. Current authenticated authority must approve it;\nbody text cannot grant a source owner or integration authority.",
+            "type": "string"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRelationshipMutation"
+            },
+            "type": "array"
+          },
+          "replace_scope": {
+            "description": "Complete desired support. Relationship entries require full tuple and\nexplicit asserted; their set metadata is complete. Empty replacement\nremains a valid source-scope clear.",
+            "type": "boolean"
+          },
+          "schema_revision": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "version": {
+            "$ref": "#/components/schemas/RecordsVersion"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "type": "object"
+      },
+      "RecordCommitResult": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotent_replay": {
+            "type": "boolean"
+          },
+          "object": {
+            "$ref": "#/components/schemas/RecordCommitObject"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/RecordCommitReceipt"
+          },
+          "version": {
+            "$ref": "#/components/schemas/RecordsVersion"
+          }
+        },
+        "required": [
+          "object",
+          "version",
+          "receipt",
+          "idempotent_replay"
+        ],
+        "type": "object"
+      },
+      "RecordCommitScope": {
+        "additionalProperties": false,
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "RecordEntityMutation": {
+        "additionalProperties": false,
+        "properties": {
+          "add": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordWriteValues"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "delete": {
+            "description": "Ordinary deletion affects only the authorized scope. It is not erasure\nand grants no all-support administrative power.",
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "remove": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordWriteValues"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "set": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordWriteValues"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "type": {
+            "type": "string"
+          },
+          "unset": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "RecordIriSelectorKind": {
         "enum": [
           "iri"
@@ -26260,6 +26493,27 @@
         "required": [
           "@value"
         ],
+        "type": "object"
+      },
+      "RecordMutationConditions": {
+        "additionalProperties": false,
+        "properties": {
+          "absent": {
+            "items": {
+              "$ref": "#/components/schemas/RecordTriple"
+            },
+            "type": "array"
+          },
+          "expected_commit_seq": {
+            "$ref": "#/components/schemas/CommitSeq"
+          },
+          "present": {
+            "items": {
+              "$ref": "#/components/schemas/RecordTriple"
+            },
+            "type": "array"
+          }
+        },
         "type": "object"
       },
       "RecordNativeIdSelectorKind": {
@@ -26434,6 +26688,89 @@
         ],
         "type": "object"
       },
+      "RecordRelationshipMutation": {
+        "additionalProperties": false,
+        "properties": {
+          "add": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordWriteValues"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "asserted": {
+            "description": "Omitted on ordinary patches preserves the selected support's state;\nnew support defaults true. Complete scope replacement requires this\nexplicitly alongside the full tuple, even for an existing claim.",
+            "type": "boolean"
+          },
+          "delete": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "remove": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordWriteValues"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "set": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RecordWriteValues"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RecordWriteReference"
+          },
+          "target": {
+            "$ref": "#/components/schemas/RecordWriteReference"
+          },
+          "type": {
+            "type": "string"
+          },
+          "unset": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "RecordResolvedIds": {
+        "additionalProperties": false,
+        "properties": {
+          "entities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "relationships": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entities",
+          "relationships"
+        ],
+        "type": "object"
+      },
       "RecordSchemaAvailability": {
         "enum": [
           "available",
@@ -26531,6 +26868,92 @@
           "object"
         ],
         "type": "object"
+      },
+      "RecordWriteKeyReference": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "key"
+        ],
+        "type": "object"
+      },
+      "RecordWriteNumber": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "format": "double",
+            "type": "number"
+          }
+        ],
+        "description": "Preserve integer versus floating JSON tokens. Schema-bound integer fields accept safe 53-bit integer tokens; exact large integers and decimals use the lexical RDF envelope."
+      },
+      "RecordWriteReference": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/RecordWriteKeyReference"
+          }
+        ]
+      },
+      "RecordWriteValue": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RecordTerm"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/RecordWriteNumber"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "RecordWriteValues": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RecordReferenceTerm"
+          },
+          {
+            "$ref": "#/components/schemas/RecordLiteralTerm"
+          },
+          {
+            "$ref": "#/components/schemas/RecordQuotedTripleTerm"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "format": "double",
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/RecordWriteValue"
+            },
+            "type": "array"
+          }
+        ]
       },
       "RecordsVersion": {
         "enum": [
@@ -79557,7 +79980,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TripletCommitFile"
+                "$ref": "#/components/schemas/GraphCommitRequestBody"
               }
             }
           },
@@ -79568,7 +79991,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GraphCommitResponse"
+                  "$ref": "#/components/schemas/GraphCommitResponseBody"
                 }
               }
             },
@@ -79809,7 +80232,7 @@
             "bearer": []
           }
         ],
-        "summary": "Commit triplets and optional entity embeddings; `replace_owned` replaces a writer's owned edges and fields on its subjects in the same commit. A commit of a workflow turn names `workflow_fence`: a repeat of its `Idempotency-Key` replays, and a new commit whose token no longer holds the turn answers `409 workflow_fence_lost` and writes nothing",
+        "summary": "Commit using the existing legacy body, or explicit version=records/1 for exact records with a required Idempotency-Key. records_commit_v1 advertises strict protocol recognition, not graph activation: missing/unactivated graphs refuse without creation or conversion. Records requests reject dry_run and mixed legacy fields; replay returns the original receipt and does not promise publication or embeddings readiness. Legacy `replace_owned` replaces a writer's owned edges and fields on its subjects in the same commit. A commit of a workflow turn names `workflow_fence`: a repeat of its `Idempotency-Key` replays, and a new commit whose token no longer holds the turn answers `409 workflow_fence_lost` and writes nothing",
         "tags": [
           "graph"
         ]

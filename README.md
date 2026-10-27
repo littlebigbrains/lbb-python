@@ -500,3 +500,60 @@ These are transient/compatibility failures, not `WorkflowExecutionError` argumen
 or identity refusals. No query is sent in either case and no query automatically
 replays on 401/403 or uses the control bearer. Acknowledged materialized checkpoints
 supply stable retry inputs; this helper does not pin a snapshot or add file reads.
+
+## Versioned records commits
+
+`client.records.commit` and `client.graph("main").records.commit` send explicit
+`records/1` on the existing commit resource. Both synchronous and asynchronous
+clients check `records_commit_v1` before sending a mutation; an older or unknown
+server raises `LbbCapabilityError`. The marker means strict protocol recognition,
+not graph activation, conversion, graph creation or mixed first-write support.
+An unqualified graph returns its original typed server refusal. The helper has
+no activation option.
+
+On an existing support-enabled graph, use full IRIs and explicit RDF values:
+
+```python
+result = client.records.commit(
+    {
+        "version": "records/1",
+        "entities": [{
+            "id": "https://example.org/service/auth",
+            "set": {"https://example.org/title": {
+                "@value": "Auth Service",
+                "@type": "http://www.w3.org/2001/XMLSchema#string",
+            }},
+        }],
+    },
+    idempotency_key="auth-title:v1",
+)
+print(result["receipt"]["commit_seq"], result["receipt"]["projection"])
+```
+
+`commit_model` validates the same result as `models.RecordCommitResult`.
+Async clients support both methods with `await`. Generated request models and
+plain mappings are accepted; optional model controls are omitted rather than
+sent as null. Explicit lexical envelopes retain language/datatype, large integer,
+decimal and temporal values. Friendly schema keys/scalars require the explicit
+matching `schema_revision`. Plain integers keep integer JSON tokens, including
+unsafe53bit integers so the server can refuse them without silent rounding;
+use a lexical envelope when an exact large integer is intended.
+
+An explicit key is required. Body bytes, key and options are captured before
+capability I/O, then reused unchanged across transport retries. Keep the
+original body and key for a later retry after an unknown outcome; a new key
+can accept a second operation. An exhausted POST transport failure or a legacy/malformed success raises
+`LbbRecordCommitOutcomeError` with the original `idempotency_key`; it does not
+establish that no write occurred. There is no
+legacy fallback. `expected_graph_epoch` adds an incarnation guard; receipt epoch
+is an exact decimal string.
+
+The receipt retains original resolved IDs, schema, no-op and visible RDF
+statement counts on replay, while `idempotent_replay` describes this call.
+Independent support may change with zero visible statement additions/removals.
+Acceptance, publication and class embedding readiness are separate observations.
+Existing `commit` and `facts.create` retain their legacy contract.
+
+Caller task cancellation keeps Python's `CancelledError` semantics. Cancellation
+after POST may still leave an accepted operation: recover with the original body
+and idempotency key rather than assuming a rollback.

@@ -97,6 +97,7 @@ from ._client_base import (
     _workflow_test_timeout,
     _WorkflowTestsNamespace,
 )
+from ._records import RecordsNamespace
 from ._workflow_execution import AsyncWorkflowTurnReader
 
 if TYPE_CHECKING:
@@ -500,6 +501,46 @@ class _AsyncQueryNamespace(_QueryNamespace):
         )
 
 
+class _AsyncRecordsNamespace(RecordsNamespace):
+    # Regular entry methods snapshot the request synchronously, before callers
+    # can mutate it during capability I/O or before awaiting the returned value.
+    def commit(
+        self,
+        body: Body,
+        *,
+        idempotency_key: str,
+        expected_graph_epoch: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Awaitable[dict[str, Any]]:
+        return cast(
+            Awaitable[dict[str, Any]],
+            super().commit(
+                body,
+                idempotency_key=idempotency_key,
+                expected_graph_epoch=expected_graph_epoch,
+                options=options,
+            ),
+        )
+
+    def commit_model(
+        self,
+        body: Body,
+        *,
+        idempotency_key: str,
+        expected_graph_epoch: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> Awaitable[models.RecordCommitResult]:
+        return cast(
+            Awaitable[models.RecordCommitResult],
+            super().commit_model(
+                body,
+                idempotency_key=idempotency_key,
+                expected_graph_epoch=expected_graph_epoch,
+                options=options,
+            ),
+        )
+
+
 class _AsyncFactsNamespace(_FactsNamespace):
     async def create_model(
         self, body: Body, *, idempotency_key: str | None = None
@@ -820,11 +861,13 @@ class _AsyncStarterWorkflowMethods(_StarterWorkflowMethods):
 
 class _AsyncGraphNamespace(_AsyncStarterWorkflowMethods, _GraphNamespace):
     facts: _AsyncFactsNamespace
+    records: _AsyncRecordsNamespace
     ontology: _AsyncOntologyNamespace
 
     def __init__(self, client: _BaseLbbClient, graph: str) -> None:
         super().__init__(client, graph)
         self.facts = _AsyncFactsNamespace(client, graph)
+        self.records = _AsyncRecordsNamespace(client, graph)
         self.ontology = _AsyncOntologyNamespace(client, graph)
 
     async def delete(self, *, confirm: str) -> models.GraphDeleteResponse:
@@ -1923,6 +1966,7 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
             integrations_url=integrations_url,
         )
         self.entities = _AsyncEntityNamespace(self)
+        self.records = _AsyncRecordsNamespace(self)
         self.ontology = _AsyncOntologyNamespace(self)
         self.query = _AsyncQueryNamespace(self)
         self.schema = _AsyncSchemaNamespace(self)
@@ -1967,7 +2011,12 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
                 if isinstance(response, Mapping)
                 else []
             )
-            self._capabilities = {str(item) for item in advertised}
+            self._capabilities = (
+                set(advertised)
+                if isinstance(advertised, list)
+                and all(isinstance(item, str) for item in advertised)
+                else set()
+            )
         if capability not in self._capabilities:
             raise LbbCapabilityError(capability)
 

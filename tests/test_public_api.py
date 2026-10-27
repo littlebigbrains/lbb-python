@@ -19,6 +19,7 @@ def test_public_exports_are_explicit_and_stable() -> None:
         "AsyncLbbClient",
         "LbbError",
         "LbbCapabilityError",
+        "LbbRecordCommitOutcomeError",
         "ListPage",
         "RawLbbResponse",
         "RequestOptions",
@@ -55,6 +56,7 @@ def test_client_module_keeps_the_documented_import_surface() -> None:
     assert lbb.client.AsyncLbbClient is lbb.AsyncLbbClient
     assert lbb.client.LbbError is lbb.LbbError
     assert lbb.client.LbbCapabilityError is lbb.LbbCapabilityError
+    assert lbb.client.LbbRecordCommitOutcomeError is lbb.LbbRecordCommitOutcomeError
     assert lbb.client.ListPage is lbb.ListPage
     assert lbb.client.RawLbbResponse is lbb.RawLbbResponse
     assert lbb.client.RequestOptions is lbb.RequestOptions
@@ -133,3 +135,15 @@ def test_the_workflow_worker_exports_are_explicit_and_stable() -> None:
     assert isinstance(client.workflows, lbb.workflows.WorkflowNamespace)
     assert client.workflows is client.workflows
     assert isinstance(client.workflows.blobs, lbb.workflows.WorkflowBlobsNamespace)
+
+
+def test_generated_record_commits_keep_named_discriminants_and_legacy_feedback_enums():
+    assert models.RecordCommitObject("record_commit").value == "record_commit"
+    assert models.RecordsVersion("records/1").value == "records/1"
+    for enum_type, value in [
+        (models.Kind14, "entity"),
+        (models.Kind15, "assertion"),
+        (models.Kind16, "observation"),
+        (models.Kind17, "concept"),
+    ]:
+        assert enum_type(value).value == value

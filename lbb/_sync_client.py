@@ -82,6 +82,7 @@ from ._client_base import (
     _WorkflowTestsNamespace,
     _write_chunks,
 )
+from ._records import RecordsNamespace
 from ._workflow_execution import WorkflowTurnReader
 from .integrations import IntegrationsNamespace
 
@@ -766,6 +767,7 @@ class LbbClient(_BaseLbbClient):
     """Synchronous client. Usable as a context manager."""
 
     entities: _EntityNamespace
+    records: RecordsNamespace
     ontology: _SyncOntologyNamespace
     query: _SyncQueryNamespace
     schema: _SchemaNamespace
@@ -838,7 +840,12 @@ class LbbClient(_BaseLbbClient):
                 if isinstance(response, Mapping)
                 else []
             )
-            self._capabilities = {str(item) for item in advertised}
+            self._capabilities = (
+                set(advertised)
+                if isinstance(advertised, list)
+                and all(isinstance(item, str) for item in advertised)
+                else set()
+            )
         if capability not in self._capabilities:
             raise LbbCapabilityError(capability)
 

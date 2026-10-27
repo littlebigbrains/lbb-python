@@ -17,6 +17,7 @@ from ._client_base import (
     RetryEvent,
     SparqlResults,
 )
+from ._records import LbbRecordCommitOutcomeError
 from ._sync_client import LbbClient
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "AsyncLbbClient",
     "LbbError",
     "LbbCapabilityError",
+    "LbbRecordCommitOutcomeError",
     "ListPage",
     "RawLbbResponse",
     "RequestOptions",

@@ -1545,6 +1545,9 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         # the server default is ``eventual``; set ``"strong"`` to keep reads
         # head-exact by default. A per-call ``consistency`` always wins.
         self._default_consistency = default_consistency
+        from ._records import RecordsNamespace
+
+        self.records = RecordsNamespace(self)
         self.entities = _EntityNamespace(self)
         self.ontology = _OntologyNamespace(self)
         self.query = _QueryNamespace(self)
@@ -1691,6 +1694,10 @@ class _BaseLbbClient(_StarterWorkflowMethods):
     def _workflows_scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         # The client adds its own graph to every request.
         return dict(params or {})
+
+    def _require_capability(self, capability: str) -> Any:
+        """Concrete transports check additive capabilities before execution."""
+        raise NotImplementedError
 
     def raw_request(
         self,
@@ -2710,6 +2717,9 @@ class _GraphNamespace(_StarterWorkflowMethods):
     def __init__(self, client: _BaseLbbClient, graph: str) -> None:
         self._client = client
         self._graph = graph
+        from ._records import RecordsNamespace
+
+        self.records = RecordsNamespace(client, graph)
         self.facts = _FactsNamespace(client, graph)
         self.ontology = _OntologyNamespace(client, graph)
         # Files of this graph and their parsed pages.
