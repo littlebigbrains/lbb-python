@@ -8384,6 +8384,701 @@
         ],
         "type": "object"
       },
+      "EvalExperiment": {
+        "description": "An Evals experiment. `get` returns it with its items; a list leaves them\nout.",
+        "properties": {
+          "a": {
+            "$ref": "#/components/schemas/EvalExperimentArm",
+            "description": "The configuration in use at the start."
+          },
+          "applied": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalExperimentApplied",
+                "description": "A person applied B."
+              }
+            ]
+          },
+          "b": {
+            "$ref": "#/components/schemas/EvalExperimentArm",
+            "description": "A with one part changed (`change`)."
+          },
+          "change": {
+            "$ref": "#/components/schemas/EvalExperimentChange"
+          },
+          "cost_micro_usd": {
+            "description": "What both arms spent so far.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created": {
+            "description": "When it was started, RFC 3339.",
+            "type": "string"
+          },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/EvalExperimentDataset"
+          },
+          "error": {
+            "description": "Why it failed, at most 500 characters.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "estimate_micro_usd": {
+            "description": "What the start estimated both arms to cost.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "finish_reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalExperimentFinishReason",
+                "description": "For `done`: why it ended."
+              }
+            ]
+          },
+          "finished": {
+            "description": "When it reached `done`, `failed` or `cancelled`, RFC 3339.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "`exp_` and an opaque suffix.",
+            "type": "string"
+          },
+          "items": {
+            "description": "One row per item, in dataset order. A list leaves them out.",
+            "items": {
+              "$ref": "#/components/schemas/EvalExperimentItem"
+            },
+            "type": "array"
+          },
+          "max_cost_micro_usd": {
+            "description": "The cost limit of both arms together, in millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "object": {
+            "description": "`eval_experiment`.",
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/EvalExperimentReport"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalExperimentStatus"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/EvalExperimentWorkflow"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "workflow",
+          "dataset",
+          "a",
+          "b",
+          "change",
+          "status",
+          "max_cost_micro_usd",
+          "estimate_micro_usd",
+          "cost_micro_usd",
+          "report"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentApplied": {
+        "description": "A person applied B.",
+        "properties": {
+          "at": {
+            "description": "When, RFC 3339.",
+            "type": "string"
+          },
+          "by": {
+            "description": "Who: the caller identity of the write (`account:<id>`, `key:<id>`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "by"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentArm": {
+        "description": "One arm: a full configuration of the workflow, run as a workflow test.",
+        "properties": {
+          "cost_micro_usd": {
+            "description": "What the arm's model calls cost so far, in millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fingerprint": {
+            "description": "The arm test's fingerprint: a live run with the same one ran the same\nconfiguration.",
+            "type": "string"
+          },
+          "models": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModelTrialModel"
+            },
+            "description": "The model of each use (`extract`, `decide`), fixed at the start.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "revision": {
+            "description": "The settings revision (`wrev_…`): the hash of the settings the arm\nran, which every workflow has.",
+            "type": "string"
+          },
+          "test": {
+            "description": "The arm's workflow test (`wtest_…`), which holds its values.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "models",
+          "fingerprint",
+          "test",
+          "cost_micro_usd"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentArmItem": {
+        "description": "One arm's grade of one item.",
+        "properties": {
+          "correct": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "type": "boolean"
+          },
+          "missed": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "review": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score": {
+            "description": "F1 of the item's precision and recall, 0 to 1; 0 when the arm did\nnot answer.",
+            "format": "double",
+            "type": "number"
+          },
+          "unlabeled": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "wrong": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "score",
+          "correct",
+          "wrong",
+          "missed",
+          "unlabeled",
+          "review",
+          "cost_micro_usd"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentArmReport": {
+        "description": "One arm's figures over the compared items.",
+        "properties": {
+          "cost_micro_usd_per_item": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Items the arm did not answer.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "precision": {
+            "description": "Over every compared item, as the template grader computes it.",
+            "format": "double",
+            "type": "number"
+          },
+          "recall": {
+            "format": "double",
+            "type": "number"
+          },
+          "review_share": {
+            "description": "Values sent to review over values written and sent to review.",
+            "format": "double",
+            "type": "number"
+          },
+          "score": {
+            "description": "The mean item score (F1), 0 to 1.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "score",
+          "precision",
+          "recall",
+          "review_share",
+          "cost_micro_usd_per_item",
+          "failed"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentArmRequest": {
+        "additionalProperties": false,
+        "description": "What B changes in A: `{model: {use, model}}` or `{revision}`, exactly\none (`experiment_arms_mixed` for both).",
+        "properties": {
+          "model": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalExperimentModelChange"
+              }
+            ]
+          },
+          "revision": {
+            "description": "A revision the workflow keeps (`GET /v1/workflows/named/revisions`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "EvalExperimentChange": {
+        "description": "What B changes: `{kind: \"model\", use}` or `{kind: \"revision\"}`.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/EvalExperimentChangeKind"
+          },
+          "use": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelUse",
+                "description": "The use whose model B changes; absent for a revision."
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentChangeKind": {
+        "description": "The part of the configuration B changes.",
+        "enum": [
+          "model",
+          "revision"
+        ],
+        "type": "string"
+      },
+      "EvalExperimentCreateRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/evals/experiments` (and `…/estimate`): run B against the\nworkflow's configuration in use on a dataset's items.",
+        "properties": {
+          "b": {
+            "$ref": "#/components/schemas/EvalExperimentArmRequest"
+          },
+          "dataset": {
+            "description": "A dataset of the graph whose kind the workflow reads (`ds_…`).",
+            "type": "string"
+          },
+          "max_cost_usd": {
+            "description": "The cost limit of both arms, in US dollars: more than 0, at most 100,\ndefault 5.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "max_items": {
+            "description": "Items to run, the dataset's first ones: 1 to 200, default 200.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "workflow": {
+            "description": "A named workflow of the graph.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow",
+          "dataset",
+          "b"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentDataset": {
+        "description": "The dataset an experiment runs on.",
+        "properties": {
+          "deleted": {
+            "description": "The dataset was deleted after the experiment ran; the report stays as\nit was last scored.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "`ds_…`.",
+            "type": "string"
+          },
+          "items": {
+            "description": "The items the experiment runs.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "items"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentEstimate": {
+        "description": "`POST /v1/evals/experiments/estimate`: what a start with the same body\nwould estimate. It writes nothing.",
+        "properties": {
+          "a_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "b_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "budget_left_micro_usd": {
+            "description": "What is left of the environment's monthly workflow budget; absent\nwhen the environment has no limit.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "estimate_micro_usd": {
+            "description": "Both arms.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "items": {
+            "description": "The items the experiment would run.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "object": {
+            "description": "`eval_experiment_estimate`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "items",
+          "a_micro_usd",
+          "b_micro_usd",
+          "estimate_micro_usd",
+          "max_cost_micro_usd"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentFinishReason": {
+        "description": "Why a `done` experiment ended.",
+        "enum": [
+          "all_items",
+          "max_cost",
+          "budget"
+        ],
+        "type": "string"
+      },
+      "EvalExperimentItem": {
+        "description": "One item of an experiment: its names and each arm's grade.",
+        "properties": {
+          "a": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalExperimentArmItem",
+                "description": "A's grade; absent until A answered the item."
+              }
+            ]
+          },
+          "b": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalExperimentArmItem"
+              }
+            ]
+          },
+          "input": {
+            "description": "The arms' input IRI (`urn:lbb:item:…`): the arms' tests hold the\nitem's values under it.",
+            "type": "string"
+          },
+          "iri": {
+            "description": "The item's instance, when it has one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item": {
+            "description": "The item's name in the dataset.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "input"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentList": {
+        "description": "`GET /v1/evals/experiments`: the graph's experiments, newest first.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/EvalExperiment"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` for the next page; absent on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object": {
+            "description": "`list`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentModelChange": {
+        "additionalProperties": false,
+        "description": "B's model change: another model for one use.",
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ModelTrialModel",
+            "description": "A model of the use's `options` (`GET /v1/models/choices`)."
+          },
+          "use": {
+            "$ref": "#/components/schemas/ModelUse"
+          }
+        },
+        "required": [
+          "use",
+          "model"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentReport": {
+        "description": "The comparison of B against A over the items both arms answered or\nfailed.",
+        "properties": {
+          "a": {
+            "$ref": "#/components/schemas/EvalExperimentArmReport"
+          },
+          "b": {
+            "$ref": "#/components/schemas/EvalExperimentArmReport"
+          },
+          "ci_high": {
+            "format": "double",
+            "type": "number"
+          },
+          "ci_low": {
+            "description": "The 95% interval of the mean difference (a paired bootstrap).",
+            "format": "double",
+            "type": "number"
+          },
+          "cost_ratio": {
+            "description": "B's cost per item over A's.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "delta": {
+            "description": "`b.score − a.score`.",
+            "format": "double",
+            "type": "number"
+          },
+          "items": {
+            "description": "Items compared.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "labels_etag": {
+            "description": "The etag of the dataset's items it was scored with.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ModelTrialOutcome",
+            "description": "`too_few` under 10 items, else `better`, `worse` or `same` by the\ninterval."
+          },
+          "qualifies": {
+            "description": "The trials' bar: at least 20 items, `ci_low` at least −0.05, B's\nfailure share at most A's plus 0.05, and B cheaper per item or\n`better`.",
+            "type": "boolean"
+          },
+          "stale": {
+            "description": "The dataset's items changed since it was scored (set by a read; a\nturn scores it again).",
+            "type": "boolean"
+          },
+          "unlabeled": {
+            "description": "Values of unlabeled properties on which the arms differ.",
+            "items": {
+              "$ref": "#/components/schemas/EvalExperimentUnlabeled"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "a",
+          "b",
+          "delta",
+          "ci_low",
+          "ci_high",
+          "outcome",
+          "qualifies"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentStatus": {
+        "description": "Where an experiment stands. `queued` → `running` → `done`, `failed` or\n`cancelled`; the last three are final.",
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
+      "EvalExperimentUnlabeled": {
+        "description": "A value of a property an item does not label, on which the arms differ:\na person grades it (a `grade` review item).",
+        "properties": {
+          "a": {
+            "description": "A's value, when A wrote one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "b": {
+            "description": "B's value, when B wrote one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item": {
+            "description": "The item's name.",
+            "type": "string"
+          },
+          "property": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "property"
+        ],
+        "type": "object"
+      },
+      "EvalExperimentWorkflow": {
+        "description": "The workflow both arms run, with its creation time: a workflow made\nagain under the name is another workflow.",
+        "properties": {
+          "created": {
+            "description": "When the workflow was created, RFC 3339.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "created"
+        ],
+        "type": "object"
+      },
       "EvalItem": {
         "description": "One result of a query: a hit of a search, or a row of a SPARQL query.",
         "properties": {
@@ -41860,6 +42555,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "experiment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTestExperiment",
+                "description": "The experiment this test is an arm of (added 2026-10-26): its id and\nthe arm, `a` or `b`. Absent for a test a person started. An arm's\ninputs are the experiment's dataset items, each named\n`urn:lbb:item:<dataset>:<hash of the item's name>`."
+              }
+            ]
+          },
           "fingerprint": {
             "description": "A hash of the settings, the units of the properties, the models and\nthe system prompt. A test and a run (`WorkflowRunSummary`) with the\nsame fingerprint ran the same workflow.",
             "type": "string"
@@ -42094,6 +42800,24 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "WorkflowTestExperiment": {
+        "description": "The experiment a test is an arm of.",
+        "properties": {
+          "arm": {
+            "description": "`a` or `b`.",
+            "type": "string"
+          },
+          "id": {
+            "description": "`exp_…`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "arm"
+        ],
         "type": "object"
       },
       "WorkflowTestInput": {
@@ -70377,6 +71101,1469 @@
           }
         ],
         "summary": "Add items to an Evals dataset. An item with the name of an item the dataset has replaces it in its place. Takes `Idempotency-Key`: a repeat with the same body writes nothing again and answers the dataset as it stands; another body is 409 `idempotency_conflict`",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/evals/experiments": {
+      "get": {
+        "operationId": "get_v1_evals_experiments",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "only the experiments of this workflow",
+            "in": "query",
+            "name": "workflow",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "only the experiments on this dataset",
+            "in": "query",
+            "name": "dataset",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "queued, running, done, failed or cancelled",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "experiments, 1 to 50; default 20",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next_cursor` of the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperimentList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The graph's Evals experiments, newest first, without their items. A final experiment whose dataset changed since it was scored says `report.stale`, and a turn scores it again",
+        "tags": [
+          "system"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_evals_experiments",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalExperimentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperiment"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start an Evals experiment: B against A on the first `max_items` items of a dataset (at most 200, default 200). A is the workflow's configuration in use; `b` changes one part of it, the model of one use (`{model: {use, model}}`) or the settings revision (`{revision}`), not both (400 `experiment_arms_mixed`). Each arm runs as a workflow test on the items, writes nothing to the graph, and each item is graded against the dataset's labels. The estimate must fit `max_cost_usd` (default 5.00, at most 100) and the environment's monthly workflow budget (429 `workflow_budget_exceeded`). Experiments of a graph run one at a time. Takes `Idempotency-Key`: the same key with the same body answers the same experiment, with another body 409 `idempotency_conflict`",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/evals/experiments/cancel": {
+      "post": {
+        "operationId": "post_v1_evals_experiments_cancel",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the experiment's id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperiment"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Stop an experiment that has not ended. It keeps the items it compared; a batch in flight finishes and counts its cost. An experiment that ended stays as it is. Takes `Idempotency-Key`",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/evals/experiments/estimate": {
+      "post": {
+        "operationId": "post_v1_evals_experiments_estimate",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalExperimentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperimentEstimate"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What a start with the same body would estimate, for both arms, with the cost limit and what is left of the environment's monthly workflow budget. It writes nothing and runs no model",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/evals/experiments/get": {
+      "get": {
+        "operationId": "get_v1_evals_experiments_get",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-21` for this contract. An earlier date keeps the list shapes of the workflow routes it was written for; no header gets the current contract.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the experiment's id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalExperiment"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One Evals experiment with its items, each with both arms' grades. The arms' values are in their tests (`arm.test`)",
         "tags": [
           "system"
         ]

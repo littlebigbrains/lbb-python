@@ -1701,6 +1701,177 @@ class EvalExpectedValue(BaseModel):
     ]
 
 
+class EvalExperimentApplied(BaseModel):
+    """
+    A person applied B.
+    """
+
+    at: Annotated[str, Field(description='When, RFC 3339.')]
+    by: Annotated[
+        str,
+        Field(
+            description='Who: the caller identity of the write (`account:<id>`, `key:<id>`).'
+        ),
+    ]
+
+
+class EvalExperimentArmItem(BaseModel):
+    """
+    One arm's grade of one item.
+    """
+
+    correct: Annotated[int, Field(ge=0)]
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    failed: bool | None = None
+    missed: Annotated[int, Field(ge=0)]
+    review: Annotated[int, Field(ge=0)]
+    score: Annotated[
+        float,
+        Field(
+            description="F1 of the item's precision and recall, 0 to 1; 0 when the arm did\nnot answer."
+        ),
+    ]
+    unlabeled: Annotated[int, Field(ge=0)]
+    wrong: Annotated[int, Field(ge=0)]
+
+
+class EvalExperimentArmReport(BaseModel):
+    """
+    One arm's figures over the compared items.
+    """
+
+    cost_micro_usd_per_item: Annotated[int, Field(ge=0)]
+    failed: Annotated[int, Field(description='Items the arm did not answer.', ge=0)]
+    precision: Annotated[
+        float,
+        Field(
+            description='Over every compared item, as the template grader computes it.'
+        ),
+    ]
+    recall: float
+    review_share: Annotated[
+        float,
+        Field(
+            description='Values sent to review over values written and sent to review.'
+        ),
+    ]
+    score: Annotated[float, Field(description='The mean item score (F1), 0 to 1.')]
+
+
+class EvalExperimentChangeKind(Enum):
+    """
+    The part of the configuration B changes.
+    """
+
+    model = 'model'
+    revision = 'revision'
+
+
+class EvalExperimentDataset(BaseModel):
+    """
+    The dataset an experiment runs on.
+    """
+
+    deleted: Annotated[
+        bool | None,
+        Field(
+            description='The dataset was deleted after the experiment ran; the report stays as\nit was last scored.'
+        ),
+    ] = None
+    id: Annotated[str, Field(description='`ds_…`.')]
+    items: Annotated[int, Field(description='The items the experiment runs.', ge=0)]
+    name: str
+
+
+class EvalExperimentEstimate(BaseModel):
+    """
+    `POST /v1/evals/experiments/estimate`: what a start with the same body
+    would estimate. It writes nothing.
+    """
+
+    a_micro_usd: Annotated[int, Field(ge=0)]
+    b_micro_usd: Annotated[int, Field(ge=0)]
+    budget_left_micro_usd: Annotated[
+        int | None,
+        Field(
+            description="What is left of the environment's monthly workflow budget; absent\nwhen the environment has no limit.",
+            ge=0,
+        ),
+    ] = None
+    estimate_micro_usd: Annotated[int, Field(description='Both arms.', ge=0)]
+    items: Annotated[
+        int, Field(description='The items the experiment would run.', ge=0)
+    ]
+    max_cost_micro_usd: Annotated[int, Field(ge=0)]
+    object: Annotated[str, Field(description='`eval_experiment_estimate`.')]
+
+
+class EvalExperimentFinishReason(Enum):
+    """
+    Why a `done` experiment ended.
+    """
+
+    all_items = 'all_items'
+    max_cost = 'max_cost'
+    budget = 'budget'
+
+
+class EvalExperimentItem(BaseModel):
+    """
+    One item of an experiment: its names and each arm's grade.
+    """
+
+    a: EvalExperimentArmItem | None = None
+    b: EvalExperimentArmItem | None = None
+    input: Annotated[
+        str,
+        Field(
+            description="The arms' input IRI (`urn:lbb:item:…`): the arms' tests hold the\nitem's values under it."
+        ),
+    ]
+    iri: Annotated[
+        str | None, Field(description="The item's instance, when it has one.")
+    ] = None
+    item: Annotated[str, Field(description="The item's name in the dataset.")]
+
+
+class EvalExperimentStatus(Enum):
+    """
+    Where an experiment stands. `queued` → `running` → `done`, `failed` or
+    `cancelled`; the last three are final.
+    """
+
+    queued = 'queued'
+    running = 'running'
+    done = 'done'
+    failed = 'failed'
+    cancelled = 'cancelled'
+
+
+class EvalExperimentUnlabeled(BaseModel):
+    """
+    A value of a property an item does not label, on which the arms differ:
+    a person grades it (a `grade` review item).
+    """
+
+    a: Annotated[str | None, Field(description="A's value, when A wrote one.")] = None
+    b: Annotated[str | None, Field(description="B's value, when B wrote one.")] = None
+    item: Annotated[str, Field(description="The item's name.")]
+    property: str
+
+
+class EvalExperimentWorkflow(BaseModel):
+    """
+    The workflow both arms run, with its creation time: a workflow made
+    again under the name is another workflow.
+    """
+
+    created: Annotated[
+        str, Field(description='When the workflow was created, RFC 3339.')
+    ]
+    name: str
+
+
 class EvalItem(BaseModel):
     """
     One result of a query: a hit of a search, or a row of a SPARQL query.
@@ -10833,6 +11004,15 @@ class WorkflowTestCounts(BaseModel):
     review: Annotated[int, Field(description='Values a person would review.', ge=0)]
 
 
+class WorkflowTestExperiment(BaseModel):
+    """
+    The experiment a test is an arm of.
+    """
+
+    arm: Annotated[str, Field(description='`a` or `b`.')]
+    id: Annotated[str, Field(description='`exp_…`.')]
+
+
 class WorkflowTestInput(BaseModel):
     """
     One input of a test: an instance of the watched class.
@@ -12364,6 +12544,116 @@ class EvalDatasetSource(BaseModel):
 
     id: str | None = None
     kind: EvalDatasetSourceKind
+
+
+class EvalExperimentArm(BaseModel):
+    """
+    One arm: a full configuration of the workflow, run as a workflow test.
+    """
+
+    cost_micro_usd: Annotated[
+        int,
+        Field(
+            description="What the arm's model calls cost so far, in millionths of a US dollar.",
+            ge=0,
+        ),
+    ]
+    fingerprint: Annotated[
+        str,
+        Field(
+            description="The arm test's fingerprint: a live run with the same one ran the same\nconfiguration."
+        ),
+    ]
+    models: Annotated[
+        dict[str, ModelTrialModel],
+        Field(
+            description='The model of each use (`extract`, `decide`), fixed at the start.'
+        ),
+    ]
+    revision: Annotated[
+        str,
+        Field(
+            description='The settings revision (`wrev_…`): the hash of the settings the arm\nran, which every workflow has.'
+        ),
+    ]
+    test: Annotated[
+        str,
+        Field(
+            description="The arm's workflow test (`wtest_…`), which holds its values."
+        ),
+    ]
+
+
+class EvalExperimentChange(BaseModel):
+    """
+    What B changes: `{kind: "model", use}` or `{kind: "revision"}`.
+    """
+
+    kind: EvalExperimentChangeKind
+    use: ModelUse | None = None
+
+
+class EvalExperimentModelChange(BaseModel):
+    """
+    B's model change: another model for one use.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    model: Annotated[
+        ModelTrialModel,
+        Field(description="A model of the use's `options` (`GET /v1/models/choices`)."),
+    ]
+    use: ModelUse
+
+
+class EvalExperimentReport(BaseModel):
+    """
+    The comparison of B against A over the items both arms answered or
+    failed.
+    """
+
+    a: EvalExperimentArmReport
+    b: EvalExperimentArmReport
+    ci_high: float
+    ci_low: Annotated[
+        float,
+        Field(
+            description='The 95% interval of the mean difference (a paired bootstrap).'
+        ),
+    ]
+    cost_ratio: Annotated[
+        float | None, Field(description="B's cost per item over A's.")
+    ] = None
+    delta: Annotated[float, Field(description='`b.score − a.score`.')]
+    items: Annotated[int, Field(description='Items compared.', ge=0)]
+    labels_etag: Annotated[
+        str | None,
+        Field(description="The etag of the dataset's items it was scored with."),
+    ] = None
+    outcome: Annotated[
+        ModelTrialOutcome,
+        Field(
+            description='`too_few` under 10 items, else `better`, `worse` or `same` by the\ninterval.'
+        ),
+    ]
+    qualifies: Annotated[
+        bool,
+        Field(
+            description="The trials' bar: at least 20 items, `ci_low` at least −0.05, B's\nfailure share at most A's plus 0.05, and B cheaper per item or\n`better`."
+        ),
+    ]
+    stale: Annotated[
+        bool | None,
+        Field(
+            description="The dataset's items changed since it was scored (set by a read; a\nturn scores it again)."
+        ),
+    ] = None
+    unlabeled: Annotated[
+        list[EvalExperimentUnlabeled] | None,
+        Field(description='Values of unlabeled properties on which the arms differ.'),
+    ] = None
 
 
 class EvalLabel(BaseModel):
@@ -18120,6 +18410,123 @@ class EvalDatasetItemsRequest(BaseModel):
     items: list[EvalDatasetItem]
 
 
+class EvalExperiment(BaseModel):
+    """
+    An Evals experiment. `get` returns it with its items; a list leaves them
+    out.
+    """
+
+    a: Annotated[
+        EvalExperimentArm, Field(description='The configuration in use at the start.')
+    ]
+    applied: EvalExperimentApplied | None = None
+    b: Annotated[
+        EvalExperimentArm, Field(description='A with one part changed (`change`).')
+    ]
+    change: EvalExperimentChange
+    cost_micro_usd: Annotated[
+        int, Field(description='What both arms spent so far.', ge=0)
+    ]
+    created: Annotated[str, Field(description='When it was started, RFC 3339.')]
+    created_by: str | None = None
+    dataset: EvalExperimentDataset
+    error: Annotated[
+        str | None, Field(description='Why it failed, at most 500 characters.')
+    ] = None
+    estimate_micro_usd: Annotated[
+        int, Field(description='What the start estimated both arms to cost.', ge=0)
+    ]
+    finish_reason: EvalExperimentFinishReason | None = None
+    finished: Annotated[
+        str | None,
+        Field(description='When it reached `done`, `failed` or `cancelled`, RFC 3339.'),
+    ] = None
+    id: Annotated[str, Field(description='`exp_` and an opaque suffix.')]
+    items: Annotated[
+        list[EvalExperimentItem] | None,
+        Field(
+            description='One row per item, in dataset order. A list leaves them out.'
+        ),
+    ] = None
+    max_cost_micro_usd: Annotated[
+        int,
+        Field(
+            description='The cost limit of both arms together, in millionths of a US dollar.',
+            ge=0,
+        ),
+    ]
+    object: Annotated[str, Field(description='`eval_experiment`.')]
+    report: EvalExperimentReport
+    status: EvalExperimentStatus
+    workflow: EvalExperimentWorkflow
+
+
+class EvalExperimentArmRequest(BaseModel):
+    """
+    What B changes in A: `{model: {use, model}}` or `{revision}`, exactly
+    one (`experiment_arms_mixed` for both).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    model: EvalExperimentModelChange | None = None
+    revision: Annotated[
+        str | None,
+        Field(
+            description='A revision the workflow keeps (`GET /v1/workflows/named/revisions`).'
+        ),
+    ] = None
+
+
+class EvalExperimentCreateRequest(BaseModel):
+    """
+    `POST /v1/evals/experiments` (and `…/estimate`): run B against the
+    workflow's configuration in use on a dataset's items.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    b: EvalExperimentArmRequest
+    dataset: Annotated[
+        str,
+        Field(
+            description='A dataset of the graph whose kind the workflow reads (`ds_…`).'
+        ),
+    ]
+    max_cost_usd: Annotated[
+        float | None,
+        Field(
+            description='The cost limit of both arms, in US dollars: more than 0, at most 100,\ndefault 5.'
+        ),
+    ] = None
+    max_items: Annotated[
+        int | None,
+        Field(
+            description="Items to run, the dataset's first ones: 1 to 200, default 200.",
+            ge=0,
+        ),
+    ] = None
+    workflow: Annotated[str, Field(description='A named workflow of the graph.')]
+
+
+class EvalExperimentList(BaseModel):
+    """
+    `GET /v1/evals/experiments`: the graph's experiments, newest first.
+    """
+
+    data: list[EvalExperiment]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; absent on the last page.'
+        ),
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+
+
 class ExtractorDatasetResponse(BaseModel):
     """
     `GET /v1/models/extractor-dataset` — the extractor fine-tune's training
@@ -20063,6 +20470,7 @@ class WorkflowTest(BaseModel):
             ge=0,
         ),
     ]
+    experiment: WorkflowTestExperiment | None = None
     fingerprint: Annotated[
         str,
         Field(

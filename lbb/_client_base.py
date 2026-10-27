@@ -4542,13 +4542,178 @@ class _EvalDatasetsNamespace:
         )
 
 
+_EVAL_EXPERIMENT_WAIT_TIMEOUT = 1800.0
+
+
+def _eval_experiment_open(experiment: Any) -> bool:
+    status = getattr(experiment, "status", None)
+    value = getattr(status, "value", status)
+    return value in ("queued", "running")
+
+
+def _eval_experiment_timeout(experiment_id: str, experiment: Any) -> TimeoutError:
+    """The error ``wait`` raises when the experiment is still open at its timeout."""
+    return TimeoutError(
+        f"experiment {experiment_id} is still {_enum_value(getattr(experiment, 'status', None))}"
+    )
+
+
+class _EvalExperimentsNamespace:
+    """Evals experiments: two configurations of a workflow, A and B, on the
+    items of one dataset, and the difference of B against A with a 95%
+    interval. A is the workflow as it runs now; B changes one part of it, the
+    model of one use or the settings revision. Each arm runs as a workflow
+    test that writes nothing to the graph; each item is graded against the
+    dataset's labels. An experiment goes ``queued``, ``running``, then
+    ``done``, ``failed`` or ``cancelled``. To use B, make the same change
+    yourself with the experiment's id (``models.choices.put(...,
+    experiment=id)`` or ``workflows.named.activate_revision(name, revision,
+    experiment=id)``)::
+
+        request = {
+            "workflow": "sinks",
+            "dataset": dataset.id,
+            "b": {"model": {"use": "extract", "model": {"provider": "anthropic",
+                                                      "model": "claude-haiku-5-5"}}},
+        }
+        cost = client.evals.experiments.estimate(request)
+        experiment = client.evals.experiments.create(request)
+        done = client.evals.experiments.wait(experiment.id)
+        print(done.report.delta, done.report.ci_low, done.report.ci_high)
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def create(
+        self,
+        workflow: str,
+        dataset: str,
+        b: Mapping[str, Any],
+        *,
+        max_items: int | None = None,
+        max_cost_usd: float | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.EvalExperiment:
+        """Start an experiment (``POST /v1/evals/experiments``). ``b`` changes
+        one part of the workflow: ``{"model": {"use": "extract", "model":
+        {...}}}`` (a model of the use's ``options``) or ``{"revision":
+        "wrev_..."}`` (a kept settings revision), not both
+        (:class:`LbbError` ``experiment_arms_mixed``). The first ``max_items``
+        items of the dataset run (at most 200, default 200). The estimate must
+        fit ``max_cost_usd`` (default 5, at most 100) and the environment's
+        monthly workflow budget (429 ``workflow_budget_exceeded``);
+        :meth:`estimate` shows it first. The experiment starts ``queued``; the
+        experiments of a graph run one at a time. The client sends an
+        idempotency key unless you pass one, so a retry answers the same
+        experiment."""
+        return self._client._model_request(
+            models.EvalExperiment,
+            "POST",
+            "/v1/evals/experiments",
+            body=_experiment_body(workflow, dataset, b, max_items, max_cost_usd),
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("eval-experiments.create"),
+        )
+
+    def estimate(
+        self,
+        workflow: str,
+        dataset: str,
+        b: Mapping[str, Any],
+        *,
+        max_items: int | None = None,
+        max_cost_usd: float | None = None,
+    ) -> models.EvalExperimentEstimate:
+        """What a start with the same arguments would estimate for both arms,
+        with the cost limit and what is left of the monthly budget
+        (``POST /v1/evals/experiments/estimate``). It runs no model and writes
+        nothing, so a failed call is retried."""
+        return self._client._model_request(
+            models.EvalExperimentEstimate,
+            "POST",
+            "/v1/evals/experiments/estimate",
+            body=_experiment_body(workflow, dataset, b, max_items, max_cost_usd),
+            options={"retry": True},
+        )
+
+    def get(self, experiment_id: str) -> models.EvalExperiment:
+        """One experiment with its items (``GET /v1/evals/experiments/get``).
+        A final experiment whose dataset changed since it was scored says
+        ``report.stale``; a turn then scores it again."""
+        return self._client._model_request(
+            models.EvalExperiment,
+            "GET",
+            "/v1/evals/experiments/get",
+            params={"id": experiment_id},
+        )
+
+    def list(
+        self,
+        *,
+        workflow: str | None = None,
+        dataset: str | None = None,
+        status: str | models.EvalExperimentStatus | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> models.EvalExperimentList:
+        """One page of the graph's experiments, newest first, without their
+        items (``GET /v1/evals/experiments``). Pass ``next_cursor`` as
+        ``cursor`` for the next page; ``limit`` is 1 to 50 (default 20)."""
+        return self._client._model_request(
+            models.EvalExperimentList,
+            "GET",
+            "/v1/evals/experiments",
+            params={
+                "workflow": workflow,
+                "dataset": dataset,
+                "status": _enum_value(status) if status is not None else None,
+                "limit": limit,
+                "cursor": cursor,
+            },
+        )
+
+    def cancel(
+        self, experiment_id: str, *, idempotency_key: str | None = None
+    ) -> models.EvalExperiment:
+        """Stop an experiment that has not ended
+        (``POST /v1/evals/experiments/cancel``). It keeps the items it
+        compared; a batch in flight finishes and counts its cost. An
+        experiment that ended stays as it is, so a failed call is retried."""
+        return self._client._model_request(
+            models.EvalExperiment,
+            "POST",
+            "/v1/evals/experiments/cancel",
+            params={"id": experiment_id},
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("eval-experiments.cancel"),
+            options={"retry": True},
+        )
+
+
+def _experiment_body(
+    workflow: str,
+    dataset: str,
+    b: Mapping[str, Any],
+    max_items: int | None,
+    max_cost_usd: float | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"workflow": workflow, "dataset": dataset, "b": dict(b)}
+    if max_items is not None:
+        body["max_items"] = max_items
+    if max_cost_usd is not None:
+        body["max_cost_usd"] = max_cost_usd
+    return body
+
+
 class _EvalsNamespace:
-    """Managed evals: traces, labels (thumbs up or down), goldens, runs, and
-    datasets (:attr:`datasets`)."""
+    """Managed evals: traces, labels (thumbs up or down), goldens, runs,
+    datasets (:attr:`datasets`) and experiments (:attr:`experiments`)."""
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
         self.datasets = _EvalDatasetsNamespace(client)
+        self.experiments = _EvalExperimentsNamespace(client)
 
     def summary(self) -> Any:
         """Settings, golden counts, unlabeled traces, the latest run, and the score by commit."""

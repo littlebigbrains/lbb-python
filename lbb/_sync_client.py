@@ -16,6 +16,7 @@ from . import models as _models  # for a function whose `models` names the model
 from ._catalog import AccessNamespace, CatalogNamespace
 from ._client_base import (
     _ASK_STREAM_ENDED,
+    _EVAL_EXPERIMENT_WAIT_TIMEOUT,
     _WORKFLOW_TEST_WAIT_TIMEOUT,
     DEFAULT_BASE_URL,
     DEFAULT_INTEGRATIONS_URL,
@@ -46,7 +47,10 @@ from ._client_base import (
     _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
+    _eval_experiment_open,
+    _eval_experiment_timeout,
     _EvalDatasetsNamespace,
+    _EvalExperimentsNamespace,
     _EvalsNamespace,
     _file_head,
     _FilesNamespace,
@@ -646,13 +650,59 @@ class _SyncEvalDatasetsNamespace(_EvalDatasetsNamespace):
         return _every(lambda cursor: self.list(limit=limit, cursor=cursor))
 
 
+class _SyncEvalExperimentsNamespace(_EvalExperimentsNamespace):
+    __doc__ = _EvalExperimentsNamespace.__doc__
+
+    def all(
+        self,
+        *,
+        workflow: str | None = None,
+        dataset: str | None = None,
+        status: str | models.EvalExperimentStatus | None = None,
+        limit: int | None = None,
+    ) -> Iterator[models.EvalExperiment]:
+        """Every experiment the filters match, newest first, without their
+        items: :meth:`list` page after page (``limit`` experiments per page)."""
+        return _every(
+            lambda cursor: self.list(
+                workflow=workflow, dataset=dataset, status=status, limit=limit, cursor=cursor
+            )
+        )
+
+    def wait(
+        self,
+        experiment_id: str,
+        *,
+        timeout: float | None = _EVAL_EXPERIMENT_WAIT_TIMEOUT,
+        poll_interval: float = 2.0,
+    ) -> models.EvalExperiment:
+        """Read the experiment until it ends (``done``, ``failed`` or
+        ``cancelled``) and return it. Raises :class:`TimeoutError` when it is
+        still open after ``timeout`` seconds (default 1800; ``None`` waits as
+        long as it takes)."""
+        if poll_interval < 0:
+            raise ValueError("poll_interval must be non-negative")
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
+        deadline = time.monotonic() + timeout if timeout is not None else None
+        while True:
+            experiment = self.get(experiment_id)
+            if not _eval_experiment_open(experiment):
+                return experiment
+            if deadline is not None and time.monotonic() >= deadline:
+                raise _eval_experiment_timeout(experiment_id, experiment)
+            time.sleep(poll_interval)
+
+
 class _SyncEvalsNamespace(_EvalsNamespace):
     __doc__ = _EvalsNamespace.__doc__
     datasets: _SyncEvalDatasetsNamespace
+    experiments: _SyncEvalExperimentsNamespace
 
     def __init__(self, client: _BaseLbbClient) -> None:
         super().__init__(client)
         self.datasets = _SyncEvalDatasetsNamespace(client)
+        self.experiments = _SyncEvalExperimentsNamespace(client)
 
 
 class _SyncReviewsNamespace(_ReviewsNamespace):
