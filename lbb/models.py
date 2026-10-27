@@ -5782,6 +5782,43 @@ class RangedReadStats(BaseModel):
     ] = None
 
 
+class RdfImportCommitObject(Enum):
+    rdf_import_commit = 'rdf_import_commit'
+
+
+class RdfImportCommitProjection(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    added: Annotated[int, Field(ge=0)]
+    removed: Annotated[int, Field(ge=0)]
+
+
+class RdfImportCommitReceipt(BaseModel):
+    """
+    Original durable CoreV1 fields. Publication/follower state is read separately.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    commit_seq: Annotated[int, Field(ge=0)]
+    epoch: str
+    no_op: bool
+    projection: RdfImportCommitProjection
+    schema_revision: str
+    visibility_token: str
+
+
+class RdfImportCommitResult(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    idempotent_replay: bool
+    object: RdfImportCommitObject
+    receipt: RdfImportCommitReceipt
+
+
 class RdfSchemaObjectKind(Enum):
     """
     The RDF node kind of a bounded observed-schema statement object.
@@ -15529,6 +15566,15 @@ class RdfEntityRelation(BaseModel):
         ),
     ] = None
     relation: RelationView
+
+
+class RdfImportResponse(RootModel[GraphRdfImportResponse | RdfImportCommitResult]):
+    root: Annotated[
+        GraphRdfImportResponse | RdfImportCommitResult,
+        Field(
+            description='The existing route has disjoint ordinary-bulk and explicit bounded results.'
+        ),
+    ]
 
 
 class RdfSchemaSummaryResponse(BaseModel):

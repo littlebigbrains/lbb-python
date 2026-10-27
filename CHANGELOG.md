@@ -4,6 +4,14 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased — 0.33.0
 
+- The generated models add `RdfImportResponse`, `RdfImportCommitResult`,
+  `RdfImportCommitReceipt`, `RdfImportCommitProjection` and
+  `RdfImportCommitObject`. They describe the response of
+  `POST /v1/graph/import/rdf`: the ordinary bulk response, or the new
+  `rdf_import_commit` acceptance that a request with `expected_graph_epoch`
+  selects. `import_rdf` sends no `expected_graph_epoch` and returns the bulk
+  response as before. No helper selects the new binding yet.
+
 - **Breaking local-search retirement:** `LbbLocalClient.semantic_search`,
   `build_embedding_index`, `embedding_index_inspect`, `inspect_embedding_index`
   and `embedding_search` retain their signatures but now raise the exported
