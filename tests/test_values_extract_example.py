@@ -30,8 +30,12 @@ from lbb.workflows import entity_ref
 from values_extract_fake import EXAMPLES, FakeLbb, Killed, iri_of, message, serve  # isort: skip
 from values_extract.workflow import (  # isort: skip
     DEFAULTS,
+    REPAIR_NOTE,
+    Settings,
     check,
     coerce,
+    failed_checks,
+    merge_attempts,
     ontology,
     quote_holds,
     legacy_value_key,
@@ -112,6 +116,7 @@ def fake_for(
     records: list[dict[str, str]],
     *,
     proposals: Callable[[str], list[dict[str, str]]] | None = None,
+    asked: Callable[[dict[str, Any]], list[dict[str, str]]] | None = None,
     review_status: Callable[[], str] = lambda: "open",
     review_answer: Callable[[dict[str, Any]], dict[str, Any] | None] = lambda request: None,
     review_refused: Callable[[dict[str, Any]], str | None] = lambda request: None,
@@ -126,8 +131,10 @@ def fake_for(
         ]
 
     def reason(body: dict[str, Any]) -> dict[str, Any]:
-        text = json.loads(body["prompt"])["text"]
-        return {"values": (proposals or read_values)(text)}
+        request = json.loads(body["prompt"])
+        if asked is not None:
+            return {"values": asked(request)}
+        return {"values": (proposals or read_values)(request["text"])}
 
     def decide(body: dict[str, Any]) -> dict[str, Any]:
         text = body["state"]["text"]
@@ -208,6 +215,7 @@ def test_the_samples_give_the_values_of_the_answer_key_and_none_it_leaves_out() 
         "unknown_property": 0,
         "duplicate": 0,
         "failed": 0,
+        "retried": 0,
         "commits": 1,
         "removed": 0,
     }
@@ -488,3 +496,207 @@ def test_the_samples_are_the_templates() -> None:
         pytest.skip("the TypeScript template is not in this tree")
     for name in ("records.json", "expected.json"):
         assert (SAMPLES / name).read_bytes() == (template / name).read_bytes()
+
+
+# ---- repair: one retry with the failed checks ---------------------------------------------------
+
+BENCH = {"name": "S 9.2", "text": "S 9.2 Bench of plastic. Width 70 cm, depth 40 cm."}
+
+
+def misquoting(again: str = "right") -> Callable[[dict[str, Any]], list[dict[str, str]]]:
+    """The first answer misquotes both values; a request with ``failed_checks`` gets the right
+    quotes (or, with ``again="wrong"``, the same wrong ones)."""
+
+    def asked(request: dict[str, Any]) -> list[dict[str, str]]:
+        quote = (lambda text: text) if "failed_checks" in request and again == "right" else (
+            lambda text: f"{text}!"
+        )
+        return [
+            {"property": "width_cm", "value": "70", "unit": "cm", "quote": quote("Width 70 cm")},
+            {"property": "depth_cm", "value": "40", "unit": "cm", "quote": quote("depth 40 cm")},
+        ]
+
+    return asked
+
+
+def reason_bodies(fake: FakeLbb) -> list[dict[str, Any]]:
+    return [body for path, body, _ in fake.calls if path.endswith("/activities/reason")]
+
+
+def test_without_repair_a_failed_check_is_no_reason_to_ask_again() -> None:
+    fake = fake_for([BENCH], asked=misquoting())
+    fake.queue(message([iri_of(BENCH["name"])]))
+    serve(fake)
+
+    (done,) = fake.completed
+    assert fake.written(BENCH["name"]) == {}
+    assert done["state"]["quote_not_found"] == 2
+    assert done["state"]["retried"] == 0
+    (body,) = reason_bodies(fake)
+    assert "attempt" not in body
+
+
+def test_with_repair_one_retry_gets_the_failed_checks_and_its_values_pass_the_same_gate() -> None:
+    fake = fake_for([BENCH], asked=misquoting())
+    fake.queue(message([iri_of(BENCH["name"])]))
+    serve(fake, Settings(repair=1))
+
+    (done,) = fake.completed
+    # The retry's values are written like any value: through the decision call and the gate.
+    assert fake.written(BENCH["name"]) == {"width_cm": 70, "depth_cm": 40}
+    assert done["state"]["retried"] == 1
+    assert done["state"]["written"] == 2
+    assert done["state"]["quote_not_found"] == 2
+    first, retry = reason_bodies(fake)
+    # Only the retry names its attempt; the first call reads as attempt 1.
+    assert ("attempt" in first, retry["attempt"]) == (False, 2)
+    assert retry["effect_id"] == f"{first['effect_id']}.repair"
+    # The retry asks the same input, plus the failed checks and nothing else.
+    asked_first, asked_retry = json.loads(first["prompt"]), json.loads(retry["prompt"])
+    assert "failed_checks" not in asked_first
+    assert asked_retry.pop("repair") == REPAIR_NOTE
+    assert asked_retry.pop("failed_checks") == [
+        {
+            "check": "quote_not_found",
+            "property": "width_cm",
+            "message": "the quote is not in the text",
+            "value": "70",
+            "quote": "Width 70 cm!",
+        },
+        {
+            "check": "quote_not_found",
+            "property": "depth_cm",
+            "message": "the quote is not in the text",
+            "value": "40",
+            "quote": "depth 40 cm!",
+        },
+    ]
+    assert asked_retry == asked_first
+    assert sum(path.endswith("/activities/decide") for path, _, _ in fake.calls) == 1
+
+
+def test_a_clean_answer_is_not_asked_again_and_a_retry_that_fails_leaves_nothing() -> None:
+    clean = fake_for(RECORDS[:1])
+    clean.queue(message([iri_of(RECORDS[0]["name"])]))
+    serve(clean, Settings(repair=1))
+    assert [body.get("attempt") for body in reason_bodies(clean)] == [None]
+
+    fake = fake_for([BENCH], asked=misquoting("wrong"))
+    fake.queue(message([iri_of(BENCH["name"])]))
+    serve(fake, Settings(repair=1))
+    (done,) = fake.completed
+    assert [body.get("attempt") for body in reason_bodies(fake)] == [None, 2]
+    assert fake.written(BENCH["name"]) == {}
+    assert done["state"]["quote_not_found"] == 4
+    assert done["state"]["retried"] == 1
+    assert not any(path.endswith("/activities/decide") for path, _, _ in fake.calls)
+
+
+def test_a_repair_keeps_the_values_that_passed_and_fills_the_failed_ones() -> None:
+    properties = {"width_cm": "f64", "material": "text"}
+    text = "Waschtisch, width_cm: 55 cm, material: Keramik"
+    units = {"width_cm": "cm"}
+    first = check(
+        [
+            {"property": "width_cm", "value": "55", "unit": "cm", "quote": "width_cm: 55 cm"},
+            {"property": "material", "value": "Keramik", "unit": "", "quote": "material: Glas"},
+        ],
+        properties,
+        text,
+        units,
+    )
+    second = check(
+        [
+            {"property": "width_cm", "value": "56", "unit": "cm", "quote": "width_cm: 55 cm"},
+            {"property": "material", "value": "Keramik", "unit": "", "quote": "material: Keramik"},
+        ],
+        properties,
+        text,
+        units,
+    )
+    merged = merge_attempts(first, second)
+    assert [
+        (v["property"], v["value"], v["outcome"], v.get("attempt"), "typed" in v) for v in merged
+    ] == [
+        ("width_cm", "55", "", None, True),
+        ("material", "Keramik", "quote_not_found", None, False),
+        ("width_cm", "56", "duplicate", 2, False),
+        ("material", "Keramik", "", 2, True),
+    ]
+    # A repair value for a property whose first value passed is a duplicate
+    # whatever its checks said, so the property counts once.
+    failing = check(
+        [{"property": "width_cm", "value": "wide", "unit": "cm", "quote": "width_cm: 55 cm"}],
+        properties,
+        text,
+        units,
+    )
+    assert [(v["property"], v["outcome"], v.get("attempt")) for v in merge_attempts(first, failing)] == [
+        ("width_cm", "", None),
+        ("material", "quote_not_found", None),
+        ("width_cm", "duplicate", 2),
+    ]
+
+
+def test_each_failed_check_makes_one_diagnostic_that_holds_the_models_words_and_no_label() -> None:
+    properties = {"width_cm": "f64", "material": "text"}
+    text = "Waschtisch, width_cm: 55 cm, material: Keramik"
+
+    def failures(values: list[Any]) -> list[tuple[str, str | None]]:
+        checked = check(values, properties, text, {"width_cm": "cm"})
+        return [(f["check"], f.get("property")) for f in failed_checks({"values": values}, checked)]
+
+    assert failed_checks({"items": []}, []) == [
+        {"check": "answer_shape", "message": "the answer is not a JSON object with a `values` list"}
+    ]
+    assert [f["check"] for f in failed_checks(None, [])] == ["answer_shape"]
+    assert failures(["width"]) == [("answer_shape", None)]
+    assert failures(
+        [
+            {"property": "material", "value": "Keramik", "unit": ""},
+            {"property": "width_cm", "value": 55, "unit": "cm", "quote": "width_cm: 55 cm"},
+        ]
+    ) == [("missing_field", "material"), ("missing_field", "width_cm")]
+    assert failures(
+        [
+            {"property": "height_cm", "value": "9", "unit": "cm", "quote": "height_cm: 9 cm"},
+            {"property": "width_cm", "value": "wide", "unit": "cm", "quote": "width_cm: 55 cm"},
+            {"property": "material", "value": "Keramik", "unit": "", "quote": "material: Glas"},
+        ]
+    ) == [
+        ("unknown_property", "height_cm"),
+        ("invalid_value", "width_cm"),
+        ("quote_not_found", "material"),
+    ]
+    # A second value of a property is no failed check: the first one stands.
+    assert (
+        failures(
+            [
+                {"property": "material", "value": "Keramik", "unit": "", "quote": "material: Keramik"},
+                {"property": "material", "value": "Glas", "unit": "", "quote": "material: Keramik"},
+            ]
+        )
+        == []
+    )
+    long = [{"property": "material", "value": "Keramik", "unit": "", "quote": "x" * 400}]
+    (diagnostic,) = failed_checks({"values": long}, check(long, properties, text))
+    assert len(diagnostic["quote"]) == 200
+
+
+def test_a_refused_retry_leaves_the_first_answer() -> None:
+    fake = fake_for([BENCH], asked=misquoting())
+    plain_reason = fake.reason
+
+    def reason(body: dict[str, Any]) -> dict[str, Any] | None:
+        if "failed_checks" in json.loads(body["prompt"]):
+            return None  # the fake answers 422: a refusal
+        return plain_reason(body)
+
+    fake.reason = reason
+    fake.queue(message([iri_of(BENCH["name"])]))
+    serve(fake, Settings(repair=1))
+    (done,) = fake.completed
+    assert done["state"]["failed"] == 0
+    assert done["state"]["quote_not_found"] == 2
+    assert done["state"]["retried"] == 1
+    assert fake.written(BENCH["name"]) == {}

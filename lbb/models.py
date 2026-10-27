@@ -5827,6 +5827,13 @@ class ReasonActivityRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+    attempt: Annotated[
+        int | None,
+        Field(
+            description="Which attempt of one reading this call is, 1 to 10: the retry of a\nworkflow that repairs a failed answer sends `2`; the first call\nsends nothing. The call log names it (`attempt`). It is a label only:\nno part of the effect's request hash, so a step sends the retry under\nanother `effect_id`. Added 2026-10-27; an older server refuses the\nfield, so send it only for a retry.",
+            ge=0,
+        ),
+    ] = None
     effect_id: Annotated[
         str | None,
         Field(
@@ -11082,6 +11089,13 @@ class WorkflowTestSettings(BaseModel):
         Field(description='The gate: a value with this support or more is written.'),
     ]
     properties: list[WorkflowTestProperty]
+    repair: Annotated[
+        int | None,
+        Field(
+            description="The workflow's `repair` setting, frozen with the rest: how many\ntimes the reading of an input may be retried with the failed checks\n(0 or 1). Absent for a test of a workflow that does not repair, and\nfor a test from before the setting.",
+            ge=0,
+        ),
+    ] = None
 
 
 class WorkflowTestStatus(Enum):
@@ -11106,6 +11120,13 @@ class WorkflowTestValue(BaseModel):
     or the graph refused it, so it was not written again).
     """
 
+    attempt: Annotated[
+        int | None,
+        Field(
+            description="The attempt that read the value: `2` for a value of the repair\nattempt (`repair` setting), absent for the first. A value of the\nfirst attempt that failed a check stays in the list beside the\nrepair's.",
+            ge=0,
+        ),
+    ] = None
     detail: str | None = None
     outcome: Annotated[
         str,
@@ -18995,6 +19016,13 @@ class ModelCall(BaseModel):
             description='When the call was made, in milliseconds since the Unix epoch.'
         ),
     ]
+    attempt: Annotated[
+        int | None,
+        Field(
+            description='Which attempt of one reading made the call (added 2026-10-27): `2`\nfor the retry of the `repair` setting of `values.extract`, or of a\n`reason` activity call that names it with its `attempt` option.\nAbsent for the first attempt and for a call that is not one of\nseveral attempts.',
+            ge=0,
+        ),
+    ] = None
     choice: ModelCallChoice | None = None
     effort: str | None = None
     error: str | None = None
@@ -19053,6 +19081,10 @@ class ModelCallRow(BaseModel):
     """
 
     at_ms: int
+    attempt: Annotated[
+        int | None,
+        Field(description="The call's attempt (`ModelCall::attempt`).", ge=0),
+    ] = None
     check: ModelCheckBrief | None = None
     choice: ModelCallChoice | None = None
     error: Annotated[

@@ -17254,6 +17254,15 @@
             "format": "int64",
             "type": "integer"
           },
+          "attempt": {
+            "description": "Which attempt of one reading made the call (added 2026-10-27): `2`\nfor the retry of the `repair` setting of `values.extract`, or of a\n`reason` activity call that names it with its `attempt` option.\nAbsent for the first attempt and for a call that is not one of\nseveral attempts.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "choice": {
             "oneOf": [
               {
@@ -17630,6 +17639,15 @@
           "at_ms": {
             "format": "int64",
             "type": "integer"
+          },
+          "attempt": {
+            "description": "The call's attempt (`ModelCall::attempt`).",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "check": {
             "oneOf": [
@@ -26030,6 +26048,15 @@
         "additionalProperties": false,
         "description": "`POST /v1/workflows/activities/reason`: the reasoning model answers\n`prompt` with JSON that follows `schema`.",
         "properties": {
+          "attempt": {
+            "description": "Which attempt of one reading this call is, 1 to 10: the retry of a\nworkflow that repairs a failed answer sends `2`; the first call\nsends nothing. The call log names it (`attempt`). It is a label only:\nno part of the effect's request hash, so a step sends the retry under\nanother `effect_id`. Added 2026-10-27; an older server refuses the\nfield, so send it only for a retry.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "effect_id": {
             "description": "The effect id of the workflow step that makes the call (`ctx.step`'s\n`effectId`): with one, the first answer is kept, and a repeat of the\nsame request returns it with `cached: true`. `[A-Za-z0-9_.:/-]`, 1 to\n200 characters.",
             "type": [
@@ -43042,6 +43069,12 @@
               "$ref": "#/components/schemas/WorkflowTestProperty"
             },
             "type": "array"
+          },
+          "repair": {
+            "description": "The workflow's `repair` setting, frozen with the rest: how many\ntimes the reading of an input may be retried with the failed checks\n(0 or 1). Absent for a test of a workflow that does not repair, and\nfor a test from before the setting.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -43065,6 +43098,15 @@
       "WorkflowTestValue": {
         "description": "One value the workflow read from an input, after every check, as the live\nworkflow would decide it. A live run records its values in this shape too\n(`WorkflowRunInput`), with two more outcomes: `answered` (a person's\nanswer in force was written) and `rejected` (a person rejected the value,\nor the graph refused it, so it was not written again).",
         "properties": {
+          "attempt": {
+            "description": "The attempt that read the value: `2` for a value of the repair\nattempt (`repair` setting), absent for the first. A value of the\nfirst attempt that failed a check stays in the list beside the\nrepair's.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "detail": {
             "type": [
               "string",

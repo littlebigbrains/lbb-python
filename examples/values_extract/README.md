@@ -21,6 +21,24 @@ refused, is not written again. New evidence with another value asks again,
 and the answered value and its source link stay until a new answer. A value
 an earlier version filed as a suggestion (`legacy_value_key`) keeps working.
 
+With `Settings(repair=1)`, an instance whose first answer fails a check is
+asked once more. A check fails for one of these reasons:
+
+- the answer has the wrong shape;
+- a field is missing;
+- the property is unknown;
+- the value is outside its type or unit;
+- the quote is not in the text.
+
+The retry runs in the same step. It uses the effect id `<effect id>.repair`
+and `attempt=2`. It sends the same input plus the failed checks
+(`failed_checks`). It never sends a label. A property whose first value passed
+keeps it. Every retry value for that property is a `duplicate`. Every other
+property takes the retry's value (`merge_attempts`). The values then go through
+the support call and the gate. A retry that fails leaves the first answer. A
+spent budget waits as in any step. `repair=0` (the default) makes the same
+calls as before.
+
 ## Run it
 
 From `sdk/python/examples`, with the Python SDK installed

@@ -243,6 +243,7 @@ class LbbActivities:
         label: str | None = None,
         instance: str | None = None,
         test: models.ActivityTest | Mapping[str, Any] | None = None,
+        attempt: int | None = None,
     ) -> models.ReasonActivityResponse:
         """The reasoning model answers ``prompt`` with JSON that follows
         ``schema`` (``POST /v1/workflows/activities/reason``).
@@ -258,11 +259,18 @@ class LbbActivities:
         fails with ``422 activity_request_refused``: see
         :func:`is_activity_refused`. One attempt waits up to 5 minutes.
         ``test`` (``{"workflow": name}``) marks the call as a workflow test's:
-        :func:`capture_activities` sets it.
+        :func:`capture_activities` sets it. ``attempt`` (1 to 10) says which
+        attempt of one reading the call is: a workflow that retries a failed
+        answer sends ``2`` for its retry, under its own ``effect_id`` (such as
+        ``f"{s.effect_id}.repair"``), and the call log names it. Leave it out
+        for the first call, and for a call that is not one of several
+        attempts; an older server refuses the field.
         """
         fields, options, turn = self._call(
             effect_id, label, instance, {"timeout": REASON_TIMEOUT_SECONDS}
         )
+        if attempt is not None:
+            fields["attempt"] = attempt
         body = models.ReasonActivityRequest.model_validate(
             {
                 "prompt": prompt,
