@@ -356,7 +356,7 @@ class NamedWorkflowsTests(unittest.TestCase):
         self.assertEqual(
             [(r.method, r.url.path, dict(r.url.params)) for r in seen], NAMED_ROUTES
         )
-        self.assertEqual(seen[0].headers["lbb-version"], "2026-10-21")
+        self.assertEqual(seen[0].headers["lbb-version"], "2026-10-27")
         self.assertEqual(json.loads(seen[3].content), REQUEST)
         self.assertEqual(json.loads(seen[5].content), {"paused": True})
         self.assertEqual(names, ["notes", "sinks"])
