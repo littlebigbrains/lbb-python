@@ -335,3 +335,44 @@ def test_status_refuses_non_finite_numbers_from_a_permissive_json_decoder(value)
             client.status(version="status/1")
         with pytest.raises(LbbCapabilityError):
             client.status_model()
+
+
+@pytest.mark.parametrize("api_version", [None, "2026-10-21", "2026-10-27"])
+def test_prepared_source_api_default_and_explicit_headers_keep_query_selection(
+    api_version,
+):
+    options = {} if api_version is None else {"api_version": api_version}
+    for version in ["status/1", "legacy"]:
+        payload = (
+            current_payload()
+            if version == "status/1"
+            else {"ok": True, "graph_status": {}, "persisted_index": {}}
+        )
+        seen = []
+        with LbbClient(
+            "http://h", transport=transport(payload, seen), **options
+        ) as client:
+            assert client.status(version=version) == payload
+        assert len(seen) == 1
+        assert seen[0].headers["lbb-version"] == (api_version or "2026-10-27")
+        assert seen[0].url.params["version"] == version
+
+
+@pytest.mark.parametrize("api_version", [None, "2026-10-21", "2026-10-27"])
+def test_async_prepared_source_api_default_preserves_explicit_header_override(
+    api_version,
+):
+    import asyncio
+
+    async def check():
+        options = {} if api_version is None else {"api_version": api_version}
+        seen = []
+        async with AsyncLbbClient(
+            "http://h", transport=transport(current_payload(), seen), **options
+        ) as client:
+            assert await client.status(version="status/1") == current_payload()
+        assert len(seen) == 1
+        assert seen[0].headers["lbb-version"] == (api_version or "2026-10-27")
+        assert seen[0].url.params["version"] == "status/1"
+
+    asyncio.run(check())

@@ -506,7 +506,7 @@ class SyncClientTests(unittest.TestCase):
         )
         self.assertEqual(dict(request.url.params), {"graph": "main"})
         self.assertEqual(request.headers["authorization"], "Bearer lbb_sk_test")
-        self.assertEqual(request.headers["lbb-version"], "2026-10-21")
+        self.assertEqual(request.headers["lbb-version"], "2026-10-27")
         self.assertEqual(request.headers["idempotency-key"], "ik_py_1")
         self.assertEqual(json.loads(request.content), {"triplets": []})
 

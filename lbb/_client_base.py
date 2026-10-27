@@ -1521,7 +1521,7 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         api_key: str | None = None,
         graph: str | None = None,
         environment: str | None = None,
-        api_version: str = "2026-10-21",
+        api_version: str = "2026-10-27",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
@@ -2045,7 +2045,11 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         )
 
     def shadow_eval(self, body: Body) -> Any:
-        """Compare champion and challenger retrieval over one pinned snapshot."""
+        """Legacy champion/challenger semantic-search replay, deprecated for adoption.
+
+        Execution is unchanged; managed model trials/Evals are separate.
+        See the legacy_model_consumers_deprecation_v1 capability and policy Link.
+        """
         return self._request("POST", "/v1/models/shadow-eval", body=body)
 
     def synthetic_eval(self, *, limit: int | None = None) -> Any:
@@ -2066,13 +2070,19 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         probe set (execution-verified synthetic pairs, or bring your own via
         ``probes``) -> bounded candidate search on the train slice -> held-out
         eval gate -> record the run either way -> CAS promote only when the
-        gate passes. The same tick the ``auto_train`` cadence fires."""
+        gate passes. Deprecated legacy deterministic trainer selection, not current
+        class search. Execution stays unchanged during the notice generation;
+        inspect the linked legacy model-consumer policy before new adoption."""
         return self._request("POST", "/v1/models/train-tick", body=body)
 
     def train_submit(
         self, body: Body, *, idempotency_key: str
     ) -> models.TrainModelJobStatusResponse:
-        """Submit a durable background trainer job with a reconnect-safe id."""
+        """Submit a durable legacy deterministic trainer job with a stable id.
+
+        Deprecated for new adoption; execution/idempotency and job/history reads
+        stay unchanged during the notice generation. See the response policy Link.
+        """
         return self._model_request(
             models.TrainModelJobStatusResponse,
             "POST",
@@ -2097,7 +2107,11 @@ class _BaseLbbClient(_StarterWorkflowMethods):
 
     def set_training_config(self, body: Body) -> Any:
         """Set the automatic-training configuration — the ``auto_train``
-        toggle + trainable kinds (``POST /v1/models/training-config``)."""
+        toggle + trainable kinds (``POST /v1/models/training-config``).
+
+        Deprecated legacy trainer selection, separate from current class embeddings.
+        Execution stays unchanged; disabling auto_train remains supported.
+        """
         return self._request("POST", "/v1/models/training-config", body=body)
 
     def ingest_signals(self, body: Body, *, idempotency_key: str | None = None) -> Any:
@@ -2436,7 +2450,9 @@ class _BaseLbbClient(_StarterWorkflowMethods):
     def status(self, *, version: Literal["status/1", "legacy"] | None = None) -> Any:
         """Status diagnostics. Explicit ``status/1`` is shape/version checked.
 
-        Omitting ``version`` retains the temporary legacy compatibility response.
+        Omitting ``version`` follows the server default (current on the first
+        unified generation; legacy on older servers). Select ``status/1`` for
+        checked current data or ``legacy`` for the finite compatibility window.
         Complete diagnostics and RDF/class readiness are independent signals.
         """
         if version not in (None, "status/1", "legacy"):

@@ -9419,8 +9419,9 @@ class TrainModelRequest(BaseModel):
     kind: build an execution-verified probe set, search a bounded candidate
     space on the train slice, gate challenger vs champion on the held-out
     eval slice, record the run in the WS9 registry either way, and promote
-    only when the gate passes. This is the same tick the auto-train cadence
-    fires; calling it by hand is always safe (bounded, snapshot-pinned).
+    only when the gate passes. This is the legacy auto-train tick, deprecated
+    for new adoption; it has no automatic current-class-search equivalent.
+    Execution stays unchanged during the finite notice generation.
     """
 
     force: Annotated[

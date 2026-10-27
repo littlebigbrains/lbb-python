@@ -1941,7 +1941,7 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         api_key: str | None = None,
         graph: str | None = None,
         environment: str | None = None,
-        api_version: str = "2026-10-21",
+        api_version: str = "2026-10-27",
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = 0.1,
         retry_budget_ms: float = DEFAULT_RETRY_BUDGET_MS,
