@@ -4956,7 +4956,7 @@ class PlannerTrigram(BaseModel):
     predicates_covered: Annotated[
         list[str],
         Field(
-            description='Label predicates in this generation that the sidecar serves. Empty\nunless every PSO table carries a sidecar.'
+            description='Label predicates in this generation whose text filters read sidecar\ncandidates: a PSO table of their rows carries a sidecar.'
         ),
     ]
     tables: Annotated[int, Field(ge=0)]

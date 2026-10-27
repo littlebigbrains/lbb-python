@@ -23281,7 +23281,7 @@
         "description": "Label-trigram sidecar coverage.",
         "properties": {
           "predicates_covered": {
-            "description": "Label predicates in this generation that the sidecar serves. Empty\nunless every PSO table carries a sidecar.",
+            "description": "Label predicates in this generation whose text filters read sidecar\ncandidates: a PSO table of their rows carries a sidecar.",
             "items": {
               "type": "string"
             },
