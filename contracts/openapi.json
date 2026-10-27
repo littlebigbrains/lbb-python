@@ -41035,6 +41035,17 @@
             "description": "`wrev_` and 32 hex characters: the hash of `settings`.",
             "type": "string"
           },
+          "last_tested": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowRevisionTested",
+                "description": "What the workflow's tests read with these settings (added\n2026-10-27). Three states. An object: the newest test that read\ninputs with this revision. `null`: no test is recorded for these\nsettings; a test that ran on an older node or before this field\nexisted is not recorded, so `null` does not prove that none ran.\nAbsent: the starter has no tests (only `values.extract` has them),\nthe server has no such record, or the record did not read; read it as\nunknown."
+              }
+            ]
+          },
           "object": {
             "description": "`workflow_revision`.",
             "type": "string"
@@ -41181,6 +41192,82 @@
         "required": [
           "route",
           "body"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevisionTested": {
+        "description": "The newest test that read inputs with a revision's settings: the fact,\nwith no verdict. The test (`GET /v1/workflows/named/tests/get?id=`) is the\nrecord; the counts are those of the moment it ended.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/WorkflowRevisionTestedCounts"
+          },
+          "experiment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTestExperiment",
+                "description": "The experiment the test is an arm of (added 2026-10-27): its id and\nthe arm, `a` or `b`. Absent for a test a person started."
+              }
+            ]
+          },
+          "finished": {
+            "description": "When the test ended (RFC 3339).",
+            "type": "string"
+          },
+          "test": {
+            "description": "The workflow test (`wtest_…`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test",
+          "finished",
+          "counts"
+        ],
+        "type": "object"
+      },
+      "WorkflowRevisionTestedCounts": {
+        "description": "What a workflow test read, by the checks of the live workflow: the names\nof `WorkflowTestCounts` without `answered`, which goes stale when a\nperson answers later.",
+        "properties": {
+          "failed": {
+            "description": "Values a check dropped, and inputs the model did not answer.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inputs_done": {
+            "description": "Inputs with a result.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "no_value": {
+            "description": "Properties of a read input with no value.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "passed": {
+            "description": "Values at or above the gate, which the workflow writes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "review": {
+            "description": "Values a person would review.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "inputs_done",
+          "passed",
+          "review",
+          "no_value",
+          "failed"
         ],
         "type": "object"
       },

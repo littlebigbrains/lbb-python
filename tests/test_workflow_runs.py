@@ -503,10 +503,16 @@ def revision(id: str, activation: int, bound: bool = False) -> dict[str, Any]:
     }
 
 
+LAST_TESTED: dict[str, Any] = {
+    "test": "wtest_1791967648726a1b2c3d4e5f6",
+    "finished": "2026-10-27T09:12:44.120000Z",
+    "counts": {"inputs_done": 6, "passed": 14, "review": 3, "no_value": 1, "failed": 0},
+}
+
 REVISION_ANSWERS: list[dict[str, Any]] = [
     {"object": "list", "data": [revision(SECOND, 2, True)], "has_more": True, "next_cursor": "2"},
     {"object": "list", "data": [revision(FIRST, 1)], "has_more": False},
-    revision(FIRST, 1),
+    {**revision(FIRST, 1), "last_tested": LAST_TESTED},
     {**WORKFLOW, "active_revision": FIRST},
 ]
 REVISION_ROUTES = [
@@ -542,6 +548,20 @@ class WorkflowRevisionsTests(unittest.TestCase):
             {"name": "notes", "id": FIRST, "expected_revision": SECOND},
         )
         self.assertEqual(workflow.active_revision, FIRST)
+
+    def test_last_tested_is_an_object_none_or_not_said(self) -> None:
+        said = WorkflowRevision.model_validate({**revision(FIRST, 1), "last_tested": LAST_TESTED})
+        assert said.last_tested is not None
+        self.assertEqual((said.last_tested.test, said.last_tested.counts.passed), (LAST_TESTED["test"], 14))
+        self.assertIn("last_tested", said.model_fields_set)
+        # `null`: the workflow has tests and no test is recorded for these settings.
+        never = WorkflowRevision.model_validate({**revision(FIRST, 1), "last_tested": None})
+        self.assertIsNone(never.last_tested)
+        self.assertIn("last_tested", never.model_fields_set)
+        # No key: no tests, or a server that does not say; unknown.
+        unknown = WorkflowRevision.model_validate(revision(FIRST, 1))
+        self.assertIsNone(unknown.last_tested)
+        self.assertNotIn("last_tested", unknown.model_fields_set)
 
 
 class AsyncWorkflowRevisionsTests(unittest.IsolatedAsyncioTestCase):
