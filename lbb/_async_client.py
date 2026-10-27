@@ -25,6 +25,7 @@ from . import models as _models  # for a function whose `models` names the model
 from ._catalog import AccessNamespace, CatalogNamespace
 from ._client_base import (
     _ASK_STREAM_ENDED,
+    _EVAL_EXPERIMENT_WAIT_TIMEOUT,
     _UPLOAD_CHUNK_BYTES,
     _WORKFLOW_TEST_WAIT_TIMEOUT,
     DEFAULT_BASE_URL,
@@ -57,7 +58,10 @@ from ._client_base import (
     _EmbeddingsNamespace,
     _EntityNamespace,
     _error_body_field,
+    _eval_experiment_open,
+    _eval_experiment_timeout,
     _EvalDatasetsNamespace,
+    _EvalExperimentsNamespace,
     _EvalsNamespace,
     _FactsNamespace,
     _file_head,
@@ -1734,15 +1738,128 @@ class _AsyncEvalDatasetsNamespace(_EvalDatasetsNamespace):
         )
 
 
+class _AsyncEvalExperimentsNamespace(_EvalExperimentsNamespace):
+    __doc__ = _EvalExperimentsNamespace.__doc__
+
+    async def create(
+        self,
+        workflow: str,
+        dataset: str,
+        b: Mapping[str, Any],
+        *,
+        max_items: int | None = None,
+        max_cost_usd: float | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.EvalExperiment:
+        return cast(
+            models.EvalExperiment,
+            await super().create(
+                workflow,
+                dataset,
+                b,
+                max_items=max_items,
+                max_cost_usd=max_cost_usd,
+                idempotency_key=idempotency_key,
+            ),
+        )
+
+    async def estimate(
+        self,
+        workflow: str,
+        dataset: str,
+        b: Mapping[str, Any],
+        *,
+        max_items: int | None = None,
+        max_cost_usd: float | None = None,
+    ) -> models.EvalExperimentEstimate:
+        return cast(
+            models.EvalExperimentEstimate,
+            await super().estimate(
+                workflow, dataset, b, max_items=max_items, max_cost_usd=max_cost_usd
+            ),
+        )
+
+    async def get(self, experiment_id: str) -> models.EvalExperiment:
+        return cast(models.EvalExperiment, await super().get(experiment_id))
+
+    async def list(
+        self,
+        *,
+        workflow: str | None = None,
+        dataset: str | None = None,
+        status: str | models.EvalExperimentStatus | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> models.EvalExperimentList:
+        return cast(
+            models.EvalExperimentList,
+            await super().list(
+                workflow=workflow, dataset=dataset, status=status, limit=limit, cursor=cursor
+            ),
+        )
+
+    def all(
+        self,
+        *,
+        workflow: str | None = None,
+        dataset: str | None = None,
+        status: str | models.EvalExperimentStatus | None = None,
+        limit: int | None = None,
+    ) -> AsyncIterator[models.EvalExperiment]:
+        """Every experiment the filters match, newest first, without their
+        items: :meth:`list` page after page (``limit`` experiments per page)."""
+        return _aevery(
+            lambda cursor: self.list(
+                workflow=workflow, dataset=dataset, status=status, limit=limit, cursor=cursor
+            )
+        )
+
+    async def cancel(
+        self, experiment_id: str, *, idempotency_key: str | None = None
+    ) -> models.EvalExperiment:
+        return cast(
+            models.EvalExperiment,
+            await super().cancel(experiment_id, idempotency_key=idempotency_key),
+        )
+
+    async def wait(
+        self,
+        experiment_id: str,
+        *,
+        timeout: float | None = _EVAL_EXPERIMENT_WAIT_TIMEOUT,
+        poll_interval: float = 2.0,
+    ) -> models.EvalExperiment:
+        """Read the experiment until it ends (``done``, ``failed`` or
+        ``cancelled``) and return it. Raises :class:`TimeoutError` when it is
+        still open after ``timeout`` seconds (default 1800; ``None`` waits as
+        long as it takes)."""
+        if poll_interval < 0:
+            raise ValueError("poll_interval must be non-negative")
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout if timeout is not None else None
+        while True:
+            experiment = await self.get(experiment_id)
+            if not _eval_experiment_open(experiment):
+                return experiment
+            if deadline is not None and loop.time() >= deadline:
+                raise _eval_experiment_timeout(experiment_id, experiment)
+            await asyncio.sleep(poll_interval)
+
+
 class _AsyncEvalsNamespace(_EvalsNamespace):
-    """Managed evals: traces, labels (thumbs up or down), goldens, runs, and
-    datasets (:attr:`datasets`). Each method returns an awaitable here."""
+    """Managed evals: traces, labels (thumbs up or down), goldens, runs,
+    datasets (:attr:`datasets`) and experiments (:attr:`experiments`). Each
+    method returns an awaitable here."""
 
     datasets: _AsyncEvalDatasetsNamespace
+    experiments: _AsyncEvalExperimentsNamespace
 
     def __init__(self, client: _BaseLbbClient) -> None:
         super().__init__(client)
         self.datasets = _AsyncEvalDatasetsNamespace(client)
+        self.experiments = _AsyncEvalExperimentsNamespace(client)
 
 
 class _AsyncFileChunks:

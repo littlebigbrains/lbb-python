@@ -15,6 +15,11 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   fusion, record vectors and manual builds have no automatic conversion.
   Source/release preparation only; publication remains a separate protected gate.
 
+- `client.evals.experiments` (sync and async) compares two configurations of
+  a workflow on a dataset: `create`, `estimate`, `list`, `all`, `get`,
+  `cancel` and `wait`. B is the model of one use or a settings revision. The
+  report gives the difference with a 95% interval. Guide: [Compare two
+  versions of a workflow](https://docs.littlebigbrain.com/guides/experiments/).
 - `models.choices.put` takes `experiment` (an `exp_…` id) with `workflow`, and
   `workflows.named.activate_revision` takes `experiment`, sync and async: the
   write applies that experiment's B. The server answers `409
