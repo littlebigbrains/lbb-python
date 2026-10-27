@@ -27,7 +27,7 @@ from .client import (
     SparqlResults,
 )
 from .entities import entity_id_from_iri, entity_ref
-from .local import LbbCommandError, LbbLocalClient
+from .local import LbbCommandError, LbbLocalClient, LbbLocalSearchRetiredError
 
 __all__ = [
     "LbbClient",
@@ -51,4 +51,5 @@ __all__ = [
     "stable_hash_hex",
     "LbbLocalClient",
     "LbbCommandError",
+    "LbbLocalSearchRetiredError",
 ]

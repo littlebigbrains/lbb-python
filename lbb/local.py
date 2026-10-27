@@ -27,15 +27,32 @@ class LbbCommandError(RuntimeError):
         )
 
 
+class LbbLocalSearchRetiredError(RuntimeError):
+    """A legacy local search method was refused without invoking the CLI."""
+
+    code = "legacy_local_search_retired"
+    retired_in = "0.33.0"
+
+    def __init__(self, method: str) -> None:
+        self.method = method
+        super().__init__(
+            f"LbbLocalClient.{method} was retired in Python SDK 0.33.0. "
+            "Use an HTTP client against lbb-server with RDF/SPARQL and "
+            "class-declared embeddings. Legacy fusion, BM25, record vectors "
+            "and manual index builds have no automatic conversion. "
+            "Legacy execution requires Python 0.32 and a matching older binary."
+        )
+
+
 @dataclass(frozen=True)
 class LbbLocalClient:
     """Local ``lbb-testctl`` subprocess client.
 
-    The legacy record-search and embedding-index methods are deprecated for
-    new integrations, with no removal version set. They keep their existing
-    CLI contracts. For class-declared embedding search, run ``lbb-server``
-    locally and use ``LbbClient.embeddings``; the request/ranking contracts
-    differ and are not automatically converted. See the SDK README.
+    Legacy search/index method names remain as Python 0.33.0 compatibility
+    tombstones. They raise :class:`LbbLocalSearchRetiredError` before creating
+    a request file or invoking any subprocess. Other local methods are unchanged.
+    Use ``LbbClient.embeddings`` and SPARQL against a local ``lbb-server`` for
+    supported retrieval; legacy inputs/rankings are not automatically converted.
     """
 
     root: str | Path
@@ -93,33 +110,24 @@ class LbbLocalClient:
         return self._request_file(("ontology", "resolve", *self._scope_args()), request)
 
     def semantic_search(self, request: Mapping[str, Any]) -> dict[str, Any]:
-        """Deprecated legacy fusion search; keeps the ``graph search`` contract."""
-        return self._request_file(("graph", "search", *self._scope_args()), request)
+        """Retired in 0.33.0; refuses before request-file/subprocess access."""
+        raise LbbLocalSearchRetiredError("semantic_search")
 
     def build_embedding_index(self, request: Mapping[str, Any]) -> dict[str, Any]:
-        """Deprecated legacy record index build; not a class embedding declaration."""
-        return self._request_file(
-            ("graph", "embeddings", "build", *self._scope_args()),
-            request,
-        )
+        """Retired in 0.33.0; refuses before request-file/subprocess access."""
+        raise LbbLocalSearchRetiredError("build_embedding_index")
 
     def embedding_index_inspect(self, request: Mapping[str, Any]) -> dict[str, Any]:
-        """Deprecated legacy record index inspection; preserves its CLI output."""
-        return self._request_file(
-            ("graph", "embeddings", "inspect", *self._scope_args()),
-            request,
-        )
+        """Retired in 0.33.0; refuses before request-file/subprocess access."""
+        raise LbbLocalSearchRetiredError("embedding_index_inspect")
 
     def inspect_embedding_index(self, request: Mapping[str, Any]) -> dict[str, Any]:
-        """Deprecated alias of :meth:`embedding_index_inspect`."""
-        return self.embedding_index_inspect(request)
+        """Retired in 0.33.0; refuses before request-file/subprocess access."""
+        raise LbbLocalSearchRetiredError("inspect_embedding_index")
 
     def embedding_search(self, request: Mapping[str, Any]) -> dict[str, Any]:
-        """Deprecated legacy record-vector search; keeps its existing CLI contract."""
-        return self._request_file(
-            ("graph", "embeddings", "search", *self._scope_args()),
-            request,
-        )
+        """Retired in 0.33.0; refuses before request-file/subprocess access."""
+        raise LbbLocalSearchRetiredError("embedding_search")
 
     def current_state(self, request: Mapping[str, Any]) -> dict[str, Any]:
         return self._request_file(("query", "state", *self._scope_args()), request)

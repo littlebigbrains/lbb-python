@@ -32,11 +32,12 @@ def test_public_exports_are_explicit_and_stable() -> None:
         "stable_hash_hex",
         "LbbLocalClient",
         "LbbCommandError",
+        "LbbLocalSearchRetiredError",
     ]
 
 
 def test_package_version_and_primary_clients_are_available() -> None:
-    assert lbb.__version__ == "0.32.0"
+    assert lbb.__version__ == "0.33.0"
     try:
         distribution_version = version("littlebigbrain")
     except PackageNotFoundError:

@@ -291,14 +291,19 @@ The guide is
 
 `LbbLocalClient` runs `lbb-testctl` subprocesses against local storage. Its
 `semantic_search`, `build_embedding_index`, `embedding_index_inspect`,
-`inspect_embedding_index`, and `embedding_search` methods are deprecated for
-new integrations. They use the older records/Base-backed search engine, not
-the class-declared embedding search served by `POST /v1/search`.
+`inspect_embedding_index`, and `embedding_search` methods were retired in
+Python 0.33.0. Their names/signatures remain, but they now raise
+`LbbLocalSearchRetiredError` (`code="legacy_local_search_retired"`) before
+creating a request file or invoking a subprocess. The matching `lbb-testctl`
+accepts legacy arguments only to return `legacy_search_retired` before opening
+storage or reading request files. No automatic compatibility execution or
+fallback is provided.
 
-These methods and their CLI arguments remain unchanged in this release.
-Their removal requires a separately announced SDK/CLI version transition;
-there is no removal version set yet. `LbbLocalClient`'s other methods are
-unaffected by this search deprecation.
+The unchanged-behavior promise in the historical 0.32.0 changelog applies to
+0.32.0. Running those methods requires that SDK **and a matching older
+pre-retirement binary**; pairing 0.32 with a new binary produces a command
+retirement error. Other local methods and current HTTP clients are unchanged.
+Publishing 0.33.0 remains a separate protected release step.
 
 For new local integrations, run `lbb-server` against your local storage and
 connect `LbbClient` or `AsyncLbbClient` to its HTTP endpoint. Declare searchable
