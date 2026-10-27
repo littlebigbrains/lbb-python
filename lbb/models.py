@@ -2204,6 +2204,13 @@ class FileParse(BaseModel):
     """
 
     error: str | None = None
+    ocr_pages: Annotated[
+        int | None,
+        Field(
+            description='The pages that need OCR (`ocr_required` is true on them). Absent\nwhen none does, and for a parse that wrote no page flags.',
+            ge=0,
+        ),
+    ] = None
     page_count: Annotated[int | None, Field(ge=0)] = None
     parsed_at: Annotated[str, Field(description='RFC 3339.')]
     parser: Annotated[
@@ -12881,6 +12888,12 @@ class FilePage(BaseModel):
 
     height: float
     lines: list[FileLine]
+    ocr_required: Annotated[
+        bool | None,
+        Field(
+            description='The page has fewer than 16 characters of text (white space not\ncounted) and images that cover at least 40% of it: a scan, or a page\nof pictures. The parse read almost no text from it, and OCR is not\nbuilt. Absent (false) for every other page, so the pages of a file\nwith a text layer keep their bytes.'
+        ),
+    ] = None
     page: Annotated[int, Field(ge=0)]
     width: float
 
