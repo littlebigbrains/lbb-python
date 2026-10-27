@@ -15,6 +15,14 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   fusion, record vectors and manual builds have no automatic conversion.
   Source/release preparation only; publication remains a separate protected gate.
 
+- `LbbActivities.reason` takes `attempt` (1 to 10). It says which attempt of one
+  reading the call is. A workflow that retries a failed answer sends `2` on its
+  retry, under its own `effect_id`. The call log names it (`attempt` on a
+  `ModelCall` and its row). Send it only on a retry: an older server refuses
+  the field. A test value (`models.WorkflowTestValue`) names `attempt` too
+  (`2` for a value of the retry). `settings.repair` shows the `repair` setting
+  of a `values.extract` test. The `values_extract` example takes
+  `Settings(repair=1)`.
 - `client.evals.experiments` (sync and async) compares two configurations of
   a workflow on a dataset: `create`, `estimate`, `list`, `all`, `get`,
   `cancel` and `wait`. B is the model of one use or a settings revision. The

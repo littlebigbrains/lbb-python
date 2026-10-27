@@ -33,6 +33,19 @@ an earlier version filed as a suggestion keeps working: an accepted one is
 written again, an open one stays the question, and a dismissed one is a
 reject of its value.
 
+With ``repair=1`` (off by default) a reading whose answer fails a check
+without a model (its shape, a missing field, an unknown property, a value
+outside its property's type or unit, a quote that is not in the text) is
+asked for once more: the same input plus the failed checks, which the
+workflow builds from its own checks and never from a label. A property whose
+first value passed keeps it; every other property takes the retry's value
+when it passes the same checks. The retry's values then go through the one
+decision call and the gate, so a repaired value waits for a person as any
+value does. Both calls are in the call log: the retry runs under its own
+effect id and names ``attempt=2``. A retry that fails (a refusal, a provider
+that is busy or down) leaves the first answer; a spent budget waits as in any
+step.
+
 Every model call runs in a step with the step's effect id, so a turn that
 runs again after a crash pays for nothing twice. The write's request id is
 its step's effect id, which no other turn repeats. An instance whose model
@@ -53,7 +66,7 @@ from datetime import datetime
 from typing import Any, Literal
 from urllib.parse import quote as url_quote
 
-from lbb import models, stable_hash_hex
+from lbb import LbbError, models, stable_hash_hex
 from lbb.workflows import (
     FailedInstance,
     LbbActivities,
@@ -97,6 +110,10 @@ class Settings:
     #: The unit of each number property (cm, mm, kg, m2, …), declared in the
     #: ontology by ``ontology()``.
     units: dict[str, str] = field(default_factory=lambda: {"width_cm": "cm", "depth_cm": "cm"})
+    #: Retries after a failed check: 0 (the default) or 1. The retry sends the
+    #: same input and the failed checks; its values pass the same checks and
+    #: gate as any value.
+    repair: Literal[0, 1] = 0
 
 
 DEFAULTS = Settings()
@@ -169,6 +186,8 @@ ZERO: dict[str, int] = {
     "values_proposed": 0,
     **{outcome: 0 for outcome in OUTCOMES},
     "failed": 0,
+    #: Instances whose reading was asked again (``repair=1``).
+    "retried": 0,
     "commits": 0,
     "removed": 0,
 }
@@ -224,6 +243,11 @@ def _text(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+def _string(value: Any) -> str:
+    """A field that is no string reads as empty, as LBB reads it."""
+    return value if isinstance(value, str) else ""
 
 
 def _js_json(value: Any) -> str:
@@ -348,11 +372,12 @@ def check(
     units = units or {}
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
-    for item in values:
-        prop = str(item.get("property") or "")
-        raw = str(item.get("value") or "")
-        stated = str(item.get("unit") or "").strip()
-        quote = str(item.get("quote") or "")
+    for entry in values:
+        item: Mapping[str, Any] = entry if isinstance(entry, Mapping) else {}
+        prop = _string(item.get("property"))
+        raw = _string(item.get("value"))
+        stated = _string(item.get("unit")).strip()
+        quote = _string(item.get("quote"))
         # A number given with its unit in `value` (`600 mm`), against the
         # rules: read the two apart.
         split = None if stated else split_number_unit(raw)
@@ -385,6 +410,88 @@ def check(
             checked["stated_unit"] = _unit_text(stated)
         out.append(checked)
     return out
+
+
+_REQUIRED_FIELDS = ("property", "value", "quote")
+#: Failed checks the retry's request lists at most.
+FAILED_CHECKS_MAX = 8
+#: What the retry's request tells the model, beside the failed checks.
+REPAIR_NOTE = (
+    "Your first answer failed the checks in `failed_checks`. Answer again with the rules above: "
+    "for each property named there, copy the quote exactly from the text and give the value in "
+    "the property's type and unit, or leave the property out when the text does not state it. "
+    "When no property is named, answer for every property the text states."
+)
+
+
+def failed_checks(answer: Any, checked: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """What failed in an answer: its shape, then each value that failed a check of
+    :func:`check` (``checked`` is ``check``'s result for the answer's values). A second
+    value of a property is no failure: the first one stands. The list holds the model's
+    own words and the checks' messages, never a label."""
+    items = answer.get("values") if isinstance(answer, Mapping) else None
+    if not isinstance(items, list):
+        return [
+            {
+                "check": "answer_shape",
+                "message": "the answer is not a JSON object with a `values` list",
+            }
+        ]
+    out: list[dict[str, str]] = []
+    for item, c in zip(items, checked, strict=False):
+        if c["outcome"] not in ("unknown_property", "invalid_value", "quote_not_found"):
+            continue
+        if not isinstance(item, Mapping):
+            out.append(
+                {"check": "answer_shape", "message": "a value of the answer is not an object"}
+            )
+            continue
+        prop = {"property": _chars(c["property"], 80)} if c["property"] else {}
+        missing = [f"`{f}`" for f in _REQUIRED_FIELDS if not isinstance(item.get(f), str)]
+        if missing:
+            out.append(
+                {
+                    "check": "missing_field",
+                    **prop,
+                    "message": f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} missing",
+                }
+            )
+            continue
+        message = (
+            f"`{c['property']}` is not one of the properties to fill"
+            if c["outcome"] == "unknown_property"
+            else c.get("detail", "")
+        )
+        out.append(
+            {
+                "check": c["outcome"],
+                **prop,
+                "message": message,
+                **({"value": _chars(c["value"], 120)} if c["value"] else {}),
+                **({"quote": _chars(c["quote"], 200)} if c["quote"] else {}),
+            }
+        )
+    return out
+
+
+def merge_attempts(
+    first: list[dict[str, Any]], second: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The values of the first attempt and the repair attempt as one list. A property
+    whose first value passed keeps it: every repair value for that property is a
+    ``duplicate``, whatever its checks said. Any other property takes the repair's value.
+    The repair's values stay in the list, marked ``attempt: 2``, with their outcome."""
+    passed = {v["property"] for v in first if "typed" in v}
+    merged = list(first)
+    for v in second:
+        value = {**v, "attempt": 2}
+        if v["property"] in passed:
+            # Without `typed`, so the support call does not ask about it.
+            value.pop("typed", None)
+            value["outcome"] = "duplicate"
+            value["detail"] = "the first attempt's value of this property stands"
+        merged.append(value)
+    return merged
 
 
 def value_item_key(workflow: str, iri: str, prop: str) -> str:
@@ -639,37 +746,78 @@ def create_workflow(lbb: LbbActivities, settings: Settings = DEFAULTS) -> Trigge
                     return {"values": [], "missing": True}
                 if not record.text.strip() or not names:
                     return {"values": []}
-                prompt = _js_json(
-                    {
-                        "class": settings.class_name,
-                        "instance": record.label,
-                        "context": settings.context,
-                        "properties": [
-                            {
-                                "name": name,
-                                "type": type_name(name),
-                                **({"unit": units[name]} if name in units else {}),
-                            }
-                            for name in names
-                        ],
-                        "text": record.text,
-                    }
-                )
-                try:
-                    answer = await lbb.reason(
+                request = {
+                    "class": settings.class_name,
+                    "instance": record.label,
+                    "context": settings.context,
+                    "properties": [
+                        {
+                            "name": name,
+                            "type": type_name(name),
+                            **({"unit": units[name]} if name in units else {}),
+                        }
+                        for name in names
+                    ],
+                    "text": record.text,
+                }
+                repair = settings.repair
+
+                async def ask(prompt: str, effect_id: str, attempt: int, label: str) -> Any:
+                    # Only the retry names its attempt (2): the first call reads
+                    # as attempt 1, and a server that does not know the field is
+                    # never sent it by a workflow that does not retry.
+                    return await lbb.reason(
                         prompt,
                         schema,
                         system=SYSTEM,
                         max_tokens=8_000,
-                        effect_id=s.effect_id,
-                        label=f"{_chars(record.label, 50)} values",
+                        effect_id=effect_id,
+                        label=label,
+                        **({"attempt": attempt} if attempt > 1 else {}),
+                    )
+
+                def read(answer: Any) -> list[dict[str, Any]]:
+                    proposed = (answer or {}).get("values") or []
+                    return check(proposed, settings.properties, record.text, units)
+
+                try:
+                    first = await ask(
+                        _js_json(request),
+                        s.effect_id,
+                        1,
+                        f"{_chars(record.label, 50)} values",
                     )
                 except Exception as error:
                     if not is_activity_refused(error):
                         raise
                     return {"values": [], "failed": str(error)}
-                proposed = (answer.value or {}).get("values") or []
-                return {"values": check(proposed, settings.properties, record.text, units)}
+                values = read(first.value)
+                problems = failed_checks(first.value, values)
+                if repair > 0 and problems:
+                    # One more try: the same input and the failed checks. A
+                    # refused retry leaves the first answer.
+                    try:
+                        retry = await ask(
+                            _js_json(
+                                {
+                                    **request,
+                                    "failed_checks": problems[:FAILED_CHECKS_MAX],
+                                    "repair": REPAIR_NOTE,
+                                }
+                            ),
+                            f"{s.effect_id}.repair",
+                            2,
+                            f"{_chars(record.label, 50)} values (repair)",
+                        )
+                        values = merge_attempts(values, read(retry.value))
+                    except Exception as error:
+                        # A spent budget waits as in any step. Any other failure
+                        # of the retry (a refusal, a provider that is busy or
+                        # down) leaves the first answer.
+                        if isinstance(error, LbbError) and error.code == "workflow_budget_exceeded":
+                            raise
+                    return {"values": values, "retried": True}
+                return {"values": values}
 
             proposed = await ctx.step(f"values-{i}", read_values)
 
@@ -742,7 +890,7 @@ def create_workflow(lbb: LbbActivities, settings: Settings = DEFAULTS) -> Trigge
                     if support is not None:
                         out["support"] = support
                     values.append(out)
-                return {"values": values}
+                return {"values": values, **({"retried": True} if proposed.get("retried") else {})}
 
             reads.append(await ctx.step(f"support-{i}", read_support))
 
@@ -1022,6 +1170,8 @@ def create_workflow(lbb: LbbActivities, settings: Settings = DEFAULTS) -> Trigge
             tally["instances"] += 1
             if "failed" in read:
                 tally["failed"] += 1
+            if read.get("retried"):
+                tally["retried"] += 1
             for v in read["values"]:
                 tally["values_proposed"] += 1
                 if v["outcome"]:

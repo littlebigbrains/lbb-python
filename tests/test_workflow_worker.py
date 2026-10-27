@@ -477,6 +477,34 @@ def test_a_call_in_a_step_names_the_steps_key_also_with_an_id_made_from_it() -> 
     ]
 
 
+def test_a_reason_call_names_its_attempt_only_when_it_is_a_retry() -> None:
+    fake = Fake([task()])
+    answer_activities(fake)
+
+    async def main() -> None:
+        async with fake.client() as client:
+            lbb = lbb_activities(client)
+
+            @workflow(name="counter", version="v1", initial_state={})
+            async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+                async def read(s: WorkflowStepContext) -> None:
+                    await lbb.reason("p", OBJECT, effect_id=s.effect_id)
+                    # The retry runs under its own effect id and names its attempt.
+                    await lbb.reason("p", OBJECT, effect_id=f"{s.effect_id}.repair", attempt=2)
+
+                await ctx.step("read", read)
+                return WorkflowResult(state=state)
+
+            assert await WorkflowWorker(client, [counter], worker="w").run_once()
+
+    asyncio.run(main())
+    asked = [body for path, body in fake.calls if path.endswith("/activities/reason")]
+    # The first call is a plain call: no field an older server would refuse.
+    assert "attempt" not in asked[0]
+    assert (asked[1]["effect_id"], asked[1]["attempt"]) == ("prefix-1/read.repair", 2)
+    assert asked[1]["workflow"]["step"] == "read"
+
+
 def test_a_captures_calls_in_a_step_name_the_step_as_the_live_calls_do() -> None:
     fake = Fake([task()])
     answer_activities(fake)
