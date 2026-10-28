@@ -1348,7 +1348,11 @@ class _Turn:
             await self._fail(
                 _describe(error),
                 non_retryable=retry_at is None
-                and isinstance(error, (WorkflowError, WorkflowExecutionError)),
+                and (
+                    isinstance(error, (WorkflowError, WorkflowExecutionError))
+                    # The server refuses the same commit again.
+                    or (isinstance(error, LbbError) and error.code == "write_outside_owns")
+                ),
                 retry_at_ms=(
                     max(retry_at, _now_ms() + _MIN_WAIT_MS) if retry_at is not None else None
                 ),
