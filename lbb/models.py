@@ -2158,6 +2158,15 @@ class FileCitation(BaseModel):
     subject: str
 
 
+class FileCollision(Enum):
+    """
+    What an upload of a generated file found.
+    """
+
+    retry = 'retry'
+    existing = 'existing'
+
+
 class FileCounts(BaseModel):
     """
     `GET /v1/files/counts`: the graph's files by parse status, counted over
@@ -2196,6 +2205,18 @@ class FileDeleteResponse(BaseModel):
         ),
     ] = None
     sha256: str
+
+
+class FileOrigin(BaseModel):
+    """
+    The run that wrote a generated file.
+    """
+
+    run: Annotated[
+        str, Field(description='The run (one attempt of a turn) that wrote it.')
+    ]
+    step: Annotated[str, Field(description='The step of the run that wrote it.')]
+    workflow: Annotated[str, Field(description='The workflow that wrote the file.')]
 
 
 class FilePagesPutResponse(BaseModel):
@@ -2258,9 +2279,17 @@ class FileRecord(BaseModel):
         ),
     ] = None
     document: Annotated[
-        str,
-        Field(description='The IRI of its `Document` entity (key `file:<sha256>`).'),
-    ]
+        str | None,
+        Field(
+            description='The IRI of its `Document` entity (key `file:<sha256>`). Empty, and so\nabsent on the wire, for a generated file: it has no `Document`.'
+        ),
+    ] = None
+    expires_at: Annotated[
+        str | None,
+        Field(
+            description="RFC 3339 time a generated file expires, on the store's clock. Absent\non a file that does not expire."
+        ),
+    ] = None
     language: Annotated[
         str | None,
         Field(
@@ -2270,6 +2299,7 @@ class FileRecord(BaseModel):
     name: Annotated[
         str, Field(description="The name it was uploaded under (the last upload's).")
     ]
+    origin: FileOrigin | None = None
     parse: FileParse | None = None
     schema_: Annotated[
         str | None,
@@ -2311,6 +2341,7 @@ class FileUploadResponse(BaseModel):
     `POST /v1/files`.
     """
 
+    collision: FileCollision | None = None
     commit_seq: Annotated[
         int | None,
         Field(
