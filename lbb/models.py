@@ -1672,35 +1672,6 @@ class EvalDatasetSourceKind(Enum):
     answer_key = 'answer_key'
 
 
-class EvalExpectedValue(BaseModel):
-    """
-    One value of an item: a value a correct run writes, or, in `leave_out`,
-    one it must not write.
-    """
-
-    accept: Annotated[
-        list[str] | None,
-        Field(description='Other spellings a text value may take, lower case.'),
-    ] = None
-    property: str
-    quote: Annotated[
-        str | None, Field(description='Words of the text that state the value.')
-    ] = None
-    reason: Annotated[str | None, Field(description='Why a value is left out.')] = None
-    stated: Annotated[
-        str | None,
-        Field(
-            description='The number and unit as the text states them, when the property holds\nanother unit: `450 mm` for a `width_cm` of 45.'
-        ),
-    ] = None
-    value: Annotated[
-        Any,
-        Field(
-            description='The value: numbers compare as numbers, text in lower case and trimmed\nagainst `accept`. In `leave_out`, null means no value at all for the\nproperty.'
-        ),
-    ]
-
-
 class EvalExperimentApplied(BaseModel):
     """
     A person applied B.
@@ -1870,6 +1841,15 @@ class EvalExperimentWorkflow(BaseModel):
         str, Field(description='When the workflow was created, RFC 3339.')
     ]
     name: str
+
+
+class EvalGradeSourceKind(Enum):
+    """
+    The kind of the answer that gave a label.
+    """
+
+    test = 'test'
+    review = 'review'
 
 
 class EvalItem(BaseModel):
@@ -6417,6 +6397,7 @@ class ReviewEvalOriginKind(Enum):
     calibration = 'calibration'
     test = 'test'
     golden = 'golden'
+    dataset = 'dataset'
     unknown = 'unknown'
 
 
@@ -12764,7 +12745,9 @@ class EvalExperimentReport(BaseModel):
     items: Annotated[int, Field(description='Items compared.', ge=0)]
     labels_etag: Annotated[
         str | None,
-        Field(description="The etag of the dataset's items it was scored with."),
+        Field(
+            description="What it was scored with: the etag of the dataset's items, `#g` and the\ngrader's version (`…#g2`). A change of either makes the report stale."
+        ),
     ] = None
     outcome: Annotated[
         ModelTrialOutcome,
@@ -12788,6 +12771,17 @@ class EvalExperimentReport(BaseModel):
         list[EvalExperimentUnlabeled] | None,
         Field(description='Values of unlabeled properties on which the arms differ.'),
     ] = None
+
+
+class EvalGradeSource(BaseModel):
+    """
+    The answer that gave a label: its kind, the test (`wtest_…`) or review
+    item (`rev_…`) it was given on, and the time of the answer.
+    """
+
+    at: Annotated[str, Field(description='When the person answered, RFC 3339.')]
+    id: str
+    kind: EvalGradeSourceKind
 
 
 class EvalLabel(BaseModel):
@@ -15863,18 +15857,27 @@ class ReviewEffects(BaseModel):
 
 class ReviewEvalOrigin(BaseModel):
     """
-    A model check, a calibration session, a golden query or a test that
-    filed an item: the record that holds the answer as a label.
+    A model check, a calibration session, a golden query, a test or an
+    experiment that filed an item: the record that holds the answer as a
+    label.
     """
 
     id: Annotated[
         str,
-        Field(description="The record: a check's call id, a session id, a golden id."),
+        Field(
+            description="The record: a check's call id, a session id, a golden id, a dataset id."
+        ),
     ]
+    item: Annotated[
+        str | None, Field(description="A dataset item's name (`id` is the dataset).")
+    ] = None
     job: Annotated[
         str | None, Field(description="A check's job (`rerank`, `route`, …).")
     ] = None
     kind: ReviewEvalOriginKind
+    property: Annotated[
+        str | None, Field(description='The property a dataset item grades a value of.')
+    ] = None
     question: Annotated[
         str | None,
         Field(description="A calibration question's id in its session (`q3`)."),
@@ -15885,10 +15888,22 @@ class ReviewEvalOrigin(BaseModel):
             description="A golden item's result id. Absent: the item asks about the answer of\nthe question as a whole."
         ),
     ] = None
+    stated: Annotated[
+        str | None,
+        Field(
+            description="The value as the arm's text stated it (`600 mm`), when it differs."
+        ),
+    ] = None
     trace: Annotated[
         str | None,
         Field(
             description="A golden item's trace: the one it was filed from, which its label\ngoes to."
+        ),
+    ] = None
+    value: Annotated[
+        str | None,
+        Field(
+            description='The value a dataset item grades in its canonical form: a number in\nits shortest form, a boolean as `true` or `false`, text trimmed and\nin lower case.'
         ),
     ] = None
 
@@ -18474,54 +18489,34 @@ class EntityRdfRelations(BaseModel):
     outgoing_truncation: TruncatedCollection | None = None
 
 
-class EvalDatasetItem(BaseModel):
+class EvalExpectedValue(BaseModel):
     """
-    One example of a `values` dataset.
+    One value of an item: a value a correct run writes, or, in `leave_out`,
+    one it must not write.
     """
 
-    case: Annotated[
-        str | None, Field(description='What the example shows, in one sentence.')
+    accept: Annotated[
+        list[str] | None,
+        Field(description='Other spellings a text value may take, lower case.'),
     ] = None
-    iri: Annotated[
+    property: str
+    quote: Annotated[
+        str | None, Field(description='Words of the text that state the value.')
+    ] = None
+    reason: Annotated[str | None, Field(description='Why a value is left out.')] = None
+    source: EvalGradeSource | None = None
+    stated: Annotated[
         str | None,
         Field(
-            description='The instance the input was read from, when it came from a graph.'
+            description='The number and unit as the text states them, when the property holds\nanother unit: `450 mm` for a `width_cm` of 45.'
         ),
     ] = None
-    leave_out: Annotated[
-        list[EvalExpectedValue] | None,
-        Field(description='Values a correct run does not write.'),
-    ] = None
-    name: Annotated[
-        str,
+    value: Annotated[
+        Any,
         Field(
-            description="The input's name: a record name or label, unique in the dataset."
+            description='The value: numbers compare as numbers, text in lower case and trimmed\nagainst `accept`. In `leave_out`, null means no value at all for the\nproperty.'
         ),
     ]
-    source: EvalDatasetSource | None = None
-    text: Annotated[
-        str | None,
-        Field(
-            description="The input text, at most 40,000 characters. A write needs it; the\n`expected.records` of an export leave it out, because `records`\nholds it, as a template's `records.json` does."
-        ),
-    ] = None
-    values: Annotated[
-        list[EvalExpectedValue] | None,
-        Field(description='Values a correct run writes.'),
-    ] = None
-
-
-class EvalDatasetItemsRequest(BaseModel):
-    """
-    `POST /v1/evals/datasets/items`: add items to the dataset `id`. An item
-    with the name of an item the dataset has replaces it in its place.
-    """
-
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    id: str
-    items: list[EvalDatasetItem]
 
 
 class EvalExperiment(BaseModel):
@@ -21135,89 +21130,54 @@ class EntityPropertiesInput(BaseModel):
     type: str
 
 
-class EvalDataset(BaseModel):
+class EvalDatasetItem(BaseModel):
     """
-    An Evals dataset: a name, a kind, the settings it is graded with, and
-    its items. It belongs to a graph and is erased with it.
+    One example of a `values` dataset.
     """
 
-    about: Annotated[
-        list[str] | None,
+    case: Annotated[
+        str | None, Field(description='What the example shows, in one sentence.')
+    ] = None
+    iri: Annotated[
+        str | None,
         Field(
-            description='What the dataset is, in sentences, as an answer key has it.'
+            description='The instance the input was read from, when it came from a graph.'
         ),
     ] = None
-    created: Annotated[str, Field(description='RFC 3339, UTC.')]
-    id: Annotated[str, Field(description='`ds_` and an opaque suffix.')]
-    install: EvalDatasetInstall | None = None
-    item_count: Annotated[int, Field(ge=0)]
-    items: Annotated[
-        list[EvalDatasetItem] | None,
+    leave_out: Annotated[
+        list[EvalExpectedValue] | None,
+        Field(description='Values a correct run does not write.'),
+    ] = None
+    name: Annotated[
+        str,
         Field(
-            description='The items, in the order they were added. A list leaves them out.'
+            description="The input's name: a record name or label, unique in the dataset."
+        ),
+    ]
+    source: EvalDatasetSource | None = None
+    text: Annotated[
+        str | None,
+        Field(
+            description="The input text, at most 40,000 characters. A write needs it; the\n`expected.records` of an export leave it out, because `records`\nholds it, as a template's `records.json` does."
         ),
     ] = None
-    kind: EvalDatasetKind
-    name: str
-    object: Annotated[str, Field(description='`eval_dataset`.')]
+    values: Annotated[
+        list[EvalExpectedValue] | None,
+        Field(description='Values a correct run writes.'),
+    ] = None
 
 
-class EvalDatasetCreateRequest(BaseModel):
+class EvalDatasetItemsRequest(BaseModel):
     """
-    `POST /v1/evals/datasets`: create a dataset with its first items, or
-    from a source: `source: {kind: "test", id}` makes the answers of that
-    workflow test the items, and its settings the `install`. A test has one
-    dataset (the test's `dataset`): a save of a test whose dataset exists
-    brings that dataset up to date and answers it.
+    `POST /v1/evals/datasets/items`: add items to the dataset `id`. An item
+    with the name of an item the dataset has replaces it in its place.
     """
 
     model_config = ConfigDict(
         extra='forbid',
     )
-    about: list[str] | None = None
-    install: EvalDatasetInstall | None = None
-    items: list[EvalDatasetItem] | None = None
-    kind: EvalDatasetKind
-    name: str
-    source: EvalDatasetSource | None = None
-
-
-class EvalDatasetExpected(BaseModel):
-    """
-    `expected.json` of an export: the answer key. Its `records` are the
-    items without their text and instance, which `records.json` holds.
-    """
-
-    about: list[str] | None = None
-    install: EvalDatasetInstall
-    records: list[EvalDatasetItem]
-
-
-class EvalDatasetExport(BaseModel):
-    """
-    A dataset in the files of a template's samples: the inputs
-    (`records.json`) and the answer key (`expected.json`).
-    """
-
-    expected: EvalDatasetExpected
-    records: list[EvalDatasetRecord]
-
-
-class EvalDatasetList(BaseModel):
-    """
-    `GET /v1/evals/datasets`: the graph's datasets, newest first, without
-    their items.
-    """
-
-    data: list[EvalDataset]
-    has_more: bool
-    next_cursor: Annotated[
-        str | None,
-        Field(
-            description='Pass as `cursor` for the next page; absent on the last page.'
-        ),
-    ] = None
-    object: Annotated[str, Field(description='`list`.')]
+    id: str
+    items: list[EvalDatasetItem]
 
 
 class EvalRunAnswer(BaseModel):
@@ -21912,6 +21872,91 @@ class DiscoveryApproval(BaseModel):
     mapping: MappingPlan
     request: DiscoveryApprovalRequest
     scope: CaptureScope
+
+
+class EvalDataset(BaseModel):
+    """
+    An Evals dataset: a name, a kind, the settings it is graded with, and
+    its items. It belongs to a graph and is erased with it.
+    """
+
+    about: Annotated[
+        list[str] | None,
+        Field(
+            description='What the dataset is, in sentences, as an answer key has it.'
+        ),
+    ] = None
+    created: Annotated[str, Field(description='RFC 3339, UTC.')]
+    id: Annotated[str, Field(description='`ds_` and an opaque suffix.')]
+    install: EvalDatasetInstall | None = None
+    item_count: Annotated[int, Field(ge=0)]
+    items: Annotated[
+        list[EvalDatasetItem] | None,
+        Field(
+            description='The items, in the order they were added. A list leaves them out.'
+        ),
+    ] = None
+    kind: EvalDatasetKind
+    name: str
+    object: Annotated[str, Field(description='`eval_dataset`.')]
+
+
+class EvalDatasetCreateRequest(BaseModel):
+    """
+    `POST /v1/evals/datasets`: create a dataset with its first items, or
+    from a source: `source: {kind: "test", id}` makes the answers of that
+    workflow test the items, and its settings the `install`. A test has one
+    dataset (the test's `dataset`): a save of a test whose dataset exists
+    brings that dataset up to date and answers it.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    about: list[str] | None = None
+    install: EvalDatasetInstall | None = None
+    items: list[EvalDatasetItem] | None = None
+    kind: EvalDatasetKind
+    name: str
+    source: EvalDatasetSource | None = None
+
+
+class EvalDatasetExpected(BaseModel):
+    """
+    `expected.json` of an export: the answer key. Its `records` are the
+    items without their text and instance, which `records.json` holds.
+    """
+
+    about: list[str] | None = None
+    install: EvalDatasetInstall
+    records: list[EvalDatasetItem]
+
+
+class EvalDatasetExport(BaseModel):
+    """
+    A dataset in the files of a template's samples: the inputs
+    (`records.json`) and the answer key (`expected.json`).
+    """
+
+    expected: EvalDatasetExpected
+    records: list[EvalDatasetRecord]
+
+
+class EvalDatasetList(BaseModel):
+    """
+    `GET /v1/evals/datasets`: the graph's datasets, newest first, without
+    their items.
+    """
+
+    data: list[EvalDataset]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; absent on the last page.'
+        ),
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
 
 
 class EvalJudgeResponse(BaseModel):

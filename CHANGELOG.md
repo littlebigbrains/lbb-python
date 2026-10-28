@@ -23,6 +23,15 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   fusion, record vectors and manual builds have no automatic conversion.
   Source/release preparation only; publication remains a separate protected gate.
 
+- `models.ReviewEvalOrigin` has the kind `dataset` and the fields `item`,
+  `property`, `value` and `stated`. An experiment files these review items
+  for the values its arms differ on and the dataset does not label. Filter
+  them with `client.reviews.list(origin_id="evals:datasets", eval_id=...)`. A
+  label of a dataset item (`models.EvalExpectedValue`) has an optional
+  `source` (`models.EvalGradeSource`: `kind` `test` or `review`, `id`, `at`).
+  Send it back as read, or leave it out. The server keeps the latest answer
+  of a person.
+
 - Add sync/async `client.records.commit` and `commit_model`, including graph scope, with explicit keys, strict `records/1`, capability preflight, fixed retry bytes and original receipt validation. No graph activation/conversion or legacy commit change.
 
 - `FilePage.ocr_required` and `FileParse.ocr_pages` (generated models): a page
