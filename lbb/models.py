@@ -3070,6 +3070,100 @@ class GraphWorkflowCleanup(BaseModel):
     retains_source_terminals: bool
 
 
+class GroundCode(Enum):
+    """
+    Why an item is not grounded: the first of the checks it fails.
+    """
+
+    upload_changed = 'upload_changed'
+    source_generated = 'source_generated'
+    locator_invalid = 'locator_invalid'
+    quote_not_found = 'quote_not_found'
+    quote_too_short = 'quote_too_short'
+    unknown_property = 'unknown_property'
+    invalid_value = 'invalid_value'
+    unit_unconfirmed = 'unit_unconfirmed'
+    scan_budget = 'scan_budget'
+
+
+class GroundFile(BaseModel):
+    """
+    The file of a proposal: its identity and the upload that was read.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    sha256: Annotated[
+        str, Field(description='The SHA-256 of the bytes, 64 hexadecimal characters.')
+    ]
+    uploaded_at: Annotated[
+        str,
+        Field(
+            description='The `uploaded_at` of the file record the proposal read. A delete and\na new upload of the same bytes change it.'
+        ),
+    ]
+
+
+class GroundItem(BaseModel):
+    """
+    One value a model proposes, with the place in a file that states it.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    file: Annotated[
+        GroundFile,
+        Field(
+            description='The file that states the value, and the upload the proposal read.'
+        ),
+    ]
+    locator: Annotated[
+        str,
+        Field(
+            description='The place in the file: `page=N` for a parsed PDF (from 1), `line=a,b`\nfor text and Markdown (RFC 5147: `line=39,44` is lines 40 to 44),\n`row=a-b` or `row=n` for CSV and TSV (RFC 7111: from 1, the header is\nrow 1).'
+        ),
+    ]
+    property: Annotated[
+        str,
+        Field(
+            description='The IRI of the property (`https://littlebigbrain.com/p/width_cm`).'
+        ),
+    ]
+    quote: Annotated[
+        str,
+        Field(description='The words of the file at that place that state the value.'),
+    ]
+    subject: Annotated[
+        str, Field(description='The IRI of the entity the value belongs to.')
+    ]
+    unit: Annotated[
+        str | None,
+        Field(
+            description='The unit the text states a number in, as a symbol or a name (`mm`).\nAt most 24 bytes. Empty or absent when the text states none or the\nvalue is no number.'
+        ),
+    ] = None
+    value: Annotated[
+        str,
+        Field(
+            description='The value, a number as the text states it (`600`). At most 100 bytes.'
+        ),
+    ]
+
+
+class GroundReason(Enum):
+    """
+    Why a locator is not valid (`locator_invalid`).
+    """
+
+    malformed = 'malformed'
+    unsupported_media_type = 'unsupported_media_type'
+    wrong_media_type = 'wrong_media_type'
+    out_of_range = 'out_of_range'
+    file_not_parsed = 'file_not_parsed'
+
+
 class GroundabilityRecommendation(Enum):
     narrow_finetune = 'narrow+finetune'
     narrow = 'narrow'
@@ -13810,6 +13904,91 @@ class GraphWarmCacheResponse(BaseModel):
     snapshot: SnapshotView
 
 
+class GroundActivityRequest(BaseModel):
+    """
+    `POST /v1/workflows/activities/ground`: the proposals to check.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    items: Annotated[
+        list[GroundItem],
+        Field(description='1 to 16 proposals, from at most 8 distinct files.'),
+    ]
+
+
+class GroundEvidence(BaseModel):
+    """
+    What a verified quote shows of its file.
+    """
+
+    quote: Annotated[
+        str,
+        Field(
+            description='The quote as the file holds it: white space folded to single spaces,\nat most 600 characters.'
+        ),
+    ]
+    region: WorkflowTestRegion | None = None
+    source_id: Annotated[
+        str,
+        Field(
+            description="The file's `Document` IRI with the fragment of the locator\n(`…/e/41ab…#page=3`)."
+        ),
+    ]
+    source_sha256: Annotated[
+        str, Field(description='The SHA-256 of the file the quote was verified in.')
+    ]
+    uploaded_at: Annotated[
+        str,
+        Field(
+            description='The `uploaded_at` the quote was verified at: the content stamp.'
+        ),
+    ]
+
+
+class GroundResult(BaseModel):
+    """
+    The verdict on one item.
+    """
+
+    code: GroundCode | None = None
+    evidence: GroundEvidence | None = None
+    message: Annotated[
+        str | None,
+        Field(
+            description='What failed, in words, at most 200 bytes. Absent when `ok`.'
+        ),
+    ] = None
+    ok: Annotated[
+        bool, Field(description='True when the item is grounded: every check passed.')
+    ]
+    quote_verified: Annotated[
+        bool | None,
+        Field(
+            description='The quote result: true when the quote passed its check (it is in the\ntext at the locator, and has three words or holds the value), false\nwhen it did not. Absent when a check before it failed\n(`upload_changed`, `locator_invalid`, `scan_budget`).'
+        ),
+    ] = None
+    reason: GroundReason | None = None
+    stated: Annotated[
+        str | None,
+        Field(
+            description="The number and unit as the text states them (`600 mm`), when they\nwere converted to the property's unit."
+        ),
+    ] = None
+    value: (
+        PropertyValueInput1
+        | PropertyValueInput2
+        | PropertyValueInput3
+        | PropertyValueInput4
+        | PropertyValueInput5
+        | PropertyValueInput6
+        | PropertyValueInput7
+        | PropertyValueInput8
+        | None
+    ) = None
+
+
 class GroundabilityReport(BaseModel):
     """
     WS13 — a graph's self-reported groundability: per graph, which completion
@@ -19122,6 +19301,17 @@ class GraphImportJobStatus(BaseModel):
     publication_job: GraphImportPublishedGenerationOutcome | None = None
     state: GraphImportJobState
     updated_at_micros: int
+
+
+class GroundActivityResponse(BaseModel):
+    """
+    The verdicts of a ground request.
+    """
+
+    results: Annotated[
+        list[GroundResult],
+        Field(description='One verdict per item, in the order of the items.'),
+    ]
 
 
 class HybridMultiSearchResponse(BaseModel):
