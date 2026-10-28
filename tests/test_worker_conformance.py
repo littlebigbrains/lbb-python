@@ -439,5 +439,5 @@ def test_scenario(path: Path) -> None:
 
 def test_the_suite_covers_the_named_rules() -> None:
     names = {path.stem for path in SCENARIOS}
-    for rule in ("replay", "lease", "fence", "wait", "fan-in", "signal", "timeout", "review", "captured"):
+    for rule in ("replay", "lease", "fence", "wait", "fan-in", "signal", "timeout", "review", "captured", "owns"):
         assert any(rule in name for name in names), rule
