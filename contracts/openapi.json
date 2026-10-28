@@ -8367,6 +8367,17 @@
               "null"
             ]
           },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalGradeSource",
+                "description": "Who gave the label and when: a test's answer, or an answer to a\nreview item. The latest human answer wins. A label without a source\nis an answer key's, a person's add, or older data."
+              }
+            ]
+          },
           "stated": {
             "description": "The number and unit as the text states them, when the property holds\nanother unit: `450 mm` for a `width_cm` of 45.",
             "type": [
@@ -8982,7 +8993,7 @@
             "type": "integer"
           },
           "labels_etag": {
-            "description": "The etag of the dataset's items it was scored with.",
+            "description": "What it was scored with: the etag of the dataset's items, `#g` and the\ngrader's version (`…#g2`). A change of either makes the report stale.",
             "type": [
               "string",
               "null"
@@ -9078,6 +9089,35 @@
           "created"
         ],
         "type": "object"
+      },
+      "EvalGradeSource": {
+        "description": "The answer that gave a label: its kind, the test (`wtest_…`) or review\nitem (`rev_…`) it was given on, and the time of the answer.",
+        "properties": {
+          "at": {
+            "description": "When the person answered, RFC 3339.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EvalGradeSourceKind"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "at"
+        ],
+        "type": "object"
+      },
+      "EvalGradeSourceKind": {
+        "description": "The kind of the answer that gave a label.",
+        "enum": [
+          "test",
+          "review"
+        ],
+        "type": "string"
       },
       "EvalItem": {
         "description": "One result of a query: a hit of a search, or a row of a SPARQL query.",
@@ -28210,11 +28250,18 @@
         "type": "object"
       },
       "ReviewEvalOrigin": {
-        "description": "A model check, a calibration session, a golden query or a test that\nfiled an item: the record that holds the answer as a label.",
+        "description": "A model check, a calibration session, a golden query, a test or an\nexperiment that filed an item: the record that holds the answer as a\nlabel.",
         "properties": {
           "id": {
-            "description": "The record: a check's call id, a session id, a golden id.",
+            "description": "The record: a check's call id, a session id, a golden id, a dataset id.",
             "type": "string"
+          },
+          "item": {
+            "description": "A dataset item's name (`id` is the dataset).",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "job": {
             "description": "A check's job (`rerank`, `route`, …).",
@@ -28225,6 +28272,13 @@
           },
           "kind": {
             "$ref": "#/components/schemas/ReviewEvalOriginKind"
+          },
+          "property": {
+            "description": "The property a dataset item grades a value of.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "question": {
             "description": "A calibration question's id in its session (`q3`).",
@@ -28240,8 +28294,22 @@
               "null"
             ]
           },
+          "stated": {
+            "description": "The value as the arm's text stated it (`600 mm`), when it differs.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "trace": {
             "description": "A golden item's trace: the one it was filed from, which its label\ngoes to.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "description": "The value a dataset item grades in its canonical form: a number in\nits shortest form, a boolean as `true` or `false`, text trimmed and\nin lower case.",
             "type": [
               "string",
               "null"
@@ -28261,6 +28329,7 @@
           "calibration",
           "test",
           "golden",
+          "dataset",
           "unknown"
         ],
         "type": "string"

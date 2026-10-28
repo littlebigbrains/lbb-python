@@ -2,7 +2,7 @@
   "about": [
     "The cases every grader of extracted values runs: grading.ts here, the copy of the Python tests (sdk/python/tests/value_grading.py) and lbb-server's experiment score. Each grader must give the expected counts and grades.",
     "items grade one item: its labels (values, leave_out), the values written (written) and sent to review (review), by property. runs grade several records with grade().",
-    "The rules: docs/architecture/experiments.md, Scoring. A number matches by value (only the digits 0 to 9 make a number); a text matches the value or one of accept, trimmed and in lower case (a written null is the text null). A written value of a property the item does not label is unlabeled and counts in no score. Labels of one property in values are alternatives. A null in values labels nothing; a null in leave_out means no value at all. A value sent to review is not written."
+    "The rules: docs/architecture/experiments.md, Scoring. A number matches by value (only the digits 0 to 9 make a number); a text matches the value or one of accept, trimmed and in lower case (a written null is the text null). A written value of a property the item does not label is unlabeled and counts in no score. Labels of one property in values are alternatives. A null in values labels nothing; a null in leave_out means no value at all. A property with only leave_out rows of values judges those values (wrong) and leaves any other value unlabeled. A value sent to review is not written."
   ],
   "items": [
     {
@@ -92,11 +92,42 @@
       "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
     },
     {
-      "case": "leave_out alone labels its property: another value of it is wrong too.",
+      "case": "leave_out alone judges the value it names: that value is wrong.",
+      "values": [],
+      "leave_out": [{ "property": "width_cm", "value": 90 }],
+      "written": { "width_cm": "90" },
+      "expect": { "correct": 0, "wrong": 1, "missed": 0, "unlabeled": 0, "review": 0, "precision": 0, "recall": 1, "score": 0 }
+    },
+    {
+      "case": "leave_out alone judges no other value: another value of the property is unlabeled.",
       "values": [],
       "leave_out": [{ "property": "width_cm", "value": 90 }],
       "written": { "width_cm": 80 },
-      "expect": { "correct": 0, "wrong": 1, "missed": 0, "unlabeled": 0, "review": 0, "precision": 0, "recall": 1, "score": 0 }
+      "expect": { "correct": 0, "wrong": 0, "missed": 0, "unlabeled": 1, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "A leave_out text names its accept spellings too; another value is unlabeled.",
+      "values": [],
+      "leave_out": [
+        { "property": "material", "value": "oak", "accept": ["eiche"] },
+        { "property": "width_cm", "value": 90 }
+      ],
+      "written": { "material": " Eiche ", "width_cm": 80 },
+      "expect": { "correct": 0, "wrong": 1, "missed": 0, "unlabeled": 1, "review": 0, "precision": 0, "recall": 1, "score": 0 }
+    },
+    {
+      "case": "A null in values labels nothing: leave_out alone still judges only its value.",
+      "values": [{ "property": "width_cm", "value": null }],
+      "leave_out": [{ "property": "width_cm", "value": 90 }],
+      "written": { "width_cm": 80 },
+      "expect": { "correct": 0, "wrong": 0, "missed": 0, "unlabeled": 1, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "A label in values and a leave_out value: a third value is wrong.",
+      "values": [{ "property": "material", "value": "oak veneer" }],
+      "leave_out": [{ "property": "material", "value": "steel" }],
+      "written": { "material": "beech" },
+      "expect": { "correct": 0, "wrong": 1, "missed": 1, "unlabeled": 0, "review": 0, "precision": 0, "recall": 0, "score": 0 }
     },
     {
       "case": "A value of a property the item does not label is unlabeled, in no score.",

@@ -9,7 +9,8 @@ number matches by value; a text matches the value or one of ``accept``,
 trimmed and in lower case; a value of a property the labels do not name is
 unlabeled and counts in no grade; labels of one property in ``values`` are
 alternatives; a null in ``values`` labels nothing, and a null in
-``leave_out`` means no value at all.
+``leave_out`` means no value at all; a property with only ``leave_out`` rows
+of values judges those values (wrong) and leaves any other value unlabeled.
 """
 
 from __future__ import annotations
@@ -64,6 +65,9 @@ def _judge(labels: dict[str, Any], prop: str, got: Any) -> str:
         return "unlabeled"
     if any(w["value"] is None or matches(got, w) for w in left):
         return "wrong"
+    if not wanted:
+        # Only ``leave_out`` rows of values judge those values: any other value is not labeled.
+        return "unlabeled"
     return "correct" if any(matches(got, w) for w in wanted) else "wrong"
 
 
