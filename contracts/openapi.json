@@ -10872,6 +10872,14 @@
         ],
         "type": "object"
       },
+      "FileCollision": {
+        "description": "What an upload of a generated file found.",
+        "enum": [
+          "retry",
+          "existing"
+        ],
+        "type": "string"
+      },
       "FileCounts": {
         "description": "`GET /v1/files/counts`: the graph's files by parse status, counted over\nthe `Document` entities of the published generation.",
         "properties": {
@@ -10993,6 +11001,29 @@
         },
         "required": [
           "files"
+        ],
+        "type": "object"
+      },
+      "FileOrigin": {
+        "description": "The run that wrote a generated file.",
+        "properties": {
+          "run": {
+            "description": "The run (one attempt of a turn) that wrote it.",
+            "type": "string"
+          },
+          "step": {
+            "description": "The step of the run that wrote it.",
+            "type": "string"
+          },
+          "workflow": {
+            "description": "The workflow that wrote the file.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow",
+          "run",
+          "step"
         ],
         "type": "object"
       },
@@ -11211,8 +11242,15 @@
             ]
           },
           "document": {
-            "description": "The IRI of its `Document` entity (key `file:<sha256>`).",
+            "description": "The IRI of its `Document` entity (key `file:<sha256>`). Empty, and so\nabsent on the wire, for a generated file: it has no `Document`.",
             "type": "string"
+          },
+          "expires_at": {
+            "description": "RFC 3339 time a generated file expires, on the store's clock. Absent\non a file that does not expire.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "language": {
             "description": "The natural language of the content, a BCP 47 tag such as `en` or\n`de-CH`.",
@@ -11224,6 +11262,17 @@
           "name": {
             "description": "The name it was uploaded under (the last upload's).",
             "type": "string"
+          },
+          "origin": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FileOrigin",
+                "description": "Where a generated file came from. Present only on a file a workflow\nrun wrote (`docs/architecture/file-outputs.md`); every file a person\nor a stack key uploaded lacks it. Only the upload that creates the\nrecord sets it. A file with an origin is never evidence\n([`source_generated`])."
+              }
+            ]
           },
           "parse": {
             "oneOf": [
@@ -11256,8 +11305,7 @@
           "name",
           "content_type",
           "bytes",
-          "uploaded_at",
-          "document"
+          "uploaded_at"
         ],
         "type": "object"
       },
@@ -11421,6 +11469,17 @@
       "FileUploadResponse": {
         "description": "`POST /v1/files`.",
         "properties": {
+          "collision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FileCollision",
+                "description": "Why a generated-file upload created nothing: it met a live record.\nAbsent when the upload created the record, and on every plain upload."
+              }
+            ]
+          },
           "commit_seq": {
             "description": "The commit that wrote the `Document` entity (absent when nothing\nchanged).",
             "format": "int64",

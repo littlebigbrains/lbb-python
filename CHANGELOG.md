@@ -9,6 +9,14 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   `download` and `head`). The SDK reads bytes and is not affected. A page of
   yours that shows a file in an iframe or a link now downloads it.
 
+- The generated `FileRecord` model has the optional fields `origin`
+  (`FileOrigin`: `workflow`, `run`, `step`) and `expires_at`. Its `document`
+  is now optional: a file that a workflow run wrote has no `Document`, so the
+  server leaves the field out. Earlier versions of this SDK require `document`
+  and cannot read the record of such a file. `FileUploadResponse` has the
+  optional `collision` (`FileCollision`: `retry` or `existing`). No route
+  writes such a file yet.
+
 - The generated models add `RdfImportResponse`, `RdfImportCommitResult`,
   `RdfImportCommitReceipt`, `RdfImportCommitProjection` and
   `RdfImportCommitObject`. They describe the response of
