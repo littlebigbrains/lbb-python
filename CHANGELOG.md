@@ -4,6 +4,12 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased — 0.33.0
 
+- The generated models add `GroundActivityRequest`, `GroundItem`, `GroundFile`,
+  `GroundResult`, `GroundEvidence`, `GroundActivityResponse`, `GroundCode` and
+  `GroundReason`. They describe `POST /v1/workflows/activities/ground`, which
+  checks values that a model proposes against the files they come from. The
+  answer has one verdict per item. No helper calls the route yet.
+
 - The server sends `X-Content-Type-Options: nosniff` and
   `Content-Disposition: attachment` with the bytes of a file (`content`,
   `download` and `head`). The SDK reads bytes and is not affected. A page of

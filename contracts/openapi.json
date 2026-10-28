@@ -15064,6 +15064,247 @@
         ],
         "type": "object"
       },
+      "GroundActivityRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/workflows/activities/ground`: the proposals to check.",
+        "properties": {
+          "items": {
+            "description": "1 to 16 proposals, from at most 8 distinct files.",
+            "items": {
+              "$ref": "#/components/schemas/GroundItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "GroundActivityResponse": {
+        "description": "The verdicts of a ground request.",
+        "properties": {
+          "results": {
+            "description": "One verdict per item, in the order of the items.",
+            "items": {
+              "$ref": "#/components/schemas/GroundResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "type": "object"
+      },
+      "GroundCode": {
+        "description": "Why an item is not grounded: the first of the checks it fails.",
+        "enum": [
+          "upload_changed",
+          "source_generated",
+          "locator_invalid",
+          "quote_not_found",
+          "quote_too_short",
+          "unknown_property",
+          "invalid_value",
+          "unit_unconfirmed",
+          "scan_budget"
+        ],
+        "type": "string"
+      },
+      "GroundEvidence": {
+        "description": "What a verified quote shows of its file.",
+        "properties": {
+          "quote": {
+            "description": "The quote as the file holds it: white space folded to single spaces,\nat most 600 characters.",
+            "type": "string"
+          },
+          "region": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowTestRegion",
+                "description": "For a PDF page, the box of the lines that hold the quote."
+              }
+            ]
+          },
+          "source_id": {
+            "description": "The file's `Document` IRI with the fragment of the locator\n(`…/e/41ab…#page=3`).",
+            "type": "string"
+          },
+          "source_sha256": {
+            "description": "The SHA-256 of the file the quote was verified in.",
+            "type": "string"
+          },
+          "uploaded_at": {
+            "description": "The `uploaded_at` the quote was verified at: the content stamp.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "quote",
+          "uploaded_at",
+          "source_sha256"
+        ],
+        "type": "object"
+      },
+      "GroundFile": {
+        "additionalProperties": false,
+        "description": "The file of a proposal: its identity and the upload that was read.",
+        "properties": {
+          "sha256": {
+            "description": "The SHA-256 of the bytes, 64 hexadecimal characters.",
+            "type": "string"
+          },
+          "uploaded_at": {
+            "description": "The `uploaded_at` of the file record the proposal read. A delete and\na new upload of the same bytes change it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "uploaded_at"
+        ],
+        "type": "object"
+      },
+      "GroundItem": {
+        "additionalProperties": false,
+        "description": "One value a model proposes, with the place in a file that states it.",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/GroundFile",
+            "description": "The file that states the value, and the upload the proposal read."
+          },
+          "locator": {
+            "description": "The place in the file: `page=N` for a parsed PDF (from 1), `line=a,b`\nfor text and Markdown (RFC 5147: `line=39,44` is lines 40 to 44),\n`row=a-b` or `row=n` for CSV and TSV (RFC 7111: from 1, the header is\nrow 1).",
+            "type": "string"
+          },
+          "property": {
+            "description": "The IRI of the property (`https://littlebigbrain.com/p/width_cm`).",
+            "type": "string"
+          },
+          "quote": {
+            "description": "The words of the file at that place that state the value.",
+            "type": "string"
+          },
+          "subject": {
+            "description": "The IRI of the entity the value belongs to.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "The unit the text states a number in, as a symbol or a name (`mm`).\nAt most 24 bytes. Empty or absent when the text states none or the\nvalue is no number.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "description": "The value, a number as the text states it (`600`). At most 100 bytes.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "property",
+          "value",
+          "file",
+          "locator",
+          "quote"
+        ],
+        "type": "object"
+      },
+      "GroundReason": {
+        "description": "Why a locator is not valid (`locator_invalid`).",
+        "enum": [
+          "malformed",
+          "unsupported_media_type",
+          "wrong_media_type",
+          "out_of_range",
+          "file_not_parsed"
+        ],
+        "type": "string"
+      },
+      "GroundResult": {
+        "description": "The verdict on one item.",
+        "properties": {
+          "code": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GroundCode",
+                "description": "The first failing check. Absent when `ok`."
+              }
+            ]
+          },
+          "evidence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GroundEvidence",
+                "description": "The evidence the file gives: set when the item is grounded and with\n`unit_unconfirmed`."
+              }
+            ]
+          },
+          "message": {
+            "description": "What failed, in words, at most 200 bytes. Absent when `ok`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "description": "True when the item is grounded: every check passed.",
+            "type": "boolean"
+          },
+          "quote_verified": {
+            "description": "The quote result: true when the quote passed its check (it is in the\ntext at the locator, and has three words or holds the value), false\nwhen it did not. Absent when a check before it failed\n(`upload_changed`, `locator_invalid`, `scan_budget`).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/GroundReason",
+                "description": "With `locator_invalid`: which rule the locator breaks."
+              }
+            ]
+          },
+          "stated": {
+            "description": "The number and unit as the text states them (`600 mm`), when they\nwere converted to the property's unit.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PropertyValueInput",
+                "description": "The value in the property's type and unit (`{\"f64\": 60.0}` for 600\nmm of a property in cm). Set when the item is grounded and with\n`unit_unconfirmed`."
+              }
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
       "GroundabilityRecommendation": {
         "enum": [
           "narrow+finetune",
@@ -122259,6 +122500,296 @@
           }
         ],
         "summary": "The server's embedding model embeds `texts` (at most 256, each at most 8,000 characters): one vector per text. Counts against the stack's workflow model budget and is written to the call log (job `embed`). `effect_id` keeps the vectors as for `reason` (409 `activity_effect_conflict`, 429 `workflow_budget_exceeded`, 503 `activity_model_unavailable`) With `workflow` (the turn that makes the call: `identity`, `turn`, `run_id`, `instance`; the TypeScript SDK sets it), the call log names the run in `origin.run`; its shape only is checked (400 `invalid_request` with `param: workflow`)",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/v1/workflows/activities/ground": {
+      "post": {
+        "operationId": "post_v1_workflows_activities_ground",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroundActivityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroundActivityResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Checks values a model proposes against the files they come from, without a model. Each item names a file (`sha256` and the `uploaded_at` the proposal read), a place in it (`page=N`, `line=a,b`, `row=a-b`), a property, a value and a quote. The answer holds one verdict per item, in item order: `upload_changed`, `locator_invalid` (with a `reason`), `quote_not_found`, `quote_too_short`, `unknown_property`, `invalid_value`, `unit_unconfirmed` or `scan_budget`, or `ok` with the typed value in the property's unit and the evidence of the quote. At most 16 items from 8 files; a request scans at most 4 MiB, an item at most 1 MiB of its file (`scan_budget`, final), and the request has 10 seconds (503 `ground_timeout`, retryable, no verdicts). No model call, no cost, no effect id, no call log. A body that names `workflow` is refused (400 `invalid_request`)",
         "tags": [
           "workflows"
         ]
