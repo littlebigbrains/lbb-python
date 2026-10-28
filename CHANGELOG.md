@@ -4,6 +4,11 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased — 0.33.0
 
+- The server sends `X-Content-Type-Options: nosniff` and
+  `Content-Disposition: attachment` with the bytes of a file (`content`,
+  `download` and `head`). The SDK reads bytes and is not affected. A page of
+  yours that shows a file in an iframe or a link now downloads it.
+
 - The generated models add `RdfImportResponse`, `RdfImportCommitResult`,
   `RdfImportCommitReceipt`, `RdfImportCommitProjection` and
   `RdfImportCommitObject`. They describe the response of
