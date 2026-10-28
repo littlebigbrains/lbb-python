@@ -2103,6 +2103,43 @@ class FacetResult(BaseModel):
     missing: Annotated[int, Field(ge=0)]
 
 
+class FileCell(BaseModel):
+    """
+    One cell of a sheet. `value` is what the workbook stores for the cell,
+    as text; `formula` is the cell's formula text, kept apart from it. LBB
+    never calculates a formula: a formula cell has the value its file stored,
+    or none.
+    """
+
+    col: Annotated[int, Field(description='The column, from 1 (`A` is 1).', ge=0)]
+    formula: Annotated[
+        str | None, Field(description="The cell's formula, without the leading `=`.")
+    ] = None
+    formula_shared: Annotated[
+        str | None,
+        Field(
+            description="For a cell that shares the formula of another (`formula` is absent):\nthe shared formula's index in the file."
+        ),
+    ] = None
+    raw: Annotated[
+        str | None,
+        Field(description='For a `date` cell: the serial number the file stores.'),
+    ] = None
+    ref: Annotated[str, Field(description="The cell's A1 reference (`B2`).")]
+    type: Annotated[
+        str | None,
+        Field(
+            description='`text`, `number`, `bool`, `date` or `error`. Absent for a formula\ncell whose file stored no value.'
+        ),
+    ] = None
+    value: Annotated[
+        str | None,
+        Field(
+            description='The stored value as text: a number as the file writes it (`12.5`), a\nbool as `true` or `false`, a date in ISO 8601, an error as its code\n(`#DIV/0!`).'
+        ),
+    ] = None
+
+
 class FileCitation(BaseModel):
     """
     One fact whose evidence names a file: the edge's statement node, the
@@ -2248,6 +2285,25 @@ class FileRecord(BaseModel):
         ),
     ]
     uploaded_at: Annotated[str, Field(description='RFC 3339 time of the first upload.')]
+
+
+class FileSheetRow(BaseModel):
+    """
+    One row of a sheet with at least one cell: its A1 row (from 1) and its
+    cells in column order.
+    """
+
+    cells: list[FileCell]
+    row: Annotated[int, Field(ge=0)]
+
+
+class FileSheetWarning(BaseModel):
+    """
+    A note about what the reader did not load.
+    """
+
+    code: str
+    message: str
 
 
 class FileUploadResponse(BaseModel):
@@ -13018,6 +13074,69 @@ class FilePagesPutRequest(BaseModel):
             description="The upload the parser read: the file record's `uploaded_at`\n(`GET /v1/files/record`). When the file was deleted and uploaded\nagain since, the server stores nothing and answers `409\nfile_upload_changed`; a deleted file answers `404 file_not_found`."
         ),
     ]
+
+
+class FileSheet(BaseModel):
+    """
+    One sheet of a workbook.
+    """
+
+    cell_count: Annotated[
+        int, Field(description='The cells that hold a value or a formula.', ge=0)
+    ]
+    column_count: Annotated[
+        int, Field(description='The last column with a cell.', ge=0)
+    ]
+    index: Annotated[
+        int, Field(description="The sheet's place in the workbook, from 0.", ge=0)
+    ]
+    name: str
+    row_count: Annotated[int, Field(description='The last A1 row with a cell.', ge=0)]
+    rows: Annotated[
+        list[FileSheetRow] | None,
+        Field(description='The rows asked for. Empty in the outline of a workbook.'),
+    ] = None
+    state: Annotated[str, Field(description='`visible`, `hidden` or `veryHidden`.')]
+
+
+class FileSheets(BaseModel):
+    """
+    `GET /v1/files/sheets`: the outline of an XLSX workbook, or the rows of
+    one sheet. The first read of a workbook parses it in a bounded child
+    process and stores the result under the file.
+    """
+
+    date1904: Annotated[
+        bool, Field(description='Whether the workbook counts dates from 1904.')
+    ]
+    from_: Annotated[
+        int | None,
+        Field(
+            alias='from',
+            description='With `sheet`: the first and the last A1 row the answer covers.',
+            ge=0,
+        ),
+    ] = None
+    next: Annotated[
+        int | None,
+        Field(
+            description='With `sheet`: the row to go on from (`from` of the next call). Absent\nwhen the sheet ends at `to`.',
+            ge=0,
+        ),
+    ] = None
+    parser: Annotated[
+        str, Field(description="The reader's id ([`FILE_SHEETS_PARSER`]).")
+    ]
+    sha256: str
+    sheet_count: Annotated[int, Field(ge=0)]
+    sheets: Annotated[
+        list[FileSheet],
+        Field(
+            description='Without `sheet`: every sheet with no rows. With `sheet`: that sheet\nwith the rows from `from` to `to`.'
+        ),
+    ]
+    to: Annotated[int | None, Field(ge=0)] = None
+    warnings: list[FileSheetWarning] | None = None
 
 
 class FitSource(BaseModel):

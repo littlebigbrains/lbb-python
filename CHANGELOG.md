@@ -33,6 +33,13 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   of a person.
 
 - Add sync/async `client.records.commit` and `commit_model`, including graph scope, with explicit keys, strict `records/1`, capability preflight, fixed retry bytes and original receipt validation. No graph activation/conversion or legacy commit change.
+- `files.sheets(sha256, sheet=, from_=, to=)` reads an XLSX workbook
+  (`GET /v1/files/sheets`): the outline of its sheets, or the rows of one
+  sheet by A1 row. A cell has the `value` its file stores, as text, and its
+  `formula` apart; nothing is calculated.
+- `lbb.spreadsheet` writes and reads a place in a sheet for evidence
+  (`spreadsheet_fragment`, `parse_spreadsheet_fragment`, `cell_ref`,
+  `column_letters`, `column_number`): `Sales!B2:D9`, `'Q3%20Sales'!B2`.
 
 - `FilePage.ocr_required` and `FileParse.ocr_pages` (generated models): a page
   with fewer than 16 characters of text, whose images cover at least 40% of

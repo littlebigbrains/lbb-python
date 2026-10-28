@@ -179,6 +179,56 @@ class FilesSync(unittest.TestCase):
             ],
         )
 
+    def test_sheets_reads_the_outline_or_the_rows_of_one_sheet(self) -> None:
+        captured: list[httpx.Request] = []
+        outline = {
+            "sha256": SHA,
+            "parser": "xlsx-1",
+            "date1904": False,
+            "sheet_count": 1,
+            "sheets": [
+                {"index": 0, "name": "Q3 Sales", "state": "visible", "row_count": 2, "column_count": 2, "cell_count": 2}
+            ],
+        }
+        rows = {
+            **outline,
+            "from": 1,
+            "to": 2,
+            "sheets": [
+                {
+                    **outline["sheets"][0],  # type: ignore[index]
+                    "rows": [
+                        {
+                            "row": 2,
+                            "cells": [
+                                {"col": 2, "ref": "B2", "type": "number", "value": "12.5", "formula": "SUM(B3:B9)"}
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        lbb = self.client(captured, [json_answer(outline), json_answer(rows)])
+        self.assertEqual(lbb.files.sheets(SHA)["sheets"][0]["name"], "Q3 Sales")
+        answer = lbb.files.sheets(SHA.upper(), sheet="Q3 Sales", from_=1, to=2)
+        cell = answer["sheets"][0]["rows"][0]["cells"][0]
+        self.assertEqual((cell["value"], cell["formula"]), ("12.5", "SUM(B3:B9)"))
+        self.assertEqual(
+            [dict(request.url.params) for request in captured],
+            [
+                {"graph": "docs", "sha256": SHA},
+                {"graph": "docs", "sha256": SHA, "sheet": "Q3 Sales", "from": "1", "to": "2"},
+            ],
+        )
+        for bad in [
+            {"sheet": "A", "from_": 0},
+            {"sheet": "A", "from_": 3, "to": 1},
+            {"from_": 1},
+        ]:
+            with self.assertRaises(ValueError):
+                lbb.files.sheets(SHA, **bad)  # type: ignore[arg-type]
+        self.assertEqual(len(captured), 2, "a bad range sends nothing")
+
     def test_put_pages_stores_a_parse_of_one_upload(self) -> None:
         captured: list[httpx.Request] = []
         lbb = self.client(
