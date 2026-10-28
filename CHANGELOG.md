@@ -78,6 +78,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   Use `experiment` only after every node runs the version with experiments: an
   earlier node ignores it on an activation and skips the check of A.
 
+- A worker no longer retries a turn that fails with `403 write_outside_owns`.
+  The server refuses the same commit again, so the turn fails at once and
+  uses no more attempts.
+
 ## 0.32.0 (2026-10-26)
 
 - `client.status(version="status/1")` reads the current RDF and class

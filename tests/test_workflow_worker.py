@@ -861,6 +861,26 @@ def test_a_failure_names_the_code_and_the_request_of_an_lbb_error() -> None:
     assert failed["error"] == "LbbError: bad page (code invalid_param, request req_42)"
 
 
+def test_a_commit_refused_as_outside_owns_fails_the_turn_for_good() -> None:
+    def refused_with(code: str) -> Any:
+        @workflow(name="counter", version="v1", initial_state={})
+        async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+            async def write(_: WorkflowStepContext) -> None:
+                raise LbbError(403, "{}", {"code": code, "message": "refused"})
+
+            await ctx.step("write", write)
+            return WorkflowResult(state=state)
+
+        return counter
+
+    # The server refuses the same commit again, so no attempt is left to use.
+    (failed,) = run_one(refused_with("write_outside_owns"), task()).bodies("fail")
+    assert failed["non_retryable"] is True
+    # Another 403 keeps its attempts.
+    (failed,) = run_one(refused_with("owner_reserved"), task()).bodies("fail")
+    assert failed["non_retryable"] is False
+
+
 def test_a_second_sigint_ends_the_process() -> None:
     if os.name == "nt":
         pytest.skip("POSIX signals")
