@@ -1,0 +1,146 @@
+{
+  "_about": "Shared by the TypeScript and Python SDKs (sdk/typescript/src/spreadsheet.test.ts, sdk/python/tests/test_spreadsheet.py). A place has a fixed fragment, and the fragment reads back to the place. An invalid fragment names no place. Exported to conformance/ in both public repositories.",
+  "places": [
+    {
+      "fragment": "Sales!B2",
+      "place": {
+        "kind": "cells",
+        "sheet": "Sales",
+        "row": 2,
+        "col": 2,
+        "to_row": 2,
+        "to_col": 2
+      }
+    },
+    {
+      "fragment": "Sales!B2:D9",
+      "place": {
+        "kind": "cells",
+        "sheet": "Sales",
+        "row": 2,
+        "col": 2,
+        "to_row": 9,
+        "to_col": 4
+      }
+    },
+    {
+      "fragment": "'Q3%20Sales'!AA14",
+      "place": {
+        "kind": "cells",
+        "sheet": "Q3 Sales",
+        "row": 14,
+        "col": 27,
+        "to_row": 14,
+        "to_col": 27
+      }
+    },
+    {
+      "fragment": "'Jane''s'!A1",
+      "place": {
+        "kind": "cells",
+        "sheet": "Jane's",
+        "row": 1,
+        "col": 1,
+        "to_row": 1,
+        "to_col": 1
+      }
+    },
+    {
+      "fragment": "'Q3'!A1",
+      "place": {
+        "kind": "cells",
+        "sheet": "Q3",
+        "row": 1,
+        "col": 1,
+        "to_row": 1,
+        "to_col": 1
+      }
+    },
+    {
+      "fragment": "'Zusammenfassung%20%C3%9Cbersicht'!C3",
+      "place": {
+        "kind": "cells",
+        "sheet": "Zusammenfassung Übersicht",
+        "row": 3,
+        "col": 3,
+        "to_row": 3,
+        "to_col": 3
+      }
+    },
+    {
+      "fragment": "'Q3%20(draft)'!A5",
+      "place": {
+        "kind": "cells",
+        "sheet": "Q3 (draft)",
+        "row": 5,
+        "col": 1,
+        "to_row": 5,
+        "to_col": 1
+      }
+    },
+    {
+      "fragment": "'Total*'!C2",
+      "place": {
+        "kind": "cells",
+        "sheet": "Total*",
+        "row": 2,
+        "col": 3,
+        "to_row": 2,
+        "to_col": 3
+      }
+    },
+    {
+      "fragment": "Sales!5:7",
+      "place": {
+        "kind": "rows",
+        "sheet": "Sales",
+        "from": 5,
+        "to": 7
+      }
+    },
+    {
+      "fragment": "Sales!B:D",
+      "place": {
+        "kind": "cols",
+        "sheet": "Sales",
+        "from": 2,
+        "to": 4
+      }
+    },
+    {
+      "fragment": "'a!b'!SR1",
+      "place": {
+        "kind": "cells",
+        "sheet": "a!b",
+        "row": 1,
+        "col": 512,
+        "to_row": 1,
+        "to_col": 512
+      }
+    }
+  ],
+  "invalid": [
+    "",
+    "Sales",
+    "Sales!",
+    "Sales!B",
+    "Sales!B0",
+    "Sales!D9:B2",
+    "Sales!7:5",
+    "Sales!D:B",
+    "Sales!B2:",
+    "Sales!B2:D9:F1",
+    "'Sales!B2",
+    "page=3",
+    "%E0%A4%A",
+    "Sales!A1:A50001",
+    "Sales!5:50001",
+    "Sales!A:SS",
+    "Sales!A1:A9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+    "Sales!1:9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+    "Sales!B2\n",
+    "Sales!5:7\n",
+    "Sales!B:D\n",
+    "Sales!B2:D9\n"
+  ]
+}

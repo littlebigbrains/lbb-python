@@ -3353,6 +3353,11 @@ def _page_index(value: int | None, name: str) -> None:
         raise ValueError(f"{name} must be a page index (0 or more)")
 
 
+def _row_number(value: int | None, name: str) -> None:
+    if value is not None and (isinstance(value, bool) or value < 1):
+        raise ValueError(f"{name} must be a row number (1 or more)")
+
+
 class _FilesNamespace:
     """Files of a records graph (``/v1/files*``).
 
@@ -3529,6 +3534,41 @@ class _FilesNamespace:
         sha = _sha256_of(sha256)
         return self._client._file_head_request(
             "/v1/files/content", sha, params=self._scope({"sha256": sha})
+        )
+
+    def sheets(
+        self,
+        sha256: str,
+        *,
+        sheet: str | None = None,
+        from_: int | None = None,
+        to: int | None = None,
+    ) -> Any:
+        """The sheets of an XLSX workbook, or the rows of one sheet
+        (``GET /v1/files/sheets``).
+
+        Without ``sheet``: every sheet with its name, state and size, and
+        no rows. With ``sheet``: that sheet's rows ``from_`` to ``to`` (A1
+        rows from 1, both included; the answer's ``next`` names the row to go
+        on from). A cell has the ``value`` its file stores, as text, and its
+        ``formula`` apart: LBB never calculates a formula. The first read of
+        a workbook parses it in a bounded child process; a workbook past a
+        limit answers ``400 xlsx_refused``, a file that is no workbook
+        ``400 file_not_spreadsheet``. Name a place in evidence with
+        :func:`lbb.spreadsheet.spreadsheet_fragment`.
+        """
+        _row_number(from_, "from_")
+        _row_number(to, "to")
+        if from_ is not None and to is not None and to < from_:
+            raise ValueError("to must not be below from_")
+        if sheet is None and (from_ is not None or to is not None):
+            raise ValueError("from_ and to need a sheet")
+        return self._client._request(
+            "GET",
+            "/v1/files/sheets",
+            params=self._scope(
+                {"sha256": _sha256_of(sha256), "sheet": sheet, "from": from_, "to": to}
+            ),
         )
 
     def pages(
