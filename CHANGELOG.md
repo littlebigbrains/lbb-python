@@ -10,6 +10,12 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   checks values that a model proposes against the files they come from. The
   answer has one verdict per item. No helper calls the route yet.
 
+- `files.delete_expiry(sha256)` calls `DELETE /v1/files/expiry`. It keeps a
+  generated file, one that a workflow run wrote: it removes `expires_at`, so
+  the file stays until a person deletes it and `files.list` shows it. It
+  returns the record. A repeat returns the same record. The server answers
+  `409 file_generated` to an upload of the bytes of a generated file.
+
 - The server sends `X-Content-Type-Options: nosniff` and
   `Content-Disposition: attachment` with the bytes of a file (`content`,
   `download` and `head`). The SDK reads bytes and is not affected. A page of

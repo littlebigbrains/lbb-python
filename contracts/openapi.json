@@ -11270,7 +11270,7 @@
               },
               {
                 "$ref": "#/components/schemas/FileOrigin",
-                "description": "Where a generated file came from. Present only on a file a workflow\nrun wrote (`docs/architecture/file-outputs.md`); every file a person\nor a stack key uploaded lacks it. Only the upload that creates the\nrecord sets it. A file with an origin is never evidence\n([`source_generated`])."
+                "description": "Where a generated file came from. Present only on a file a workflow\nrun wrote; every file a person or a stack key uploaded lacks it. Only\nthe upload that creates the record sets it. A file with an origin is\nnever evidence for a fact."
               }
             ]
           },
@@ -77843,7 +77843,7 @@
             "bearer": []
           }
         ],
-        "summary": "Remove a file from the list and retract its `Document` entity. The facts whose evidence names the file stay, and keep its content from the reclaim, which deletes a deleted file's bytes, pages and derivations after a grace (30 days by default). With `purge=true` the delete also retracts the edges whose evidence names the file (`purged_edges`, at most 10,000, found at the published generation); a deleted file can be purged. 429 `file_reclaim_in_progress` while a reclaim pass holds the content",
+        "summary": "Remove a file from the list and retract its `Document` entity. The facts whose evidence names the file stay, and keep its content from the reclaim, which deletes a deleted file's bytes, pages and derivations after a grace (30 days by default). With `purge=true` the delete also retracts the edges whose evidence names the file (`purged_edges`, at most 10,000, found at the published generation); a deleted file can be purged. A generated file has no `Document`: its delete retracts nothing, and `purge` retracts no edge (`purged_edges` is 0). 429 `file_reclaim_in_progress` while a reclaim pass holds the content",
         "tags": [
           "files"
         ]
@@ -78488,7 +78488,7 @@
             "bearer": []
           }
         ],
-        "summary": "Upload a file: the raw request body is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. A file holds at most 1 GiB by default (the server setting `LBB_FILES_MAX_BYTES`); a larger body is refused with 413 `file_too_large` before it is read. An empty body is an empty file. The same bytes under the same name change nothing. 429 `file_reclaim_in_progress` while a reclaim pass deletes the same bytes of a deleted file (seconds)",
+        "summary": "Upload a file: the raw request body is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. A file holds at most 1 GiB by default (the server setting `LBB_FILES_MAX_BYTES`); a larger body is refused with 413 `file_too_large` before it is read. An empty body is an empty file. The same bytes under the same name change nothing. 409 `file_generated` for the bytes of a generated file (one a workflow run wrote): delete that file first, then upload the bytes as a source. 429 `file_reclaim_in_progress` while a reclaim pass deletes the same bytes of a deleted file (seconds)",
         "tags": [
           "files"
         ]
@@ -78860,7 +78860,7 @@
             "bearer": []
           }
         ],
-        "summary": "A file's bytes with its content type, streamed from storage. One `Range: bytes=a-b`, `bytes=a-` or `bytes=-n` answers 206 with `Content-Range`; a range with no byte of the file answers 416 `range_not_satisfiable` with `Content-Range: bytes */<length>`; several ranges answer the whole file. `ETag` is the SHA-256 in quotes; `Accept-Ranges: bytes`. 404 `file_not_found`",
+        "summary": "A file's bytes with its content type, streamed from storage. One `Range: bytes=a-b`, `bytes=a-` or `bytes=-n` answers 206 with `Content-Range`; a range with no byte of the file answers 416 `range_not_satisfiable` with `Content-Range: bytes */<length>`; several ranges answer the whole file. `ETag` is the SHA-256 in quotes; `Accept-Ranges: bytes`. The answer sends `X-Content-Type-Options: nosniff` and `Content-Disposition: attachment` with the file name (`filename` and the RFC 8187 `filename*`), so a browser saves the bytes and does not run them; a generated file's `Content-Type` adds `charset=utf-8`. 404 `file_not_found`",
         "tags": [
           "files"
         ]
@@ -79137,7 +79137,7 @@
             "bearer": []
           }
         ],
-        "summary": "A file's length (`Content-Length`), content type and SHA-256 (`ETag`, in quotes), with no body. 404 `file_not_found`",
+        "summary": "A file's length (`Content-Length`), content type and SHA-256 (`ETag`, in quotes), with no body, and the same `X-Content-Type-Options` and `Content-Disposition` headers as the `GET`. 404 `file_not_found`",
         "tags": [
           "files"
         ]
@@ -79409,6 +79409,295 @@
           }
         ],
         "summary": "The graph's files by parse status: a SPARQL count over the `Document` entities of the published generation, with the commit it holds (`as_of_commit_seq`). A file with no parse yet counts as `waiting`",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/v1/files/expiry": {
+      "delete": {
+        "operationId": "delete_v1_files_expiry",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the file's SHA-256, hex",
+            "in": "query",
+            "name": "sha256",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRecord"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Keep a generated file: remove its `expires_at`, so it stays until a person deletes it and shows in `GET /v1/files` from now on. A generated file is one a workflow run wrote (`origin`). A repeat answers the same record, so the call needs no `Idempotency-Key`, and the server ignores one. A live file without an expiry answers as it is. 404 `file_not_found` for no file, a deleted one and a reclaimed one",
         "tags": [
           "files"
         ]

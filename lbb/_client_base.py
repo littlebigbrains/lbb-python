@@ -3643,6 +3643,19 @@ class _FilesNamespace:
             ),
         )
 
+    def delete_expiry(self, sha256: str) -> Any:
+        """Keep a generated file (one a workflow run wrote, with an
+        ``origin``): remove its ``expires_at``, so it stays until a person
+        deletes it and shows in :meth:`list` from now on. Returns the
+        record. A repeat returns the same record, and a file without an
+        expiry returns as it is. ``404 file_not_found`` for no file, a
+        deleted one and a reclaimed one."""
+        return self._client._request(
+            "DELETE",
+            "/v1/files/expiry",
+            params=self._scope({"sha256": _sha256_of(sha256)}),
+        )
+
 
 class _OntologyNamespace:
     """Typed ontology discovery and lifecycle operations."""
