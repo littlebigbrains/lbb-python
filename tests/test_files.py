@@ -369,6 +369,28 @@ class FilesSync(unittest.TestCase):
             lbb.files.get("xyz")
         self.assertEqual(len(captured), 1)
 
+    def test_delete_expiry_keeps_a_generated_file(self) -> None:
+        generated = {k: v for k, v in RECORD.items() if k != "document"}
+        generated.update(
+            name="report.md",
+            content_type="text/markdown",
+            origin={"workflow": "datasheets", "run": "run_7c1", "step": "agent.report"},
+        )
+        captured: list[httpx.Request] = []
+        lbb = self.client(captured, [json_answer(generated), json_answer(generated)])
+        record = FileRecord.model_validate(lbb.files.delete_expiry(f" {SHA.upper()} "))
+        self.assertIsNone(record.document)
+        self.assertIsNone(record.expires_at)
+        self.assertEqual(record.origin.step, "agent.report")
+        lbb.files.delete_expiry(SHA)
+        self.assertEqual(
+            [(request.method, request.url.path, dict(request.url.params)) for request in captured],
+            [("DELETE", "/v1/files/expiry", {"graph": "docs", "sha256": SHA})] * 2,
+        )
+        with self.assertRaises(ValueError):
+            lbb.files.delete_expiry("xyz")
+        self.assertEqual(len(captured), 2)
+
     def test_delete_with_purge_and_a_deleted_record(self) -> None:
         citation = {
             "statement": "https://littlebigbrain.com/s/9f3c",
