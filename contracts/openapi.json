@@ -28503,6 +28503,13 @@
               "null"
             ]
           },
+          "commit_error_code": {
+            "description": "The check that refused the value, when the server's own recheck\nrefused it, or `review_commit_gave_up` after the last try. See\n`ReviewEffects::commit_error_code`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "commit_seq": {
             "oneOf": [
               {
@@ -28719,6 +28726,13 @@
               "null"
             ]
           },
+          "commit_error_code": {
+            "description": "The check that refused the commit, when the server's own recheck\nrefused it: `review_upload_changed`, `review_source_generated`,\n`review_quote_not_verified`, `review_evidence_mismatch` or\n`review_property_not_owned`, or `review_commit_gave_up` after the last\ntry of a commit that kept failing. Absent for a refusal by the graph (a\nvalue the property no longer takes), which `commit_error` words.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "commit_key": {
             "description": "The idempotency key of that commit\n(`review:<suggestion id>:r<revision>:<hash>`).",
             "type": [
@@ -28872,6 +28886,20 @@
           },
           "source_id": {
             "description": "The `Document` IRI with a place (`#page=3`, `#row=5`,\n`#line=39,44`), or a record's name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_sha256": {
+            "description": "The SHA-256 of the file the quote was verified in, 64 hexadecimal\ncharacters. The server recomputes the `Document` IRI from it when the\nitem is filed and when its answer commits. An entry with a SHA-256 is\nchecked against the file at both times; an entry without one is not.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uploaded_at": {
+            "description": "The `uploaded_at` of the file when the quote was verified in it: the\ncontent stamp. A delete and a new upload of the same bytes change it.\nSet with `source_sha256`.",
             "type": [
               "string",
               "null"
@@ -115032,6 +115060,15 @@
             }
           },
           {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
@@ -115325,6 +115362,15 @@
             "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
             "in": "query",
             "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
             "required": false,
             "schema": {
               "type": "string"

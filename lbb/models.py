@@ -6596,6 +6596,18 @@ class ReviewEvidence(BaseModel):
             description="The `Document` IRI with a place (`#page=3`, `#row=5`,\n`#line=39,44`), or a record's name."
         ),
     ] = None
+    source_sha256: Annotated[
+        str | None,
+        Field(
+            description='The SHA-256 of the file the quote was verified in, 64 hexadecimal\ncharacters. The server recomputes the `Document` IRI from it when the\nitem is filed and when its answer commits. An entry with a SHA-256 is\nchecked against the file at both times; an entry without one is not.'
+        ),
+    ] = None
+    uploaded_at: Annotated[
+        str | None,
+        Field(
+            description='The `uploaded_at` of the file when the quote was verified in it: the\ncontent stamp. A delete and a new upload of the same bytes change it.\nSet with `source_sha256`.'
+        ),
+    ] = None
 
 
 class ReviewItemKind(Enum):
@@ -16162,6 +16174,12 @@ class ReviewEffects(BaseModel):
             description='Why the graph refused the commit of the answered value (a value the\nproperty no longer takes, a shape that rejects it). The answer\nstays recorded and its event is sent; the value is not written.'
         ),
     ] = None
+    commit_error_code: Annotated[
+        str | None,
+        Field(
+            description="The check that refused the commit, when the server's own recheck\nrefused it: `review_upload_changed`, `review_source_generated`,\n`review_quote_not_verified`, `review_evidence_mismatch` or\n`review_property_not_owned`, or `review_commit_gave_up` after the last\ntry of a commit that kept failing. Absent for a refusal by the graph (a\nvalue the property no longer takes), which `commit_error` words."
+        ),
+    ] = None
     commit_key: Annotated[
         str | None,
         Field(
@@ -20295,6 +20313,12 @@ class ReviewAnsweredItem(BaseModel):
     commit_error: Annotated[
         str | None,
         Field(description='Why the graph refused the answered value, when it did.'),
+    ] = None
+    commit_error_code: Annotated[
+        str | None,
+        Field(
+            description="The check that refused the value, when the server's own recheck\nrefused it, or `review_commit_gave_up` after the last try. See\n`ReviewEffects::commit_error_code`."
+        ),
     ] = None
     commit_seq: CommitSeq | None = None
     id: Annotated[str, Field(description="`rev_` and the record's hex.")]
