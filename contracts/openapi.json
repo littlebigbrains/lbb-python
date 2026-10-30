@@ -40630,14 +40630,15 @@
         "type": "object"
       },
       "WorkflowExecutionOperation": {
-        "description": "One explicit operation of a workflow execution credential. Every\noperation but `sparql_read` is a grant of LBB's hosted workers: only LBB's\nwork token is issued them. `model_call`, `review` and `revision_read` are\nfor a turn of the hosted agent type (`HOSTED_AGENT_WORKFLOW_TYPE`).",
+        "description": "One explicit operation of a workflow execution credential. Every\noperation but `sparql_read` is a grant of LBB's hosted workers: only LBB's\nwork token is issued them. `model_call`, `review`, `revision_read` and\n`file_write` are for a turn of the hosted agent type\n(`HOSTED_AGENT_WORKFLOW_TYPE`).",
         "enum": [
           "sparql_read",
           "file_read",
           "owned_write",
           "model_call",
           "review",
-          "revision_read"
+          "revision_read",
+          "file_write"
         ],
         "type": "string"
       },
@@ -78274,6 +78275,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "a `file_write` credential only, required: the step that wrote the file, 1 to 128 of A-Z a-z 0-9 _ . : -",
+            "in": "query",
+            "name": "step",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "a `file_write` credential only: days until the file expires, 1 to 365 (default 31)",
+            "in": "query",
+            "name": "retain_days",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -78285,7 +78304,7 @@
               }
             }
           },
-          "description": "The file's bytes, at most 1 GiB by default (`LBB_FILES_MAX_BYTES`); an empty body is an empty file. `Content-Type` names its type; without one (or with `application/octet-stream`), the server detects PDF, PNG, JPEG, GIF and WebP by their bytes, `.xlsx`, `.docx` and `.pptx` files by the ZIP signature and the name, and UTF-8 text named `.csv`, `.tsv`, `.md`, `.json` or `.txt` by the name.",
+          "description": "The file's bytes, at most 1 GiB by default (`LBB_FILES_MAX_BYTES`), or at most 1 MiB under a `file_write` credential; an empty body is an empty file. `Content-Type` names its type; without one (or with `application/octet-stream`), the server detects PDF, PNG, JPEG, GIF and WebP by their bytes, `.xlsx`, `.docx` and `.pptx` files by the ZIP signature and the name, and UTF-8 text named `.csv`, `.tsv`, `.md`, `.json` or `.txt` by the name.",
           "required": true
         },
         "responses": {
@@ -78534,7 +78553,7 @@
             "bearer": []
           }
         ],
-        "summary": "Upload a file: the raw request body is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. A file holds at most 1 GiB by default (the server setting `LBB_FILES_MAX_BYTES`); a larger body is refused with 413 `file_too_large` before it is read. An empty body is an empty file. The same bytes under the same name change nothing. 409 `file_generated` for the bytes of a generated file (one a workflow run wrote): delete that file first, then upload the bytes as a source. 429 `file_reclaim_in_progress` while a reclaim pass deletes the same bytes of a deleted file (seconds)",
+        "summary": "Upload a file: the raw request body is stored once under its SHA-256, and a `Document` entity (key `file:<sha256>`) is committed for it, with its `Content` (key `content:<sha256>`) and the edge `HAS_CONTENT`. `language` and `schema` are stored on the `Document` when given. A file holds at most 1 GiB by default (the server setting `LBB_FILES_MAX_BYTES`); a larger body is refused with 413 `file_too_large` before it is read. An empty body is an empty file. The same bytes under the same name change nothing. 409 `file_generated` for the bytes of a generated file (one a workflow run wrote): delete that file first, then upload the bytes as a source. 429 `file_reclaim_in_progress` while a reclaim pass deletes the same bytes of a deleted file (seconds). Under a `file_write` execution credential (a turn of the hosted agent type; LBB's hosted workers only) the upload writes a generated file, an output: `step` is required, the server sets `origin.workflow` and `origin.run` from the credential, the file expires after `retain_days` (default 31), and no `Document`, `Content` or content log entry is written. The type is text/plain, text/markdown or application/json, the extension must match, the body holds at most 1 MiB, and one message writes at most 5 files and 4 MiB (415 `file_output_type`, 400 `file_output_content`, 403 `file_output_limit`). A file that already exists is answered with `created: false` and a `collision` (`retry` or `existing`). A person or a stack key that sends `step` or `retain_days` gets 400",
         "tags": [
           "files"
         ]
@@ -142735,7 +142754,7 @@
             "bearer": []
           }
         ],
-        "summary": "Issue or refresh one operation credential for the exact live turn attempt: SELECT/ASK (`sparql_read`, the default), or the grants of LBB's hosted workers (`file_read`, `owned_write`), which only LBB's work token is issued and only with LBB_WORKFLOW_EXECUTION_GRANTS (403 workflow_execution_scope or workflow_execution_disabled). Requires the original control credential and lease token; execution bearers cannot refresh or control workflows.",
+        "summary": "Issue or refresh one operation credential for the exact live turn attempt: SELECT/ASK (`sparql_read`, the default), or the grants of LBB's hosted workers (`file_read`, `owned_write`, and for a turn of the hosted agent type `model_call`, `review`, `revision_read` and `file_write`), which only LBB's work token is issued and only with LBB_WORKFLOW_EXECUTION_GRANTS (403 workflow_execution_scope or workflow_execution_disabled). `file_write` also needs the file reclaim job in `apply` mode (LBB_FILE_RECLAIM). Requires the original control credential and lease token; execution bearers cannot refresh or control workflows.",
         "tags": [
           "system"
         ]
