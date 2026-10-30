@@ -303,7 +303,6 @@ The unchanged-behavior promise in the historical 0.32.0 changelog applies to
 0.32.0. Running those methods requires that SDK **and a matching older
 pre-retirement binary**; pairing 0.32 with a new binary produces a command
 retirement error. Other local methods and current HTTP clients are unchanged.
-Publishing 0.33.0 remains a separate protected release step.
 
 For new local integrations, run `lbb-server` against your local storage and
 connect `LbbClient` or `AsyncLbbClient` to its HTTP endpoint. Declare searchable

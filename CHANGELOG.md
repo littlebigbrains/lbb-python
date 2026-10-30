@@ -2,7 +2,32 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased — 0.33.0
+## 0.33.0 (2026-10-30)
+
+- The client sends `lbb-version: 2026-10-27` by default (`api_version=`;
+  before: `2026-10-21`). `status()` without `version` follows the server. A
+  server that has this release answers the current typed response. An older
+  server answers the earlier one. The answer is not checked. Send
+  `version="status/1"` for a checked answer, or call `status_model()`.
+
+- `shadow_eval`, `train_tick`, `train_submit` and `set_training_config` are
+  deprecated. They run the older semantic-search replay and the deterministic
+  retrieval trainer. Class-declared embedding search does not replace them
+  automatically. They work as before and raise no warning. A server with the
+  capability `legacy_model_consumers_deprecation_v1` adds the header
+  `LBB-Legacy-Model-Policy` and a deprecation `Link` to their answers.
+
+- The generated models add the optional field `commit_error_code` to
+  `ReviewEffects` and `ReviewAnsweredItem`. It names the check that refused a
+  review commit: `review_upload_changed`, `review_source_generated`,
+  `review_quote_not_verified`, `review_evidence_mismatch` or
+  `review_property_not_owned`, or `review_commit_gave_up` after the last try.
+  It is absent when the graph refused the value, which `commit_error` words.
+
+- The generated models add `GraphCommitRequestBody` and
+  `GraphCommitResponseBody`, the two kinds of body of `POST /v1/graph/commit`:
+  the ordinary one and `records/1` (`RecordCommitRequest`,
+  `RecordCommitResult`). Existing commit methods are unchanged.
 
 - The generated models add the optional `workflow` field to
   `GroundActivityRequest`, the verdict `not_owned` to `GroundCode`, the optional
@@ -54,7 +79,6 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   behavior only with Python 0.32 and a matching older binary. Supported new
   retrieval uses RDF/SPARQL and class-declared embeddings over HTTP; BM25,
   fusion, record vectors and manual builds have no automatic conversion.
-  Source/release preparation only; publication remains a separate protected gate.
 
 - `models.ReviewEvalOrigin` has the kind `dataset` and the fields `item`,
   `property`, `value` and `stated`. An experiment files these review items
@@ -65,7 +89,7 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   Send it back as read, or leave it out. The server keeps the latest answer
   of a person.
 
-- Add sync/async `client.records.commit` and `commit_model`, including graph scope, with explicit keys, strict `records/1`, capability preflight, fixed retry bytes and original receipt validation. No graph activation/conversion or legacy commit change.
+- Add sync/async `client.records.commit` and `commit_model`, including graph scope, with explicit keys, strict `records/1`, capability preflight, fixed retry bytes and original receipt validation. No graph activation/conversion or legacy commit change. A response that does not prove acceptance raises `LbbRecordCommitOutcomeError`: send the original body again with the same key.
 - `files.sheets(sha256, sheet=, from_=, to=)` reads an XLSX workbook
   (`GET /v1/files/sheets`): the outline of its sheets, or the rows of one
   sheet by A1 row. A cell has the `value` its file stores, as text, and its
