@@ -3084,6 +3084,7 @@ class GroundCode(Enum):
     invalid_value = 'invalid_value'
     unit_unconfirmed = 'unit_unconfirmed'
     scan_budget = 'scan_budget'
+    not_owned = 'not_owned'
 
 
 class GroundFile(BaseModel):
@@ -10281,14 +10282,18 @@ class WorkflowEventsRequest(BaseModel):
 
 class WorkflowExecutionOperation(Enum):
     """
-    One explicit operation of a workflow execution credential. `file_read`
-    and `owned_write` are the grants of LBB's hosted workers: only LBB's work
-    token is issued them.
+    One explicit operation of a workflow execution credential. Every
+    operation but `sparql_read` is a grant of LBB's hosted workers: only LBB's
+    work token is issued them. `model_call`, `review` and `revision_read` are
+    for a turn of the hosted agent type (`HOSTED_AGENT_WORKFLOW_TYPE`).
     """
 
     sparql_read = 'sparql_read'
     file_read = 'file_read'
     owned_write = 'owned_write'
+    model_call = 'model_call'
+    review = 'review'
+    revision_read = 'revision_read'
 
 
 class WorkflowFence(BaseModel):
@@ -13063,6 +13068,12 @@ class EvidenceInput1(BaseModel):
     ] = None
     region: RegionAnchorInput | None = None
     source_id: str | None = None
+    source_sha256: Annotated[
+        str | None,
+        Field(
+            description='The SHA-256 of the file `source_id` cites (64 hexadecimal\ncharacters). A commit under the `owned_write` grant of a hosted\nagent carries it with every written value: the server recomputes\nthe `Document` IRI from it, reading no entity, and checks the\nquote against the live file of that hash\n(`docs/architecture/agent-step.md` 4.3). Other commits ignore it.'
+        ),
+    ] = None
     text: str | None = None
 
 
@@ -13928,6 +13939,12 @@ class GroundActivityRequest(BaseModel):
         list[GroundItem],
         Field(description='1 to 16 proposals, from at most 8 distinct files.'),
     ]
+    workflow: Annotated[
+        str | None,
+        Field(
+            description='The named workflow whose `owns` check 6 reads: 1 to 64 characters of\n`A-Z a-z 0-9 _ . -`. For a caller with a stack key only. Under an\nexecution credential the server takes the workflow from the credential\nand a body that names it is refused (`400 invalid_request`). A stack\nkey can write anything, so its ownership verdict is advisory. Absent:\ncheck 6 does not run.'
+        ),
+    ] = None
 
 
 class GroundEvidence(BaseModel):
