@@ -29,6 +29,14 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   the ordinary one and `records/1` (`RecordCommitRequest`,
   `RecordCommitResult`). Existing commit methods are unchanged.
 
+- The generated models add the operation `file_write` to
+  `WorkflowExecutionOperation`. It is a grant of Little Big Brain's hosted
+  workers for a turn of the hosted agent type: `POST /v1/files` with a
+  `file_write` credential writes a generated file. The server also answers
+  `409 file_generated` to `PUT /v1/files/pages` for a generated file, and
+  `400 fit_text_invalid` to `POST /v1/ontology/fit-text` with one as
+  `document`. No helper uses the operation yet.
+
 - The generated models add the optional `workflow` field to
   `GroundActivityRequest`, the verdict `not_owned` to `GroundCode`, the optional
   `source_sha256` field to the object form of the evidence of a commit, the

@@ -10284,8 +10284,9 @@ class WorkflowExecutionOperation(Enum):
     """
     One explicit operation of a workflow execution credential. Every
     operation but `sparql_read` is a grant of LBB's hosted workers: only LBB's
-    work token is issued them. `model_call`, `review` and `revision_read` are
-    for a turn of the hosted agent type (`HOSTED_AGENT_WORKFLOW_TYPE`).
+    work token is issued them. `model_call`, `review`, `revision_read` and
+    `file_write` are for a turn of the hosted agent type
+    (`HOSTED_AGENT_WORKFLOW_TYPE`).
     """
 
     sparql_read = 'sparql_read'
@@ -10294,6 +10295,7 @@ class WorkflowExecutionOperation(Enum):
     model_call = 'model_call'
     review = 'review'
     revision_read = 'revision_read'
+    file_write = 'file_write'
 
 
 class WorkflowFence(BaseModel):
