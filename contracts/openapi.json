@@ -10326,6 +10326,13 @@
                   "null"
                 ]
               },
+              "source_sha256": {
+                "description": "The SHA-256 of the file `source_id` cites (64 hexadecimal\ncharacters). A commit under the `owned_write` grant of a hosted\nagent carries it with every written value: the server recomputes\nthe `Document` IRI from it, reading no entity, and checks the\nquote against the live file of that hash\n(`docs/architecture/agent-step.md` 4.3). Other commits ignore it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "text": {
                 "type": [
                   "string",
@@ -15074,6 +15081,13 @@
               "$ref": "#/components/schemas/GroundItem"
             },
             "type": "array"
+          },
+          "workflow": {
+            "description": "The named workflow whose `owns` check 6 reads: 1 to 64 characters of\n`A-Z a-z 0-9 _ . -`. For a caller with a stack key only. Under an\nexecution credential the server takes the workflow from the credential\nand a body that names it is refused (`400 invalid_request`). A stack\nkey can write anything, so its ownership verdict is advisory. Absent:\ncheck 6 does not run.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -15108,7 +15122,8 @@
           "unknown_property",
           "invalid_value",
           "unit_unconfirmed",
-          "scan_budget"
+          "scan_budget",
+          "not_owned"
         ],
         "type": "string"
       },
@@ -40615,11 +40630,14 @@
         "type": "object"
       },
       "WorkflowExecutionOperation": {
-        "description": "One explicit operation of a workflow execution credential. `file_read`\nand `owned_write` are the grants of LBB's hosted workers: only LBB's work\ntoken is issued them.",
+        "description": "One explicit operation of a workflow execution credential. Every\noperation but `sparql_read` is a grant of LBB's hosted workers: only LBB's\nwork token is issued them. `model_call`, `review` and `revision_read` are\nfor a turn of the hosted agent type (`HOSTED_AGENT_WORKFLOW_TYPE`).",
         "enum": [
           "sparql_read",
           "file_read",
-          "owned_write"
+          "owned_write",
+          "model_call",
+          "review",
+          "revision_read"
         ],
         "type": "string"
       },

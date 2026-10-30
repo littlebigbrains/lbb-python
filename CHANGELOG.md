@@ -4,6 +4,14 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased — 0.33.0
 
+- The generated models add the optional `workflow` field to
+  `GroundActivityRequest`, the verdict `not_owned` to `GroundCode`, the optional
+  `source_sha256` field to the object form of the evidence of a commit, the
+  optional `uploaded_at` and `source_sha256` fields to `ReviewEvidence`, and the
+  operations `model_call`, `review` and `revision_read` to
+  `WorkflowExecutionOperation`. Those operations are grants of Little Big
+  Brain's hosted workers. No helper uses them yet.
+
 - The generated models add `GroundActivityRequest`, `GroundItem`, `GroundFile`,
   `GroundResult`, `GroundEvidence`, `GroundActivityResponse`, `GroundCode` and
   `GroundReason`. They describe `POST /v1/workflows/activities/ground`, which
