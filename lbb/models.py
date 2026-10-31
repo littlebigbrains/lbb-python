@@ -10102,6 +10102,42 @@ class WorkerRole(Enum):
     apply = 'apply'
 
 
+class WorkflowAgentProposalCounts(BaseModel):
+    dropped: Annotated[int, Field(ge=0)]
+    failed: Annotated[int, Field(ge=0)]
+    review: Annotated[int, Field(ge=0)]
+    written: Annotated[int, Field(ge=0)]
+
+
+class WorkflowAgentSettings(BaseModel):
+    """
+    Revision-pinned behavior of the hosted agent. The model remains a Models choice;
+    authority, input and ownership come from the workflow and its trigger.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    instructions: str
+    max_cost_micro_usd: Annotated[int | None, Field(ge=0)] = None
+    max_iterations: Annotated[int | None, Field(ge=0)] = None
+    max_proposals: Annotated[int | None, Field(ge=0)] = None
+    max_read_ms: Annotated[int | None, Field(ge=0)] = None
+    max_review_items: Annotated[int | None, Field(ge=0)] = None
+    max_wall_ms: Annotated[int | None, Field(ge=0)] = None
+    pin_wait_ms: Annotated[int | None, Field(ge=0)] = None
+    tools: list[str] | None = None
+
+
+class WorkflowAgentTrace(BaseModel):
+    n: Annotated[int, Field(ge=0)]
+    note: Annotated[
+        str, Field(description='Untrusted plain text, at most 160 UTF-8 bytes.')
+    ]
+    ok: bool
+    tool: str
+
+
 class WorkflowBlob(BaseModel):
     """
     A blob of a workflow (`POST /v1/workflows/blobs?workflow_id=`): bytes a
@@ -10876,6 +10912,18 @@ class WorkflowRunHour(BaseModel):
     ] = None
 
 
+class WorkflowRunNowInput(BaseModel):
+    """
+    Inputs selected for Run again: exactly one of iri and sha256 per entry.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    iri: str | None = None
+    sha256: str | None = None
+
+
 class WorkflowRunOutcome(Enum):
     """
     How a run ended.
@@ -11431,6 +11479,10 @@ class WorkflowTestValue(BaseModel):
         Field(
             description="The number and unit as the text states them (`600 mm`), when they\nwere converted to the property's unit."
         ),
+    ] = None
+    subject: Annotated[
+        str | None,
+        Field(description='The proposed target IRI when the input is a source file.'),
     ] = None
     support: Annotated[
         float | None,
@@ -14898,6 +14950,17 @@ class NamedWorkflowFanIn(BaseModel):
     workflow_id: Annotated[str, Field(description='`starter.<name>.<id>`.')]
 
 
+class NamedWorkflowRunRequest(BaseModel):
+    """
+    Optional body of POST /v1/workflows/named/run. An absent body keeps Run now.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    inputs: list[WorkflowRunNowInput] | None = None
+
+
 class OntologyDefineResponse(BaseModel):
     changed: Annotated[
         bool | None,
@@ -17641,6 +17704,27 @@ class WorkerGrantSourceCaptureScope(BaseModel):
     source_configuration: str | None = None
 
 
+class WorkflowAgentRecord(BaseModel):
+    """
+    What one agent step did, kept with its input for 30 days. No full proposal
+    array or duplicate transcript: the values hold proposals and history holds steps.
+    """
+
+    code: str | None = None
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    iterations: Annotated[int, Field(ge=0)]
+    limit: str | None = None
+    max_iterations: Annotated[int, Field(ge=0)]
+    model: str | None = None
+    outcome: Annotated[str, Field(description='finished, limit or failed.')]
+    pin: str
+    proposals: WorkflowAgentProposalCounts
+    summary: str | None = None
+    tools: dict[str, int]
+    trace: list[WorkflowAgentTrace] | None = None
+    work_key: str
+
+
 class WorkflowClaimResponse(BaseModel):
     task: WorkflowTask | None = None
 
@@ -17867,6 +17951,7 @@ class WorkflowRunInput(BaseModel):
     it, and its values in the shape of a test's (`WorkflowTestValue`).
     """
 
+    agent: WorkflowAgentRecord | None = None
     cost_micro_usd: Annotated[
         int | None,
         Field(
@@ -17905,6 +17990,7 @@ class WorkflowRunResult(BaseModel):
     and when the run recorded it.
     """
 
+    agent: WorkflowAgentRecord | None = None
     cost_micro_usd: Annotated[int | None, Field(ge=0)] = None
     created: Annotated[
         str, Field(description="When the run recorded it (the run's end), RFC 3339.")
@@ -18074,6 +18160,12 @@ class WorkflowRunSummary(BaseModel):
     ] = None
     v: Annotated[int, Field(description='The format number, 1.', ge=0)]
     version: str
+    work_key: Annotated[
+        str | None,
+        Field(
+            description='The stable work key of an engine message; absent on earlier summaries.'
+        ),
+    ] = None
     workflow: Annotated[
         str,
         Field(
@@ -19828,6 +19920,24 @@ class ModelTrialStartResponse(BaseModel):
 
     skipped: list[ModelTrialSkippedJob] | None = None
     trials: list[ModelTrial]
+
+
+class NamedAgentWorkflowRequest(BaseModel):
+    """
+    The hosted agent's named creation surface. `triggers` contains one class watch
+    or content trigger. The type is fixed to lbb.agent@v1; no editable code executes.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    budget_usd_per_month: float | None = None
+    gate: WorkflowGate | None = None
+    name: str
+    owns: WorkflowOwns
+    params: Any
+    starter: str
+    triggers: list[WorkflowTrigger]
 
 
 class NamedWorkflowRequest(BaseModel):
@@ -21955,6 +22065,17 @@ class NamedWorkflowList(BaseModel):
         ),
     ] = None
     object: Annotated[str, Field(description='`list`.')]
+
+
+class NamedWorkflowPutRequest(
+    RootModel[NamedAgentWorkflowRequest | NamedWorkflowRequest]
+):
+    root: Annotated[
+        NamedAgentWorkflowRequest | NamedWorkflowRequest,
+        Field(
+            description='Additive named creation forms: a developer workflow or the reviewed hosted agent.'
+        ),
+    ]
 
 
 class NamedWorkflowQueue(BaseModel):

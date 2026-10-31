@@ -20543,6 +20543,53 @@
         ],
         "type": "object"
       },
+      "NamedAgentWorkflowRequest": {
+        "additionalProperties": false,
+        "description": "The hosted agent's named creation surface. `triggers` contains one class watch\nor content trigger. The type is fixed to lbb.agent@v1; no editable code executes.",
+        "properties": {
+          "budget_usd_per_month": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "gate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowGate"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "owns": {
+            "$ref": "#/components/schemas/WorkflowOwns"
+          },
+          "params": {},
+          "starter": {
+            "type": "string"
+          },
+          "triggers": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowTrigger"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "starter",
+          "name",
+          "triggers",
+          "owns",
+          "params"
+        ],
+        "type": "object"
+      },
       "NamedCount": {
         "properties": {
           "count": {
@@ -20832,6 +20879,17 @@
         ],
         "type": "object"
       },
+      "NamedWorkflowPutRequest": {
+        "description": "Additive named creation forms: a developer workflow or the reviewed hosted agent.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/NamedAgentWorkflowRequest"
+          },
+          {
+            "$ref": "#/components/schemas/NamedWorkflowRequest"
+          }
+        ]
+      },
       "NamedWorkflowQueue": {
         "description": "`GET /v1/workflows/named/queue?name=&trigger=&cursor=&limit=`: what a\nwatch has not sent yet, with origins, the pass in progress, and per\nshard its unfinished turns and its running turn's progress. The items\nare a page in the list envelope; the other fields describe the queue. A\nrequest with `Lbb-Version` before 2026-10-21 gets the earlier shape:\n`items` and an integer `next_after` in place of `object`, `data`,\n`has_more` and `next_cursor`.",
         "properties": {
@@ -21000,6 +21058,22 @@
           "workflow",
           "triggers"
         ],
+        "type": "object"
+      },
+      "NamedWorkflowRunRequest": {
+        "additionalProperties": false,
+        "description": "Optional body of POST /v1/workflows/named/run. An absent body keeps Run now.",
+        "properties": {
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunNowInput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "NamedWorkflowRunResponse": {
@@ -40206,6 +40280,223 @@
         ],
         "type": "string"
       },
+      "WorkflowAgentProposalCounts": {
+        "properties": {
+          "dropped": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "review": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "written": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "written",
+          "review",
+          "failed",
+          "dropped"
+        ],
+        "type": "object"
+      },
+      "WorkflowAgentRecord": {
+        "description": "What one agent step did, kept with its input for 30 days. No full proposal\narray or duplicate transcript: the values hold proposals and history holds steps.",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "iterations": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "limit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_iterations": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "description": "finished, limit or failed.",
+            "type": "string"
+          },
+          "pin": {
+            "type": "string"
+          },
+          "proposals": {
+            "$ref": "#/components/schemas/WorkflowAgentProposalCounts"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tools": {
+            "additionalProperties": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "trace": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowAgentTrace"
+            },
+            "type": "array"
+          },
+          "work_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "iterations",
+          "max_iterations",
+          "tools",
+          "cost_micro_usd",
+          "pin",
+          "work_key",
+          "proposals"
+        ],
+        "type": "object"
+      },
+      "WorkflowAgentSettings": {
+        "additionalProperties": false,
+        "description": "Revision-pinned behavior of the hosted agent. The model remains a Models choice;\nauthority, input and ownership come from the workflow and its trigger.",
+        "properties": {
+          "instructions": {
+            "type": "string"
+          },
+          "max_cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_iterations": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_proposals": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_read_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_review_items": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_wall_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pin_wait_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "instructions"
+        ],
+        "type": "object"
+      },
+      "WorkflowAgentTrace": {
+        "properties": {
+          "n": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "note": {
+            "description": "Untrusted plain text, at most 160 UTF-8 bytes.",
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "tool": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "n",
+          "tool",
+          "ok",
+          "note"
+        ],
+        "type": "object"
+      },
       "WorkflowBlob": {
         "description": "A blob of a workflow (`POST /v1/workflows/blobs?workflow_id=`): bytes a\nstep stores beside the engine for a large output or a large shared read\n(a catalogue), keyed by their SHA-256. A step names `key` in its output,\nits state or a message; `GET /v1/workflows/blobs?key=` reads the bytes.\nA blob stays while a live identity of the graph names it (its state, an\nunfinished turn's message, steps or operation), and at least a day after\nits last write; it goes with its workflow and with the graph.",
         "properties": {
@@ -42594,6 +42885,17 @@
       "WorkflowRunInput": {
         "description": "One input as a run records it: its IRI and label, what the run did with\nit, and its values in the shape of a test's (`WorkflowTestValue`).",
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAgentRecord",
+                "description": "The bounded agent summary, when the input ran an agent step."
+              }
+            ]
+          },
           "cost_micro_usd": {
             "description": "The model cost of this input, in millionths of a US dollar, when the\ncalls named it.",
             "format": "int64",
@@ -42682,6 +42984,25 @@
         ],
         "type": "object"
       },
+      "WorkflowRunNowInput": {
+        "additionalProperties": false,
+        "description": "Inputs selected for Run again: exactly one of iri and sha256 per entry.",
+        "properties": {
+          "iri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "WorkflowRunOutcome": {
         "description": "How a run ended.",
         "enum": [
@@ -42740,6 +43061,17 @@
       "WorkflowRunResult": {
         "description": "One result as the list answers it: an input of a run with the run's id\nand when the run recorded it.",
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAgentRecord",
+                "description": "The bounded agent summary, when the input ran an agent step."
+              }
+            ]
+          },
           "cost_micro_usd": {
             "format": "int64",
             "minimum": 0,
@@ -43157,6 +43489,13 @@
           },
           "version": {
             "type": "string"
+          },
+          "work_key": {
+            "description": "The stable work key of an engine message; absent on earlier summaries.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "workflow": {
             "description": "The folder the run is kept in: the named workflow of the identity,\nelse `instance:<identity>`.",
@@ -44423,6 +44762,13 @@
           },
           "stated": {
             "description": "The number and unit as the text states them (`600 mm`), when they\nwere converted to the property's unit.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "description": "The proposed target IRI when the input is a source file.",
             "type": [
               "string",
               "null"
@@ -130708,7 +131054,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NamedWorkflowRequest"
+                "$ref": "#/components/schemas/NamedWorkflowPutRequest"
               }
             }
           },
@@ -133400,6 +133746,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NamedWorkflowRunRequest"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "200": {
             "content": {
@@ -133674,6 +134030,15 @@
             "description": "the workflow's name",
             "in": "query",
             "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "only attempts of this stable message work key (wk_ and 16 hex)",
+            "in": "query",
+            "name": "work_key",
             "required": false,
             "schema": {
               "type": "string"
