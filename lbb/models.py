@@ -12476,6 +12476,26 @@ class DiscoveryTableMapping(BaseModel):
     properties: dict[str, str]
 
 
+class EdgeEventRow(BaseModel):
+    """
+    Deprecated. Only the always-empty `EntityDetailResponse.history` holds this
+    type. It stays in the contract because every released SDK requires that
+    array; it leaves with the array, after a new SDK release and a notice period.
+    """
+
+    commit_seq: Annotated[int, Field(ge=0)]
+    confidence: float
+    edge_event_id: str
+    evidence: list[str]
+    op: str
+    polarity: str
+    relation: RelationView
+    source: EntityView
+    supersedes: list[str]
+    target: EntityView
+    valid_time: ValidTime
+
+
 class EmbeddingCandidate(BaseModel):
     """
     One fact the instances of a class could give their text, measured on a
@@ -21435,6 +21455,12 @@ class EntityDetailResponse(BaseModel):
     edge_properties: EvidenceCompleteness | None = None
     entity: EntityView
     evidence: EvidenceCompleteness | None = None
+    history: Annotated[
+        list[EdgeEventRow],
+        Field(
+            description='Deprecated. Always an empty array: the RDF read model holds no edge\nevents. Released SDKs require the field, so the server keeps sending it.\nIt is removed after a new SDK release and a notice period. Read a past\nstate with SPARQL and `as_of_commit_seq`.'
+        ),
+    ]
     incoming: list[GraphEdgeRow]
     metadata: EntityMetadataResponse
     observations: list[ObservationRow]

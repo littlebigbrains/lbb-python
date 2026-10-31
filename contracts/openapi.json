@@ -5552,6 +5552,68 @@
       "EdgeEventId": {
         "type": "string"
       },
+      "EdgeEventRow": {
+        "deprecated": true,
+        "description": "Deprecated. Only the always-empty `EntityDetailResponse.history` holds this\ntype. It stays in the contract because every released SDK requires that\narray; it leaves with the array, after a new SDK release and a notice period.",
+        "properties": {
+          "commit_seq": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "confidence": {
+            "format": "float",
+            "type": "number"
+          },
+          "edge_event_id": {
+            "$ref": "#/components/schemas/EdgeEventId"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ObservationId"
+            },
+            "type": "array"
+          },
+          "op": {
+            "type": "string"
+          },
+          "polarity": {
+            "type": "string"
+          },
+          "relation": {
+            "$ref": "#/components/schemas/RelationView"
+          },
+          "source": {
+            "$ref": "#/components/schemas/EntityView"
+          },
+          "supersedes": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeEventId"
+            },
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EntityView"
+          },
+          "valid_time": {
+            "$ref": "#/components/schemas/ValidTime"
+          }
+        },
+        "required": [
+          "edge_event_id",
+          "source",
+          "relation",
+          "target",
+          "op",
+          "polarity",
+          "commit_seq",
+          "confidence",
+          "valid_time",
+          "evidence",
+          "supersedes"
+        ],
+        "type": "object"
+      },
       "EdgeIdempotencyMode": {
         "enum": [
           "append",
@@ -7358,6 +7420,13 @@
               }
             ]
           },
+          "history": {
+            "description": "Deprecated. Always an empty array: the RDF read model holds no edge\nevents. Released SDKs require the field, so the server keeps sending it.\nIt is removed after a new SDK release and a notice period. Read a past\nstate with SPARQL and `as_of_commit_seq`.",
+            "items": {
+              "$ref": "#/components/schemas/EdgeEventRow"
+            },
+            "type": "array"
+          },
           "incoming": {
             "items": {
               "$ref": "#/components/schemas/GraphEdgeRow"
@@ -7419,6 +7488,7 @@
           "current_state",
           "outgoing",
           "incoming",
+          "history",
           "observations"
         ],
         "type": "object"

@@ -199,6 +199,7 @@ class FakeLbb:
             "current_state": [],
             "outgoing": [],
             "incoming": [],
+            "history": [],
             "observations": [],
         }
 
