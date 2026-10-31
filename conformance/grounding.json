@@ -1,0 +1,1240 @@
+{
+  "_about": "Golden cases of the grounding checks of LBB's `ground` activity and `values.extract`: the quote test, the value types, the number and unit split and the unit check. Shared by the Rust module (database/crates/lbb-graph-query/tests/integration/grounding.rs) and the TypeScript twin in sdk/templates/values-extract (grounding.test.ts). A case with `rust_only` is a rule the template leaves to LBB: LBB converts units and knows the names of a unit. The `locator` cases are run by the Rust module; the TypeScript interpreter of the agent step adopts them. Both sides run every other case.",
+  "quote": [
+    {
+      "name": "three words in the text",
+      "quote": "Maße ca. 55x45cm",
+      "value": "45",
+      "text": "Waschtisch, Maße ca.  55x45cm, Keramik weiß",
+      "ok": true
+    },
+    {
+      "name": "line breaks and tabs in the text fold to one space",
+      "quote": "Maße ca. 55x45cm",
+      "value": "55",
+      "text": "Waschtisch,\nMaße\tca.\r\n55x45cm",
+      "ok": true
+    },
+    {
+      "name": "line breaks in the quote fold too",
+      "quote": "Maße\nca.   55x45cm",
+      "value": "55",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik",
+      "ok": true
+    },
+    {
+      "name": "a no-break space is a space",
+      "quote": "Maße ca. 55x45cm",
+      "value": "55",
+      "text": "Waschtisch, Maße\u00a0ca.\u00a055x45cm",
+      "ok": true
+    },
+    {
+      "name": "one word is enough when it holds the value",
+      "quote": "55x45cm",
+      "value": "55",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": true
+    },
+    {
+      "name": "one word that is the value",
+      "quote": "Keramik",
+      "value": "Keramik",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": true
+    },
+    {
+      "name": "the value is compared in lower case",
+      "quote": "Keramik weiß",
+      "value": "KERAMIK",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": true
+    },
+    {
+      "name": "two words that hold a two-word value",
+      "quote": "Breite: 60 cm",
+      "value": "60 cm",
+      "text": "Datenblatt Breite: 60 cm Tiefe: 45 cm",
+      "ok": true
+    },
+    {
+      "name": "one word that does not hold the value is too short",
+      "quote": "Keramik",
+      "value": "white",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": false,
+      "message": "the quote has fewer than 3 words and does not hold the value"
+    },
+    {
+      "name": "two words and an empty value are too short",
+      "quote": "Keramik weiß",
+      "value": "",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": false,
+      "message": "the quote has fewer than 3 words and does not hold the value"
+    },
+    {
+      "name": "three words that are not in the text",
+      "quote": "Maße ca. 60x45cm",
+      "value": "60",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": false,
+      "message": "the quote is not in the text"
+    },
+    {
+      "name": "the match is case sensitive",
+      "quote": "maße ca. 55x45cm",
+      "value": "55",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": false,
+      "message": "the quote is not in the text"
+    },
+    {
+      "name": "words that are in the text but not next to each other",
+      "quote": "Waschtisch Keramik weiß",
+      "value": "Keramik",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": false,
+      "message": "the quote is not in the text"
+    },
+    {
+      "name": "an empty quote",
+      "quote": "",
+      "value": "55",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": false,
+      "message": "the quote is empty"
+    },
+    {
+      "name": "a quote of white space only",
+      "quote": " \n\t ",
+      "value": "55",
+      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "ok": false,
+      "message": "the quote is empty"
+    },
+    {
+      "name": "a quote in an empty text",
+      "quote": "Maße ca. 55x45cm",
+      "value": "55",
+      "text": "",
+      "ok": false,
+      "message": "the quote is not in the text"
+    },
+    {
+      "name": "U+0085 is a space",
+      "quote": "Maße ca. 55x45cm",
+      "value": "55",
+      "text": "Waschtisch, Maße\u0085ca.\u008555x45cm",
+      "ok": true
+    },
+    {
+      "name": "U+FEFF is not a space",
+      "quote": "Maße ca. 55x45cm",
+      "value": "55",
+      "text": "Waschtisch, Maße\ufeffca. 55x45cm",
+      "ok": false,
+      "message": "the quote is not in the text"
+    }
+  ],
+  "value": [
+    {
+      "name": "a whole number",
+      "raw": "55",
+      "type": "i64",
+      "value": 55
+    },
+    {
+      "name": "a whole number with spaces",
+      "raw": " 1 200 ",
+      "type": "i64",
+      "value": 1200
+    },
+    {
+      "name": "a decimal comma",
+      "raw": "55,5",
+      "type": "f64",
+      "value": 55.5
+    },
+    {
+      "name": "a decimal point",
+      "raw": "0.45",
+      "type": "f64",
+      "value": 0.45
+    },
+    {
+      "name": "a sign",
+      "raw": "-3",
+      "type": "i64",
+      "value": -3
+    },
+    {
+      "name": "an exponent",
+      "raw": "1e3",
+      "type": "f64",
+      "value": 1000
+    },
+    {
+      "name": "a number with its unit is not a number",
+      "raw": "55 cm",
+      "type": "i64",
+      "error": "`55 cm` is not a number"
+    },
+    {
+      "name": "a fraction is not a whole number",
+      "raw": "5.5",
+      "type": "i64",
+      "error": "`5.5` is not a whole number"
+    },
+    {
+      "name": "words are not a number",
+      "raw": "sechzig",
+      "type": "f64",
+      "error": "`sechzig` is not a number"
+    },
+    {
+      "name": "infinity is not a number",
+      "raw": "inf",
+      "type": "f64",
+      "error": "`inf` is not a number"
+    },
+    {
+      "name": "an empty value",
+      "raw": "  ",
+      "type": "text",
+      "error": "the value is empty"
+    },
+    {
+      "name": "yes is true",
+      "raw": "ja",
+      "type": "bool",
+      "value": true
+    },
+    {
+      "name": "no is false",
+      "raw": "Nein",
+      "type": "bool",
+      "value": false
+    },
+    {
+      "name": "true in upper case",
+      "raw": "TRUE",
+      "type": "bool",
+      "value": true
+    },
+    {
+      "name": "maybe is neither",
+      "raw": "vielleicht",
+      "type": "bool",
+      "error": "`vielleicht` is not true or false"
+    },
+    {
+      "name": "a day is a time at midnight",
+      "raw": "2026-10-09",
+      "type": "datetime",
+      "value": "2026-10-09T00:00:00Z"
+    },
+    {
+      "name": "a time stays",
+      "raw": "2026-10-09T08:30:00Z",
+      "type": "datetime",
+      "value": "2026-10-09T08:30:00Z"
+    },
+    {
+      "name": "date_time is the same type",
+      "raw": "2026-10-09",
+      "type": "date_time",
+      "value": "2026-10-09T00:00:00Z"
+    },
+    {
+      "name": "a month 13 is no date",
+      "raw": "2026-13-09",
+      "type": "datetime",
+      "error": "`2026-13-09` is not a date"
+    },
+    {
+      "name": "words are no date",
+      "raw": "gestern",
+      "type": "datetime",
+      "error": "`gestern` is not a date"
+    },
+    {
+      "name": "a keyword stays",
+      "raw": "Keramik",
+      "type": "keyword",
+      "value": "Keramik"
+    },
+    {
+      "name": "a text is trimmed",
+      "raw": "  Keramik weiß ",
+      "type": "text",
+      "value": "Keramik weiß"
+    },
+    {
+      "name": "U+0085 around a value is trimmed",
+      "raw": "\u008555\u0085",
+      "type": "i64",
+      "value": 55
+    },
+    {
+      "name": "U+FEFF around a value is not trimmed",
+      "raw": "\ufeff55",
+      "type": "i64",
+      "error": "`\ufeff55` is not a number"
+    }
+  ],
+  "split_number_unit": [
+    {
+      "name": "a number and a unit",
+      "text": "600 mm",
+      "number": "600",
+      "unit": "mm"
+    },
+    {
+      "name": "a decimal comma",
+      "text": "0,45 m",
+      "number": "0,45",
+      "unit": "m"
+    },
+    {
+      "name": "a sign and a decimal point",
+      "text": "-5.5 kg",
+      "number": "-5.5",
+      "unit": "kg"
+    },
+    {
+      "name": "no space before the unit",
+      "text": "60cm",
+      "number": "60",
+      "unit": "cm"
+    },
+    {
+      "name": "a unit with a power sign",
+      "text": "1,5m²",
+      "number": "1,5",
+      "unit": "m²"
+    },
+    {
+      "name": "spaces inside the number",
+      "text": " 12 345 kg ",
+      "number": "12 345",
+      "unit": "kg"
+    },
+    {
+      "name": "a number alone",
+      "text": "600",
+      "none": true
+    },
+    {
+      "name": "a unit alone",
+      "text": "mm",
+      "none": true
+    },
+    {
+      "name": "no digit in the number part",
+      "text": "- mm",
+      "none": true
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "none": true
+    },
+    {
+      "name": "words",
+      "text": "sechzig cm",
+      "none": true
+    },
+    {
+      "name": "U+0085 around the text is trimmed",
+      "text": "\u008560 mm\u0085",
+      "number": "60",
+      "unit": "mm"
+    },
+    {
+      "name": "U+FEFF is no space and no digit",
+      "text": "\ufeff60 mm",
+      "none": true
+    }
+  ],
+  "unit": [
+    {
+      "name": "the quote states the unit",
+      "unit": "cm",
+      "stated": "cm",
+      "quote": "Breite 60 cm",
+      "number": 60,
+      "converted": 60,
+      "confirmed": true
+    },
+    {
+      "name": "no unit stated",
+      "unit": "cm",
+      "stated": "",
+      "quote": "Breite 60",
+      "number": 60,
+      "converted": 60,
+      "unconfirmed": "the text states no unit; the property holds cm"
+    },
+    {
+      "name": "the quote does not state the unit",
+      "unit": "cm",
+      "stated": "cm",
+      "quote": "Breite 60",
+      "number": 60,
+      "converted": 60,
+      "unconfirmed": "the quote does not state the unit cm"
+    },
+    {
+      "name": "the unit follows the number without a space",
+      "unit": "cm",
+      "stated": "cm",
+      "quote": "Breite 60cm",
+      "number": 60,
+      "converted": 60,
+      "confirmed": true
+    },
+    {
+      "name": "the unit is the end of a field name",
+      "unit": "cm",
+      "stated": "cm",
+      "quote": "width_cm: 60",
+      "number": 60,
+      "converted": 60,
+      "confirmed": true
+    },
+    {
+      "name": "cm2 does not state cm",
+      "unit": "cm",
+      "stated": "cm",
+      "quote": "Fläche 60 cm2",
+      "number": 60,
+      "converted": 60,
+      "unconfirmed": "the quote does not state the unit cm"
+    },
+    {
+      "name": "a letter before the unit does not state it",
+      "unit": "cm",
+      "stated": "cm",
+      "quote": "Breite 60 xcm",
+      "number": 60,
+      "converted": 60,
+      "unconfirmed": "the quote does not state the unit cm"
+    },
+    {
+      "name": "the unit in upper case",
+      "unit": "cm",
+      "stated": "CM",
+      "quote": "Breite 60 CM",
+      "number": 60,
+      "converted": 60,
+      "confirmed": true
+    },
+    {
+      "name": "a dot after the unit",
+      "unit": "cm",
+      "stated": "cm.",
+      "quote": "Breite 60 cm.",
+      "number": 60,
+      "converted": 60,
+      "confirmed": true
+    },
+    {
+      "name": "a power sign",
+      "unit": "m2",
+      "stated": "m²",
+      "quote": "Fläche 12 m²",
+      "number": 12,
+      "converted": 12,
+      "confirmed": true
+    },
+    {
+      "name": "a name of the unit in the quote",
+      "rust_only": true,
+      "unit": "cm",
+      "stated": "cm",
+      "quote": "Breite 60 Zentimeter",
+      "number": 60,
+      "converted": 60,
+      "confirmed": true
+    },
+    {
+      "name": "millimetres convert to centimetres",
+      "rust_only": true,
+      "unit": "cm",
+      "stated": "mm",
+      "quote": "Width: 600 mm",
+      "number": 600,
+      "converted": 60,
+      "confirmed": true
+    },
+    {
+      "name": "metres convert to centimetres, rounded",
+      "rust_only": true,
+      "unit": "cm",
+      "stated": "m",
+      "quote": "Tiefe 0,45 m",
+      "number": 0.45,
+      "converted": 45,
+      "confirmed": true
+    },
+    {
+      "name": "a converted number whose quote does not state its unit",
+      "rust_only": true,
+      "unit": "cm",
+      "stated": "mm",
+      "quote": "Width: 600",
+      "number": 600,
+      "converted": 60,
+      "unconfirmed": "the quote does not state the unit mm"
+    },
+    {
+      "name": "a unit of another kind",
+      "rust_only": true,
+      "unit": "cm",
+      "stated": "kg",
+      "quote": "Gewicht 60 kg",
+      "number": 60,
+      "refused": "kg measures mass, the property holds cm (length)"
+    },
+    {
+      "name": "a unit LBB does not know",
+      "rust_only": true,
+      "unit": "cm",
+      "stated": "Zoll",
+      "quote": "Breite 24 Zoll",
+      "number": 24,
+      "refused": "`Zoll` is not a unit values.extract knows"
+    },
+    {
+      "name": "U+0085 around the stated unit is trimmed",
+      "unit": "cm",
+      "stated": "\u0085cm\u0085",
+      "quote": "Breite 60 cm",
+      "number": 60,
+      "converted": 60,
+      "confirmed": true
+    },
+    {
+      "name": "a stated unit of U+0085 only is no unit",
+      "unit": "cm",
+      "stated": "\u0085",
+      "quote": "Breite 60 cm",
+      "number": 60,
+      "converted": 60,
+      "unconfirmed": "the text states no unit; the property holds cm"
+    },
+    {
+      "name": "U+FEFF before the unit is not trimmed",
+      "rust_only": true,
+      "unit": "cm",
+      "stated": "\ufeffcm",
+      "quote": "Breite 60 cm",
+      "number": 60,
+      "refused": "`\ufeffcm` is not a unit values.extract knows"
+    }
+  ],
+  "unit_value": [
+    {
+      "name": "a whole number of centimetres from millimetres",
+      "rust_only": true,
+      "raw": "600",
+      "stated": "mm",
+      "quote": "Breite 600 mm",
+      "type": "i64",
+      "unit": "cm",
+      "value": 60,
+      "confirmed": true
+    },
+    {
+      "name": "a decimal number of centimetres from metres",
+      "rust_only": true,
+      "raw": "0,45",
+      "stated": "m",
+      "quote": "Tiefe 0,45 m",
+      "type": "f64",
+      "unit": "cm",
+      "value": 45,
+      "confirmed": true
+    },
+    {
+      "name": "a conversion that is not a whole number",
+      "rust_only": true,
+      "raw": "605",
+      "stated": "mm",
+      "quote": "Breite 605 mm",
+      "type": "i64",
+      "unit": "cm",
+      "error": "605 mm is 60.5 cm, not a whole number"
+    },
+    {
+      "name": "a value that is not a number",
+      "rust_only": true,
+      "raw": "sechzig",
+      "stated": "cm",
+      "quote": "sechzig cm",
+      "type": "f64",
+      "unit": "cm",
+      "error": "`sechzig` is not a number"
+    },
+    {
+      "name": "a number without a unit",
+      "rust_only": true,
+      "raw": "60",
+      "stated": "",
+      "quote": "Breite 60",
+      "type": "f64",
+      "unit": "cm",
+      "value": 60,
+      "unconfirmed": "the text states no unit; the property holds cm"
+    }
+  ],
+  "locator": [
+    {
+      "name": "one line",
+      "media": "text/plain",
+      "locator": "line=0,1",
+      "text": "alpha\nbeta\ngamma",
+      "expect": "alpha"
+    },
+    {
+      "name": "two lines",
+      "media": "text/plain",
+      "locator": "line=1,3",
+      "text": "alpha\nbeta\ngamma",
+      "expect": "beta\ngamma"
+    },
+    {
+      "name": "the whole file",
+      "media": "text/plain",
+      "locator": "line=0,3",
+      "text": "alpha\nbeta\ngamma\n",
+      "expect": "alpha\nbeta\ngamma"
+    },
+    {
+      "name": "a line break at the end adds no line",
+      "media": "text/plain",
+      "locator": "line=2,3",
+      "text": "alpha\nbeta\n",
+      "error": "out_of_range"
+    },
+    {
+      "name": "CRLF",
+      "media": "text/plain",
+      "locator": "line=1,2",
+      "text": "alpha\r\nbeta\r\ngamma",
+      "expect": "beta"
+    },
+    {
+      "name": "CR alone",
+      "media": "text/plain",
+      "locator": "line=1,2",
+      "text": "alpha\rbeta\rgamma",
+      "expect": "beta"
+    },
+    {
+      "name": "a blank line is a line",
+      "media": "text/plain",
+      "locator": "line=1,2",
+      "text": "alpha\n\ngamma",
+      "expect": ""
+    },
+    {
+      "name": "a blank line between two",
+      "media": "text/plain",
+      "locator": "line=0,3",
+      "text": "alpha\n\ngamma",
+      "expect": "alpha\n\ngamma"
+    },
+    {
+      "name": "a byte order mark is not in line 1",
+      "media": "text/plain",
+      "locator": "line=0,1",
+      "text": "\ufeffalpha\nbeta",
+      "expect": "alpha"
+    },
+    {
+      "name": "markdown is text",
+      "media": "text/markdown",
+      "locator": "line=1,2",
+      "text": "# Title\nbody line\n",
+      "expect": "body line"
+    },
+    {
+      "name": "a line past the end",
+      "media": "text/plain",
+      "locator": "line=5,6",
+      "text": "alpha\nbeta",
+      "error": "out_of_range"
+    },
+    {
+      "name": "the last line has no break",
+      "media": "text/plain",
+      "locator": "line=2,3",
+      "text": "alpha\nbeta\ngamma",
+      "expect": "gamma"
+    },
+    {
+      "name": "an empty file has no line",
+      "media": "text/plain",
+      "locator": "line=0,1",
+      "text": "",
+      "error": "out_of_range"
+    },
+    {
+      "name": "a multibyte line",
+      "media": "text/plain",
+      "locator": "line=1,2",
+      "text": "Größe\nBreite: 60 cm\nTiefe",
+      "expect": "Breite: 60 cm"
+    },
+    {
+      "name": "the end before the start",
+      "media": "text/plain",
+      "locator": "line=4,2",
+      "text": "a\nb\nc\nd\ne",
+      "error": "malformed"
+    },
+    {
+      "name": "an empty place",
+      "media": "text/plain",
+      "locator": "line=3,3",
+      "text": "a\nb\nc\nd",
+      "error": "malformed"
+    },
+    {
+      "name": "a single position",
+      "media": "text/plain",
+      "locator": "line=3",
+      "text": "a\nb\nc\nd",
+      "error": "malformed"
+    },
+    {
+      "name": "a sign",
+      "media": "text/plain",
+      "locator": "line=-1,2",
+      "text": "a\nb",
+      "error": "malformed"
+    },
+    {
+      "name": "no number",
+      "media": "text/plain",
+      "locator": "line=a,b",
+      "text": "a\nb",
+      "error": "malformed"
+    },
+    {
+      "name": "not a locator",
+      "media": "text/plain",
+      "locator": "3",
+      "text": "a\nb",
+      "error": "malformed"
+    },
+    {
+      "name": "a space",
+      "media": "text/plain",
+      "locator": "line=0, 1",
+      "text": "a\nb",
+      "error": "malformed"
+    },
+    {
+      "name": "a page of a text file",
+      "media": "text/plain",
+      "locator": "page=1",
+      "text": "a\nb",
+      "error": "wrong_media_type"
+    },
+    {
+      "name": "a row of a text file",
+      "media": "text/plain",
+      "locator": "row=1",
+      "text": "a\nb",
+      "error": "wrong_media_type"
+    },
+    {
+      "name": "a line of a CSV file",
+      "media": "text/csv",
+      "locator": "line=0,1",
+      "text": "a,b\n1,2",
+      "error": "wrong_media_type"
+    },
+    {
+      "name": "a media type with no locator",
+      "media": "image/png",
+      "locator": "line=0,1",
+      "text": "a\nb",
+      "error": "unsupported_media_type"
+    },
+    {
+      "name": "the header is row 1",
+      "media": "text/csv",
+      "locator": "row=1",
+      "text": "name,width\nsink,60\ntub,90",
+      "expect": "name,width"
+    },
+    {
+      "name": "a data row",
+      "media": "text/csv",
+      "locator": "row=2",
+      "text": "name,width\nsink,60\ntub,90",
+      "expect": "sink,60"
+    },
+    {
+      "name": "a range of rows",
+      "media": "text/csv",
+      "locator": "row=2-3",
+      "text": "name,width\nsink,60\ntub,90",
+      "expect": "sink,60\ntub,90"
+    },
+    {
+      "name": "a quoted field holds a line break",
+      "media": "text/csv",
+      "locator": "row=2",
+      "text": "name,note\nsink,\"white\nceramic\"\ntub,x",
+      "expect": "sink,\"white\nceramic\""
+    },
+    {
+      "name": "the row after a quoted line break",
+      "media": "text/csv",
+      "locator": "row=3",
+      "text": "name,note\nsink,\"white\nceramic\"\ntub,x",
+      "expect": "tub,x"
+    },
+    {
+      "name": "an escaped quote inside a quoted field",
+      "media": "text/csv",
+      "locator": "row=2",
+      "text": "a,b\n\"say \"\"hi\"\"\",2\nx,y",
+      "expect": "\"say \"\"hi\"\"\",2"
+    },
+    {
+      "name": "a quote inside an unquoted field is kept",
+      "media": "text/csv",
+      "locator": "row=2",
+      "text": "a,b\n5\" pipe,2\nx,y",
+      "expect": "5\" pipe,2"
+    },
+    {
+      "name": "a blank line is a row",
+      "media": "text/csv",
+      "locator": "row=3",
+      "text": "a,b\n\nx,y",
+      "expect": "x,y"
+    },
+    {
+      "name": "a blank row",
+      "media": "text/csv",
+      "locator": "row=2",
+      "text": "a,b\n\nx,y",
+      "expect": ""
+    },
+    {
+      "name": "CRLF",
+      "media": "text/csv",
+      "locator": "row=2",
+      "text": "a,b\r\nsink,60\r\n",
+      "expect": "sink,60"
+    },
+    {
+      "name": "a line break at the end adds no row",
+      "media": "text/csv",
+      "locator": "row=3",
+      "text": "a,b\nsink,60\n",
+      "error": "out_of_range"
+    },
+    {
+      "name": "a byte order mark is not in row 1",
+      "media": "text/csv",
+      "locator": "row=1",
+      "text": "\ufeffa,b\n1,2",
+      "expect": "a,b"
+    },
+    {
+      "name": "a tab separates TSV fields, a quote opens a field",
+      "media": "text/tab-separated-values",
+      "locator": "row=2",
+      "text": "a\tb\n\"x\ty\"\tz\nq\tr",
+      "expect": "\"x\ty\"\tz"
+    },
+    {
+      "name": "a comma is no separator in TSV",
+      "media": "text/tab-separated-values",
+      "locator": "row=2",
+      "text": "a,b\n\"x,y\nz\"\tq\nr\ts",
+      "expect": "\"x,y\nz\"\tq"
+    },
+    {
+      "name": "row 0",
+      "media": "text/csv",
+      "locator": "row=0",
+      "text": "a,b",
+      "error": "malformed"
+    },
+    {
+      "name": "an inverted range",
+      "media": "text/csv",
+      "locator": "row=3-2",
+      "text": "a\nb\nc",
+      "error": "malformed"
+    },
+    {
+      "name": "a row past the end",
+      "media": "text/csv",
+      "locator": "row=9",
+      "text": "a\nb",
+      "error": "out_of_range"
+    },
+    {
+      "name": "a range that ends past the end",
+      "media": "text/csv",
+      "locator": "row=1-9",
+      "text": "a\nb",
+      "error": "out_of_range"
+    },
+    {
+      "name": "a line of a TSV file",
+      "media": "text/tab-separated-values",
+      "locator": "line=0,1",
+      "text": "a\tb",
+      "error": "wrong_media_type"
+    },
+    {
+      "name": "an unterminated quote runs to the end",
+      "media": "text/csv",
+      "locator": "row=2",
+      "text": "a,b\n\"open,2\nstill",
+      "expect": "\"open,2\nstill"
+    },
+    {
+      "name": "x-markdown is Markdown",
+      "media": "text/x-markdown",
+      "locator": "line=0,1",
+      "text": "# Title\nbody line\n",
+      "expect": "# Title"
+    },
+    {
+      "name": "a media type is read as the record holds it: upper case has no locator",
+      "media": "TEXT/PLAIN",
+      "locator": "line=0,1",
+      "text": "a\nb",
+      "error": "unsupported_media_type"
+    },
+    {
+      "name": "a media type with parameters has no locator",
+      "media": "text/plain; charset=utf-8",
+      "locator": "line=0,1",
+      "text": "a\nb",
+      "error": "unsupported_media_type"
+    },
+    {
+      "name": "leading zeros are numbers",
+      "media": "text/plain",
+      "locator": "line=00,01",
+      "text": "alpha\nbeta",
+      "expect": "alpha"
+    },
+    {
+      "name": "leading zeros in a row",
+      "media": "text/csv",
+      "locator": "row=02",
+      "text": "a,b\nsink,60",
+      "expect": "sink,60"
+    },
+    {
+      "name": "the kind of place is checked before the numbers (text)",
+      "media": "text/plain",
+      "locator": "row=abc",
+      "text": "a\nb",
+      "error": "wrong_media_type"
+    },
+    {
+      "name": "the kind of place is checked before the numbers (CSV)",
+      "media": "text/csv",
+      "locator": "line=abc",
+      "text": "a,b",
+      "error": "wrong_media_type"
+    },
+    {
+      "name": "a number of 12 digits is a number",
+      "media": "text/plain",
+      "locator": "line=0,123456789012",
+      "text": "a\nb",
+      "error": "out_of_range"
+    },
+    {
+      "name": "a number of 13 digits is none",
+      "media": "text/plain",
+      "locator": "line=0,1234567890123",
+      "text": "a\nb",
+      "error": "malformed"
+    },
+    {
+      "name": "a scheme the grammar lacks",
+      "media": "text/plain",
+      "locator": "cell=1",
+      "text": "a\nb",
+      "error": "malformed"
+    },
+    {
+      "name": "no scheme",
+      "media": "text/plain",
+      "locator": "=1",
+      "text": "a\nb",
+      "error": "malformed"
+    },
+    {
+      "name": "three positions",
+      "media": "text/plain",
+      "locator": "line=0,1,2",
+      "text": "a\nb",
+      "error": "malformed"
+    },
+    {
+      "name": "three row positions",
+      "media": "text/csv",
+      "locator": "row=1-2-3",
+      "text": "a\nb\nc",
+      "error": "malformed"
+    }
+  ],
+  "ground_value": [
+    {
+      "name": "a text keeps its words",
+      "property_type": "text",
+      "value": "12 Monate",
+      "quote": "Garantie: 12 Monate",
+      "text": "Garantie: 12 Monate ab Kauf",
+      "expect": {
+        "ok": true,
+        "value": {
+          "text": "12 Monate"
+        }
+      }
+    },
+    {
+      "name": "a keyword keeps its words",
+      "property_type": "keyword",
+      "value": "A 1",
+      "quote": "Typ: A 1 Standard",
+      "text": "Typ: A 1 Standard",
+      "expect": {
+        "ok": true,
+        "value": {
+          "keyword": "A 1"
+        }
+      }
+    },
+    {
+      "name": "a text that starts with a number keeps a unit-like word",
+      "property_type": "text",
+      "value": "3 kg Sack",
+      "quote": "Inhalt: 3 kg Sack",
+      "text": "Inhalt: 3 kg Sack",
+      "expect": {
+        "ok": true,
+        "value": {
+          "text": "3 kg Sack"
+        }
+      }
+    },
+    {
+      "name": "a text with a unit field ignores the unit",
+      "property_type": "text",
+      "value": "12 Monate",
+      "quote": "Garantie: 12 Monate",
+      "text": "Garantie: 12 Monate ab Kauf",
+      "expect": {
+        "ok": true,
+        "value": {
+          "text": "12 Monate"
+        }
+      },
+      "unit": "Monate"
+    },
+    {
+      "name": "a text whose short quote holds only its number is too short",
+      "property_type": "text",
+      "value": "12 Monate",
+      "quote": "Garantie 12",
+      "text": "Garantie 12 Monate ab Kauf",
+      "expect": {
+        "ok": false,
+        "code": "quote_too_short"
+      }
+    },
+    {
+      "name": "a whole number with a unit apart",
+      "property_type": "i64",
+      "value": "12 Monate",
+      "quote": "Garantie 12",
+      "text": "Garantie 12 Monate ab Kauf",
+      "expect": {
+        "ok": true,
+        "value": {
+          "i64": 12
+        }
+      }
+    },
+    {
+      "name": "a number with its unit in the value is read apart",
+      "property_type": "f64",
+      "value": "600 mm",
+      "quote": "Breite: 600 mm",
+      "text": "Breite: 600 mm",
+      "expect": {
+        "ok": true,
+        "value": {
+          "f64": 60.0
+        },
+        "stated": "600 mm"
+      },
+      "property_unit": "cm"
+    },
+    {
+      "name": "a number without a unit stays",
+      "property_type": "i64",
+      "value": "55",
+      "quote": "Anzahl: 55 Stück",
+      "text": "Anzahl: 55 Stück",
+      "expect": {
+        "ok": true,
+        "value": {
+          "i64": 55
+        }
+      }
+    },
+    {
+      "name": "a boolean",
+      "property_type": "bool",
+      "value": "ja",
+      "quote": "Lieferbar: ja",
+      "text": "Lieferbar: ja",
+      "expect": {
+        "ok": true,
+        "value": {
+          "bool": true
+        }
+      }
+    },
+    {
+      "name": "a date",
+      "property_type": "datetime",
+      "value": "2026-10-09",
+      "quote": "Stand: 2026-10-09",
+      "text": "Stand: 2026-10-09",
+      "expect": {
+        "ok": true,
+        "value": {
+          "date_time": "2026-10-09T00:00:00Z"
+        }
+      }
+    },
+    {
+      "name": "a quote that is not in the text",
+      "property_type": "text",
+      "value": "12 Monate",
+      "quote": "Garantie: 24 Monate",
+      "text": "Garantie: 12 Monate ab Kauf",
+      "expect": {
+        "ok": false,
+        "code": "quote_not_found"
+      }
+    },
+    {
+      "name": "a value with white space inside a text",
+      "property_type": "text",
+      "value": "12   Monate",
+      "quote": "Garantie: 12 Monate",
+      "text": "Garantie: 12 Monate",
+      "expect": {
+        "ok": true,
+        "value": {
+          "text": "12   Monate"
+        }
+      }
+    }
+  ],
+  "read_value_unit": [
+    {
+      "name": "a number with its unit apart",
+      "value": "600 mm",
+      "unit": "",
+      "expect": {
+        "value": "600",
+        "unit": "mm"
+      }
+    },
+    {
+      "name": "the unit is trimmed",
+      "value": "600",
+      "unit": " mm ",
+      "expect": {
+        "value": "600",
+        "unit": "mm"
+      }
+    },
+    {
+      "name": "a stated unit stops the split",
+      "value": "600 mm",
+      "unit": "cm",
+      "expect": {
+        "value": "600 mm",
+        "unit": "cm"
+      }
+    },
+    {
+      "name": "no unit anywhere",
+      "value": "600",
+      "unit": "",
+      "expect": {
+        "value": "600",
+        "unit": ""
+      }
+    },
+    {
+      "name": "words are no number",
+      "value": "sechzig cm",
+      "unit": "",
+      "expect": {
+        "value": "sechzig cm",
+        "unit": ""
+      }
+    },
+    {
+      "name": "U+0085 around the value is trimmed by the split",
+      "value": "\u0085600 mm\u0085",
+      "unit": "",
+      "expect": {
+        "value": "600",
+        "unit": "mm"
+      }
+    },
+    {
+      "name": "a unit of U+0085 only is empty",
+      "value": "600 mm",
+      "unit": "\u0085",
+      "expect": {
+        "value": "600",
+        "unit": "mm"
+      }
+    },
+    {
+      "name": "a unit of U+FEFF is a unit",
+      "value": "600 mm",
+      "unit": "\ufeff",
+      "expect": {
+        "value": "600 mm",
+        "unit": "\ufeff"
+      }
+    },
+    {
+      "name": "U+FEFF before the value stops the split",
+      "value": "\ufeff600 mm",
+      "unit": "",
+      "expect": {
+        "value": "\ufeff600 mm",
+        "unit": ""
+      }
+    }
+  ]
+}
