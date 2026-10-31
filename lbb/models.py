@@ -268,7 +268,7 @@ class AddRelationOp(BaseModel):
     reducer: Annotated[
         str | None,
         Field(
-            description='State-reducer token (e.g. `append_only` (default), `latest_wins`,\n`valid_time_latest_wins`).'
+            description='State-reducer token: `append_only` (default), `latest_wins`,\n`single_active_value` or `multi_active_value`. The tokens\n`valid_time_latest_wins`, `max_confidence`, `weighted_preference`\nand `boolean_retraction` are retired: a new relation that names one\nis refused with `reducer_token_retired`.'
         ),
     ] = None
     symmetric: Annotated[
@@ -12476,20 +12476,6 @@ class DiscoveryTableMapping(BaseModel):
     properties: dict[str, str]
 
 
-class EdgeEventRow(BaseModel):
-    commit_seq: Annotated[int, Field(ge=0)]
-    confidence: float
-    edge_event_id: str
-    evidence: list[str]
-    op: str
-    polarity: str
-    relation: RelationView
-    source: EntityView
-    supersedes: list[str]
-    target: EntityView
-    valid_time: ValidTime
-
-
 class EmbeddingCandidate(BaseModel):
     """
     One fact the instances of a class could give their text, measured on a
@@ -21449,7 +21435,6 @@ class EntityDetailResponse(BaseModel):
     edge_properties: EvidenceCompleteness | None = None
     entity: EntityView
     evidence: EvidenceCompleteness | None = None
-    history: list[EdgeEventRow]
     incoming: list[GraphEdgeRow]
     metadata: EntityMetadataResponse
     observations: list[ObservationRow]
