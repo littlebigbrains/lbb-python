@@ -1,0 +1,118 @@
+{
+  "name": "answered-value-is-not-written-again",
+  "rule": "A value a person rejected stays rejected: the rerun neither writes it nor files it again.",
+  "spec": {
+    "instructions": "Read the size of each door from its datasheet.",
+    "owns": {
+      "properties": [
+        "width_cm",
+        "height_cm"
+      ]
+    },
+    "input": {
+      "file": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "instances": [
+        "https://littlebigbrain.com/e/00000000000000000000000000000d01"
+      ]
+    }
+  },
+  "world": {
+    "commit_seq": 41,
+    "epoch": "epoch-1",
+    "files": {
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+        "uploaded_at": "2026-10-01T10:00:00Z",
+        "content_type": "text/plain",
+        "document": "https://littlebigbrain.com/e/00000000000000000000000000000f01",
+        "text": "Door D-1\nWidth: 600 mm\nHeight: 2100 mm\nWeight: 40 kg\n"
+      },
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+        "uploaded_at": "2026-10-01T10:00:00Z",
+        "content_type": "text/plain",
+        "document": "https://littlebigbrain.com/e/00000000000000000000000000000f02",
+        "text": "Other file\n"
+      },
+      "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc": {
+        "uploaded_at": "2026-10-01T10:00:00Z",
+        "content_type": "text/plain",
+        "generated": true,
+        "text": "Made by a run\n"
+      }
+    },
+    "entities": {
+      "https://littlebigbrain.com/e/00000000000000000000000000000d01": {
+        "type": "Door",
+        "name": "D-1"
+      },
+      "https://littlebigbrain.com/e/00000000000000000000000000000d02": {
+        "type": "Door",
+        "name": "D-2"
+      }
+    },
+    "reads": [],
+    "answers": {
+      "https://littlebigbrain.com/e/00000000000000000000000000000d01|width_cm": {
+        "decision": "reject",
+        "asked": 600
+      }
+    }
+  },
+  "model": [
+    {
+      "tool": "files.read",
+      "arguments": {
+        "file": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "locator": "line=0,4"
+      },
+      "summary": "Read the datasheet.",
+      "cost_micro_usd": 1000
+    },
+    {
+      "tool": "propose_write",
+      "arguments": {
+        "proposals": [
+          {
+            "subject": "https://littlebigbrain.com/e/00000000000000000000000000000d01",
+            "property": "width_cm",
+            "value": "600",
+            "file": {
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "locator": "line=0,4",
+            "quote": "Width: 600 mm",
+            "unit": "mm"
+          }
+        ]
+      },
+      "summary": "Propose values.",
+      "cost_micro_usd": 1000
+    },
+    {
+      "tool": "finish",
+      "arguments": {
+        "summary": "Done."
+      },
+      "cost_micro_usd": 1000
+    }
+  ],
+  "expect": {
+    "outcome": "finished",
+    "counts": {
+      "written": 0,
+      "review": 0,
+      "failed": 0,
+      "dropped": 0
+    },
+    "commits": 0,
+    "review_items": 0,
+    "steps": [
+      "agent.start",
+      "agent.i01.decide",
+      "agent.i01.tool",
+      "agent.i02.decide",
+      "agent.i02.tool",
+      "agent.i03.decide",
+      "agent.commit.recheck"
+    ]
+  }
+}

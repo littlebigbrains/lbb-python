@@ -6426,37 +6426,6 @@ class RenameRelationOp(BaseModel):
     to: str
 
 
-class ReplaceOwnedInput(BaseModel):
-    """
-    The outputs a writer owns, replaced by one commit (`replace_owned`).
-
-    In one commit, under one head CAS, for each subject: every current
-    out-edge whose relation is in `relations` and that the commit does not
-    assert again is retracted, and every field in `properties` that the commit
-    does not set on the subject is removed. Every entity in
-    `retract_entities` loses its current edges and fields, except the ones the
-    commit writes again. Then the commit's triplets and properties apply.
-    Ownership is by relation and field: a retraction of (source, relation,
-    target) retracts every copy of that edge, whoever wrote it. On an
-    RDF-native graph a writer removes only the owned statements it wrote, and
-    `retract_entities` removes every statement of the entity.
-    """
-
-    properties: Annotated[
-        list[str] | None, Field(description='Owned property fields of the subjects.')
-    ] = None
-    relations: Annotated[
-        list[str] | None, Field(description='Owned out-edge relations of the subjects.')
-    ] = None
-    retract_entities: Annotated[
-        list[NamedEntityInput] | None,
-        Field(description='Entities the writer made and no longer makes.'),
-    ] = None
-    subjects: Annotated[
-        list[NamedEntityInput], Field(description='The instances this write is for.')
-    ]
-
-
 class RequiredFactRow(BaseModel):
     """
     A row of a suggestion's facts that an accept must keep.
@@ -9010,6 +8979,20 @@ class StreamErrorEvent(BaseModel):
     status: Annotated[
         int,
         Field(description='The HTTP status of the same error without a stream.', ge=0),
+    ]
+
+
+class SubjectPropertiesInput(BaseModel):
+    """
+    The owned property fields of one subject of a `replace_owned`.
+    """
+
+    properties: Annotated[
+        list[str], Field(description='The fields of that subject that the write owns.')
+    ]
+    subject: Annotated[
+        NamedEntityInput,
+        Field(description='The subject: one of `replace_owned.subjects`.'),
     ]
 
 
@@ -16065,6 +16048,43 @@ class RelationSearchResult(BaseModel):
     name: str
     relation_id: Annotated[int, Field(ge=0)]
     score: float
+
+
+class ReplaceOwnedInput(BaseModel):
+    """
+    The outputs a writer owns, replaced by one commit (`replace_owned`).
+
+    In one commit, under one head CAS, for each subject: every current
+    out-edge whose relation is in `relations` and that the commit does not
+    assert again is retracted, and every field in `properties` that the commit
+    does not set on the subject is removed. Every entity in
+    `retract_entities` loses its current edges and fields, except the ones the
+    commit writes again. Then the commit's triplets and properties apply.
+    Ownership is by relation and field: a retraction of (source, relation,
+    target) retracts every copy of that edge, whoever wrote it. On an
+    RDF-native graph a writer removes only the owned statements it wrote, and
+    `retract_entities` removes every statement of the entity.
+    """
+
+    properties: Annotated[
+        list[str] | None, Field(description='Owned property fields of the subjects.')
+    ] = None
+    relations: Annotated[
+        list[str] | None, Field(description='Owned out-edge relations of the subjects.')
+    ] = None
+    retract_entities: Annotated[
+        list[NamedEntityInput] | None,
+        Field(description='Entities the writer made and no longer makes.'),
+    ] = None
+    subject_properties: Annotated[
+        list[SubjectPropertiesInput] | None,
+        Field(
+            description='Owned property fields per subject. Each listed subject loses only its\nlisted fields that the commit does not set, so a writer that proposes\n`width_cm` for one subject and `height_cm` for another removes no\npair it did not propose. When present, `properties` must be empty,\nand each listed subject must be one of `subjects`.'
+        ),
+    ] = None
+    subjects: Annotated[
+        list[NamedEntityInput], Field(description='The instances this write is for.')
+    ]
 
 
 class ResolutionResult(BaseModel):

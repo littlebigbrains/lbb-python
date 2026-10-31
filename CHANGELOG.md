@@ -4,6 +4,11 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- The generated models add `SubjectPropertiesInput` and
+  `ReplaceOwnedInput.subject_properties`: the owned fields of each subject on
+  its own. A server that has the engine change "Own different fields on
+  different records" takes the field.
+
 - **Deprecation.** `EntityDetailResponse.history` and its row type
   `EdgeEventRow` (with `polarity` and `supersedes`) are deprecated. The entity
   read (`GET /v1/graph/entity`) sends `history` as an empty array, as before.

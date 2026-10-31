@@ -28023,6 +28023,13 @@
             },
             "type": "array"
           },
+          "subject_properties": {
+            "description": "Owned property fields per subject. Each listed subject loses only its\nlisted fields that the commit does not set, so a writer that proposes\n`width_cm` for one subject and `height_cm` for another removes no\npair it did not propose. When present, `properties` must be empty,\nand each listed subject must be one of `subjects`.",
+            "items": {
+              "$ref": "#/components/schemas/SubjectPropertiesInput"
+            },
+            "type": "array"
+          },
           "subjects": {
             "description": "The instances this write is for.",
             "items": {
@@ -37376,6 +37383,27 @@
           "status",
           "code",
           "message"
+        ],
+        "type": "object"
+      },
+      "SubjectPropertiesInput": {
+        "description": "The owned property fields of one subject of a `replace_owned`.",
+        "properties": {
+          "properties": {
+            "description": "The fields of that subject that the write owns.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/NamedEntityInput",
+            "description": "The subject: one of `replace_owned.subjects`."
+          }
+        },
+        "required": [
+          "subject",
+          "properties"
         ],
         "type": "object"
       },
