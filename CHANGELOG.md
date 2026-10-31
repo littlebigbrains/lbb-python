@@ -2,6 +2,25 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- **Breaking change to types.** The `EdgeEventRow` schema and the `history`
+  array of `EntityDetailResponse` are removed. `GET /v1/graph/entity` always
+  sent `history` as an empty array. It no longer sends it, and it no longer
+  lists `history` in `unavailable_sections`. The `polarity` and `supersedes`
+  fields of `EdgeEventRow` leave with the type. Stored edge events do not
+  change. Read a past state with SPARQL and `as_of_commit_seq`.
+
+- The ontology define and evolve routes refuse four reducer tokens for a new
+  relation: `valid_time_latest_wins`, `max_confidence`, `weighted_preference`
+  and `boolean_retraction`. The refusal is `400 reducer_token_retired`. Use
+  `latest_wins` or `single_active_value` for one current value. Use
+  `multi_active_value` or `append_only` for a set. A relation that a graph
+  already stores keeps its token and keeps working. The built-in vocabulary now
+  gives `PREFERS`, `AVOIDS` and `OPTIMIZES_FOR` the token `multi_active_value`,
+  and `LOCATED_IN` and `WORKS_AT` the token `latest_wins`. A graph created
+  before this change keeps the old tokens.
+
 ## 0.33.0 (2026-10-30)
 
 - The client sends `lbb-version: 2026-10-27` by default (`api_version=`;

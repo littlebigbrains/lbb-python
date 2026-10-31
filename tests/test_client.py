@@ -259,10 +259,9 @@ def entity_detail_payload() -> dict[str, Any]:
         "current_state": [],
         "outgoing": [],
         "incoming": [],
-        "history": [],
         "observations": [],
         "rdf_relations": {"outgoing": [], "incoming": []},
-        "unavailable_sections": ["history"],
+        "unavailable_sections": ["observations"],
     }
 
 

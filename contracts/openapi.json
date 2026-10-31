@@ -479,7 +479,7 @@
             "type": "array"
           },
           "reducer": {
-            "description": "State-reducer token (e.g. `append_only` (default), `latest_wins`,\n`valid_time_latest_wins`).",
+            "description": "State-reducer token: `append_only` (default), `latest_wins`,\n`single_active_value` or `multi_active_value`. The tokens\n`valid_time_latest_wins`, `max_confidence`, `weighted_preference`\nand `boolean_retraction` are retired: a new relation that names one\nis refused with `reducer_token_retired`.",
             "type": [
               "string",
               "null"
@@ -5552,66 +5552,6 @@
       "EdgeEventId": {
         "type": "string"
       },
-      "EdgeEventRow": {
-        "properties": {
-          "commit_seq": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "confidence": {
-            "format": "float",
-            "type": "number"
-          },
-          "edge_event_id": {
-            "$ref": "#/components/schemas/EdgeEventId"
-          },
-          "evidence": {
-            "items": {
-              "$ref": "#/components/schemas/ObservationId"
-            },
-            "type": "array"
-          },
-          "op": {
-            "type": "string"
-          },
-          "polarity": {
-            "type": "string"
-          },
-          "relation": {
-            "$ref": "#/components/schemas/RelationView"
-          },
-          "source": {
-            "$ref": "#/components/schemas/EntityView"
-          },
-          "supersedes": {
-            "items": {
-              "$ref": "#/components/schemas/EdgeEventId"
-            },
-            "type": "array"
-          },
-          "target": {
-            "$ref": "#/components/schemas/EntityView"
-          },
-          "valid_time": {
-            "$ref": "#/components/schemas/ValidTime"
-          }
-        },
-        "required": [
-          "edge_event_id",
-          "source",
-          "relation",
-          "target",
-          "op",
-          "polarity",
-          "commit_seq",
-          "confidence",
-          "valid_time",
-          "evidence",
-          "supersedes"
-        ],
-        "type": "object"
-      },
       "EdgeIdempotencyMode": {
         "enum": [
           "append",
@@ -7418,12 +7358,6 @@
               }
             ]
           },
-          "history": {
-            "items": {
-              "$ref": "#/components/schemas/EdgeEventRow"
-            },
-            "type": "array"
-          },
           "incoming": {
             "items": {
               "$ref": "#/components/schemas/GraphEdgeRow"
@@ -7485,7 +7419,6 @@
           "current_state",
           "outgoing",
           "incoming",
-          "history",
           "observations"
         ],
         "type": "object"
