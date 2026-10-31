@@ -259,9 +259,10 @@ def entity_detail_payload() -> dict[str, Any]:
         "current_state": [],
         "outgoing": [],
         "incoming": [],
+        "history": [],
         "observations": [],
         "rdf_relations": {"outgoing": [], "incoming": []},
-        "unavailable_sections": ["observations"],
+        "unavailable_sections": ["history"],
     }
 
 
@@ -2427,6 +2428,14 @@ class SyncClientTests(unittest.TestCase):
         self.assertIsInstance(typed, model_module.EntityDetailResponse)
         self.assertEqual(typed.entity.name, "Login fails")
         self.assertEqual(seen[0].url.path, "/v1/graph/entity")
+        # The server still sends the deprecated empty `history`, and the typed
+        # read requires it: dropping it breaks this call on released SDKs.
+        self.assertEqual(raw["history"], [])
+        without_history = {
+            key: value for key, value in entity_detail_payload().items() if key != "history"
+        }
+        with self.assertRaises(ValueError):
+            model_module.EntityDetailResponse.model_validate(without_history)
         self.assertEqual(
             dict(seen[0].url.params),
             {
@@ -2440,6 +2449,50 @@ class SyncClientTests(unittest.TestCase):
         )
         self.assertEqual(seen[1].url.params["as_of_commit_seq"], "7")
         self.assertNotIn("as_of", seen[1].url.params)
+
+    def test_entity_detail_keeps_the_released_model_shape(self) -> None:
+        # The server sends the response below. Released SDKs validate it against
+        # `EntityDetailResponse` with `history` required, so the model keeps that
+        # field, its row type and the section name `history`.
+        payload = entity_detail_payload()
+        self.assertEqual(payload["history"], [])
+        self.assertIn("history", payload["unavailable_sections"])
+        detail = model_module.EntityDetailResponse.model_validate(payload)
+        self.assertEqual(detail.history, [])
+        required = {
+            name
+            for name, field in model_module.EntityDetailResponse.model_fields.items()
+            if field.is_required()
+        }
+        self.assertGreaterEqual(
+            required,
+            {
+                "snapshot",
+                "entity",
+                "metadata",
+                "current_state",
+                "outgoing",
+                "incoming",
+                "history",
+                "observations",
+            },
+        )
+        self.assertEqual(
+            set(model_module.EdgeEventRow.model_fields),
+            {
+                "edge_event_id",
+                "source",
+                "relation",
+                "target",
+                "op",
+                "polarity",
+                "commit_seq",
+                "confidence",
+                "valid_time",
+                "evidence",
+                "supersedes",
+            },
+        )
 
     def test_planner_stats_reads_one_page(self) -> None:
         seen: list[httpx.Request] = []

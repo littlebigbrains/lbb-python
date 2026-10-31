@@ -4,11 +4,11 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
-- **Breaking change to types.** The `EdgeEventRow` schema and the `history`
-  array of `EntityDetailResponse` are removed. `GET /v1/graph/entity` always
-  sent `history` as an empty array. It no longer sends it, and it no longer
-  lists `history` in `unavailable_sections`. The `polarity` and `supersedes`
-  fields of `EdgeEventRow` leave with the type. Stored edge events do not
+- **Deprecation.** `EntityDetailResponse.history` and its row type
+  `EdgeEventRow` (with `polarity` and `supersedes`) are deprecated. The entity
+  read (`GET /v1/graph/entity`) sends `history` as an empty array, as before.
+  Released SDKs require the field. Do not read it. A later release removes it,
+  after a new SDK release and a notice period. Stored edge events do not
   change. Read a past state with SPARQL and `as_of_commit_seq`.
 
 - The ontology define and evolve routes refuse four reducer tokens for a new
