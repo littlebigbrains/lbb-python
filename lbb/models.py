@@ -1706,29 +1706,6 @@ class EvalExperimentArmItem(BaseModel):
     wrong: Annotated[int, Field(ge=0)]
 
 
-class EvalExperimentArmReport(BaseModel):
-    """
-    One arm's figures over the compared items.
-    """
-
-    cost_micro_usd_per_item: Annotated[int, Field(ge=0)]
-    failed: Annotated[int, Field(description='Items the arm did not answer.', ge=0)]
-    precision: Annotated[
-        float,
-        Field(
-            description='Over every compared item, as the template grader computes it.'
-        ),
-    ]
-    recall: float
-    review_share: Annotated[
-        float,
-        Field(
-            description='Values sent to review over values written and sent to review.'
-        ),
-    ]
-    score: Annotated[float, Field(description='The mean item score (F1), 0 to 1.')]
-
-
 class EvalExperimentChangeKind(Enum):
     """
     The part of the configuration B changes.
@@ -1829,6 +1806,7 @@ class EvalExperimentUnlabeled(BaseModel):
     b: Annotated[str | None, Field(description="B's value, when B wrote one.")] = None
     item: Annotated[str, Field(description="The item's name.")]
     property: str
+    subject: str | None = None
 
 
 class EvalExperimentWorkflow(BaseModel):
@@ -10102,6 +10080,25 @@ class WorkerRole(Enum):
     apply = 'apply'
 
 
+class WorkflowAgentMeasures(BaseModel):
+    inputs: Annotated[
+        int,
+        Field(
+            description='Total selected inputs; missing summaries remain explicit rather than\nsilently disappearing from the measurements.',
+            ge=0,
+        ),
+    ]
+    mean_cost_micro_usd: float | None = None
+    mean_iterations: Annotated[
+        float | None,
+        Field(
+            description='Means over the inputs with a reported summary; read `missing_inputs`\nalongside them while a test is incomplete or an attempt failed.'
+        ),
+    ] = None
+    mean_tool_calls: float | None = None
+    missing_inputs: Annotated[int, Field(ge=0)]
+
+
 class WorkflowAgentProposalCounts(BaseModel):
     dropped: Annotated[int, Field(ge=0)]
     failed: Annotated[int, Field(ge=0)]
@@ -11403,6 +11400,7 @@ class WorkflowTestSettings(BaseModel):
     The settings a test runs with, frozen when it starts.
     """
 
+    agent: WorkflowAgentSettings | None = None
     class_: Annotated[str, Field(alias='class', description='The watched class IRI.')]
     context: str | None = None
     fields: Annotated[
@@ -11413,6 +11411,7 @@ class WorkflowTestSettings(BaseModel):
         float,
         Field(description='The gate: a value with this support or more is written.'),
     ]
+    owns: WorkflowOwns | None = None
     properties: list[WorkflowTestProperty]
     repair: Annotated[
         int | None,
@@ -12940,6 +12939,30 @@ class EvalExperimentArm(BaseModel):
     ]
 
 
+class EvalExperimentArmReport(BaseModel):
+    """
+    One arm's figures over the compared items.
+    """
+
+    cost_micro_usd_per_item: Annotated[int, Field(ge=0)]
+    failed: Annotated[int, Field(description='Items the arm did not answer.', ge=0)]
+    measures: WorkflowAgentMeasures | None = None
+    precision: Annotated[
+        float,
+        Field(
+            description='Over every compared item, as the template grader computes it.'
+        ),
+    ]
+    recall: float
+    review_share: Annotated[
+        float,
+        Field(
+            description='Values sent to review over values written and sent to review.'
+        ),
+    ]
+    score: Annotated[float, Field(description='The mean item score (F1), 0 to 1.')]
+
+
 class EvalExperimentChange(BaseModel):
     """
     What B changes: `{kind: "model", use}` or `{kind: "revision"}`.
@@ -12983,6 +13006,12 @@ class EvalExperimentReport(BaseModel):
         float | None, Field(description="B's cost per item over A's.")
     ] = None
     delta: Annotated[float, Field(description='`b.score − a.score`.')]
+    guidance: Annotated[
+        str | None,
+        Field(
+            description='Agent runs vary between attempts; an A/A comparison measures the noise.'
+        ),
+    ] = None
     items: Annotated[int, Field(description='Items compared.', ge=0)]
     labels_etag: Annotated[
         str | None,
@@ -16349,6 +16378,10 @@ class ReviewEvalOrigin(BaseModel):
             description="The value as the arm's text stated it (`600 mm`), when it differs."
         ),
     ] = None
+    subject: Annotated[
+        str | None,
+        Field(description='Target entity of a dataset value read from a source file.'),
+    ] = None
     trace: Annotated[
         str | None,
         Field(
@@ -17725,6 +17758,26 @@ class WorkflowAgentRecord(BaseModel):
     work_key: str
 
 
+class WorkflowAgentTestInput(BaseModel):
+    """
+    One server-bound agent-test input, read through the revision grant. Text
+    stays in bounded test storage and never goes into a turn message.
+    """
+
+    commit_seq: Annotated[int, Field(ge=0)]
+    content_type: str
+    document: str
+    iri: str
+    label: str
+    ontology: OntologyView
+    pages: list[str] | None = None
+    schema_validation: str
+    sha256: str
+    test: str
+    text: str
+    uploaded_at: str
+
+
 class WorkflowClaimResponse(BaseModel):
     task: WorkflowTask | None = None
 
@@ -18216,6 +18269,12 @@ class WorkflowTestAnswerRequest(BaseModel):
     id: str
     iri: str
     property: str
+    subject: Annotated[
+        str | None,
+        Field(
+            description='Target of a source-input proposal. Omit for a legacy record test.'
+        ),
+    ] = None
 
 
 class WorkflowTestCreateRequest(BaseModel):
@@ -18254,6 +18313,7 @@ class WorkflowTestResult(BaseModel):
     What a test read from one input.
     """
 
+    agent: WorkflowAgentRecord | None = None
     answers: Annotated[
         dict[str, ReviewAnswer] | None,
         Field(
@@ -18278,6 +18338,12 @@ class WorkflowTestResult(BaseModel):
     ] = None
     iri: str
     region: WorkflowTestRegion | None = None
+    schema_validation: Annotated[
+        str | None,
+        Field(
+            description='`run` only when every attempted write preflight passed and has a durable\nserver audit receipt. `not_run` when no write was attempted or a preflight\nwas refused or unavailable, including RDF dry runs. Ownership and\ngrounding are checked independently.'
+        ),
+    ] = None
     values: list[WorkflowTestValue] | None = None
 
 
@@ -18993,6 +19059,12 @@ class EvalExpectedValue(BaseModel):
         str | None,
         Field(
             description='The number and unit as the text states them, when the property holds\nanother unit: `450 mm` for a `width_cm` of 45.'
+        ),
+    ] = None
+    subject: Annotated[
+        str | None,
+        Field(
+            description="Target entity of a value proposed from a source file. Absent for a\nrecord's own values, preserving extraction datasets."
         ),
     ] = None
     value: Annotated[
@@ -21076,6 +21148,7 @@ class WorkflowRevision(BaseModel):
         ),
     ]
     target: WorkflowTypeRef | None = None
+    test_input: WorkflowAgentTestInput | None = None
     workflow: Annotated[str, Field(description="The workflow's name.")]
 
 
