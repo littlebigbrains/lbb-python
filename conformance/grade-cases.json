@@ -6,6 +6,19 @@
   ],
   "items": [
     {
+      "case": "One source can state the same property of two distinct targets.",
+      "values": [{ "subject": "urn:a", "property": "width_cm", "value": 60 }, { "subject": "urn:b", "property": "width_cm", "value": 70 }],
+      "written": { "\u00005:urn:awidth_cm": "60", "\u00005:urn:bwidth_cm": "70" },
+      "expect": { "correct": 2, "wrong": 0, "missed": 0, "unlabeled": 0, "review": 0, "precision": 1, "recall": 1, "score": 1 }
+    },
+    {
+      "case": "Target keys use UTF-8 bytes, and leave-out labels refuse only their own target.",
+      "values": [{ "subject": "urn:é🙂", "property": "width_cm", "value": 60 }],
+      "leave_out": [{ "subject": "urn:b", "property": "width_cm", "value": null }],
+      "written": { "\u000010:urn:é🙂width_cm": "60", "\u00005:urn:bwidth_cm": "70" },
+      "expect": { "correct": 1, "wrong": 1, "missed": 0, "unlabeled": 0, "review": 0, "precision": 0.5, "recall": 1, "score": 0.6667 }
+    },
+    {
       "case": "A number matches by value, also as text.",
       "values": [{ "property": "width_cm", "value": 60 }],
       "written": { "width_cm": "60" },

@@ -56,11 +56,18 @@ def matches(got: Any, want: dict[str, Any]) -> bool:
     return _text(value) == spelled or any(_text(a) == spelled for a in want.get("accept") or [])
 
 
+def _key(row: dict[str, Any]) -> str:
+    subject = row.get("subject")
+    if subject is None:
+        return row["property"]
+    return f"\0{len(subject.encode('utf-8'))}:{subject}{row['property']}"
+
+
 def _judge(labels: dict[str, Any], prop: str, got: Any) -> str:
     wanted = [
-        w for w in labels.get("values") or [] if w["property"] == prop and w["value"] is not None
+        w for w in labels.get("values") or [] if _key(w) == prop and w["value"] is not None
     ]
-    left = [w for w in labels.get("leave_out") or [] if w["property"] == prop]
+    left = [w for w in labels.get("leave_out") or [] if _key(w) == prop]
     if not wanted and not left:
         return "unlabeled"
     if any(w["value"] is None or matches(got, w) for w in left):
@@ -74,8 +81,8 @@ def _judge(labels: dict[str, Any], prop: str, got: Any) -> str:
 def _expected(labels: dict[str, Any]) -> list[str]:
     seen: list[str] = []
     for w in labels.get("values") or []:
-        if w["value"] is not None and w["property"] not in seen:
-            seen.append(w["property"])
+        if w["value"] is not None and _key(w) not in seen:
+            seen.append(_key(w))
     return seen
 
 

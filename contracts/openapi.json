@@ -8388,6 +8388,13 @@
               "null"
             ]
           },
+          "subject": {
+            "description": "Target entity of a value proposed from a source file. Absent for a\nrecord's own values, preserving extraction datasets.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "value": {
             "description": "The value: numbers compare as numbers, text in lower case and trimmed\nagainst `accept`. In `leave_out`, null means no value at all for the\nproperty."
           }
@@ -8646,6 +8653,17 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "measures": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAgentMeasures",
+                "description": "Agent work per input. These measures never enter the quality score."
+              }
+            ]
           },
           "precision": {
             "description": "Over every compared item, as the template grader computes it.",
@@ -8989,6 +9007,13 @@
             "format": "double",
             "type": "number"
           },
+          "guidance": {
+            "description": "Agent runs vary between attempts; an A/A comparison measures the noise.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "items": {
             "description": "Items compared.",
             "format": "int64",
@@ -9068,6 +9093,12 @@
           },
           "property": {
             "type": "string"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -28926,6 +28957,13 @@
               "null"
             ]
           },
+          "subject": {
+            "description": "Target entity of a dataset value read from a source file.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "trace": {
             "description": "A golden item's trace: the one it was filed from, which its label\ngoes to.",
             "type": [
@@ -40280,6 +40318,48 @@
         ],
         "type": "string"
       },
+      "WorkflowAgentMeasures": {
+        "properties": {
+          "inputs": {
+            "description": "Total selected inputs; missing summaries remain explicit rather than\nsilently disappearing from the measurements.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mean_cost_micro_usd": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mean_iterations": {
+            "description": "Means over the inputs with a reported summary; read `missing_inputs`\nalongside them while a test is incomplete or an attempt failed.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mean_tool_calls": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "missing_inputs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "inputs",
+          "missing_inputs"
+        ],
+        "type": "object"
+      },
       "WorkflowAgentProposalCounts": {
         "properties": {
           "dropped": {
@@ -40468,6 +40548,66 @@
         },
         "required": [
           "instructions"
+        ],
+        "type": "object"
+      },
+      "WorkflowAgentTestInput": {
+        "description": "One server-bound agent-test input, read through the revision grant. Text\nstays in bounded test storage and never goes into a turn message.",
+        "properties": {
+          "commit_seq": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "document": {
+            "type": "string"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "ontology": {
+            "$ref": "#/components/schemas/OntologyView"
+          },
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schema_validation": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "test": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "uploaded_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "test",
+          "iri",
+          "label",
+          "commit_seq",
+          "sha256",
+          "uploaded_at",
+          "document",
+          "content_type",
+          "text",
+          "ontology",
+          "schema_validation"
         ],
         "type": "object"
       },
@@ -42568,6 +42708,17 @@
               }
             ]
           },
+          "test_input": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAgentTestInput",
+                "description": "Present only under a verified agent-test revision grant; it cannot be\nselected or replaced by caller parameters."
+              }
+            ]
+          },
           "workflow": {
             "description": "The workflow's name.",
             "type": "string"
@@ -44314,6 +44465,13 @@
           },
           "property": {
             "type": "string"
+          },
+          "subject": {
+            "description": "Target of a source-input proposal. Omit for a legacy record test.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -44597,6 +44755,17 @@
       "WorkflowTestResult": {
         "description": "What a test read from one input.",
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAgentRecord",
+                "description": "Bounded interpreter summary; independent of the values' grades."
+              }
+            ]
+          },
           "answers": {
             "additionalProperties": {
               "$ref": "#/components/schemas/ReviewAnswer"
@@ -44638,6 +44807,13 @@
               }
             ]
           },
+          "schema_validation": {
+            "description": "`run` only when every attempted write preflight passed and has a durable\nserver audit receipt. `not_run` when no write was attempted or a preflight\nwas refused or unavailable, including RDF dry runs. Ownership and\ngrounding are checked independently.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "values": {
             "items": {
               "$ref": "#/components/schemas/WorkflowTestValue"
@@ -44653,6 +44829,17 @@
       "WorkflowTestSettings": {
         "description": "The settings a test runs with, frozen when it starts.",
         "properties": {
+          "agent": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowAgentSettings",
+                "description": "Frozen bounded agent settings; absent for extraction tests."
+              }
+            ]
+          },
           "class": {
             "description": "The watched class IRI.",
             "type": "string"
@@ -44674,6 +44861,16 @@
             "description": "The gate: a value with this support or more is written.",
             "format": "float",
             "type": "number"
+          },
+          "owns": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowOwns"
+              }
+            ]
           },
           "properties": {
             "items": {
