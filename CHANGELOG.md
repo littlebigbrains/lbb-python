@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.34.0 (2026-11-02)
 
 - The generated models add `SubjectPropertiesInput` and
   `ReplaceOwnedInput.subject_properties`: the owned fields of each subject on
@@ -25,6 +25,20 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   gives `PREFERS`, `AVOIDS` and `OPTIMIZES_FOR` the token `multi_active_value`,
   and `LOCATED_IN` and `WORKS_AT` the token `latest_wins`. A graph created
   before this change keeps the old tokens.
+
+- The generated models add the hosted Agent types. `WorkflowAgentSettings` is
+  `params.agent`. `NamedAgentWorkflowRequest` creates an Agent with a content
+  trigger, and `NamedWorkflowPutRequest` is that request or
+  `NamedWorkflowRequest`. `WorkflowAgentRecord`, with `WorkflowAgentTrace` and
+  `WorkflowAgentProposalCounts`, is the optional `agent` field of a run result
+  and of a test result. `WorkflowAgentMeasures` is the optional `measures` of
+  an experiment arm report, and `WorkflowAgentTestInput` serves Agent tests.
+  `NamedWorkflowRunRequest` and `WorkflowRunNowInput` describe the `inputs`
+  body of `POST /v1/workflows/named/run`. A run summary has the optional
+  `work_key`. The optional field `subject`, the record a value fills, is on
+  `EvalExpectedValue`, `EvalExperimentUnlabeled`, `ReviewEvalOrigin`,
+  `WorkflowTestAnswerRequest` and `WorkflowTestValue`. No helper uses these
+  fields yet.
 
 ## 0.33.0 (2026-10-30)
 
