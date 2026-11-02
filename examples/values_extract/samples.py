@@ -31,7 +31,15 @@ async def load_samples(client: AsyncLbbClient, folder: Path = SAMPLES) -> int:
                     "properties": {DEFAULTS.text_field: record["text"]},
                 }
                 for record in records
-            ]
+            ],
+            "replace_owned": {
+                "subjects": [
+                    {"type": DEFAULTS.class_name, "name": record["name"]}
+                    for record in records
+                ],
+                "relations": [],
+                "properties": [],
+            },
         },
         idempotency_key="values-extract-samples",
     )
