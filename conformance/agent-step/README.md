@@ -65,6 +65,11 @@ and the message `msg-1`, so an effect id is `wf-1/msg-1/<step key>`.
 - `files`: files by SHA-256, each with `uploaded_at`, `content_type`,
   `document` (the `Document` IRI), `generated`, and `text` or `pages`.
 - `entities`: entity IRIs with the `type` and `name` the graph describes.
+- `ontology`: the classes (`name`, `iri`) and the properties (`name`,
+  `valueType`, `unit`) the prompt shows. Absent: the host cannot read them,
+  and the prompt leaves them out.
+- `labels`: entity IRIs with the `classIri` and `name` the prompt shows next to
+  each subject. Absent: the host cannot read them.
 - `reads`: answers to `graph.read`. A read answers with the first entry whose
   `match` the query contains: `vars` and `rows`.
 - `ground`: verdicts by quote. A quote that no entry names is read from the
@@ -100,6 +105,26 @@ it is billed. A reply with `raw` is returned as the model's answer without the
 action shape, for an invalid action. After the last entry the model finishes.
 A model call is cached by its effect id: the same call again returns the
 first answer and bills nothing.
+
+### A number for a value
+
+A `value` of a proposal may be a JSON number. The interpreter keeps text, so
+the saved action, the `ground` item and the Review item hold the text, and
+every check of a proposal is unchanged. The rule that every interpreter
+follows:
+
+- The text is the shortest decimal form of the number that parses back to the
+  same number (`600` is `"600"`, `0.5` is `"0.5"`, `-0` is `"0"`). An exponent
+  form is written in digits, with at most 20 digits after the point
+  (`1e-7` is `"0.0000001"`, `1.5e-10` is `"0.00000000015"`).
+- The action is invalid when the text does not parse back to exactly the
+  number, when the text is over 100 bytes, or when the number is an integer
+  beyond 2^53 - 1 (the parse of the JSON text has already rounded its digits).
+  Examples: `1e-25` (it would be `"0"`), `5e-324`, `6.626e-34`, `9007199254740993`,
+  `1e21` and `1e300`.
+- The fault is `arguments.proposals[i].value is a number that text cannot state
+  exactly: send it as text, as the file states it`. A value of any other type
+  than text or a number is `arguments.proposals[i].value is text or a number`.
 
 ### `events`
 
