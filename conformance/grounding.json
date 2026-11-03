@@ -5,49 +5,49 @@
       "name": "three words in the text",
       "quote": "Maße ca. 55x45cm",
       "value": "45",
-      "text": "Waschtisch, Maße ca.  55x45cm, Keramik weiß",
+      "text": "Nachttisch, Maße ca.  55x45cm, Plastik weiß",
       "ok": true
     },
     {
       "name": "line breaks and tabs in the text fold to one space",
       "quote": "Maße ca. 55x45cm",
       "value": "55",
-      "text": "Waschtisch,\nMaße\tca.\r\n55x45cm",
+      "text": "Nachttisch,\nMaße\tca.\r\n55x45cm",
       "ok": true
     },
     {
       "name": "line breaks in the quote fold too",
       "quote": "Maße\nca.   55x45cm",
       "value": "55",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik",
       "ok": true
     },
     {
       "name": "a no-break space is a space",
       "quote": "Maße ca. 55x45cm",
       "value": "55",
-      "text": "Waschtisch, Maße\u00a0ca.\u00a055x45cm",
+      "text": "Nachttisch, Maße\u00a0ca.\u00a055x45cm",
       "ok": true
     },
     {
       "name": "one word is enough when it holds the value",
       "quote": "55x45cm",
       "value": "55",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": true
     },
     {
       "name": "one word that is the value",
-      "quote": "Keramik",
-      "value": "Keramik",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "quote": "Plastik",
+      "value": "Plastik",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": true
     },
     {
       "name": "the value is compared in lower case",
-      "quote": "Keramik weiß",
-      "value": "KERAMIK",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "quote": "Plastik weiß",
+      "value": "PLASTIK",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": true
     },
     {
@@ -59,17 +59,17 @@
     },
     {
       "name": "one word that does not hold the value is too short",
-      "quote": "Keramik",
+      "quote": "Plastik",
       "value": "white",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": false,
       "message": "the quote has fewer than 3 words and does not hold the value"
     },
     {
       "name": "two words and an empty value are too short",
-      "quote": "Keramik weiß",
+      "quote": "Plastik weiß",
       "value": "",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": false,
       "message": "the quote has fewer than 3 words and does not hold the value"
     },
@@ -77,7 +77,7 @@
       "name": "three words that are not in the text",
       "quote": "Maße ca. 60x45cm",
       "value": "60",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": false,
       "message": "the quote is not in the text"
     },
@@ -85,15 +85,15 @@
       "name": "the match is case sensitive",
       "quote": "maße ca. 55x45cm",
       "value": "55",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": false,
       "message": "the quote is not in the text"
     },
     {
       "name": "words that are in the text but not next to each other",
-      "quote": "Waschtisch Keramik weiß",
-      "value": "Keramik",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "quote": "Nachttisch Plastik weiß",
+      "value": "Plastik",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": false,
       "message": "the quote is not in the text"
     },
@@ -101,7 +101,7 @@
       "name": "an empty quote",
       "quote": "",
       "value": "55",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": false,
       "message": "the quote is empty"
     },
@@ -109,7 +109,7 @@
       "name": "a quote of white space only",
       "quote": " \n\t ",
       "value": "55",
-      "text": "Waschtisch, Maße ca. 55x45cm, Keramik weiß",
+      "text": "Nachttisch, Maße ca. 55x45cm, Plastik weiß",
       "ok": false,
       "message": "the quote is empty"
     },
@@ -125,14 +125,14 @@
       "name": "U+0085 is a space",
       "quote": "Maße ca. 55x45cm",
       "value": "55",
-      "text": "Waschtisch, Maße\u0085ca.\u008555x45cm",
+      "text": "Nachttisch, Maße\u0085ca.\u008555x45cm",
       "ok": true
     },
     {
       "name": "U+FEFF is not a space",
       "quote": "Maße ca. 55x45cm",
       "value": "55",
-      "text": "Waschtisch, Maße\ufeffca. 55x45cm",
+      "text": "Nachttisch, Maße\ufeffca. 55x45cm",
       "ok": false,
       "message": "the quote is not in the text"
     }
@@ -260,15 +260,15 @@
     },
     {
       "name": "a keyword stays",
-      "raw": "Keramik",
+      "raw": "Plastik",
       "type": "keyword",
-      "value": "Keramik"
+      "value": "Plastik"
     },
     {
       "name": "a text is trimmed",
-      "raw": "  Keramik weiß ",
+      "raw": "  Plastik weiß ",
       "type": "text",
-      "value": "Keramik weiß"
+      "value": "Plastik weiß"
     },
     {
       "name": "U+0085 around a value is trimmed",
@@ -407,7 +407,7 @@
       "name": "cm2 does not state cm",
       "unit": "cm",
       "stated": "cm",
-      "quote": "Fläche 60 cm2",
+      "quote": "Größe 60 cm2",
       "number": 60,
       "converted": 60,
       "unconfirmed": "the quote does not state the unit cm"
@@ -443,7 +443,7 @@
       "name": "a power sign",
       "unit": "m2",
       "stated": "m²",
-      "quote": "Fläche 12 m²",
+      "quote": "Größe 12 m²",
       "number": 12,
       "converted": 12,
       "confirmed": true

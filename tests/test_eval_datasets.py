@@ -16,7 +16,7 @@ TEST_ID = "wtest_1791967648726a1b2c3d4e5f6"
 
 ITEM: dict[str, Any] = {
     "name": "S 1",
-    "text": "S 1 Waschtisch, 60 cm breit.",
+    "text": "S 1 Desk, 60 cm wide.",
     "values": [{"property": "width_cm", "value": 60, "quote": "60 cm"}],
     "leave_out": [],
 }

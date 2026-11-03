@@ -29,7 +29,7 @@ FACTS = {
             "relation": "HAS_COMPONENT",
             "target": {"type": "Component", "name": "Fire door T30"},
             "confidence": 0.62,
-            "evidence": {"text": "Tür T30 RS", "source_id": "doc:plan-104"},
+            "evidence": {"text": "Door T30 RS", "source_id": "doc:plan-104"},
         }
     ],
     "replace_owned": {

@@ -92,7 +92,7 @@ def test_a_capture_checks_owned_writes_with_the_dry_run_and_keeps_them() -> None
                 "kind": "value",
                 "workflow": "sinks",
                 "key": "starter:sinks:value:1:material",
-                "title": "Set material of f1 to Keramik",
+                "title": "Set material of f1 to Beech",
             }
         )
         assert getattr(filed.status, "value", filed.status) == "open"
@@ -105,7 +105,7 @@ def test_a_capture_checks_owned_writes_with_the_dry_run_and_keeps_them() -> None
         assert result.writes[0].errors == []
         assert result.writes[0].report is not None and result.writes[0].report.op_count == 1
         assert [review.request["title"] for review in result.reviews] == [
-            "Set material of f1 to Keramik"
+            "Set material of f1 to Beech"
         ]
         # What a live run would report: the write's subject with its field.
         # The review item names no subject, so it reports no input.

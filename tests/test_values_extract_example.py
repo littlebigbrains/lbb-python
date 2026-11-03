@@ -594,12 +594,12 @@ def test_a_clean_answer_is_not_asked_again_and_a_retry_that_fails_leaves_nothing
 
 def test_a_repair_keeps_the_values_that_passed_and_fills_the_failed_ones() -> None:
     properties = {"width_cm": "f64", "material": "text"}
-    text = "Waschtisch, width_cm: 55 cm, material: Keramik"
+    text = "Desk, width_cm: 55 cm, material: Beech"
     units = {"width_cm": "cm"}
     first = check(
         [
             {"property": "width_cm", "value": "55", "unit": "cm", "quote": "width_cm: 55 cm"},
-            {"property": "material", "value": "Keramik", "unit": "", "quote": "material: Glas"},
+            {"property": "material", "value": "Beech", "unit": "", "quote": "material: Glas"},
         ],
         properties,
         text,
@@ -608,7 +608,7 @@ def test_a_repair_keeps_the_values_that_passed_and_fills_the_failed_ones() -> No
     second = check(
         [
             {"property": "width_cm", "value": "56", "unit": "cm", "quote": "width_cm: 55 cm"},
-            {"property": "material", "value": "Keramik", "unit": "", "quote": "material: Keramik"},
+            {"property": "material", "value": "Beech", "unit": "", "quote": "material: Beech"},
         ],
         properties,
         text,
@@ -619,9 +619,9 @@ def test_a_repair_keeps_the_values_that_passed_and_fills_the_failed_ones() -> No
         (v["property"], v["value"], v["outcome"], v.get("attempt"), "typed" in v) for v in merged
     ] == [
         ("width_cm", "55", "", None, True),
-        ("material", "Keramik", "quote_not_found", None, False),
+        ("material", "Beech", "quote_not_found", None, False),
         ("width_cm", "56", "duplicate", 2, False),
-        ("material", "Keramik", "", 2, True),
+        ("material", "Beech", "", 2, True),
     ]
     # A repair value for a property whose first value passed is a duplicate
     # whatever its checks said, so the property counts once.
@@ -640,7 +640,7 @@ def test_a_repair_keeps_the_values_that_passed_and_fills_the_failed_ones() -> No
 
 def test_each_failed_check_makes_one_diagnostic_that_holds_the_models_words_and_no_label() -> None:
     properties = {"width_cm": "f64", "material": "text"}
-    text = "Waschtisch, width_cm: 55 cm, material: Keramik"
+    text = "Desk, width_cm: 55 cm, material: Beech"
 
     def failures(values: list[Any]) -> list[tuple[str, str | None]]:
         checked = check(values, properties, text, {"width_cm": "cm"})
@@ -653,7 +653,7 @@ def test_each_failed_check_makes_one_diagnostic_that_holds_the_models_words_and_
     assert failures(["width"]) == [("answer_shape", None)]
     assert failures(
         [
-            {"property": "material", "value": "Keramik", "unit": ""},
+            {"property": "material", "value": "Beech", "unit": ""},
             {"property": "width_cm", "value": 55, "unit": "cm", "quote": "width_cm: 55 cm"},
         ]
     ) == [("missing_field", "material"), ("missing_field", "width_cm")]
@@ -661,7 +661,7 @@ def test_each_failed_check_makes_one_diagnostic_that_holds_the_models_words_and_
         [
             {"property": "height_cm", "value": "9", "unit": "cm", "quote": "height_cm: 9 cm"},
             {"property": "width_cm", "value": "wide", "unit": "cm", "quote": "width_cm: 55 cm"},
-            {"property": "material", "value": "Keramik", "unit": "", "quote": "material: Glas"},
+            {"property": "material", "value": "Beech", "unit": "", "quote": "material: Glas"},
         ]
     ) == [
         ("unknown_property", "height_cm"),
@@ -672,13 +672,13 @@ def test_each_failed_check_makes_one_diagnostic_that_holds_the_models_words_and_
     assert (
         failures(
             [
-                {"property": "material", "value": "Keramik", "unit": "", "quote": "material: Keramik"},
-                {"property": "material", "value": "Glas", "unit": "", "quote": "material: Keramik"},
+                {"property": "material", "value": "Beech", "unit": "", "quote": "material: Beech"},
+                {"property": "material", "value": "Glas", "unit": "", "quote": "material: Beech"},
             ]
         )
         == []
     )
-    long = [{"property": "material", "value": "Keramik", "unit": "", "quote": "x" * 400}]
+    long = [{"property": "material", "value": "Beech", "unit": "", "quote": "x" * 400}]
     (diagnostic,) = failed_checks({"values": long}, check(long, properties, text))
     assert len(diagnostic["quote"]) == 200
 

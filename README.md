@@ -238,13 +238,13 @@ answer (`cached: True`) at no cost.
 
 ```python
 answer = lbb.reason_activity(
-    'Which code does this row define? "P3 Waschtisch 55x45"',
+    'Which code does this row define? "P3 Drip tray 55x45"',
     {
         "type": "object",
         "properties": {"code": {"type": "string"}, "description": {"type": "string"}},
         "required": ["code", "description"],
     },
-    effect_id="tender-import/define-p3",
+    effect_id="docs-import/define-p3",
     label="define P3",
 )
 print(answer["value"]["code"], answer["cost_micro_usd"])

@@ -67,7 +67,7 @@ class FakeLbb:
                 "gate": 0.8,
             },
             "uses": {"extract": "mock-generative", "decide": "mock-decision"},
-            "inputs": [{"iri": IRI, "label": "S 4.1", "text": "Waschtisch, ca. 60x40 cm"}],
+            "inputs": [{"iri": IRI, "label": "S 4.1", "text": "Desk, approx. 60x40 cm"}],
             "results": [
                 {
                     "iri": IRI,
@@ -106,7 +106,7 @@ class FakeLbb:
                 {"property": property, "value": answer.get("value", 60)}
                 for property, answer in answers.items()
             ]
-            items.append({"name": "S 4.1", "iri": result["iri"], "text": "Waschtisch", "values": values})
+            items.append({"name": "S 4.1", "iri": result["iri"], "text": "Desk", "values": values})
         return items
 
     def _listed(self, dataset: dict[str, Any]) -> dict[str, Any]:
