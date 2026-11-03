@@ -22,7 +22,7 @@ SCHEMA = {
     "required": ["code", "description"],
 }
 REASONED = {
-    "value": {"code": "P3", "description": "Waschtisch 55x45"},
+    "value": {"code": "P3", "description": "Drip tray 55x45"},
     "model": "claude-sonnet-5-5",
     "tokens_in": 92,
     "tokens_out": 21,
@@ -82,13 +82,13 @@ class WorkflowActivityTests(unittest.TestCase):
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h",
-            graph="tender",
+            graph="docs",
             transport=capturing_transport(seen, [(200, REASONED)]),
         ) as client:
             answer = client.reason_activity(
-                'Which code does this row define? "P3 Waschtisch 55x45"',
+                'Which code does this row define? "P3 Drip tray 55x45"',
                 SCHEMA,
-                system="You read equipment lists.",
+                system="You read parts lists.",
                 max_tokens=2_000,
                 effect_id=EFFECT,
                 label="define P3",
@@ -99,13 +99,13 @@ class WorkflowActivityTests(unittest.TestCase):
         )
         self.assertEqual(seen[0].method, "POST")
         self.assertEqual(seen[0].url.path, "/v1/workflows/activities/reason")
-        self.assertEqual(dict(seen[0].url.params), {"graph": "tender"})
+        self.assertEqual(dict(seen[0].url.params), {"graph": "docs"})
         self.assertEqual(
             json.loads(seen[0].content),
             {
-                "prompt": 'Which code does this row define? "P3 Waschtisch 55x45"',
+                "prompt": 'Which code does this row define? "P3 Drip tray 55x45"',
                 "schema": SCHEMA,
-                "system": "You read equipment lists.",
+                "system": "You read parts lists.",
                 "max_tokens": 2_000,
                 "effect_id": EFFECT,
                 "label": "define P3",
@@ -118,11 +118,11 @@ class WorkflowActivityTests(unittest.TestCase):
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h",
-            graph="tender",
+            graph="docs",
             transport=capturing_transport(seen, [(200, DECIDED), (200, EMBEDDED)]),
         ) as client:
             decided = client.decide_activity({"text": "Invoice 2026-118"}, QUESTIONS)
-            embedded = client.graph("other").embed_activity(["P3 Waschtisch 55x45"])
+            embedded = client.graph("other").embed_activity(["P3 Drip tray 55x45"])
         self.assertEqual(
             DecideActivityResponse.model_validate(decided).answers["kind"].choice,
             "invoice",
@@ -134,16 +134,16 @@ class WorkflowActivityTests(unittest.TestCase):
         )
         self.assertEqual(seen[1].url.path, "/v1/workflows/activities/embed")
         self.assertEqual(dict(seen[1].url.params), {"graph": "other"})
-        self.assertEqual(json.loads(seen[1].content), {"texts": ["P3 Waschtisch 55x45"]})
+        self.assertEqual(json.loads(seen[1].content), {"texts": ["P3 Drip tray 55x45"]})
 
     def test_decide_and_embed_pass_the_effect_id_and_label(self) -> None:
         seen: list[httpx.Request] = []
         with LbbClient(
             "http://h",
-            graph="tender",
+            graph="docs",
             transport=capturing_transport(seen, [(200, DECIDED), (200, EMBEDDED)]),
         ) as client:
-            client.graph("tender").decide_activity(
+            client.graph("docs").decide_activity(
                 "x", QUESTIONS, effect_id="abc/triage", label="triage"
             )
             client.embed_activity(["a"], effect_id="abc/triage")
@@ -203,7 +203,7 @@ class AsyncWorkflowActivityTests(unittest.IsolatedAsyncioTestCase):
         seen: list[httpx.Request] = []
         async with AsyncLbbClient(
             "http://h",
-            graph="tender",
+            graph="docs",
             transport=capturing_transport(
                 seen, [(200, REASONED), (200, DECIDED), (200, EMBEDDED)]
             ),
@@ -211,7 +211,7 @@ class AsyncWorkflowActivityTests(unittest.IsolatedAsyncioTestCase):
             reasoned = await client.reason_activity(
                 "p", SCHEMA, effect_id=EFFECT
             )
-            decided = await client.graph("tender").decide_activity(
+            decided = await client.graph("docs").decide_activity(
                 {"text": "x"}, QUESTIONS, label="triage"
             )
             embedded = await client.embed_activity(["a", "b"], effect_id="e/1")
