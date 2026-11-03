@@ -2,7 +2,7 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
-## Unreleased
+## 0.34.1 (2026-11-03)
 
 - `commit`, `commit_model`, `commit_dry_run`, `commit_dry_run_model`,
   `facts.create` and `facts.create_model` work on a graph that stores RDF
