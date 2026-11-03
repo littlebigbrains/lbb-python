@@ -75,6 +75,7 @@ from ._client_base import (
     _SchemaNamespace,
     _sse_decoder,
     _SseParser,
+    _Step,
     _trial_settled,
     _trial_timeout,
     _workflow_test_open,
@@ -869,6 +870,15 @@ class LbbClient(_BaseLbbClient):
                 "submit_import_ndjson requires a non-empty idempotency_key"
             )
         self._require_capability("durable_import_jobs_v1")
+        # Before the source is read, and the source is closed when the job is
+        # refused: nothing of it is consumed.
+        try:
+            self._run_flow(self._import_job_guard_flow())
+        except LbbError:
+            close = getattr(lines, "close", None)
+            if callable(close):
+                close()
+            raise
         content = _iter_import_ndjson(lines)
         try:
             first = next(content)
@@ -1153,6 +1163,39 @@ class LbbClient(_BaseLbbClient):
         raise httpx.RemoteProtocolError(
             _ASK_STREAM_ENDED, request=opened[0].request if opened else None
         )
+
+    def _flow_request(self, step: _Step) -> Any:
+        if step.model is not None:
+            return self._model_request(
+                step.model,
+                step.method,
+                step.path,
+                params=step.params,
+                body=step.body,
+                idempotency_key=step.idempotency_key,
+            )
+        return self._request(
+            step.method,
+            step.path,
+            params=step.params,
+            body=step.body,
+            idempotency_key=step.idempotency_key,
+        )
+
+    def _run_flow(self, flow: Generator[_Step, Any, Any]) -> Any:
+        try:
+            step = next(flow)
+            while True:
+                try:
+                    result = self._flow_request(step)
+                except LbbError as error:
+                    step = flow.throw(error)
+                else:
+                    step = flow.send(result)
+        except StopIteration as done:
+            return done.value
+        finally:
+            flow.close()
 
     def _request(
         self,

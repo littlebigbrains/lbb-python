@@ -29,12 +29,22 @@ import re
 import tempfile
 import time
 import uuid
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import IO, Any, Final, Generic, Literal, NoReturn, TypedDict, TypeVar
+from typing import (
+    IO,
+    Any,
+    Final,
+    Generic,
+    Literal,
+    NamedTuple,
+    NoReturn,
+    TypedDict,
+    TypeVar,
+)
 
 import httpx
 from pydantic import BaseModel, RootModel
@@ -42,6 +52,7 @@ from pydantic import BaseModel, RootModel
 from . import models
 from . import models as _models  # for a function whose `models` names the models a test runs
 from ._version import __version__
+from .entities import ENTITY_ID_KEY_SENTINEL
 
 DEFAULT_BASE_URL = "http://127.0.0.1:7400"
 # The integrations API that ``client.integrations`` calls with the same key.
@@ -531,6 +542,273 @@ def _unset_optional_fields(value: Any) -> dict[Any, Any]:
             k: s for k, item in value.items() if (s := _unset_optional_fields(item))
         }
     return {}
+
+
+# --- graphs that store RDF -----------------------------------------------------
+#
+# Every new graph is RDF-native. The server refuses two record routes there
+# with ``400 rdf_native_graph``: a commit without ``replace_owned`` and a
+# retract of whole entities. The client sends the same facts in the form the
+# graph accepts, so ``commit``, ``commit_dry_run``, ``facts.create`` and
+# ``retract`` work on both kinds of graph:
+#
+# - A commit becomes an owned commit that owns nothing: ``replace_owned`` with
+#   one subject and no relations or properties. The commit removes no link or
+#   field that it does not name. It replaces only what a commit on a graph of
+#   records replaces too: the other values of a field it sets (whoever wrote
+#   them), the label of a record it names, the target of a relation that keeps
+#   one target and, with ``property_merge="replace"``, the other fields of the
+#   records it names. A record left with no field and no link by such a
+#   replacement loses its type and label. History stays readable.
+# - Confidence and valid time live on a link's evidence. A link without
+#   evidence would lose them, so such a commit is refused before it is sent.
+# - A retract of entities becomes ``replace_owned.retract_entities``, only when
+#   the caller asks for ``purge_entity_properties``. That removes the whole
+#   record, so it is never done silently.
+# - What the graph cannot take stays refused, with a message that names what to
+#   do instead: client-computed vectors (``entity_embeddings``) and
+#   ``preconditions``.
+
+_RDF_NATIVE_GRAPH: Final = "rdf_native_graph"
+_RDF_NATIVE_DOC_URL: Final = (
+    "https://docs.littlebigbrain.com/sdks/errors/#rdf_native_graph"
+)
+_EMBEDDINGS_MESSAGE: Final = (
+    "entity_embeddings are not accepted on this graph. A new graph stores RDF "
+    "statements, and the platform embeds text with a managed model, so a caller "
+    "cannot write its own vectors. Declare an embedding on a class "
+    "(embeddings.declare, POST /v1/embeddings). Then search with POST /v1/search "
+    "or a SPARQL search:similarTo pattern. Nothing was written."
+)
+_PRECONDITIONS_MESSAGE: Final = (
+    "preconditions are not accepted on this graph. A new graph stores RDF "
+    "statements, and its commits do not check a head sequence, an ontology "
+    "version or a snapshot token. Send the commit without preconditions. "
+    "Nothing was written."
+)
+_EMPTY_COMMIT_MESSAGE: Final = (
+    "this commit has no triplet and no entity_properties row to write on this "
+    "graph. Nothing was written."
+)
+_IMPORT_JOB_MESSAGE: Final = (
+    "an NDJSON import job is not available on this graph. A new graph stores RDF "
+    "statements, and an import job commits JSON records, so it would fail at its "
+    "first commit. Load RDF with import_rdf (POST /v1/graph/import/rdf), or add "
+    "records with commit, which adds facts on this graph. Nothing was uploaded."
+)
+# A commit no graph can accept, sent as a dry run to learn the kind of graph. A
+# graph that stores RDF refuses it with ``rdf_native_graph`` before it reads the
+# ontology; a graph of records answers that the type is unknown. Nothing is
+# written either way.
+_NATIVE_PROBE_BODY: Final = {
+    "triplets": [
+        {
+            "source": {"type": "Probe", "name": "probe"},
+            "relation": "PROBE",
+            "target": {"type": "Probe", "name": "probe"},
+        }
+    ]
+}
+_ENTITY_RETRACT_MESSAGE: Final = (
+    "retract of entities needs purge_entity_properties=True on this graph. A new "
+    "graph stores RDF statements, so a record has no state of links only: "
+    "retracting it removes all of its statements (links, field values, type and "
+    "label). A record that is left with no link and no field because of it loses "
+    "its type and label too. History stays readable with as_of_commit_seq. Set "
+    "purge_entity_properties to remove whole records, or retract exact links with "
+    "edges. Nothing was removed."
+)
+# Entities one ``replace_owned`` names at most (the server's limit).
+_MAX_RETRACT_ENTITIES: Final = 1000
+_TOO_MANY_ENTITIES_MESSAGE: Final = (
+    f"retract of entities names more than {_MAX_RETRACT_ENTITIES} records. On this "
+    f"graph the records go in one commit, which takes at most {_MAX_RETRACT_ENTITIES}. "
+    "Retract them in batches of that size. Nothing was removed."
+)
+
+
+def _is_rdf_native_refusal(error: BaseException) -> bool:
+    """Whether ``error`` is the refusal of a record route by an RDF-native graph."""
+    return isinstance(error, LbbError) and error.code == _RDF_NATIVE_GRAPH
+
+
+def _rdf_native_error(message: str, cause: LbbError | None = None) -> LbbError:
+    """A refusal the client raises itself, in the shape the server sends. After a
+    server refusal (``cause``), the request id of that refusal is kept."""
+    payload = {
+        "type": "invalid_request_error",
+        "code": _RDF_NATIVE_GRAPH,
+        "message": message,
+        "param": None,
+        "request_id": cause.request_id if cause is not None else None,
+        "doc_url": _RDF_NATIVE_DOC_URL,
+    }
+    return LbbError(400, json.dumps({"error": payload}), payload)
+
+
+def _first_subject(body: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The record the first fact of a commit is about."""
+    triplets = body.get("triplets") or []
+    if triplets:
+        return dict(triplets[0]["source"])
+    rows = body.get("entity_properties") or []
+    if not rows:
+        return None
+    row = rows[0]
+    entity_id = row.get("entity_id")
+    key = f"{ENTITY_ID_KEY_SENTINEL}{entity_id}" if entity_id else row.get("key")
+    subject: dict[str, Any] = {"type": row["type"], "name": row["name"]}
+    if key is not None:
+        subject["key"] = key
+    return subject
+
+
+def _has_evidence(triplet: Mapping[str, Any]) -> bool:
+    """Whether a triplet carries evidence: a string, or an object with a ``text``.
+    The server stores nothing of a link's confidence or valid time without it."""
+    evidence = triplet.get("evidence")
+    if isinstance(evidence, str):
+        return True
+    return isinstance(evidence, Mapping) and isinstance(evidence.get("text"), str)
+
+
+def _lost_without_evidence(triplet: Mapping[str, Any], observed_at: bool) -> list[str]:
+    """What a triplet without evidence would lose, as words; empty when nothing."""
+    lost: list[str] = []
+    confidence = triplet.get("confidence")
+    if confidence is not None and confidence != 1:
+        lost.append("confidence")
+    valid = triplet.get("valid_time")
+    if isinstance(valid, Mapping) and any(value is not None for value in valid.values()):
+        lost.append("valid_time")
+    elif observed_at:
+        lost.append("the valid-time start from observed_at")
+    return lost
+
+
+def _dropped_fields_message(body: Mapping[str, Any]) -> str | None:
+    """The words of the refusal when some link would lose its confidence or valid
+    time, else ``None``. Only a link with evidence keeps them on this graph."""
+    observed_at = bool(str(body.get("observed_at") or "").strip())
+    offenders: list[str] = []
+    count = 0
+    for index, triplet in enumerate(body.get("triplets") or []):
+        if _has_evidence(triplet):
+            continue
+        lost = _lost_without_evidence(triplet, observed_at)
+        if not lost:
+            continue
+        count += 1
+        if len(offenders) < 3:
+            source, target = triplet["source"], triplet["target"]
+            offenders.append(
+                f'triplets[{index}] ({source["type"]} "{source["name"]}" '
+                f'{triplet["relation"]} {target["type"]} "{target["name"]}": '
+                f'{", ".join(lost)})'
+            )
+    if not count:
+        return None
+    plural = "" if count == 1 else "s"
+    return (
+        f"{count} link{plural} of this commit carry confidence or valid time and no "
+        "evidence, and this graph would store none of it. A graph that stores RDF "
+        "statements keeps confidence and valid time on the evidence of a link (the "
+        "observed_at start too). Put the reason for each link in evidence, or leave "
+        f"confidence and valid time out. First: {'; '.join(offenders)}. "
+        "Nothing was written."
+    )
+
+
+def _owned_form_refusal(body: Mapping[str, Any]) -> str | None:
+    """Why the commit ``body`` cannot go to an RDF-native graph, as words; ``None``
+    when it can. The client sends nothing for such a body."""
+    if body.get("entity_embeddings"):
+        return _EMBEDDINGS_MESSAGE
+    if body.get("preconditions"):
+        return _PRECONDITIONS_MESSAGE
+    if _first_subject(body) is None:
+        return _EMPTY_COMMIT_MESSAGE
+    return _dropped_fields_message(body)
+
+
+def _owned_form_of_commit(
+    body: Mapping[str, Any], cause: LbbError | None = None
+) -> dict[str, Any]:
+    """The commit ``body`` in the form an RDF-native graph accepts: the same facts
+    with a ``replace_owned`` that owns nothing. Raises the refusal for what the
+    graph cannot take, before anything is sent."""
+    refusal = _owned_form_refusal(body)
+    if refusal is not None:
+        raise _rdf_native_error(refusal, cause)
+    subject = _first_subject(body)
+    return {
+        **body,
+        "replace_owned": {"subjects": [subject], "relations": [], "properties": []},
+    }
+
+
+def _native_retract_refusal(body: Mapping[str, Any]) -> str | None:
+    """Why the retract ``body`` cannot go to an RDF-native graph, as words; ``None``
+    when it can. Both conditions are known before a request."""
+    if not body.get("purge_entity_properties"):
+        return _ENTITY_RETRACT_MESSAGE
+    if len(body.get("entities") or []) > _MAX_RETRACT_ENTITIES:
+        return _TOO_MANY_ENTITIES_MESSAGE
+    return None
+
+
+def _native_retract_plan(
+    body: Mapping[str, Any], cause: LbbError | None = None
+) -> tuple[list[Any], dict[str, Any]]:
+    """The exact edges to retract and the commit that removes the entities of
+    ``body`` on an RDF-native graph, or the refusal."""
+    refusal = _native_retract_refusal(body)
+    if refusal is not None:
+        raise _rdf_native_error(refusal, cause)
+    commit = {
+        "replace_owned": {
+            "subjects": [],
+            "relations": [],
+            "properties": [],
+            "retract_entities": list(body.get("entities") or []),
+        }
+    }
+    return list(body.get("edges") or []), commit
+
+
+def _native_retract_response(
+    edges: Mapping[str, Any] | None, committed: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The retract response for a plan: the edges' answer and the commit's."""
+    owned = committed.get("owned") or {}
+    removed = owned.get("entities_retracted", 0)
+    edge_ids = (edges or {}).get("edge_event_ids") or []
+    response: dict[str, Any] = {
+        "commit_seq": committed["commit_seq"],
+        "visibility_token": committed["visibility_token"],
+        "retracted_edges": (edges or {}).get("retracted_edges", 0)
+        + owned.get("edges_retracted", 0),
+        "retracted_entities": removed,
+        "purged_entities": removed,
+    }
+    if edge_ids:
+        response["edge_event_ids"] = list(edge_ids)
+    if committed.get("no_op") and (edges is None or edges.get("no_op")):
+        response["no_op"] = True
+    if committed.get("replayed") and (edges is None or edges.get("idempotent_replay")):
+        response["idempotent_replay"] = True
+    return response
+
+
+class _Step(NamedTuple):
+    """One request of a flow: what a transport sends and answers back."""
+
+    method: str
+    path: str
+    params: Mapping[str, Any] | None
+    body: Any
+    idempotency_key: str | None
+    model: type[BaseModel] | None = None
 
 
 def _parse_model(model_cls: type[ModelT], data: Any) -> ModelT:
@@ -1545,6 +1823,8 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         # the server default is ``eventual``; set ``"strong"`` to keep reads
         # head-exact by default. A per-call ``consistency`` always wins.
         self._default_consistency = default_consistency
+        # Graphs this client learned to store RDF (see ``_facts_flow``).
+        self._native_graphs: set[str] = set()
         from ._records import RecordsNamespace
 
         self.records = RecordsNamespace(self)
@@ -1753,31 +2033,205 @@ class _BaseLbbClient(_StarterWorkflowMethods):
             models.CreateGraphResponse, "POST", "/v1/graph/create"
         )
 
+    def _native_key(self, params: Mapping[str, Any] | None) -> str:
+        """The key of the graph a request targets, in ``_native_graphs``."""
+        graph = (params or {}).get("graph") or self._graph or ""
+        return f"{self._environment or ''}\0{graph}"
+
+    def _remember_native(self, key: str) -> None:
+        if len(self._native_graphs) >= 256:
+            self._native_graphs.discard(next(iter(self._native_graphs)))
+        self._native_graphs.add(key)
+
+    def _flow_request(self, step: _Step) -> Any:
+        """Send one step of a flow: a value, or an awaitable on the async client."""
+        raise NotImplementedError
+
+    def _run_flow(self, flow: Generator[_Step, Any, Any]) -> Any:
+        """Run a flow: send each step it yields, and give it the answer or the
+        ``LbbError``. The sync client returns the flow's value; the async client
+        returns an awaitable of it."""
+        raise NotImplementedError
+
+    def _facts_flow(
+        self,
+        body: Body,
+        *,
+        params: Mapping[str, Any] | None,
+        idempotency_key: str | None,
+        dry_run: bool = False,
+        model: type[BaseModel] | None = None,
+    ) -> Generator[_Step, Any, Any]:
+        """``POST /v1/graph/commit`` (or its ``dry_run``) on either kind of graph.
+
+        A graph that stores RDF refuses a commit without ``replace_owned``
+        (``rdf_native_graph``). The same facts then go again, under the same key,
+        in the form such a graph accepts: a ``replace_owned`` that owns nothing.
+        The client remembers the graph and sends that form first from then on. A
+        body that already carries ``replace_owned`` is sent as given.
+
+        What the graph would drop or cannot take is never sent. A body of that
+        kind still goes to the server once as it is, whatever the client
+        remembers, so a graph that turns out to hold records is not refused by
+        the client alone.
+        """
+        facts = _coerce_body(body)
+        sent_params = {**(params or {}), "dry_run": "true"} if dry_run else params
+
+        def step(sent: Any) -> _Step:
+            return _Step(
+                "POST", "/v1/graph/commit", sent_params, sent, idempotency_key, model
+            )
+
+        if not isinstance(facts, Mapping) or facts.get("replace_owned") is not None:
+            return (yield step(facts))
+        key = self._native_key(params)
+        known = key in self._native_graphs
+        if known and _owned_form_refusal(facts) is None:
+            return (yield step(_owned_form_of_commit(facts)))
+        try:
+            response = yield step(facts)
+        except LbbError as error:
+            if not _is_rdf_native_refusal(error):
+                raise
+            self._remember_native(key)
+            return (yield step(_owned_form_of_commit(facts, error)))
+        # The server took a plain commit: the remembered graph is not RDF-native.
+        self._native_graphs.discard(key)
+        return response
+
+    def _retract_flow(
+        self,
+        body: Body,
+        *,
+        params: Mapping[str, Any] | None,
+        idempotency_key: str,
+        model: type[BaseModel] | None = None,
+    ) -> Generator[_Step, Any, Any]:
+        """``POST /v1/graph/retract`` on either kind of graph.
+
+        A graph that stores RDF has no state of links only, so ``entities`` there
+        need ``purge_entity_properties`` and go as ``replace_owned.retract_entities``
+        (the whole record, history kept), at most 1,000 in a call. Exact ``edges``
+        retract on both kinds.
+
+        With ``edges`` and ``entities`` together the call is two writes: the links
+        first under the key ``<key>:edges``, then the records under ``<key>:rdf``.
+        The records are checked first with a dry run, so an unknown type fails
+        before anything changes. A failure after that (a concurrent change, a
+        storage error, a ``reject``-mode shape) leaves the links retracted. Repeat
+        the call with the same key: both parts replay.
+        """
+        request = _coerce_body(body)
+
+        def post(path: str, sent: Any, key: str, answer: Any = None) -> _Step:
+            return _Step("POST", path, params, sent, key, answer)
+
+        if not isinstance(request, Mapping) or not request.get("entities"):
+            return (yield post("/v1/graph/retract", request, idempotency_key, model))
+        key = self._native_key(params)
+        known = key in self._native_graphs
+        cause: LbbError | None = None
+        # A remembered graph skips the plain request only when the native path
+        # will run. A refusal then comes from the server, not from the client alone.
+        if not (known and _native_retract_refusal(request) is None):
+            try:
+                response = yield post(
+                    "/v1/graph/retract", request, idempotency_key, model
+                )
+            except LbbError as error:
+                if not _is_rdf_native_refusal(error):
+                    raise
+                self._remember_native(key)
+                cause = error
+            else:
+                self._native_graphs.discard(key)
+                return response
+        edges, commit = _native_retract_plan(request, cause)
+        # Exact links retract on every graph. They go first, under a key of their
+        # own, so a retry of the whole call replays both parts. Before they change
+        # anything, the commit that removes the records is checked with a dry run,
+        # so a record of an unknown type fails while nothing has changed.
+        edge_response = None
+        if edges:
+            yield _Step(
+                "POST",
+                "/v1/graph/commit",
+                {**(params or {}), "dry_run": "true"},
+                commit,
+                None,
+            )
+            edge_response = yield post(
+                "/v1/graph/retract",
+                {"edges": edges, "entities": []},
+                f"{idempotency_key}:edges",
+            )
+        committed = yield post("/v1/graph/commit", commit, f"{idempotency_key}:rdf")
+        response = _native_retract_response(edge_response, committed)
+        return _parse_model(model, response) if model is not None else response
+
+    def _import_job_guard_flow(self) -> Generator[_Step, Any, None]:
+        """Stop an NDJSON import job before the upload when the graph stores RDF.
+
+        An import job commits JSON records. A graph that stores RDF (every new
+        graph) accepts the upload and then fails the job at its first commit.
+        The check is a dry run that writes nothing, sent on every call; any answer
+        but the refusal lets the job go ahead.
+        """
+        try:
+            yield _Step(
+                "POST",
+                "/v1/graph/commit",
+                {"dry_run": "true"},
+                _NATIVE_PROBE_BODY,
+                None,
+            )
+        except LbbError as error:
+            if _is_rdf_native_refusal(error):
+                self._remember_native(self._native_key(None))
+                raise _rdf_native_error(_IMPORT_JOB_MESSAGE) from None
+
     def commit(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        """Commit triplets and optional entity embeddings.
+        """Commit triplets and entity properties.
 
         The body is sent as given, so ``replace_owned`` (``subjects``,
         ``relations``, ``properties``, ``retract_entities``) replaces a
         writer's owned edges and fields on its subjects in the same commit;
         the answer reports what it removed in ``owned``.
+
+        On a graph that stores RDF (every new graph) a commit without
+        ``replace_owned`` adds the facts and replaces only what a commit on a
+        graph of records replaces: the other values of a field it sets (whoever
+        wrote them), the label of a record it names, the target of a relation
+        that keeps one target and, with ``property_merge="replace"``, the other
+        fields of the records it names. A record left with no field and no link
+        by such a replacement loses its type and label. History stays readable
+        with ``as_of_commit_seq``. A link written twice is one statement.
+        Confidence and valid time are stored on a link's evidence only, so a link
+        with them and without evidence is refused before anything is sent.
+        Writing the same evidence again with another confidence adds a second
+        value to the evidence node. ``entity_embeddings`` and ``preconditions``
+        are refused, with the reason in the error.
         """
-        return self._request(
-            "POST",
-            "/v1/graph/commit",
-            body=body,
-            idempotency_key=idempotency_key or self.idempotency_key("facts.create"),
+        return self._run_flow(
+            self._facts_flow(
+                body,
+                params=None,
+                idempotency_key=idempotency_key or self.idempotency_key("facts.create"),
+            )
         )
 
     def commit_model(
         self, body: Body, *, idempotency_key: str | None = None
     ) -> models.GraphCommitResponse:
         """Commit and validate the response as ``GraphCommitResponse``."""
-        return self._model_request(
-            models.GraphCommitResponse,
-            "POST",
-            "/v1/graph/commit",
-            body=body,
-            idempotency_key=idempotency_key or self.idempotency_key("facts.create"),
+        return self._run_flow(
+            self._facts_flow(
+                body,
+                params=None,
+                idempotency_key=idempotency_key or self.idempotency_key("facts.create"),
+                model=models.GraphCommitResponse,
+            )
         )
 
     def commit_dry_run(self, body: Body) -> Any:
@@ -1787,21 +2241,20 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         request fails exactly as a real commit would, so it is a safe check before
         mutating. No idempotency key is needed — nothing is persisted.
         """
-        return self._request(
-            "POST",
-            "/v1/graph/commit",
-            body=body,
-            params={"dry_run": "true"},
+        return self._run_flow(
+            self._facts_flow(body, params=None, idempotency_key=None, dry_run=True)
         )
 
     def commit_dry_run_model(self, body: Body) -> models.GraphCommitDryRunResponse:
         """Validate-only preflight with a typed ``GraphCommitDryRunResponse``."""
-        return self._model_request(
-            models.GraphCommitDryRunResponse,
-            "POST",
-            "/v1/graph/commit",
-            body=body,
-            params={"dry_run": "true"},
+        return self._run_flow(
+            self._facts_flow(
+                body,
+                params=None,
+                idempotency_key=None,
+                dry_run=True,
+                model=models.GraphCommitDryRunResponse,
+            )
         )
 
     def delete_graph(self, *, confirm: str) -> models.GraphDeleteResponse:
@@ -1984,13 +2437,23 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         Appends superseding retract events rather than deleting — history stays
         visible in an ``as_of`` read before the retraction, but the edges drop out
         of current-state reads. The surgical alternative to :meth:`delete_graph`.
+
+        A graph that stores RDF (every new graph) has no state of links only, so
+        ``entities`` there need ``purge_entity_properties=True`` and remove each
+        record whole: its links, field values, type and label. A record that is
+        left with no link and no field because of it loses its type and label
+        too. History stays readable. Without the flag the call raises
+        ``rdf_native_graph`` and removes nothing, and so does a call that names
+        more than 1,000 records. ``edges`` retract exactly on both kinds of
+        graph. With ``edges`` and ``entities`` together the call is two writes:
+        see ``_retract_flow`` for the order, the dry run and what remains.
         """
-        return self._request(
-            "POST",
-            "/v1/graph/retract",
-            body=body,
-            params={"expected_graph_epoch": expected_graph_epoch},
-            idempotency_key=idempotency_key or self.idempotency_key("retract"),
+        return self._run_flow(
+            self._retract_flow(
+                body,
+                params={"expected_graph_epoch": expected_graph_epoch},
+                idempotency_key=idempotency_key or self.idempotency_key("retract"),
+            )
         )
 
     # --- models as runs (training-run registry + eval machinery) ---
@@ -2845,12 +3308,16 @@ class _GraphNamespace(_StarterWorkflowMethods):
         expected_graph_epoch: str | None = None,
     ) -> Any:
         """Retract edges/entities from the scoped graph. See :meth:`LbbClient.retract`."""
-        return self._client._request(
-            "POST",
-            "/v1/graph/retract",
-            params={"graph": self._graph, "expected_graph_epoch": expected_graph_epoch},
-            body=body,
-            idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
+        return self._client._run_flow(
+            self._client._retract_flow(
+                body,
+                params={
+                    "graph": self._graph,
+                    "expected_graph_epoch": expected_graph_epoch,
+                },
+                idempotency_key=idempotency_key
+                or self._client.idempotency_key("retract"),
+            )
         )
 
     def retract_model(
@@ -2858,13 +3325,17 @@ class _GraphNamespace(_StarterWorkflowMethods):
         expected_graph_epoch: str | None = None,
     ) -> models.GraphRetractResponse:
         """Retract and validate the response as ``GraphRetractResponse``."""
-        return self._client._model_request(
-            models.GraphRetractResponse,
-            "POST",
-            "/v1/graph/retract",
-            params={"graph": self._graph, "expected_graph_epoch": expected_graph_epoch},
-            body=body,
-            idempotency_key=idempotency_key or self._client.idempotency_key("retract"),
+        return self._client._run_flow(
+            self._client._retract_flow(
+                body,
+                params={
+                    "graph": self._graph,
+                    "expected_graph_epoch": expected_graph_epoch,
+                },
+                idempotency_key=idempotency_key
+                or self._client.idempotency_key("retract"),
+                model=models.GraphRetractResponse,
+            )
         )
 
 
@@ -2874,29 +3345,28 @@ class _FactsNamespace:
         self._graph = graph
 
     def create(self, body: Body, *, idempotency_key: str | None = None) -> Any:
-        params = {"graph": self._graph}
-        return self._client._request(
-            "POST",
-            "/v1/graph/commit",
-            params=params,
-            body=body,
-            idempotency_key=idempotency_key
-            or self._client.idempotency_key("facts.create"),
+        """Commit facts. See :meth:`LbbClient.commit` for a graph that stores RDF."""
+        return self._client._run_flow(
+            self._client._facts_flow(
+                body,
+                params={"graph": self._graph},
+                idempotency_key=idempotency_key
+                or self._client.idempotency_key("facts.create"),
+            )
         )
 
     def create_model(
         self, body: Body, *, idempotency_key: str | None = None
     ) -> models.GraphCommitResponse:
         """Create facts and validate the response as ``GraphCommitResponse``."""
-        params = {"graph": self._graph}
-        return self._client._model_request(
-            models.GraphCommitResponse,
-            "POST",
-            "/v1/graph/commit",
-            params=params,
-            body=body,
-            idempotency_key=idempotency_key
-            or self._client.idempotency_key("facts.create"),
+        return self._client._run_flow(
+            self._client._facts_flow(
+                body,
+                params={"graph": self._graph},
+                idempotency_key=idempotency_key
+                or self._client.idempotency_key("facts.create"),
+                model=models.GraphCommitResponse,
+            )
         )
 
     def import_ndjson(
