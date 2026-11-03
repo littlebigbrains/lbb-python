@@ -12,6 +12,7 @@ from collections.abc import (
     AsyncIterator,
     Awaitable,
     Callable,
+    Generator,
     Iterable,
     Mapping,
     Sequence,
@@ -91,6 +92,7 @@ from ._client_base import (
     _sse_decoder,
     _SseParser,
     _StarterWorkflowMethods,
+    _Step,
     _trial_settled,
     _trial_timeout,
     _workflow_test_open,
@@ -2035,6 +2037,15 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
                 "submit_import_ndjson requires a non-empty idempotency_key"
             )
         await self._require_capability("durable_import_jobs_v1")
+        # Before the source is read, and the source is closed when the job is
+        # refused: nothing of it is consumed.
+        try:
+            await self._run_flow(self._import_job_guard_flow())
+        except LbbError:
+            aclose = getattr(lines, "aclose", None)
+            if callable(aclose):
+                await aclose()
+            raise
         content = _aiter_import_ndjson(lines)
         try:
             first = await anext(content)
@@ -2546,6 +2557,39 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         raise httpx.RemoteProtocolError(
             _ASK_STREAM_ENDED, request=opened[0].request if opened else None
         )
+
+    async def _flow_request(self, step: _Step) -> Any:
+        if step.model is not None:
+            return await self._model_request(
+                step.model,
+                step.method,
+                step.path,
+                params=step.params,
+                body=step.body,
+                idempotency_key=step.idempotency_key,
+            )
+        return await self._request(
+            step.method,
+            step.path,
+            params=step.params,
+            body=step.body,
+            idempotency_key=step.idempotency_key,
+        )
+
+    async def _run_flow(self, flow: Generator[_Step, Any, Any]) -> Any:
+        try:
+            step = next(flow)
+            while True:
+                try:
+                    result = await self._flow_request(step)
+                except LbbError as error:
+                    step = flow.throw(error)
+                else:
+                    step = flow.send(result)
+        except StopIteration as done:
+            return done.value
+        finally:
+            flow.close()
 
     async def _request(
         self,

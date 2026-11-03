@@ -414,9 +414,14 @@ class SyncClientTests(unittest.TestCase):
 
         self.assertEqual(accepted.job_id, "import:1")
         self.assertEqual(produced, 2)
-        self.assertEqual(seen[1].headers["idempotency-key"], "source:1")
-        self.assertEqual(seen[1].headers["content-type"], "application/x-ndjson")
-        self.assertEqual(len(seen[1].content.splitlines()), 2)
+        # The dry run that learns the kind of graph comes before the upload.
+        self.assertEqual(seen[1].url.path, "/v1/graph/commit")
+        self.assertEqual(seen[1].url.params["dry_run"], "true")
+        upload = seen[2]
+        self.assertEqual(upload.url.path, "/v1/graph/import-jobs")
+        self.assertEqual(upload.headers["idempotency-key"], "source:1")
+        self.assertEqual(upload.headers["content-type"], "application/x-ndjson")
+        self.assertEqual(len(upload.content.splitlines()), 2)
 
     def test_durable_import_does_not_fallback_without_capability(self) -> None:
         seen: list[httpx.Request] = []
@@ -438,7 +443,10 @@ class SyncClientTests(unittest.TestCase):
         ) as client:
             with self.assertRaisesRegex(ValueError, "requires at least one NDJSON"):
                 client.submit_import_ndjson([], idempotency_key="source:empty")
-        self.assertEqual([request.url.path for request in seen], ["/version"])
+        # The capability check and the dry run that learns the kind of graph.
+        self.assertEqual(
+            [request.url.path for request in seen], ["/version", "/v1/graph/commit"]
+        )
 
     def test_metadata_exposes_only_bounded_index_detail_option(self) -> None:
         seen: list[httpx.Request] = []
@@ -4472,7 +4480,9 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(accepted.job_id, "import:async")
         self.assertEqual(produced, 2)
-        self.assertEqual(len(seen[1].content.splitlines()), 2)
+        self.assertEqual(seen[1].url.path, "/v1/graph/commit")
+        self.assertEqual(seen[2].url.path, "/v1/graph/import-jobs")
+        self.assertEqual(len(seen[2].content.splitlines()), 2)
 
     async def test_async_durable_import_rejects_empty_source_before_post(self) -> None:
         seen: list[httpx.Request] = []
@@ -4486,7 +4496,9 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
                 await client.submit_import_ndjson(
                     [], idempotency_key="source:async-empty"
                 )
-        self.assertEqual([request.url.path for request in seen], ["/version"])
+        self.assertEqual(
+            [request.url.path for request in seen], ["/version", "/v1/graph/commit"]
+        )
 
     async def test_async_create_graph_returns_typed_response(self) -> None:
         payload = {"commit_seq": 0, "graph": GRAPH, "ontology_version": 1}
