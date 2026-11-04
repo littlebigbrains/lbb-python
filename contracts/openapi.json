@@ -24634,6 +24634,14 @@
             },
             "type": "array"
           },
+          "confidence": {
+            "description": "The model's probability, from 0 to 1, that the answer is right. At\nmost 0.4 when the rows measure a stand-in for what the question asks\n(a broader group, a general score of the same entities): the answer\nthen says so first. Absent in answers stored before this field.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "text": {
             "description": "A short answer in plain words.",
             "type": "string"
@@ -24645,13 +24653,20 @@
         "type": "object"
       },
       "QueryAnswerChart": {
-        "description": "A chart hint: which columns of the response's `result` an app can draw,\nand how. The server checked it against those rows: every column it\nnames is a column of `result`, and `y` holds numbers for `bar` and\n`line` (`x` and `y` for `scatter`).",
+        "description": "A chart hint: which columns of the response's `result` an app can draw,\nand how. The server checked it against those rows: every column it\nnames is a column of `result`, and `y` holds numbers for `bar` and\n`line` (`x` and `y` for `scatter`). The labels (`title`, `x_label`,\n`y_label`) are plain words for a person to read. The server drops a\nlabel that is a variable, an IRI, an identifier, shorter than three\nletters or too long, and keeps the chart.",
         "properties": {
           "kind": {
             "$ref": "#/components/schemas/QueryAnswerChartKind"
           },
           "series": {
             "description": "A column that splits the rows into groups: a bar color or a line\neach.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "A title for the chart in plain words, for example \"Career h-index of\nthe researchers on this topic\", at most 80 characters. Absent when\nthe model gave none or the server dropped it. An app words the chart\nfrom the column names then.",
             "type": [
               "string",
               "null"
@@ -24664,8 +24679,22 @@
               "null"
             ]
           },
+          "x_label": {
+            "description": "The label of the x axis (or of the categories) in plain words, for\nexample \"Researcher\", at most 40 characters. Absent as `title` is. A\ntable has none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "y": {
             "description": "The column of the numbers. Always present for `bar`, `line` and\n`scatter`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "y_label": {
+            "description": "The label of the y axis in plain words, for example \"Career h-index\",\nat most 40 characters. Absent as `title` is. A table has none.",
             "type": [
               "string",
               "null"

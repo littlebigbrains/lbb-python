@@ -15444,7 +15444,10 @@ class QueryAnswerChart(BaseModel):
     A chart hint: which columns of the response's `result` an app can draw,
     and how. The server checked it against those rows: every column it
     names is a column of `result`, and `y` holds numbers for `bar` and
-    `line` (`x` and `y` for `scatter`).
+    `line` (`x` and `y` for `scatter`). The labels (`title`, `x_label`,
+    `y_label`) are plain words for a person to read. The server drops a
+    label that is a variable, an IRI, an identifier, shorter than three
+    letters or too long, and keeps the chart.
     """
 
     kind: QueryAnswerChartKind
@@ -15454,16 +15457,34 @@ class QueryAnswerChart(BaseModel):
             description='A column that splits the rows into groups: a bar color or a line\neach.'
         ),
     ] = None
+    title: Annotated[
+        str | None,
+        Field(
+            description='A title for the chart in plain words, for example "Career h-index of\nthe researchers on this topic", at most 80 characters. Absent when\nthe model gave none or the server dropped it. An app words the chart\nfrom the column names then.'
+        ),
+    ] = None
     x: Annotated[
         str | None,
         Field(
             description='The column of the categories or of the x axis, a variable of\n`result` without its `?`. Always present for `bar`, `line` and\n`scatter`.'
         ),
     ] = None
+    x_label: Annotated[
+        str | None,
+        Field(
+            description='The label of the x axis (or of the categories) in plain words, for\nexample "Researcher", at most 40 characters. Absent as `title` is. A\ntable has none.'
+        ),
+    ] = None
     y: Annotated[
         str | None,
         Field(
             description='The column of the numbers. Always present for `bar`, `line` and\n`scatter`.'
+        ),
+    ] = None
+    y_label: Annotated[
+        str | None,
+        Field(
+            description='The label of the y axis in plain words, for example "Career h-index",\nat most 40 characters. Absent as `title` is. A table has none.'
         ),
     ] = None
 
@@ -20394,6 +20415,12 @@ class QueryAnswer(BaseModel):
         list[str] | None,
         Field(
             description='IRIs of the entities the answer names, at most 20. Each one appeared\nin the rows the loop read; the server removes any other.'
+        ),
+    ] = None
+    confidence: Annotated[
+        float | None,
+        Field(
+            description="The model's probability, from 0 to 1, that the answer is right. At\nmost 0.4 when the rows measure a stand-in for what the question asks\n(a broader group, a general score of the same entities): the answer\nthen says so first. Absent in answers stored before this field."
         ),
     ] = None
     text: Annotated[str, Field(description='A short answer in plain words.')]

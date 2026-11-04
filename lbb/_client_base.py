@@ -367,7 +367,8 @@ class QueryAskResult:
       ``scatter`` or ``table``) and the columns ``x``, ``y`` and ``series``.
       The server checked the hint against the rows: the columns exist, and
       ``y`` holds numbers for ``bar`` and ``line`` (``x`` and ``y`` for
-      ``scatter``). ``None`` when the rows make no chart.
+      ``scatter``). ``title``, ``x_label`` and ``y_label``, when present, are
+      plain words for the reader. ``None`` when the rows make no chart.
     - :attr:`steps` — the tool calls of the loop, in order (``n``, ``tool``,
       ``input``, ``ok``, ``rows``, ``error``, ``ms``).
     - :attr:`route` — the kind of question (``kind``), who chose it (``by``),
