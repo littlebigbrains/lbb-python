@@ -2996,6 +2996,41 @@ class GraphReloadResponse(BaseModel):
     ] = None
 
 
+class GraphRetractDryRunResponse(BaseModel):
+    """
+    Outcome of `POST /v1/graph/retract?dry_run=true` on an RDF-native graph:
+    what the retract would remove, from the same planner as the live retract.
+    Nothing is written. On a graph with property-graph truth the dry run is
+    refused.
+    """
+
+    dry_run: Annotated[bool, Field(description='Always `true`.')]
+    fields_removed: Annotated[
+        int, Field(description='Field statements the retract would remove.', ge=0)
+    ]
+    purged_entities: Annotated[
+        int,
+        Field(
+            description='`retracted_entities` when `purge_entity_properties` is set, else zero.',
+            ge=0,
+        ),
+    ]
+    retracted_edges: Annotated[
+        int,
+        Field(
+            description='Edge statements the retract would remove, the edges of retracted\nentities included.',
+            ge=0,
+        ),
+    ]
+    retracted_entities: Annotated[
+        int,
+        Field(
+            description='Entities (from `entities`) that have a statement to remove.',
+            ge=0,
+        ),
+    ]
+
+
 class GraphRetractResponse(BaseModel):
     commit_seq: Annotated[int, Field(ge=0)]
     edge_event_ids: Annotated[
@@ -6269,7 +6304,12 @@ class RegionAnchorInput(BaseModel):
     stored anchor; out-of-range, non-finite, or inverted boxes are rejected.
     """
 
-    confidence: float
+    confidence: Annotated[
+        float | None,
+        Field(
+            description="Extraction confidence in `[0, 1]`. Defaults to `1.0` when absent: the\nregion `POST /v1/workflows/activities/ground` returns has none, and\nits box is computed from the page's text lines, not guessed."
+        ),
+    ] = None
     page: Annotated[
         int, Field(description='0-based page index within the source document.', ge=0)
     ]
@@ -6556,6 +6596,16 @@ class ReviewEvidence(BaseModel):
             description='The `uploaded_at` of the file when the quote was verified in it: the\ncontent stamp. A delete and a new upload of the same bytes change it.\nSet with `source_sha256`.'
         ),
     ] = None
+
+
+class ReviewItemDeleteResponse(BaseModel):
+    """
+    `DELETE /v1/reviews?id=…`: the producer deleted an item, in any status.
+    The item's question, evidence, answer and comments are gone with it.
+    """
+
+    deleted: Annotated[bool, Field(description='Always `true`.')]
+    id: Annotated[str, Field(description='The deleted item (`rev_…`).')]
 
 
 class ReviewItemKind(Enum):
