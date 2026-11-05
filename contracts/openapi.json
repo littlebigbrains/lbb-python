@@ -14873,6 +14873,43 @@
         ],
         "type": "object"
       },
+      "GraphRetractDryRunResponse": {
+        "description": "Outcome of `POST /v1/graph/retract?dry_run=true` on an RDF-native graph:\nwhat the retract would remove, from the same planner as the live retract.\nNothing is written. On a graph with property-graph truth the dry run is\nrefused.",
+        "properties": {
+          "dry_run": {
+            "description": "Always `true`.",
+            "type": "boolean"
+          },
+          "fields_removed": {
+            "description": "Field statements the retract would remove.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purged_entities": {
+            "description": "`retracted_entities` when `purge_entity_properties` is set, else zero.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "retracted_edges": {
+            "description": "Edge statements the retract would remove, the edges of retracted\nentities included.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "retracted_entities": {
+            "description": "Entities (from `entities`) that have a statement to remove.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "retracted_edges",
+          "retracted_entities",
+          "purged_entities",
+          "fields_removed"
+        ],
+        "type": "object"
+      },
       "GraphRetractRequest": {
         "description": "Retract specific edges and/or every edge touching given entities. Graph facts\nare append-only; a retraction does not erase events but appends a retracting\nevent that supersedes the matched current edges, so they drop out of\ncurrent-state reads (and re-appear in an `as_of` read before the retraction).\nThis is the surgical alternative to the whole-graph reset for fixing a\nwrongly-added fact — e.g. an auto-extracted entity that turned out to be noise.",
         "properties": {
@@ -27897,6 +27934,7 @@
         "description": "A page-region provenance anchor on a fact's evidence (region provenance\n§4.1/§6.4(b) BYO import): where the evidence appears in the source\ndocument. Coordinates are **normalized to the page box** (`[0, 1]`, origin\ntop-left, y down) with `x0 <= x1` and `y0 <= y1`; `confidence` is the\nextraction confidence in `[0, 1]`. The commit path validates and quantizes\n(`round(v * 65535)` coords, `round(c * 255)` confidence) into the canonical\nstored anchor; out-of-range, non-finite, or inverted boxes are rejected.",
         "properties": {
           "confidence": {
+            "description": "Extraction confidence in `[0, 1]`. Defaults to `1.0` when absent: the\nregion `POST /v1/workflows/activities/ground` returns has none, and\nits box is computed from the page's text lines, not guessed.",
             "format": "double",
             "type": "number"
           },
@@ -27928,8 +27966,7 @@
           "x0",
           "y0",
           "x1",
-          "y1",
-          "confidence"
+          "y1"
         ],
         "type": "object"
       },
@@ -29366,6 +29403,24 @@
           "title",
           "origin",
           "question"
+        ],
+        "type": "object"
+      },
+      "ReviewItemDeleteResponse": {
+        "description": "`DELETE /v1/reviews?id=…`: the producer deleted an item, in any status.\nThe item's question, evidence, answer and comments are gone with it.",
+        "properties": {
+          "deleted": {
+            "description": "Always `true`.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "The deleted item (`rev_…`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
         ],
         "type": "object"
       },
@@ -88643,6 +88698,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "`true` reports what the retract would remove and writes nothing (RDF-native graphs only)",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -88901,7 +88965,7 @@
             "bearer": []
           }
         ],
-        "summary": "Retract specific edges and/or every edge touching given entities; appends superseding retract events (history is kept for as_of reads)",
+        "summary": "Retract specific edges and/or every edge touching given entities; appends superseding retract events (history is kept for as_of reads). On an RDF-native graph an entity loses every statement it is in (type, label, fields, edges with their evidence nodes); `?dry_run=true` answers a `GraphRetractDryRunResponse` with the counts and writes nothing",
         "tags": [
           "graph"
         ]
@@ -115010,6 +115074,293 @@
       }
     },
     "/v1/reviews": {
+      "delete": {
+        "operationId": "delete_v1_reviews",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Review item id (`rev_…`)",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewItemDeleteResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a review item in any status as its producer: its question, evidence, answer and comments go with it. Facts an accepted answer committed stay in the graph. 409 `conflict` while the answer's commit is still to make; 404 `not_found` for an item that is gone",
+        "tags": [
+          "system"
+        ]
+      },
       "get": {
         "operationId": "get_v1_reviews",
         "parameters": [
@@ -117725,7 +118076,7 @@
             "bearer": []
           }
         ],
-        "summary": "Withdraw a review item as its producer",
+        "summary": "Withdraw an open or rejected review item as its producer. An answered item cannot be withdrawn (400)",
         "tags": [
           "system"
         ]
