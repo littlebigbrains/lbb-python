@@ -1505,6 +1505,22 @@ class _StarterWorkflowMethods(_WorkflowActivityMethods):
             params=self._workflows_scope({"starter": starter, "name": name}),
         )
 
+    def triggered_calibration(
+        self, *, include_batch: bool = False
+    ) -> models.WorkflowGateCalibrationReport:
+        """The calibrations of the graph's triggered-workflow gates, measured
+        from the review inbox's decisions: per workflow, its bands, their
+        labels and a proposal. ``include_batch`` fills each band with the
+        unseen batch labels. The read is bounded like the inbox (at most
+        1,000 items) and ``truncated`` says when it was. Applying a proposal
+        stays a console session."""
+        return self._workflows_client()._model_request(
+            models.WorkflowGateCalibrationReport,
+            "GET",
+            "/v1/workflows/triggered/calibration",
+            params=self._workflows_scope({"include_batch": include_batch}),
+        )
+
     def preview_triggered_workflow(
         self,
         starter: str,
@@ -3268,6 +3284,56 @@ class _GraphNamespace(_StarterWorkflowMethods):
             "GET", "/v1/graph/planner-stats", params=params
         )
 
+    def index_upgrade_plan(
+        self, *, target: str | None = None
+    ) -> models.IndexUpgradePlan:
+        """The plan of optional index upgrades the published generation can
+        take: per-table state against the server's baked recipe, and the bytes
+        a build would add. ``target`` pins an older recipe to inspect it."""
+        params: dict[str, Any] = {"graph": self._graph}
+        if target is not None:
+            params["target"] = target
+        return self._client._model_request(
+            models.IndexUpgradePlan,
+            "GET",
+            "/v1/graph/index-upgrade",
+            params=params,
+        )
+
+    def index_upgrade(
+        self,
+        *,
+        dry_run: bool | None = None,
+        target: str | None = None,
+        retry_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.IndexUpgradeResponse:
+        """Plan, or with ``dry_run=False`` queue, the durable maintenance work
+        that builds the recipe's value-order and other tables."""
+        body: dict[str, Any] = {}
+        if dry_run is not None:
+            body["dry_run"] = dry_run
+        if target is not None:
+            body["target"] = target
+        if retry_id is not None:
+            body["retry_id"] = retry_id
+        return self._client._model_request(
+            models.IndexUpgradeResponse,
+            "POST",
+            "/v1/graph/index-upgrade",
+            params={"graph": self._graph},
+            body=body,
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("graph.index-upgrade"),
+        )
+
+    def index_upgrade_job(self, job_id: str) -> Any:
+        """Poll the continuation of one queued index upgrade by job id."""
+        params: dict[str, Any] = {"graph": self._graph, "job_id": job_id}
+        return self._client._request(
+            "GET", "/v1/graph/index-upgrade/job", params=params
+        )
+
     def wait_for_published(
         self,
         target_seq: int,
@@ -4191,6 +4257,29 @@ class _OntologyNamespace:
             body=body,
             options=_read_options(options),
             params=self._scope(),
+        )
+
+    def fit_text(
+        self,
+        body: Body,
+        *,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> models.FitTextResponse:
+        """Fit one piece of text: reads pasted ``text`` or the parsed pages
+        of an uploaded ``document`` (its SHA-256), runs the fit models and
+        checks, and files what it finds as ontology suggestions (nothing with
+        ``dry_run``). Ongoing sources read files wholesale with
+        ``client.ontology.fit_sources``. By default only rate-limit responses
+        are retried: a lost response may have already spent the model budget."""
+        return self._client._model_request(
+            models.FitTextResponse,
+            "POST",
+            "/v1/ontology/fit-text",
+            body=body,
+            params=self._scope(),
+            idempotency_key=idempotency_key or self._client.idempotency_key("ontology.fit-text"),
+            options={"retry": "rate_limited", **(options or {})},
         )
 
     def define(self, body: Body) -> models.OntologyDefineResponse:
@@ -5900,6 +5989,82 @@ class _ModelTrialsNamespace:
         It keeps what it compared."""
         return self._client._model_request(
             models.ModelTrial, "POST", "/v1/models/trials/stop", params={"id": trial_id}
+        )
+
+
+class _ModelCalibrationNamespace:
+    """Calibration sessions: the server measures a threshold for one job (or a
+    workflow's gate) against the graph's call log. Reading sessions and the
+    thresholds in force works with an API key. Apply a session through
+    ``POST /v1/models/calibration/apply`` with the same key. The separate
+    inbox-gate proposal route, ``POST /v1/workflows/triggered/calibration/apply``,
+    requires a console session in SaaS mode."""
+
+    def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
+        self._client = client
+        self._graph = graph
+
+    def _scope(self, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        return _graph_scoped(self._graph, params)
+
+    def list(self, *, limit: int | None = None) -> models.ModelCalibrationListResponse:
+        """The graph's calibration sessions, newest first; ``limit`` caps the
+        page."""
+        return self._client._model_request(
+            models.ModelCalibrationListResponse,
+            "GET",
+            "/v1/models/calibration",
+            params=self._scope({"limit": limit}),
+        )
+
+    def get(self, session_id: str) -> models.ModelCalibrationSession:
+        """One calibration session: options, judge calls, questions, report."""
+        return self._client._model_request(
+            models.ModelCalibrationSession,
+            "GET",
+            "/v1/models/calibration/get",
+            params=self._scope({"id": session_id}),
+        )
+
+    def start(
+        self,
+        *,
+        job: str | models.ModelJob,
+        workflow: str | None = None,
+        budget_usd: float | None = None,
+        max_questions: int | None = None,
+        sample_per_band: int | None = None,
+        since_days: int | None = None,
+        target_precision: float | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.ModelCalibrationSession:
+        """Start a session for one ``job``. A ``route`` session is general; a
+        session with ``workflow`` measures that workflow's gate (``resolve``,
+        ``infer`` or ``map``). The session spends the judge budget as it goes.
+        Only rate-limit responses are retried; a lost response may have
+        already started the session."""
+        body: dict[str, Any] = {"job": _enum_value(job)}
+        if workflow is not None:
+            body["workflow"] = workflow
+        if budget_usd is not None:
+            body["budget_usd"] = budget_usd
+        if max_questions is not None:
+            body["max_questions"] = max_questions
+        if sample_per_band is not None:
+            body["sample_per_band"] = sample_per_band
+        if since_days is not None:
+            body["since_days"] = since_days
+        if target_precision is not None:
+            body["target_precision"] = target_precision
+        return self._client._model_request(
+            models.ModelCalibrationSession,
+            "POST",
+            "/v1/models/calibration",
+            body=body,
+            params=self._scope(),
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("models.calibration.start"),
+            options={"retry": "rate_limited"},
         )
 
 

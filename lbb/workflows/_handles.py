@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from .. import models
 from ._worker import WorkflowDefinition, _copy
@@ -213,6 +213,25 @@ class WorkflowNamespace:
     def handle(self, id: str) -> WorkflowHandle:
         """The instance ``id``."""
         return WorkflowHandle(self._client, id)
+
+    async def status(
+        self, *, expected_graph_epoch: str | None = None
+    ) -> models.WorkflowStatusResponse:
+        """The workflow engine's state on this graph: enabled and its
+        durability, the generation of the scheduling index
+        (``local_sequence``), the unarchived count, and ``active_runs``."""
+        params: dict[str, Any] = {"graph": self._client._graph or ""}
+        if expected_graph_epoch is not None:
+            params["expected_graph_epoch"] = expected_graph_epoch
+        return cast(
+            models.WorkflowStatusResponse,
+            await self._client._model_request(
+                models.WorkflowStatusResponse,
+                "GET",
+                "/v1/workflows/status",
+                params=params,
+            ),
+        )
 
     async def start(
         self,

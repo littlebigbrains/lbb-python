@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from lbb import AsyncLbbClient, LbbClient, QueryAskResult, QueryAskStreamEvent
 from lbb.models import (
+    GraphRetractResponse,
     ModelChoice,
     ModelChoiceDeleted,
     ModelChoiceList,
@@ -15,12 +16,17 @@ from lbb.models import (
     ModelTrialStartResponse,
     OntologyView,
     SparqlSelectResponse,
+    WorkflowStatusResponse,
 )
 
 if TYPE_CHECKING:
-    from typing import assert_type
+    from typing_extensions import assert_type
 
     def sync_dx_types(client: LbbClient) -> None:
+        assert_type(
+            client.workflows.status(expected_graph_epoch="18446744073709551615"),
+            WorkflowStatusResponse,
+        )
         assert_type(client.ontology.view(counts=True), OntologyView)
         assert_type(
             client.query.structured({"patterns": [], "select": []}),
@@ -49,6 +55,11 @@ if TYPE_CHECKING:
         )
 
     async def async_dx_types(client: AsyncLbbClient) -> None:
+        assert_type(
+            await client.workflows.status(expected_graph_epoch="18446744073709551615"),
+            WorkflowStatusResponse,
+        )
+        assert_type(await client.graph("main").retract_model({}), GraphRetractResponse)
         assert_type(await client.ontology.view(counts=True), OntologyView)
         assert_type(
             await client.query.structured({"patterns": [], "select": []}),

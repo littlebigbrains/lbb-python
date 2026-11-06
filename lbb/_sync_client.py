@@ -58,6 +58,7 @@ from ._client_base import (
     _jittered_backoff,
     _list_envelope,
     _missing_route,
+    _ModelCalibrationNamespace,
     _ModelChoicesNamespace,
     _ModelSwitchesNamespace,
     _ModelTrialsNamespace,
@@ -132,6 +133,18 @@ class _SyncOntologyNamespace(_OntologyNamespace):
     ) -> models.OntologyResolveResponse:
         return cast(
             models.OntologyResolveResponse, super().resolve(body, options=options)
+        )
+
+    def fit_text(
+        self,
+        body: Body,
+        *,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> models.FitTextResponse:
+        return cast(
+            models.FitTextResponse,
+            super().fit_text(body, idempotency_key=idempotency_key, options=options),
         )
 
     def define(self, body: Body) -> models.OntologyDefineResponse:
@@ -454,15 +467,68 @@ class _SyncModelChoicesNamespace(_ModelChoicesNamespace):
         )
 
 
+class _SyncModelCalibrationNamespace(_ModelCalibrationNamespace):
+    __doc__ = _ModelCalibrationNamespace.__doc__
+
+    def list(
+        self, *, limit: int | None = None
+    ) -> models.ModelCalibrationListResponse:
+        return cast(
+            models.ModelCalibrationListResponse, super().list(limit=limit)
+        )
+
+    def get(self, session_id: str) -> models.ModelCalibrationSession:
+        return cast(models.ModelCalibrationSession, super().get(session_id))
+
+    def start(
+        self,
+        *,
+        job: str | models.ModelJob,
+        workflow: str | None = None,
+        budget_usd: float | None = None,
+        max_questions: int | None = None,
+        sample_per_band: int | None = None,
+        since_days: int | None = None,
+        target_precision: float | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.ModelCalibrationSession:
+        return cast(
+            models.ModelCalibrationSession,
+            super().start(
+                job=job,
+                workflow=workflow,
+                budget_usd=budget_usd,
+                max_questions=max_questions,
+                sample_per_band=sample_per_band,
+                since_days=since_days,
+                target_precision=target_precision,
+                idempotency_key=idempotency_key,
+            ),
+        )
+
+
 class _SyncModelsNamespace:
     """The models of the graph's uses: trials of other models
-    (:attr:`trials`), switches (:attr:`switches`), and the model choices of
-    the workflow uses (:attr:`choices`)."""
+    (:attr:`trials`), switches (:attr:`switches`), the model choices of
+    the workflow uses (:attr:`choices`), and calibration sessions
+    (:attr:`calibration`)."""
 
     def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
         self.trials = _SyncModelTrialsNamespace(client)
         self.switches = _SyncModelSwitchesNamespace(client)
         self.choices = _SyncModelChoicesNamespace(client)
+        self.calibration = _SyncModelCalibrationNamespace(client)
+
+    def thresholds(self) -> models.ModelThresholdsResponse:
+        """The applied thresholds of ``route`` and ``fit``, and a workflow's
+        applied gate (``GET /v1/models/thresholds``)."""
+        return cast(
+            models.ModelThresholdsResponse,
+            self._client._model_request(
+                models.ModelThresholdsResponse, "GET", "/v1/models/thresholds"
+            ),
+        )
 
 
 def _every(fetch: Callable[[str | None], Any]) -> Iterator[Any]:
@@ -760,8 +826,30 @@ class _SyncWorkflowsNamespace:
     def __init__(self, client: _BaseLbbClient) -> None:
         #: The workflows of the graph by name: list, read, change, run,
         #: pause, delete, and their queue, runs and documents.
+        self._client = client
         self.named = _SyncNamedWorkflowsNamespace(client)
         self.tests = _SyncWorkflowTestsNamespace(client)
+
+    def status(
+        self,
+        *,
+        expected_graph_epoch: str | None = None,
+    ) -> models.WorkflowStatusResponse:
+        """The workflow engine's state on this graph: enabled and its
+        durability, the generation of the scheduling index
+        (``local_sequence``), the unarchived count, and ``active_runs``."""
+        params: dict[str, Any] = {"graph": self._client._graph or ""}
+        if expected_graph_epoch is not None:
+            params["expected_graph_epoch"] = expected_graph_epoch
+        return cast(
+            models.WorkflowStatusResponse,
+            self._client._model_request(
+                models.WorkflowStatusResponse,
+                "GET",
+                "/v1/workflows/status",
+                params=params,
+            ),
+        )
 
 
 class LbbClient(_BaseLbbClient):

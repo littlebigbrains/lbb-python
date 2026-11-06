@@ -72,6 +72,7 @@ from ._client_base import (
     _jittered_backoff,
     _list_envelope,
     _missing_route,
+    _ModelCalibrationNamespace,
     _ModelChoicesNamespace,
     _ModelSwitchesNamespace,
     _ModelTrialsNamespace,
@@ -227,6 +228,18 @@ class _AsyncOntologyNamespace(_OntologyNamespace):
         return cast(
             models.OntologyResolveResponse,
             await super().resolve(body, options=options),
+        )
+
+    async def fit_text(
+        self,
+        body: Body,
+        *,
+        idempotency_key: str | None = None,
+        options: RequestOptions | None = None,
+    ) -> models.FitTextResponse:
+        return cast(
+            models.FitTextResponse,
+            await super().fit_text(body, idempotency_key=idempotency_key, options=options),
         )
 
     async def define(self, body: Body) -> models.OntologyDefineResponse:
@@ -761,6 +774,14 @@ class _AsyncStarterWorkflowMethods(_StarterWorkflowMethods):
     async def triggered_workflow(self, starter: str, name: str) -> Any:
         return await super().triggered_workflow(starter, name)
 
+    async def triggered_calibration(
+        self, *, include_batch: bool = False
+    ) -> models.WorkflowGateCalibrationReport:
+        return cast(
+            models.WorkflowGateCalibrationReport,
+            await super().triggered_calibration(include_batch=include_batch),
+        )
+
     async def preview_triggered_workflow(
         self,
         starter: str,
@@ -936,6 +957,32 @@ class _AsyncGraphNamespace(_AsyncStarterWorkflowMethods, _GraphNamespace):
             await super().retract_model(
                 body, idempotency_key=idempotency_key,
                 expected_graph_epoch=expected_graph_epoch,
+            ),
+        )
+
+    async def index_upgrade_plan(
+        self, *, target: str | None = None
+    ) -> models.IndexUpgradePlan:
+        return cast(
+            models.IndexUpgradePlan,
+            await super().index_upgrade_plan(target=target),
+        )
+
+    async def index_upgrade(
+        self,
+        *,
+        dry_run: bool | None = None,
+        target: str | None = None,
+        retry_id: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.IndexUpgradeResponse:
+        return cast(
+            models.IndexUpgradeResponse,
+            await super().index_upgrade(
+                dry_run=dry_run,
+                target=target,
+                retry_id=retry_id,
+                idempotency_key=idempotency_key,
             ),
         )
 
@@ -1356,15 +1403,69 @@ class _AsyncModelChoicesNamespace(_ModelChoicesNamespace):
         )
 
 
+class _AsyncModelCalibrationNamespace(_ModelCalibrationNamespace):
+    __doc__ = _ModelCalibrationNamespace.__doc__
+
+    async def list(
+        self, *, limit: int | None = None
+    ) -> models.ModelCalibrationListResponse:
+        return cast(
+            models.ModelCalibrationListResponse,
+            await super().list(limit=limit),
+        )
+
+    async def get(self, session_id: str) -> models.ModelCalibrationSession:
+        return cast(models.ModelCalibrationSession, await super().get(session_id))
+
+    async def start(
+        self,
+        *,
+        job: str | models.ModelJob,
+        workflow: str | None = None,
+        budget_usd: float | None = None,
+        max_questions: int | None = None,
+        sample_per_band: int | None = None,
+        since_days: int | None = None,
+        target_precision: float | None = None,
+        idempotency_key: str | None = None,
+    ) -> models.ModelCalibrationSession:
+        return cast(
+            models.ModelCalibrationSession,
+            await super().start(
+                job=job,
+                workflow=workflow,
+                budget_usd=budget_usd,
+                max_questions=max_questions,
+                sample_per_band=sample_per_band,
+                since_days=since_days,
+                target_precision=target_precision,
+                idempotency_key=idempotency_key,
+            ),
+        )
+
+
 class _AsyncModelsNamespace:
     """The models of the graph's uses: trials of other models
-    (:attr:`trials`), switches (:attr:`switches`), and the model choices of
-    the workflow uses (:attr:`choices`)."""
+    (:attr:`trials`), switches (:attr:`switches`), the model choices of
+    the workflow uses (:attr:`choices`), and calibration sessions
+    (:attr:`calibration`)."""
 
     def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
         self.trials = _AsyncModelTrialsNamespace(client)
         self.switches = _AsyncModelSwitchesNamespace(client)
         self.choices = _AsyncModelChoicesNamespace(client)
+        self.calibration = _AsyncModelCalibrationNamespace(client)
+
+    async def thresholds(self) -> models.ModelThresholdsResponse:
+        """The applied thresholds of ``route`` and ``fit``, and a workflow's
+        applied gate (``GET /v1/models/thresholds``)."""
+        return cast(
+            models.ModelThresholdsResponse,
+            await self._client._model_request(
+                models.ModelThresholdsResponse, "GET", "/v1/models/thresholds"
+            ),
+        )
 
 
 async def _aevery(fetch: Callable[[str | None], Awaitable[Any]]) -> AsyncIterator[Any]:
