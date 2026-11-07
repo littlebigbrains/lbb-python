@@ -4501,6 +4501,45 @@ class NamedWorkflowPauseRequest(BaseModel):
     paused: bool
 
 
+class NamespaceDefaultGraph(Enum):
+    union = 'union'
+    empty = 'empty'
+
+
+class NamespaceQueryCoverage(BaseModel):
+    complete: Annotated[
+        bool,
+        Field(
+            description='A successful exact query always covers every selected source.'
+        ),
+    ]
+    queried_graphs: Annotated[int, Field(ge=0)]
+    selected_graphs: Annotated[int, Field(ge=0)]
+
+
+class NamespaceQueryRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    default_graph: NamespaceDefaultGraph | None = None
+    include_descendants: Annotated[
+        bool | None,
+        Field(description='Include nested project namespaces. Defaults to true.'),
+    ] = None
+    namespace_id: Annotated[
+        str,
+        Field(
+            description='Immutable catalog namespace ID, resolved inside the authenticated environment.'
+        ),
+    ]
+    query: Annotated[
+        str,
+        Field(
+            description='SELECT or ASK over asserted RDF; no FROM, SERVICE or model-backed search.'
+        ),
+    ]
+
+
 class Op4(Enum):
     narrow_relation = 'narrow_relation'
 
@@ -15038,6 +15077,30 @@ class NamedWorkflowRunRequest(BaseModel):
         extra='forbid',
     )
     inputs: list[WorkflowRunNowInput] | None = None
+
+
+class NamespaceQueryResponse(BaseModel):
+    charged_read_bytes: Annotated[int, Field(ge=0)]
+    coverage: NamespaceQueryCoverage
+    namespace: CatalogNamespaceIdentity
+    results: Annotated[
+        str,
+        Field(
+            description='SPARQL Results JSON serialized as a string, as in sparql-text.'
+        ),
+    ]
+    selection_token: Annotated[
+        str,
+        Field(
+            description='Digest of the exact frozen graph IDs/epochs, not an atomic catalog snapshot.'
+        ),
+    ]
+    sources: Annotated[
+        list[ReferenceDatasetVersion],
+        Field(
+            description='Every source has its deterministic urn:lbb:graph:<graph_id> GRAPH name.'
+        ),
+    ]
 
 
 class OntologyDefineResponse(BaseModel):
