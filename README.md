@@ -432,6 +432,30 @@ vector identifies the independently pinned versions. Keep epochs as decimal stri
 Async clients expose the same helpers with `await`. Catalog pages can be empty with
 a non-null `next_cursor`; continue until that cursor is null.
 
+Python 0.35.0 adds `client.sparql_namespace` to query every ready graph in a
+customer namespace, including descendants by default, up to 256 sources:
+
+```python
+import json
+
+answer = client.sparql_namespace({
+    "namespace_id": customer_namespace_id,
+    "query": "SELECT ?project ?s WHERE { GRAPH ?project { ?s ?p ?o } } LIMIT 20",
+})
+rows = json.loads(answer["results"])["results"]["bindings"]
+print(rows, answer["coverage"], answer["sources"])
+```
+
+The namespace route retains the client's environment and credential and omits its
+default graph. `sparql_namespace_model` returns a validated
+`models.NamespaceQueryResponse`; both helpers support `await` on `AsyncLbbClient`.
+They require environment credentials, enabled catalog/reference features, and the
+`namespace_dataset_reads_v1` capability. Ordinary patterns read the RDF set union;
+`GRAPH` retains project provenance. Missing sources or work limits fail the whole
+request. Only retryable 429s are retried by default; use `options={"retry": False}`
+to disable those retries too. See [namespace queries](https://docs.littlebigbrain.com/guides/query-a-customer-namespace/)
+for coverage, exact independent source versions and limits.
+
 These helpers do not move graph ownership, grant writes, or create an atomic
 cross-graph snapshot. See [How to model your app](https://docs.littlebigbrain.com/start/model-your-app/).
 

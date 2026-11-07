@@ -2304,6 +2304,21 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
             models.SparqlSelectResponse, await super().sparql_select_model(body)
         )
 
+    async def sparql_namespace(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> Any:
+        """Query a customer namespace; retain environment scope and source versions."""
+        return await super().sparql_namespace(body, options=options)
+
+    async def sparql_namespace_model(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.NamespaceQueryResponse:
+        """Validate a namespace-query envelope, retaining decimal-string epochs."""
+        return cast(
+            models.NamespaceQueryResponse,
+            await super().sparql_namespace_model(body, options=options),
+        )
+
     async def ontology_conformance_model(
         self, *, consistency: str | None = None
     ) -> models.SchemaAuditReport:
@@ -2516,6 +2531,7 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
             idempotency_key=idempotency_key,
             headers=request_options.get("headers"),
             scoped=scoped,
+            graph_scoped=path != "/v1/query/namespace",
         )
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]

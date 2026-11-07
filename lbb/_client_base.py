@@ -1867,10 +1867,14 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         return self._integrations_url
 
     def _params(
-        self, extra: Mapping[str, Any] | None = None, *, scoped: bool = True
+        self,
+        extra: Mapping[str, Any] | None = None,
+        *,
+        scoped: bool = True,
+        graph_scoped: bool = True,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {}
-        if scoped and self._graph is not None:
+        if scoped and graph_scoped and self._graph is not None:
             params["graph"] = self._graph
         if scoped and self._environment is not None:
             # Keep the deployed wire contract while using environment in the SDK.
@@ -1925,15 +1929,18 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         idempotency_key: str | None,
         headers: Mapping[str, str] | None = None,
         scoped: bool = True,
+        graph_scoped: bool = True,
     ) -> dict[str, Any]:
         """Build identical request options for the sync and async transports.
 
         ``scoped=False`` leaves out the client's graph and environment: the
-        integrations routes name their graph and use the credential's scope."""
+        integrations routes name their graph and use the credential's scope.
+        ``graph_scoped=False`` retains the environment for namespace queries.
+        """
         request_headers = self._headers(idempotency_key)
         request_headers.update(headers or {})
         kwargs: dict[str, Any] = {
-            "params": self._params(params, scoped=scoped),
+            "params": self._params(params, scoped=scoped, graph_scoped=graph_scoped),
             "headers": request_headers,
         }
         if isinstance(content, _PathUpload):
@@ -2777,6 +2784,40 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         return self._request(
             "POST",
             "/v1/query/dataset",
+            body=body,
+            options={"retry": "rate_limited", **(options or {})},
+        )
+
+    def sparql_namespace(self, body: Body, *, options: RequestOptions | None = None) -> Any:
+        """Query every ready graph in a customer namespace, up to 256 sources.
+
+        Accepts a ``NamespaceQueryRequest`` model or dict. Ordinary patterns
+        read the RDF set union; ``GRAPH`` preserves project provenance. Returns
+        the JSON envelope with SPARQL ``results``, complete ``coverage`` and
+        exact independent ``sources``. Use ``sparql_namespace_model`` to
+        validate that envelope as a generated model.
+
+        The environment credential and selector are retained; the client's
+        graph is omitted. Requires enabled catalog/reference features and
+        environment credentials. Delegated application read tokens do not
+        authorize this endpoint. SELECT/ASK only; descendants default to true.
+        By default only retryable 429s are retried, before query execution.
+        """
+        return self._request(
+            "POST",
+            "/v1/query/namespace",
+            body=body,
+            options={"retry": "rate_limited", **(options or {})},
+        )
+
+    def sparql_namespace_model(
+        self, body: Body, *, options: RequestOptions | None = None
+    ) -> models.NamespaceQueryResponse:
+        """Validate a namespace-query envelope, retaining decimal-string epochs."""
+        return self._model_request(
+            models.NamespaceQueryResponse,
+            "POST",
+            "/v1/query/namespace",
             body=body,
             options={"retry": "rate_limited", **(options or {})},
         )
