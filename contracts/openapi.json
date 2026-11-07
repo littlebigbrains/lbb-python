@@ -69778,6 +69778,15 @@
             }
           },
           {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "one embedding (returns EmbeddingStatus)",
             "in": "query",
             "name": "name",
@@ -70050,6 +70059,15 @@
             "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
             "in": "query",
             "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
             "required": false,
             "schema": {
               "type": "string"
@@ -70612,6 +70630,15 @@
             "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
             "in": "query",
             "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
             "required": false,
             "schema": {
               "type": "string"
@@ -76087,6 +76114,15 @@
             }
           },
           {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
@@ -78992,6 +79028,15 @@
             }
           },
           {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
@@ -81768,6 +81813,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -82366,6 +82420,15 @@
             "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
             "in": "query",
             "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
             "required": false,
             "schema": {
               "type": "string"
@@ -89371,6 +89434,15 @@
             "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
             "in": "query",
             "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
             "required": false,
             "schema": {
               "type": "string"
@@ -119099,6 +119171,15 @@
             }
           },
           {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
             "in": "header",
             "name": "Idempotency-Key",
@@ -139974,6 +140055,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -141456,6 +141546,15 @@
             "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
             "in": "query",
             "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional decimal u64 graph incarnation from /v1/workflows/scope. A changed incarnation returns 409 graph_epoch_changed; a graph missing at admission returns 404. Synchronous writes and CAS retries cannot mutate a replacement incarnation; detached jobs are outside this precondition.",
+            "in": "query",
+            "name": "expected_graph_epoch",
             "required": false,
             "schema": {
               "type": "string"
