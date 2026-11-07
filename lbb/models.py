@@ -16137,15 +16137,6 @@ class RdfEntityRelation(BaseModel):
     relation: RelationView
 
 
-class RdfImportResponse(RootModel[GraphRdfImportResponse | RdfImportCommitResult]):
-    root: Annotated[
-        GraphRdfImportResponse | RdfImportCommitResult,
-        Field(
-            description='The existing route has disjoint ordinary-bulk and explicit bounded results.'
-        ),
-    ]
-
-
 class RdfSchemaSummaryResponse(BaseModel):
     """
     Compact, immutable observed-schema artifact attached to one exact F3 base.
@@ -22410,6 +22401,17 @@ class QueryRewriteEventDone(BaseModel):
         ),
     ]
     event: Literal['done']
+
+
+class RdfImportResponse(
+    RootModel[GraphRdfImportResponse | RdfImportCommitResult | CommitResponse]
+):
+    root: Annotated[
+        GraphRdfImportResponse | RdfImportCommitResult | CommitResponse,
+        Field(
+            description='The existing route has disjoint ordinary-bulk and explicit bounded results.'
+        ),
+    ]
 
 
 class SuggestedFacts(BaseModel):
