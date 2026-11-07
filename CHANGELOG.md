@@ -2,6 +2,18 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## 0.35.0 (2026-11-07)
+
+- Add sync and async `sparql_namespace` and `sparql_namespace_model` for
+  `POST /v1/query/namespace`. Query up to 256 ready graphs in a customer
+  namespace, including descendants by default, with RDF set-union reads,
+  `GRAPH` provenance, complete coverage and exact independent source versions.
+  The client keeps its environment and credential while omitting its default
+  graph. The model helper validates `NamespaceQueryResponse` and preserves
+  epochs as decimal strings. Requires environment credentials and enabled
+  catalog/reference features. Only retryable rate limits are retried by default;
+  execution errors and transport failures are surfaced without replay.
+
 ## 0.34.1 (2026-11-03)
 
 - `commit`, `commit_model`, `commit_dry_run`, `commit_dry_run_model`,

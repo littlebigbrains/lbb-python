@@ -1105,6 +1105,7 @@ class LbbClient(_BaseLbbClient):
             idempotency_key=idempotency_key,
             headers=request_options.get("headers"),
             scoped=scoped,
+            graph_scoped=path != "/v1/query/namespace",
         )
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]
