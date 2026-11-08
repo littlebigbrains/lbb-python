@@ -57,6 +57,7 @@ from ._client_base import (
     _is_earlier_list,
     _jittered_backoff,
     _list_envelope,
+    _mark_transport_failure,
     _missing_route,
     _ModelCalibrationNamespace,
     _ModelChoicesNamespace,
@@ -1123,7 +1124,8 @@ class LbbClient(_BaseLbbClient):
             attempts = attempt + 1
             try:
                 response = self._http.request(method, url, **kwargs)
-            except httpx.RequestError:
+            except httpx.RequestError as transport_error:
+                _mark_transport_failure(transport_error)
                 if not (_retries_transport_error(retry) and attempt < max_retries):
                     raise
                 delay = _jittered_backoff(self._retry_delay, attempt)
@@ -1413,7 +1415,8 @@ class LbbClient(_BaseLbbClient):
                         delay_seconds=delay,
                         elapsed_ms=(time.monotonic() - started_at) * 1000,
                     )
-            except httpx.TransportError:
+            except httpx.TransportError as transport_error:
+                _mark_transport_failure(transport_error)
                 # Only a failure before the answer starts is retried. A
                 # transfer that broke raises, and leaves nothing at ``dest``.
                 if answered or attempt >= max_retries:

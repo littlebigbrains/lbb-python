@@ -18,7 +18,7 @@ A rule changes in one place: change the scenario, then both workers.
 | `turns/claim` | Not retried: a lost answer must not claim twice. |
 | `turns/heartbeat` | Every third of the lease, not retried. A failed heartbeat ends the attempt here, and nothing more is sent for the turn. |
 | `turns/operation`, `turns/progress`, `turns/checkpoint`, `turns/wait-signal`, `turns/complete` | Retried: the same request again changes nothing more. A retried completion sends the same body. |
-| `turns/fail` | Not retried. A `WorkflowWait` or a `429 workflow_budget_exceeded` fails with `retry_at_ms` (at least a second ahead) and counts no attempt. |
+| `turns/fail` | Not retried. A `WorkflowWait` or a `429 workflow_budget_exceeded` fails with `retry_at_ms` (at least a second ahead) and counts no attempt. So does LBB unavailable: an `LbbError` of status `429`, `502`, `503` or `504` (or code `server_busy`, `storage_degraded`) not marked `retryable: false`, or a request to LBB with no answer, also as the `cause` of the handler's error. Its `retry_at_ms` is at least 5 s ahead. Past the worker's LBB wait budget, such a failure counts an attempt. |
 | Any turn route | A `409 turn_lease_lost` (the token no longer holds the turn), any other `409` (an older server answers a lost lease `409 conflict`) or a `404` (instance gone) stops the turn: nothing more is sent. |
 | `POST /v1/graph/commit` | A fenced write that meets `409 workflow_fence_lost` stops the turn. A fenced write that meets `403 write_outside_owns` fails the turn for good: `turns/fail` carries `non_retryable` and no `retry_at_ms`, so the refusal uses no more attempts. |
 | `POST /v1/workflows/activities/*` | A model call from a turn names the turn's run (`workflow`). It names the step (`workflow.step`, the key) whose effect id is the call's, or starts the call's followed by `.` or `:`. A call with no such step names no step. The calls' usage goes with the completion. |
@@ -53,7 +53,8 @@ A scenario is one JSON object:
 - `type`: `plain` (a `workflow()` definition) or `triggered` (a
   `triggeredWorkflow()` / `triggered_workflow()` definition).
 - `name`, `version`, `initial_state`.
-- `worker`: optional worker options: `execution_reads`, `progress_every_ms`.
+- `worker`: optional worker options: `execution_reads`, `progress_every_ms`,
+  `lbb_wait_budget_ms`.
 - The client names the graph `client_graph` (default `main`).
 - `capture`: optional, `{"workflow": name}`. The program's activities are then
   a capture of the client's (`captureActivities` / `capture_activities`, with
