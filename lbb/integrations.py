@@ -568,6 +568,7 @@ class IntegrationsNamespace:
         config: Mapping[str, Any] | None = None,
         every_ms: int | None | _Default = _DEFAULT,
         ontology_mode: Literal["auto", "review"] | None = None,
+        record_triples: Sequence[Mapping[str, Any]] | None = None,
         starter: Literal["apply", "skip"] | None = None,
         start: bool | None = None,
     ) -> IntegrationCreateAnswer:
@@ -578,7 +579,9 @@ class IntegrationsNamespace:
         left out, and ``None`` syncs only on request. The same request again
         answers success and queues one first sync, so a retry is safe.
         ``409 starter_conflict`` (with ``details["conflicts"]``) and
-        ``409 integration_exists`` create nothing.
+        ``409 integration_exists`` create nothing. ``record_triples`` (RDF-native
+        graphs only) are statements the graph owner adds to each record, in the
+        record's own commit; a property graph refuses the create.
         """
         body: dict[str, Any] = {
             "graph": graph,
@@ -592,6 +595,8 @@ class IntegrationsNamespace:
             body["everyMs"] = every_ms
         if ontology_mode is not None:
             body["ontologyMode"] = ontology_mode
+        if record_triples is not None:
+            body["recordTriples"] = [dict(triple) for triple in record_triples]
         if starter is not None:
             body["starter"] = starter
         if start is not None:
@@ -731,19 +736,32 @@ class IntegrationsNamespace:
         )
 
     def set_settings(
-        self, id: str, *, graph: str, config: Mapping[str, Any]
+        self,
+        id: str,
+        *,
+        graph: str,
+        config: Mapping[str, Any] | None = None,
+        record_triples: Sequence[Mapping[str, Any]] | None | _Default = _DEFAULT,
     ) -> IntegrationRefAnswer:
-        """Replace the connector settings.
+        """Replace the connector settings, the record triples, or both.
 
         ``409 credentials_required`` when the stored credentials do not open
-        under them: replace the credentials first.
+        under a new ``config``: replace the credentials first.
+        ``record_triples=None`` removes the record triples.
         """
+        body: dict[str, Any] = {"graph": graph}
+        if config is not None:
+            body["config"] = dict(config)
+        if not isinstance(record_triples, _Default):
+            body["recordTriples"] = (
+                None if record_triples is None else [dict(triple) for triple in record_triples]
+            )
         return cast(
             IntegrationRefAnswer,
             self._client._integrations_call(
                 "PUT",
                 f"{_connection_path(id)}/settings",
-                body={"graph": graph, "config": dict(config)},
+                body=body,
                 options=_RETRY_RATE_LIMITED,
             ),
         )

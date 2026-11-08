@@ -190,6 +190,9 @@ class SyncIntegrationsTests(unittest.TestCase):
                 config={"teams": ["ENG"]},
                 every_ms=None,
                 ontology_mode="review",
+                record_triples=[
+                    {"predicate": "https://kontor.example/ns#scope", "literal": "acme"}
+                ],
                 starter="skip",
                 start=False,
             )
@@ -207,6 +210,9 @@ class SyncIntegrationsTests(unittest.TestCase):
                 "config": {"teams": ["ENG"]},
                 "everyMs": None,
                 "ontologyMode": "review",
+                "recordTriples": [
+                    {"predicate": "https://kontor.example/ns#scope", "literal": "acme"}
+                ],
                 "starter": "skip",
                 "start": False,
             },
@@ -785,6 +791,7 @@ class IntegrationsContractTests(unittest.TestCase):
                 config={},
                 every_ms=3_600_000,
                 ontology_mode="auto",
+                record_triples=[],
                 starter="apply",
                 start=True,
             )
@@ -793,7 +800,7 @@ class IntegrationsContractTests(unittest.TestCase):
             api.set_credentials(
                 "hubspot", graph=GRAPH, credentials={"HUBSPOT_TOKEN": "x"}
             )
-            api.set_settings("hubspot", graph=GRAPH, config={})
+            api.set_settings("hubspot", graph=GRAPH, config={}, record_triples=[])
             api.sync("hubspot", graph=GRAPH, full=False)
             api.pause("hubspot", graph=GRAPH)
             api.resume("hubspot", graph=GRAPH)

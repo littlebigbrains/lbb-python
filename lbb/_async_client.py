@@ -1086,6 +1086,7 @@ class _AsyncIntegrationsNamespace(IntegrationsNamespace):
         config: Mapping[str, Any] | None = None,
         every_ms: int | None | _Default = _DEFAULT,
         ontology_mode: Literal["auto", "review"] | None = None,
+        record_triples: Sequence[Mapping[str, Any]] | None = None,
         starter: Literal["apply", "skip"] | None = None,
         start: bool | None = None,
     ) -> IntegrationCreateAnswer:
@@ -1099,6 +1100,7 @@ class _AsyncIntegrationsNamespace(IntegrationsNamespace):
                 config=config,
                 every_ms=every_ms,
                 ontology_mode=ontology_mode,
+                record_triples=record_triples,
                 starter=starter,
                 start=start,
             ),
@@ -1177,11 +1179,18 @@ class _AsyncIntegrationsNamespace(IntegrationsNamespace):
         )
 
     async def set_settings(
-        self, id: str, *, graph: str, config: Mapping[str, Any]
+        self,
+        id: str,
+        *,
+        graph: str,
+        config: Mapping[str, Any] | None = None,
+        record_triples: Sequence[Mapping[str, Any]] | None | _Default = _DEFAULT,
     ) -> IntegrationRefAnswer:
         return cast(
             IntegrationRefAnswer,
-            await super().set_settings(id, graph=graph, config=config),
+            await super().set_settings(
+                id, graph=graph, config=config, record_triples=record_triples
+            ),
         )
 
     async def sync(
