@@ -1073,7 +1073,7 @@
       "put": {
         "operationId": "connections.settings",
         "summary": "Replace the settings",
-        "description": "Replaces the connector settings and seals the stored credentials again under them. `409 credentials_required` when the stored credentials do not open under the current settings: replace the credentials first. Needs an active subscription.",
+        "description": "Replaces the connector settings (`config`), the record triples (`recordTriples`), or both. A new `config` seals the stored credentials again under it: `409 credentials_required` when they do not open under the current settings, so replace the credentials first. Record triples on a property graph, or naming a stream the source does not have, answer `400`. Needs an active subscription.",
         "tags": [
           "integrations"
         ],
@@ -3884,6 +3884,63 @@
           "start": {
             "type": "boolean",
             "description": "Send the first sync. Default true."
+          },
+          "recordTriples": {
+            "type": "array",
+            "maxItems": 16,
+            "description": "RDF-native graphs only: statements added to each record in the record's own commit, on the record's entity. Placeholders `{id}`, `{key}`, `{connection}`, `{stream}`, `{url}` and `{field:<name>}`. A property graph refuses them with `400`.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "streams": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "predicate": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "description": "An absolute IRI of your namespace; not rdfs:label, not under https://littlebigbrain.com/."
+                },
+                "iri": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "description": "An IRI object, or a template of one."
+                },
+                "literal": {
+                  "type": "string",
+                  "maxLength": 1024,
+                  "description": "A literal object, or a template of one."
+                },
+                "datatype": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "description": "The literal's datatype IRI. Default xsd:string."
+                },
+                "language": {
+                  "type": "string",
+                  "maxLength": 16,
+                  "description": "The literal's language tag, such as `en` or `fr-CA`."
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "replace",
+                    "add"
+                  ],
+                  "description": "`replace` (default): the record's values of `predicate` are this write's, and none when it has no value. `add`: only added. rdf:type is always `add`."
+                }
+              },
+              "required": [
+                "predicate"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -4025,11 +4082,75 @@
                 }
               ]
             }
+          },
+          "recordTriples": {
+            "oneOf": [
+              {
+                "type": "array",
+                "maxItems": 16,
+                "description": "RDF-native graphs only: statements added to each record in the record's own commit, on the record's entity. Placeholders `{id}`, `{key}`, `{connection}`, `{stream}`, `{url}` and `{field:<name>}`. A property graph refuses them with `400`.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "streams": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 32,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      }
+                    },
+                    "predicate": {
+                      "type": "string",
+                      "maxLength": 2048,
+                      "description": "An absolute IRI of your namespace; not rdfs:label, not under https://littlebigbrain.com/."
+                    },
+                    "iri": {
+                      "type": "string",
+                      "maxLength": 2048,
+                      "description": "An IRI object, or a template of one."
+                    },
+                    "literal": {
+                      "type": "string",
+                      "maxLength": 1024,
+                      "description": "A literal object, or a template of one."
+                    },
+                    "datatype": {
+                      "type": "string",
+                      "maxLength": 2048,
+                      "description": "The literal's datatype IRI. Default xsd:string."
+                    },
+                    "language": {
+                      "type": "string",
+                      "maxLength": 16,
+                      "description": "The literal's language tag, such as `en` or `fr-CA`."
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "replace",
+                        "add"
+                      ],
+                      "description": "`replace` (default): the record's values of `predicate` are this write's, and none when it has no value. `add`: only added. rdf:type is always `add`."
+                    }
+                  },
+                  "required": [
+                    "predicate"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "RDF-native graphs only: statements added to each record in the record's own commit, on the record's entity. Placeholders `{id}`, `{key}`, `{connection}`, `{stream}`, `{url}` and `{field:<name>}`. A property graph refuses them with `400`. Replaces the stored ones; null or [] removes them."
           }
         },
         "required": [
-          "graph",
-          "config"
+          "graph"
         ],
         "additionalProperties": false
       },
