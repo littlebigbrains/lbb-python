@@ -21176,7 +21176,7 @@
             ]
           },
           "inbox_full_since": {
-            "description": "The inbox was full (128 messages) at the last send, since this time.",
+            "description": "The workflow's inbox was full at the last send, since this time.",
             "type": [
               "string",
               "null"

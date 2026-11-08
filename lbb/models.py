@@ -20209,7 +20209,7 @@ class NamedWorkflowShard(BaseModel):
     inbox_full_since: Annotated[
         str | None,
         Field(
-            description='The inbox was full (128 messages) at the last send, since this time.'
+            description="The workflow's inbox was full at the last send, since this time."
         ),
     ] = None
     index: Annotated[int, Field(description='0 to `shards - 1`.', ge=0)]
