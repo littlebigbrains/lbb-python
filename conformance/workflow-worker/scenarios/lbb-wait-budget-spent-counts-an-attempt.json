@@ -1,0 +1,184 @@
+{
+  "name": "lbb-wait-budget-spent-counts-an-attempt",
+  "rule": "With its LBB wait budget spent (lbb_wait_budget_ms 0), a step that meets LBB unavailable fails the turn with no retry_at_ms: the attempt counts.",
+  "workflow": {
+    "type": "plain",
+    "name": "counter",
+    "version": "v1",
+    "initial_state": {
+      "count": 0
+    },
+    "worker": {
+      "lbb_wait_budget_ms": 0
+    }
+  },
+  "handler": [
+    {
+      "step": "define",
+      "do": [
+        {
+          "reason": {
+            "prompt": "p",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "effect_id": true
+        }
+      ],
+      "returns": 1
+    },
+    {
+      "return": {
+        "state": {
+          "count": {
+            "$ref": "add"
+          }
+        },
+        "result": {
+          "$ref": "add"
+        }
+      }
+    }
+  ],
+  "task": {
+    "workflow_type": "counter",
+    "state": {
+      "count": 0
+    },
+    "token": "token-1",
+    "lease_ms": 60000,
+    "effect_prefix": "stable",
+    "turn": {
+      "workflow_id": "agent",
+      "number": 1,
+      "message_id": "m1",
+      "message": {
+        "add": 1
+      },
+      "version": "v1",
+      "status": "running",
+      "attempt": 1,
+      "created_at_ms": 1,
+      "updated_at_ms": 1,
+      "ready_at_ms": 1,
+      "steps": [],
+      "result": null,
+      "state_after": null,
+      "sequence": 1,
+      "run": {
+        "id": "0000000000001-agent-1",
+        "started_at_ms": 1,
+        "queue_before": 1
+      }
+    }
+  },
+  "runs": 1,
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/claim"
+      },
+      "response": {
+        "claim": {}
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/operation"
+      },
+      "response": {}
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "body": {
+          "effect_id": "stable/define",
+          "workflow": {
+            "identity": "agent",
+            "turn": 1,
+            "run_id": "0000000000001-agent-1",
+            "step": "define"
+          }
+        }
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "type": "api_error",
+            "code": "server_busy",
+            "message": "the server is busy",
+            "retryable": true
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "same_body_as": 2
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "type": "api_error",
+            "code": "server_busy",
+            "message": "the server is busy",
+            "retryable": true
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/activities/reason",
+        "same_body_as": 2
+      },
+      "response": {
+        "status": 503,
+        "body": {
+          "error": {
+            "type": "api_error",
+            "code": "server_busy",
+            "message": "the server is busy",
+            "retryable": true
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/v1/workflows/turns/fail",
+        "body": {
+          "workflow_id": "agent",
+          "turn": 1,
+          "token": "token-1",
+          "non_retryable": false,
+          "retry_at_ms": {
+            "$absent": true
+          }
+        }
+      },
+      "response": {}
+    }
+  ],
+  "expect": {
+    "outcomes": [
+      "claimed"
+    ],
+    "ran": [
+      "define"
+    ],
+    "effect_ids": [
+      "stable/define"
+    ]
+  }
+}

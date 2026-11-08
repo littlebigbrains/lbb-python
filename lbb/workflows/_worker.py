@@ -24,10 +24,12 @@ The rules are those of the TypeScript ``WorkflowWorker``
 from __future__ import annotations
 
 import asyncio
+import collections
 import concurrent.futures
 import contextvars
 import inspect
 import logging
+import random
 import re
 import signal
 import threading
@@ -41,7 +43,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from .. import models
-from .._client_base import LbbError, _coerce_body
+from .._client_base import LbbError, _coerce_body, _is_transport_failure
 from .._workflow_execution import AsyncWorkflowTurnReader, WorkflowExecutionError
 from ._results import (
     RunResultsCollector,
@@ -75,6 +77,20 @@ _MIN_WAIT_MS = 1_000
 # How long a claim waits on the server for a turn, in a worker's loop.
 _CLAIM_WAIT_MS = 10_000
 _RELEASED = "the worker stopped and released the turn"
+# LBB answers that say LBB itself is unavailable or busy, not the request wrong.
+_UNAVAILABLE_STATUSES = frozenset({429, 502, 503, 504})
+_UNAVAILABLE_CODES = frozenset({"server_busy", "storage_degraded"})
+# The first wait of a turn that met LBB unavailable; each next one doubles.
+_LBB_WAIT_FIRST_MS = 5_000
+# The longest such wait, before its jitter (up to a fifth more).
+_LBB_WAIT_MAX_MS = 300_000
+# The longest ``Retry-After`` a wait honors.
+_LBB_RETRY_AFTER_MAX_MS = 3_600_000
+# How long a turn waits for LBB in all before its failures count attempts.
+_LBB_WAIT_BUDGET_MS = _DAY_MS
+# The turns a worker remembers LBB waits of; the oldest goes first.
+_LBB_WAIT_TURNS = 10_000
+_LBB_WAIT_PREFIX = "LBB was unavailable, the turn waits: "
 
 
 def _now_ms() -> int:
@@ -114,6 +130,47 @@ def _wait_of(error: BaseException) -> int | None:
     ):
         return error.retry_at_ms
     return None
+
+
+def _lbb_unavailable(error: BaseException) -> int | None:
+    """Whether a handler's error is LBB unavailable or busy: an
+    :class:`LbbError` of status 429, 502, 503 or 504 (or code ``server_busy``,
+    ``storage_degraded``) that the server did not mark ``retryable: false``,
+    or a request to LBB that got no answer (a timeout, a failed connection).
+    It looks through ``__cause__`` (``raise ... from error``). A
+    :class:`WorkflowError` is the handler's own verdict, so it is never one.
+    The answer is the server's ``Retry-After`` in ms, or 0."""
+    current: BaseException | None = error
+    for _ in range(8):
+        if current is None or isinstance(current, WorkflowError):
+            return None
+        if isinstance(current, LbbError):
+            if current.retryable is False or not (
+                current.status_code in _UNAVAILABLE_STATUSES or current.code in _UNAVAILABLE_CODES
+            ):
+                return None
+            seconds = current.retry_after_seconds
+            if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
+                return int(min(max(0.0, float(seconds) * 1000), _LBB_RETRY_AFTER_MAX_MS))
+            return 0
+        if _is_transport_failure(current):
+            return 0
+        current = current.__cause__
+    return None
+
+
+def _lbb_wait_ms(waits: int, retry_after_ms: int = 0) -> int:
+    """The wait before a turn that met LBB unavailable runs again: 5 s,
+    doubling to 5 min, plus up to a fifth (so the workers of an outage do not
+    come back at once), and never less than the server's ``Retry-After``."""
+    backoff = min(_LBB_WAIT_MAX_MS, _LBB_WAIT_FIRST_MS << min(max(0, waits), 16))
+    return max(retry_after_ms, round(backoff * (1 + random.random() / 5)))
+
+
+@dataclass
+class _LbbWait:
+    since_ms: float
+    waits: int = 0
 
 
 def _describe(error: BaseException) -> str:
@@ -842,6 +899,7 @@ class _Turn:
             "turn": task.number,
             "token": task.token,
         }
+        self._wait_key = (task.workflow_id, task.number)
         self._graph: str | None = getattr(self._client, "_graph", None)
         self._steps: list[dict[str, Any]] = list(task.steps)
         self._position = 0
@@ -1313,6 +1371,7 @@ class _Turn:
             # Serialize completion retries exactly; a lost answer must not rerun effects.
             self._finishing = True
             self._stop_heartbeat()
+            self._worker._lbb_waits.pop(self._wait_key, None)
             try:
                 await self._turn_request("complete", body)
             except LbbError as refused:
@@ -1343,10 +1402,16 @@ class _Turn:
                 return
             self._finishing = True
             self._stop_heartbeat()
-            # A wait for a cause outside the turn counts no attempt.
+            # A wait for a cause outside the turn counts no attempt. LBB itself
+            # unavailable or busy is such a cause: the turn waits for it.
             retry_at = _wait_of(error)
+            lbb_wait = (
+                self._worker._lbb_wait_until(self._wait_key, error) if retry_at is None else None
+            )
+            if lbb_wait is not None:
+                retry_at = lbb_wait
             await self._fail(
-                _describe(error),
+                (_LBB_WAIT_PREFIX if lbb_wait is not None else "") + _describe(error),
                 non_retryable=retry_at is None
                 and (
                     isinstance(error, (WorkflowError, WorkflowExecutionError))
@@ -1457,6 +1522,7 @@ class WorkflowWorker:
         progress_every_ms: int = _PROGRESS_EVERY_MS,
         drain_seconds: float = 30.0,
         claim_wait_ms: int = _CLAIM_WAIT_MS,
+        lbb_wait_budget_ms: int = _LBB_WAIT_BUDGET_MS,
     ) -> None:
         keys = [(d.name, d.version) for d in definitions]
         if not keys or len(set(keys)) != len(keys):
@@ -1473,10 +1539,36 @@ class WorkflowWorker:
         self._progress_every_ms = progress_every_ms
         self._drain_seconds = drain_seconds
         self._claim_wait_ms = claim_wait_ms
+        self._lbb_wait_budget_ms = lbb_wait_budget_ms
+        # Per turn, when it first waited for LBB and how many waits since.
+        self._lbb_waits: collections.OrderedDict[tuple[str, int], _LbbWait] = (
+            collections.OrderedDict()
+        )
         self._turns: set[_Turn] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stopping: asyncio.Event | None = None
         self._hurry: asyncio.Event | None = None
+
+    def _lbb_wait_until(self, key: tuple[str, int], error: BaseException) -> int | None:
+        """The time a turn that failed with ``error`` waits until, when the
+        error is LBB unavailable and the turn's wait budget is not spent. A
+        spent budget stays spent until the turn completes or fails for another
+        reason."""
+        retry_after_ms = _lbb_unavailable(error)
+        if retry_after_ms is None:
+            self._lbb_waits.pop(key, None)
+            return None
+        now = _now_ms()
+        seen = self._lbb_waits.pop(key, None) or _LbbWait(since_ms=now)
+        self._lbb_waits[key] = seen
+        if len(self._lbb_waits) > _LBB_WAIT_TURNS:
+            self._lbb_waits.popitem(last=False)
+        if self._lbb_wait_budget_ms <= 0 or now - seen.since_ms >= self._lbb_wait_budget_ms:
+            seen.since_ms = float("-inf")
+            return None
+        at = now + _lbb_wait_ms(seen.waits, retry_after_ms)
+        seen.waits += 1
+        return at
 
     @property
     def concurrency(self) -> int:

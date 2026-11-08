@@ -2,6 +2,19 @@
 
 All notable changes to the `littlebigbrain` Python SDK are documented here.
 
+## Unreleased
+
+- `lbb.workflows.WorkflowWorker` waits when LBB itself is unavailable or busy, and counts
+  no attempt. An LBB outage no longer uses up a turn's attempts and blocks
+  its instance. A handler error that is, or is raised `from`, an
+  `LbbError` of status 429, 502, 503 or 504 (or code `server_busy`,
+  `storage_degraded`) fails the turn with `retry_at_ms`. So does a request
+  to LBB that timed out or got no connection: the client now marks such an
+  error after its retries. The waits start at 5 s and double to 5 min, with
+  jitter, and honor `Retry-After`. After `lbb_wait_budget_ms` of waits for a
+  turn (default one day; `0` turns them off), its failures count attempts
+  again. A `WorkflowError` never waits.
+
 ## 0.35.0 (2026-11-07)
 
 - Add sync and async `sparql_namespace` and `sparql_namespace_model` for

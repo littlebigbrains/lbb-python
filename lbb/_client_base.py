@@ -141,6 +141,24 @@ class LbbError(RuntimeError):
         )
 
 
+_TRANSPORT_FAILURE = "_lbb_transport_failure"
+
+
+def _mark_transport_failure(error: BaseException) -> None:
+    """Mark an error of a request to LBB that got no answer (the connection
+    failed, or the request timed out). A workflow worker reads the mark: LBB
+    was not there, so the turn waits."""
+    try:
+        setattr(error, _TRANSPORT_FAILURE, True)
+    except AttributeError:  # pragma: no cover - an error with __slots__
+        pass
+
+
+def _is_transport_failure(error: BaseException) -> bool:
+    """Whether a request to LBB failed with no answer (:func:`_mark_transport_failure`)."""
+    return getattr(error, _TRANSPORT_FAILURE, False) is True
+
+
 class LbbCapabilityError(RuntimeError):
     """Raised when the server cannot supply a required additive capability."""
 

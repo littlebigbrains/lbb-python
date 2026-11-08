@@ -917,3 +917,120 @@ def test_a_second_sigint_ends_the_process() -> None:
     sender.join()
     assert time.monotonic() - began < 4
     assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+
+def _lbb_error(status: int, **error: Any) -> LbbError:
+    return LbbError(status, "", {"type": "api_error", "code": "n", "message": "m", **error})
+
+
+def test_lbb_unavailable_is_a_busy_status_or_a_request_with_no_answer() -> None:
+    from lbb._client_base import _mark_transport_failure
+    from lbb.workflows._worker import _lbb_unavailable
+
+    assert _lbb_unavailable(_lbb_error(503)) == 0
+    assert _lbb_unavailable(_lbb_error(429)) == 0
+    # A full inbox of another instance drains as its turns finish.
+    full = _lbb_error(429, type="rate_limit_error", code="workflow_inbox_full", retry_after_seconds=5)
+    assert _lbb_unavailable(full) == 5_000
+    assert _lbb_unavailable(_lbb_error(502)) == 0
+    assert _lbb_unavailable(_lbb_error(504)) == 0
+    assert _lbb_unavailable(_lbb_error(500, code="storage_degraded")) == 0
+    assert _lbb_unavailable(_lbb_error(503, retry_after_seconds=30)) == 30_000
+    # A Retry-After of more than an hour waits an hour.
+    assert _lbb_unavailable(_lbb_error(503, retry_after_seconds=86_400)) == 3_600_000
+    try:
+        try:
+            raise _lbb_error(503)
+        except LbbError as error:
+            raise RuntimeError("lookup failed") from error
+    except RuntimeError as wrapped:
+        assert _lbb_unavailable(wrapped) == 0
+    unreachable = httpx.ConnectError("refused")
+    _mark_transport_failure(unreachable)
+    assert _lbb_unavailable(unreachable) == 0
+    # Not LBB unavailable.
+    assert _lbb_unavailable(_lbb_error(500)) is None
+    assert _lbb_unavailable(_lbb_error(400)) is None
+    assert _lbb_unavailable(_lbb_error(409)) is None
+    # A refusal the server marks final is not a wait.
+    assert _lbb_unavailable(_lbb_error(429, retryable=False)) is None
+    # A failed request to another service is the handler's own error.
+    assert _lbb_unavailable(httpx.ConnectError("refused")) is None
+    assert _lbb_unavailable(ValueError("boom")) is None
+    # A WorkflowError is the handler's verdict.
+    try:
+        try:
+            raise _lbb_error(503)
+        except LbbError as error:
+            raise WorkflowError("give up") from error
+    except WorkflowError as verdict:
+        assert _lbb_unavailable(verdict) is None
+
+
+def test_lbb_waits_back_off_from_5_s_to_5_min_with_jitter() -> None:
+    from lbb.workflows._worker import _lbb_wait_ms
+
+    for _ in range(50):
+        assert 5_000 <= _lbb_wait_ms(0) <= 6_000
+        assert 10_000 <= _lbb_wait_ms(1) <= 12_000
+        assert 300_000 <= _lbb_wait_ms(40) <= 360_000
+    assert _lbb_wait_ms(0, 120_000) >= 120_000
+
+
+def test_the_client_marks_a_request_to_lbb_with_no_answer() -> None:
+    from lbb._client_base import _is_transport_failure
+
+    async def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    async def main() -> None:
+        async with AsyncLbbClient(
+            "http://localhost:7400", retry_delay=0, transport=httpx.MockTransport(refuse)
+        ) as client:
+            with pytest.raises(httpx.ConnectError) as raised:
+                await client._request("GET", "/v1/health")
+            assert _is_transport_failure(raised.value)
+
+    asyncio.run(main())
+
+
+def test_a_turn_waits_for_lbb_without_an_attempt_until_its_budget_is_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from lbb.workflows import _worker
+
+    fake = Fake([task(), task(), task(), task(), task()])
+    clock = [1_000_000]
+    monkeypatch.setattr(_worker, "_now_ms", lambda: clock[0])
+    fail: list[BaseException] = [_lbb_error(503, retry_after_seconds=60)]
+
+    @workflow(name="counter", version="v1", initial_state={})
+    async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+        raise fail[0]
+
+    async def main() -> None:
+        client = fake.client()
+        worker = WorkflowWorker(client, [counter], worker="w", lbb_wait_budget_ms=3_600_000)
+        await worker.run_once()
+        sent = fake.bodies("fail")[-1]
+        assert sent["retry_at_ms"] >= clock[0] + 60_000, "honors Retry-After"
+        assert sent["non_retryable"] is False
+        assert sent["error"].startswith("LBB was unavailable, the turn waits: ")
+        clock[0] += 3_599_000
+        await worker.run_once()
+        assert fake.bodies("fail")[-1].get("retry_at_ms"), "still within the budget"
+        clock[0] += 1_000
+        await worker.run_once()
+        sent = fake.bodies("fail")[-1]
+        assert sent.get("retry_at_ms") is None, "the spent budget counts an attempt"
+        assert not sent["error"].startswith("LBB was unavailable")
+        # Another kind of failure clears the turn's budget.
+        fail[0] = ValueError("boom")
+        await worker.run_once()
+        assert fake.bodies("fail")[-1].get("retry_at_ms") is None
+        fail[0] = _lbb_error(503)
+        await worker.run_once()
+        assert fake.bodies("fail")[-1].get("retry_at_ms"), "a new budget starts"
+        await client.aclose()
+
+    asyncio.run(main())
