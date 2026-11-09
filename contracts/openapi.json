@@ -30665,6 +30665,10 @@
               "null"
             ]
           },
+          "unchanged": {
+            "description": "The shape set was already active; nothing was written.",
+            "type": "boolean"
+          },
           "write_enforcement": {
             "oneOf": [
               {
