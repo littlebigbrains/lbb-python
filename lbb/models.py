@@ -20731,6 +20731,10 @@ class SchemaPublishResponse(BaseModel):
     messages: list[str]
     ontology_version: Annotated[int, Field(ge=0)]
     shapes_version: Annotated[int | None, Field(ge=0)] = None
+    unchanged: Annotated[
+        bool | None,
+        Field(description='The shape set was already active; nothing was written.'),
+    ] = None
     write_enforcement: SchemaWriteEnforcement | None = None
 
 
