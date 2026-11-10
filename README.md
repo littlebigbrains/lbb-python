@@ -385,7 +385,7 @@ Failed HTTP requests raise `LbbError`, with a status, error code, message, and
 request ID. Use `raw_request()` when you also need response headers or timing.
 
 Safe reads and writes with an idempotency key retry rate limits, retryable server
-errors, and network failures. Retries respect `Retry-After` and use a 60-second
+errors, and network failures. Retries wait at least `Retry-After`, plus jitter up to the same again, and use a 60-second
 budget by default. See the [client reference](https://docs.littlebigbrain.com/sdks/python/)
 for timeout and retry options.
 

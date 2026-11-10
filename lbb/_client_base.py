@@ -1022,6 +1022,13 @@ def _jittered_backoff(base_delay: float, attempt: int) -> float:
     return random.uniform(0.0, ceiling)
 
 
+def _jitter_above_floor(floor: float) -> float:
+    """Use a server hint as a floor and add bounded full jitter above it:
+    ``uniform(floor, 2 * floor)``, never above the 60 s cap. A constant
+    ``Retry-After: 1`` would otherwise make every client retry in lockstep."""
+    return min(floor + random.uniform(0.0, floor), _RETRY_DELAY_CAP_SECONDS)
+
+
 def _parse_retry_after_header(value: str, now: datetime | None) -> float | None:
     """Parse a Retry-After delta-seconds or HTTP-date value into seconds (may be
     negative for a past date; ``None`` when unparseable)."""
@@ -1046,24 +1053,25 @@ def _retry_delay_seconds(
 ) -> float:
     """The backoff before the next attempt, in seconds:
 
-    1. the ``Retry-After`` header (delta-seconds or HTTP-date), capped at 60s;
+    1. the ``Retry-After`` header (delta-seconds or HTTP-date) as a floor, with
+       bounded full jitter above it (``uniform(ra, 2 * ra)``), capped at 60s;
     2. else the server's own body hint ``error.retry_after_seconds`` (the server
-       advertises this even on the rare path where the header is absent), capped
-       at 60s;
+       advertises this even on the rare path where the header is absent), used
+       the same way;
     3. else full-jitter exponential backoff (see :func:`_jittered_backoff`).
     """
     value = response.headers.get("retry-after")
     if value:
         seconds = _parse_retry_after_header(value, now)
         if seconds is not None and seconds >= 0:
-            return min(seconds, _RETRY_DELAY_CAP_SECONDS)
+            return _jitter_above_floor(min(seconds, _RETRY_DELAY_CAP_SECONDS))
     body_hint = _error_body_field(response, "retry_after_seconds")
     if (
         isinstance(body_hint, (int, float))
         and not isinstance(body_hint, bool)
         and body_hint >= 0
     ):
-        return min(float(body_hint), _RETRY_DELAY_CAP_SECONDS)
+        return _jitter_above_floor(min(float(body_hint), _RETRY_DELAY_CAP_SECONDS))
     return _jittered_backoff(base_delay, attempt)
 
 

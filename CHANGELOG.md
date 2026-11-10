@@ -4,6 +4,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Retry waits treat `Retry-After` (and the body `retry_after_seconds` hint) as a
+  floor and add bounded jitter above it, `uniform(ra, 2 * ra)` up to 60 s. Clients
+  no longer retry in lockstep after a constant `Retry-After: 1`. Attempt limits
+  are unchanged.
 - `lbb.workflows.WorkflowWorker` waits when LBB itself is unavailable or busy, and counts
   no attempt. An LBB outage no longer uses up a turn's attempts and blocks
   its instance. A handler error that is, or is raised `from`, an

@@ -1008,7 +1008,23 @@ class SyncClientTests(unittest.TestCase):
             503,
             json={"error": {"code": "ingest_busy", "retry_after_seconds": 4}},
         )
-        self.assertEqual(_retry_delay_seconds(response, 0.1, 0), 4.0)
+        for _ in range(50):
+            delay = _retry_delay_seconds(response, 0.1, 0)
+            self.assertGreaterEqual(delay, 4.0)
+            self.assertLessEqual(delay, 8.0)
+
+    def test_retry_after_header_is_a_floor_with_bounded_jitter(self) -> None:
+        # A constant `Retry-After: 1` must not make clients retry in lockstep.
+        from lbb._client_base import _retry_delay_seconds
+
+        response = httpx.Response(503, headers={"retry-after": "1"})
+        delays = {_retry_delay_seconds(response, 0.1, 0) for _ in range(200)}
+        self.assertTrue(all(1.0 <= d <= 2.0 for d in delays))
+        self.assertGreater(len(delays), 100)
+        capped = httpx.Response(503, headers={"retry-after": "999"})
+        self.assertEqual(_retry_delay_seconds(capped, 0.1, 0), 60.0)
+        zero = httpx.Response(503, headers={"retry-after": "0"})
+        self.assertEqual(_retry_delay_seconds(zero, 0.1, 0), 0.0)
 
     def test_jittered_backoff_is_bounded(self) -> None:
         # Full-jitter exponential: uniform(0, base * 2**attempt), capped at 60s.
@@ -1828,7 +1844,9 @@ class SyncClientTests(unittest.TestCase):
                 ),
             ) as client:
                 client.status()
-        sleep.assert_called_once_with(2.0)
+        sleep.assert_called_once()
+        self.assertGreaterEqual(sleep.call_args.args[0], 2.0)
+        self.assertLessEqual(sleep.call_args.args[0], 4.0)
 
     def test_invalid_success_json_includes_response_context(self) -> None:
         with LbbClient(
