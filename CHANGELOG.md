@@ -4,6 +4,9 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `daily_activity(month, only_graph=..., only_namespace=...)` and
+  `daily_activity_model(...)` read the queries and the facts written of the
+  environment per day and per graph (`GET /v1/activity/daily`).
 - `endpoint_hint` is set for the codes `environment_endpoint_required` and
   `environment_endpoint_mismatch`, as it is for `stack_endpoint_required` and
   `stack_endpoint_mismatch`. A server may send either code.

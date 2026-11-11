@@ -932,6 +932,94 @@ class CustomerRule4(BaseModel):
     relation: str
 
 
+class DailyActivityCounts(BaseModel):
+    """
+    The counts of one row. A count that never happened is 0.
+    """
+
+    facts_added: Annotated[
+        int,
+        Field(
+            description="Statements added by commits (the added statements of the commit's\ndelta). A replay adds 0.",
+            ge=0,
+        ),
+    ]
+    facts_removed: Annotated[
+        int,
+        Field(
+            description='Statements removed by commits and retractions. A retraction never\nlowers `facts_added`.',
+            ge=0,
+        ),
+    ]
+    last_at_ms: Annotated[
+        int,
+        Field(
+            description='The last time a count of this row grew, in milliseconds since the Unix\nepoch.'
+        ),
+    ]
+    queries: Annotated[
+        int,
+        Field(
+            description='Queries run: SPARQL reads and queries over a namespace or a dataset.\nA query that failed counts here and in `query_errors`.',
+            ge=0,
+        ),
+    ]
+    query_errors: Annotated[
+        int, Field(description='Queries that ended with a status of 400 or more.', ge=0)
+    ]
+
+
+class DailyActivityDay(BaseModel):
+    """
+    One day (UTC) of the whole scope.
+    """
+
+    day: Annotated[str, Field(description='`yyyy-mm-dd`.')]
+    facts_added: Annotated[int, Field(ge=0)]
+    facts_removed: Annotated[int, Field(ge=0)]
+    last_at_ms: int
+    queries: Annotated[int, Field(ge=0)]
+    query_errors: Annotated[int, Field(ge=0)]
+
+
+class DailyActivityDayGraph(BaseModel):
+    """
+    One graph on one day. `graph` is `*` for the graphs past the bound of the
+    day.
+    """
+
+    day: Annotated[str, Field(description='`yyyy-mm-dd`.')]
+    facts_added: Annotated[int, Field(ge=0)]
+    facts_removed: Annotated[int, Field(ge=0)]
+    graph: str
+    last_at_ms: int
+    queries: Annotated[int, Field(ge=0)]
+    query_errors: Annotated[int, Field(ge=0)]
+
+
+class DailyActivityGraph(BaseModel):
+    """
+    One graph over the month. `graph` is `*` for the graphs past the bound.
+    """
+
+    facts_added: Annotated[int, Field(ge=0)]
+    facts_removed: Annotated[int, Field(ge=0)]
+    graph: str
+    last_at_ms: int
+    queries: Annotated[int, Field(ge=0)]
+    query_errors: Annotated[int, Field(ge=0)]
+
+
+class DailyActivityScope(Enum):
+    """
+    What a read of the daily counts covers.
+    """
+
+    environment = 'environment'
+    graph = 'graph'
+    namespace = 'namespace'
+
+
 class DateBucketGranularity(Enum):
     """
     The calendar unit a [`SparqlGroupKey::DateBucket`] truncates a datetime to.
@@ -12571,6 +12659,47 @@ class CustomerOwnership(BaseModel):
     boundary: CustomerBoundary
     rules: list[CustomerRule1 | CustomerRule2 | CustomerRule3 | CustomerRule4]
     version: Annotated[int, Field(ge=0)]
+
+
+class DailyActivityResponse(BaseModel):
+    """
+    `GET /v1/activity/daily`.
+    """
+
+    by_day: Annotated[
+        list[DailyActivityDay],
+        Field(description='One row per day with counts, oldest first.'),
+    ]
+    by_day_graph: Annotated[
+        list[DailyActivityDayGraph],
+        Field(description='One row per day and graph, by day then by graph.'),
+    ]
+    by_graph: Annotated[
+        list[DailyActivityGraph],
+        Field(
+            description='The graphs with the most work first (queries plus facts added), at\nmost 100, then `*`.'
+        ),
+    ]
+    graph: Annotated[str | None, Field(description='The graph of a `graph` scope.')] = (
+        None
+    )
+    month: Annotated[str, Field(description='`yyyy-mm` (UTC).')]
+    months: Annotated[
+        list[str], Field(description='The months with counts, oldest first.')
+    ]
+    namespace: Annotated[
+        str | None, Field(description='The namespace of a `namespace` scope.')
+    ] = None
+    other_graphs: Annotated[
+        bool,
+        Field(
+            description='True when a bound hid graph names: the `*` rows hold counts of graphs\nthe rows cannot name. For a `namespace` scope those counts are not in\nthe answer at all.'
+        ),
+    ]
+    scope: DailyActivityScope
+    totals: Annotated[
+        DailyActivityCounts, Field(description='The sum of every row of the scope.')
+    ]
 
 
 class DemoCurrentCaseResult(BaseModel):

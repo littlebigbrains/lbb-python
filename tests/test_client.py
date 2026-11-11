@@ -2818,6 +2818,44 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(seen[0].url.params.get("month"), "2026-09")
         self.assertNotIn("month", seen[1].url.params)
 
+    def test_daily_activity_reads_the_queries_and_facts_written_per_day(self) -> None:
+        counts = {
+            "queries": 5,
+            "query_errors": 1,
+            "facts_added": 30,
+            "facts_removed": 2,
+            "last_at_ms": 1_790_000_000_000,
+        }
+        payload = {
+            "month": "2026-11",
+            "months": ["2026-10", "2026-11"],
+            "scope": "namespace",
+            "namespace": "acme",
+            "other_graphs": False,
+            "totals": counts,
+            "by_day": [{**counts, "day": "2026-11-10"}],
+            "by_graph": [{**counts, "graph": "crm"}],
+            "by_day_graph": [{**counts, "day": "2026-11-10", "graph": "crm"}],
+        }
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = client.daily_activity("2026-11", only_namespace="acme")
+            typed = client.daily_activity_model()
+        self.assertEqual(raw["totals"]["queries"], 5)
+        self.assertEqual(typed.by_day_graph[0].graph, "crm")
+        self.assertEqual(typed.scope, model_module.DailyActivityScope.namespace)
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("GET", "/v1/activity/daily"), ("GET", "/v1/activity/daily")],
+        )
+        self.assertEqual(seen[0].url.params.get("month"), "2026-11")
+        self.assertEqual(seen[0].url.params.get("only_namespace"), "acme")
+        self.assertNotIn("month", seen[1].url.params)
+        self.assertNotIn("only_graph", seen[1].url.params)
+
 
 class SearchAndEvalsNamespaceTests(unittest.TestCase):
     """The search setup, search, and evals namespaces send the documented requests."""
@@ -4334,6 +4372,38 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen[0].url.path, "/v1/models/activity")
         self.assertEqual(seen[0].url.params.get("month"), "2026-10")
         self.assertNotIn("month", seen[1].url.params)
+
+    async def test_async_daily_activity_reads_the_month(self) -> None:
+        counts = {
+            "queries": 1,
+            "query_errors": 0,
+            "facts_added": 2,
+            "facts_removed": 0,
+            "last_at_ms": 1_790_000_000_000,
+        }
+        payload = {
+            "month": "2026-11",
+            "months": ["2026-11"],
+            "scope": "graph",
+            "graph": "crm",
+            "other_graphs": False,
+            "totals": counts,
+            "by_day": [{**counts, "day": "2026-11-10"}],
+            "by_graph": [{**counts, "graph": "crm"}],
+            "by_day_graph": [{**counts, "day": "2026-11-10", "graph": "crm"}],
+        }
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = await client.daily_activity("2026-11", only_graph="crm")
+            typed = await client.daily_activity_model()
+        self.assertEqual(raw["totals"]["facts_added"], 2)
+        self.assertIsInstance(typed, model_module.DailyActivityResponse)
+        self.assertEqual(seen[0].url.path, "/v1/activity/daily")
+        self.assertEqual(seen[0].url.params.get("only_graph"), "crm")
+        self.assertNotIn("only_graph", seen[1].url.params)
 
     async def test_async_entities_retrieve_refuses_legacy_or_incomplete_success(
         self,

@@ -666,6 +666,21 @@ def _rdf_native_error(message: str, cause: LbbError | None = None) -> LbbError:
     return LbbError(400, json.dumps({"error": payload}), payload)
 
 
+def _daily_activity_params(
+    month: str | None, only_graph: str | None, only_namespace: str | None
+) -> dict[str, str] | None:
+    params = {
+        key: value
+        for key, value in (
+            ("month", month),
+            ("only_graph", only_graph),
+            ("only_namespace", only_namespace),
+        )
+        if value is not None
+    }
+    return params or None
+
+
 def _first_subject(body: Mapping[str, Any]) -> dict[str, Any] | None:
     """The record the first fact of a commit is about."""
     triplets = body.get("triplets") or []
@@ -3157,6 +3172,44 @@ class _BaseLbbClient(_StarterWorkflowMethods):
             "GET",
             "/v1/models/activity",
             params=params,
+        )
+
+    def daily_activity(
+        self,
+        month: str | None = None,
+        *,
+        only_graph: str | None = None,
+        only_namespace: str | None = None,
+    ) -> Any:
+        """The queries and the facts written of the environment in one month.
+
+        The answer has a row per day and per graph. A query is a SPARQL read
+        or a query over a namespace or a dataset (a failed one counts, with
+        ``query_errors``). A fact is a statement a commit added. ``month`` is
+        ``yyyy-mm`` (UTC); the current month by default. ``only_graph`` narrows
+        the answer to one graph and ``only_namespace`` to the graphs of one
+        catalog namespace and below it, not both. An environment read: the
+        client's graph scope is not used.
+        """
+        return self._request(
+            "GET",
+            "/v1/activity/daily",
+            params=_daily_activity_params(month, only_graph, only_namespace),
+        )
+
+    def daily_activity_model(
+        self,
+        month: str | None = None,
+        *,
+        only_graph: str | None = None,
+        only_namespace: str | None = None,
+    ) -> models.DailyActivityResponse:
+        """Daily activity validated as ``DailyActivityResponse``."""
+        return self._model_request(
+            models.DailyActivityResponse,
+            "GET",
+            "/v1/activity/daily",
+            params=_daily_activity_params(month, only_graph, only_namespace),
         )
 
     def publication_status_model(self) -> models.PublicationStatusResponse:
