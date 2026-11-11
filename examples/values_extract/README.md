@@ -56,7 +56,7 @@ LBB_URL=http://127.0.0.1:7400 LBB_API_KEY=lbb_sk_test_local LBB_GRAPH=try-values
 | `python -m values_extract start` | Serves the workflow until SIGTERM or Ctrl-C. `LBB_WORKER_ID` names the worker, `LBB_CONCURRENCY` sets how many turns run at once |
 
 In the LBB repository, `npm run dev:stack -- --worker python:values-extract`
-starts a local stack with mock models and runs `try` and `start` on it.
+starts a local environment with mock models and runs `try` and `start` on it.
 
 ## The files
 

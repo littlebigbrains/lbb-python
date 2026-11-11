@@ -934,7 +934,7 @@ customers, one graph per customer, with Google Drive among the connectors.
   `lbb.integrations`. `sync()` sends an `Idempotency-Key`; without
   `idempotency_key` it makes one per call, so its retries queue one sync.
 - Add `integrations.suggestions()`, `accept()` and `dismiss()` for a
-  connection's ontology suggestions on the stack endpoint. `accept()` with
+  connection's ontology suggestions on the environment endpoint. `accept()` with
   `sync=True` then sends the connection a sync under the message id
   `sync-after-<suggestion id>`, and returns an `IntegrationAcceptResult`.
 - `LbbError` reads the integrations API's error body: `code`, the message and
@@ -979,7 +979,7 @@ server. Model request bodies no longer send `null` for unset optional fields.
   `WorkflowSignalRequest.value`. Plain `dict` bodies are sent as given.
 - Add `model_activity(month=None)` and `model_activity_model(month=None)` on
   `LbbClient` and `AsyncLbbClient` for `GET /v1/models/activity`. They read
-  what each managed model did for the stack in one month (`yyyy-mm`, UTC;
+  what each managed model did for the environment in one month (`yyyy-mm`, UTC;
   the current month by default). Add the generated `ModelActivityResponse`
   models.
 - `WorkflowInstance` gains `history_pruned_through`: turns up to it were
@@ -1218,15 +1218,15 @@ the new `min_indexed_seq` floor below.**
 
 ## 0.6.1
 
-Composite stack endpoints: hosted stacks are addressed by their own
+Composite environment endpoints: hosted environments are addressed by their own
 `endpoint_url`, and a misroute is surfaced with actionable guidance instead of
 being retried away.
 
 ### Endpoints
 
-- **Hosted `base_url` is the stack `endpoint_url`.** Pass the exact value shown
-  on the stack's Connect page
-  (`https://<tenant-short-id>--<stack-slug>.db.eu.littlebigbrain.com`). Omitting
+- **Hosted `base_url` is the environment `endpoint_url`.** Pass the exact value shown
+  on the environment's Connect page
+  (`https://<tenant-short-id>--<environment-slug>.db.eu.littlebigbrain.com`). Omitting
   `base_url` still retains the loopback default for local/self-hosted
   development; graph and branch stay ordinary client scope parameters.
 - **Actionable routing hints.** `LbbError.endpoint_hint` carries copy-paste
