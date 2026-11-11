@@ -6630,6 +6630,22 @@ class RetrievalProfileId(Enum):
     ndcg_v1 = 'ndcg_v1'
 
 
+class ReviewAnswerVia(BaseModel):
+    """
+    The application token an answer came through. `by` of the answer holds the
+    end user the developer named when it issued the token. LBB records that
+    label and does not verify it.
+    """
+
+    credential_id: Annotated[
+        str,
+        Field(
+            description='The credential that answered: `credential_id` of the token.'
+        ),
+    ]
+    kind: Annotated[str, Field(description='Always `application_token`.')]
+
+
 class ReviewDecision(Enum):
     """
     A person's decision on a review item.
@@ -7092,14 +7108,26 @@ class ScopedNamespaceGrantKind(Enum):
     namespace = 'namespace'
 
 
+class ScopedOperation(Enum):
+    """
+    What an application token may do. A token carries a set of operations and
+    one set of grants for all of them. A route outside the operations of the
+    token is refused.
+    """
+
+    read = 'read'
+    review = 'review'
+    files = 'files'
+
+
 class ScopedTokenResponse(BaseModel):
     credential_id: str
+    end_user: Annotated[
+        str | None, Field(description='The `end_user` of the token, when it has one.')
+    ] = None
     expires_at_ms: int
     operations: Annotated[
-        list[str],
-        Field(
-            description='The initial release supports only `read` on its documented route set.'
-        ),
+        list[str], Field(description='The operations of the token, as issued.')
     ]
     token: Annotated[
         str, Field(description='Secret bearer value, returned only by issuance.')
@@ -16436,7 +16464,7 @@ class ReviewAnswer(BaseModel):
     A person's answer to a review item.
 
     `value` goes with `correct` and `option` with `choose`; `note` holds the
-    free text of an `answer` item. The server sets `by` and `at`.
+    free text of an `answer` item. The server sets `by`, `at` and `via`.
     """
 
     at: Annotated[
@@ -16462,6 +16490,7 @@ class ReviewAnswer(BaseModel):
             description='The corrected value, for `correct`: a number, a string or a boolean\nin the type of the property it corrects.'
         ),
     ] = None
+    via: ReviewAnswerVia | None = None
 
 
 class ReviewAnswerBatchRequest(BaseModel):
@@ -16792,14 +16821,25 @@ class ScopedGrantRequest2(BaseModel):
 
 class ScopedTokenRequest(BaseModel):
     """
-    Mint a short-lived, read-only credential. Issuing credentials requires an
-    environment administrator; a scoped token cannot mint another token.
+    Mint a short-lived credential. `operations` says what it may do, and the
+    default is `read`. Issuing credentials requires an environment
+    administrator; a scoped token cannot mint another token.
     """
 
     model_config = ConfigDict(
         extra='forbid',
     )
+    end_user: Annotated[
+        str | None,
+        Field(
+            description="The person behind the token, as the developer's application names them,\n1 to 200 characters without control characters. Required with any\noperation beyond `read`. LBB records it in the audit trail and on the\nanswers the token gives, and does not verify it. Use a stable id of\nyour own, not a name or an email address."
+        ),
+    ] = None
     grants: list[ScopedGrantRequest1 | ScopedGrantRequest2]
+    operations: Annotated[
+        list[ScopedOperation] | None,
+        Field(description='What the token may do. Absent or empty: `["read"]`.'),
+    ] = None
     ttl_seconds: Annotated[int | None, Field(ge=1, le=900)] = None
 
 
