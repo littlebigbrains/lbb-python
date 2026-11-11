@@ -109,13 +109,19 @@ class WorkflowWait(Exception):
 
     The worker fails the turn with ``retry_at_ms``, and the turn runs again at
     ``retry_at_ms``, or at once on a resume or a run now. Its steps are kept.
-    A step that meets ``429 workflow_budget_exceeded`` waits this way by
-    itself.
+    A step that meets ``429 model_budget_exceeded`` or
+    ``429 workflow_budget_exceeded`` waits this way by itself.
     """
 
     def __init__(self, retry_at_ms: int, message: str = "the turn waits") -> None:
         super().__init__(message)
         self.retry_at_ms = retry_at_ms
+
+
+# The codes of a spent model budget: ``model_budget_exceeded`` (the
+# environment's) and ``workflow_budget_exceeded`` (one workflow's own, and the
+# environment's too, from a server that does not produce the first yet).
+_BUDGET_CODES = frozenset({"model_budget_exceeded", "workflow_budget_exceeded"})
 
 
 def _wait_of(error: BaseException) -> int | None:
@@ -124,7 +130,7 @@ def _wait_of(error: BaseException) -> int | None:
         return error.retry_at_ms
     if (
         isinstance(error, LbbError)
-        and error.code == "workflow_budget_exceeded"
+        and error.code in _BUDGET_CODES
         and isinstance(error.retry_at_ms, int)
         and not isinstance(error.retry_at_ms, bool)
     ):

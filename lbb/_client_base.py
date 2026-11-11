@@ -132,7 +132,7 @@ class LbbError(RuntimeError):
         self.retryable = self.error.get("retryable")
         self.retry_after_seconds = self.error.get("retry_after_seconds")
         # When a spent budget lets the call run again (Unix milliseconds), as
-        # ``429 workflow_budget_exceeded`` names it.
+        # ``429 model_budget_exceeded`` or ``429 workflow_budget_exceeded`` names it.
         self.retry_at_ms = self.error.get("retry_at_ms")
         self.endpoint_hint = _endpoint_migration_hint(self.code)
         # Per-item reasons for a refusal, e.g. ``conflicts`` of ``starter_conflict``.
