@@ -4580,6 +4580,35 @@ class ObservationRow(BaseModel):
     text_preview: str | None = None
 
 
+class OntologyBaseStoreResponse(BaseModel):
+    """
+    The result of storing a base version.
+    """
+
+    checksum: Annotated[
+        str, Field(description='`blake3:<hex>` of the stored document.')
+    ]
+    created: Annotated[
+        bool,
+        Field(
+            description='True when this call stored the version; false when the same document\nwas already stored (a replay).'
+        ),
+    ]
+    id: Annotated[str, Field(description='The base id, which is also its prefix.')]
+    version: str
+
+
+class OntologyBaseSummary(BaseModel):
+    """
+    One base of the environment with its stored versions.
+    """
+
+    id: str
+    label: Annotated[str, Field(description='The label of the highest version.')]
+    latest: Annotated[str, Field(description='The highest stored version.')]
+    versions: Annotated[list[str], Field(description='Stored versions, lowest first.')]
+
+
 class ChangeSource(RootModel[int | None]):
     root: Annotated[int | None, Field(ge=0)]
 
@@ -15103,6 +15132,14 @@ class NamespaceQueryResponse(BaseModel):
     ]
 
 
+class OntologyBaseList(BaseModel):
+    """
+    `GET /v1/ontology/bases`: the bases of the environment.
+    """
+
+    bases: list[OntologyBaseSummary]
+
+
 class OntologyDefineResponse(BaseModel):
     changed: Annotated[
         bool | None,
@@ -15318,11 +15355,12 @@ class OntologyStarterDocument(BaseModel):
                 | RemoveRelationOp,
                 Field(discriminator='op'),
             ]
-        ],
+        ]
+        | None,
         Field(
-            description='The evolve operations that create the starter on an empty graph.'
+            description='The evolve operations that create the starter on an empty graph. A\ndeveloper base leaves them out: the server derives them from the terms.'
         ),
-    ]
+    ] = None
     properties: list[OntologyStarterProperty]
     questions: list[OntologyStarterQuestion]
     relations: list[OntologyStarterRelation]
@@ -20240,6 +20278,33 @@ class NeighborResponse(BaseModel):
     entity: EntityView
     neighbors: list[TripletView]
     snapshot: SnapshotView
+
+
+class OntologyBaseDetail(BaseModel):
+    """
+    `GET /v1/ontology/bases/detail`: one stored version.
+    """
+
+    checksum: Annotated[
+        str, Field(description='`blake3:<hex>` of the stored document.')
+    ]
+    document: Annotated[
+        OntologyStarterDocument,
+        Field(description='The document with local term names, as stored.'),
+    ]
+    id: str
+    version: str
+
+
+class OntologyBaseStoreRequest(BaseModel):
+    """
+    Store one version of a developer's base ontology in the environment
+    (`POST /v1/ontology/bases`). The document's `id` is the prefix of its
+    terms and its term names are local; see "Bases a developer writes" in
+    `docs/architecture/ontology-starters.md`.
+    """
+
+    document: OntologyStarterDocument
 
 
 class OntologyChangeSuggestionSummary(BaseModel):
