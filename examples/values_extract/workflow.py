@@ -814,7 +814,10 @@ def create_workflow(lbb: LbbActivities, settings: Settings = DEFAULTS) -> Trigge
                         # A spent budget waits as in any step. Any other failure
                         # of the retry (a refusal, a provider that is busy or
                         # down) leaves the first answer.
-                        if isinstance(error, LbbError) and error.code == "workflow_budget_exceeded":
+                        if isinstance(error, LbbError) and error.code in (
+                            "model_budget_exceeded",
+                            "workflow_budget_exceeded",
+                        ):
                             raise
                     return {"values": values, "retried": True}
                 return {"values": values}

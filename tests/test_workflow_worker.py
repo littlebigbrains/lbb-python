@@ -695,6 +695,18 @@ def test_activity_helpers() -> None:
     assert split_in_halves([1]) is None
 
 
+def test_a_spent_budget_waits_under_either_code() -> None:
+    from lbb.workflows._worker import _wait_of
+
+    at_ms = 1_790_000_000_000
+    for code in ("workflow_budget_exceeded", "model_budget_exceeded"):
+        error = LbbError(429, "{}", {"code": code, "retry_at_ms": at_ms})
+        assert _wait_of(error) == at_ms, code
+    # Another 429 is not a spent budget, and a budget without a time has no wait.
+    assert _wait_of(LbbError(429, "{}", {"code": "server_busy", "retry_at_ms": at_ms})) is None
+    assert _wait_of(LbbError(429, "{}", {"code": "model_budget_exceeded"})) is None
+
+
 def test_review_files_an_item_with_the_workflow_as_its_origin() -> None:
     seen: list[Any] = []
 
