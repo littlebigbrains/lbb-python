@@ -4894,7 +4894,18 @@ class OntologyStarterApplyRequest(BaseModel):
             ge=0,
         ),
     ] = None
-    starter: Annotated[str, Field(description='The starter id, for example `crm`.')]
+    starter: Annotated[
+        str,
+        Field(
+            description='The starter id, for example `crm`, or the id of a base of the\nenvironment.'
+        ),
+    ]
+    version: Annotated[
+        str | None,
+        Field(
+            description="The version to apply. Omitted, a base's highest version; a built-in\nstarter has one version, and another answers `starter_version_not_found`."
+        ),
+    ] = None
 
 
 class OntologyStarterClass(BaseModel):
@@ -4948,6 +4959,15 @@ class OntologyStarterCounts(BaseModel):
     properties: Annotated[int, Field(ge=0)]
     questions: Annotated[int, Field(ge=0)]
     relations: Annotated[int, Field(ge=0)]
+
+
+class OntologyStarterOrigin(Enum):
+    """
+    Where a starter comes from.
+    """
+
+    built_in = 'built_in'
+    environment = 'environment'
 
 
 class OntologyStarterPresent(BaseModel):
@@ -5041,7 +5061,15 @@ class OntologyStarterUpdateRequest(BaseModel):
     suggestion.
     """
 
-    starter: Annotated[str, Field(description='The starter id, for example `crm`.')]
+    starter: Annotated[
+        str,
+        Field(
+            description='The starter id, for example `crm`, or the id of a base of the\nenvironment.'
+        ),
+    ]
+    version: Annotated[str | None, Field(description='The version, as for apply.')] = (
+        None
+    )
 
 
 class OntologyStarterUpdateResponse(BaseModel):
@@ -15400,11 +15428,35 @@ class OntologyStarterSummary(BaseModel):
 
     counts: OntologyStarterCounts
     description: str
+    held_version: Annotated[
+        str | None,
+        Field(description='The highest version the graph holds in full, or null.'),
+    ] = None
     id: str
     label: str
+    origin: Annotated[
+        OntologyStarterOrigin | None,
+        Field(
+            description="`built_in` for an embedded starter, `environment` for a developer's base."
+        ),
+    ] = None
+    prefix: Annotated[
+        str | None,
+        Field(
+            description="The prefix of a base's terms, which is its id; null for a built-in\nstarter."
+        ),
+    ] = None
     sources: list[str]
     status: OntologyStarterStatus
-    version: str
+    version: Annotated[
+        str,
+        Field(
+            description="For a base, the highest stored version. The row's counts and status\nare about this version."
+        ),
+    ]
+    versions: Annotated[
+        list[str] | None, Field(description='The versions that exist, lowest first.')
+    ] = None
 
 
 class OntologySuggestionBatchResponse(BaseModel):
