@@ -4415,6 +4415,259 @@
           }
         ]
       },
+      "DailyActivityCounts": {
+        "description": "The counts of one row. A count that never happened is 0.",
+        "properties": {
+          "facts_added": {
+            "description": "Statements added by commits (the added statements of the commit's\ndelta). A replay adds 0.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "facts_removed": {
+            "description": "Statements removed by commits and retractions. A retraction never\nlowers `facts_added`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "last_at_ms": {
+            "description": "The last time a count of this row grew, in milliseconds since the Unix\nepoch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "queries": {
+            "description": "Queries run: SPARQL reads and queries over a namespace or a dataset.\nA query that failed counts here and in `query_errors`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "query_errors": {
+            "description": "Queries that ended with a status of 400 or more.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queries",
+          "query_errors",
+          "facts_added",
+          "facts_removed",
+          "last_at_ms"
+        ],
+        "type": "object"
+      },
+      "DailyActivityDay": {
+        "description": "One day (UTC) of the whole scope.",
+        "properties": {
+          "day": {
+            "description": "`yyyy-mm-dd`.",
+            "type": "string"
+          },
+          "facts_added": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "facts_removed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "last_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "queries": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "query_errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "queries",
+          "query_errors",
+          "facts_added",
+          "facts_removed",
+          "last_at_ms"
+        ],
+        "type": "object"
+      },
+      "DailyActivityDayGraph": {
+        "description": "One graph on one day. `graph` is `*` for the graphs past the bound of the\nday.",
+        "properties": {
+          "day": {
+            "description": "`yyyy-mm-dd`.",
+            "type": "string"
+          },
+          "facts_added": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "facts_removed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "last_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "queries": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "query_errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "graph",
+          "queries",
+          "query_errors",
+          "facts_added",
+          "facts_removed",
+          "last_at_ms"
+        ],
+        "type": "object"
+      },
+      "DailyActivityGraph": {
+        "description": "One graph over the month. `graph` is `*` for the graphs past the bound.",
+        "properties": {
+          "facts_added": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "facts_removed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "last_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "queries": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "query_errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "graph",
+          "queries",
+          "query_errors",
+          "facts_added",
+          "facts_removed",
+          "last_at_ms"
+        ],
+        "type": "object"
+      },
+      "DailyActivityResponse": {
+        "description": "`GET /v1/activity/daily`.",
+        "properties": {
+          "by_day": {
+            "description": "One row per day with counts, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/DailyActivityDay"
+            },
+            "type": "array"
+          },
+          "by_day_graph": {
+            "description": "One row per day and graph, by day then by graph.",
+            "items": {
+              "$ref": "#/components/schemas/DailyActivityDayGraph"
+            },
+            "type": "array"
+          },
+          "by_graph": {
+            "description": "The graphs with the most work first (queries plus facts added), at\nmost 100, then `*`.",
+            "items": {
+              "$ref": "#/components/schemas/DailyActivityGraph"
+            },
+            "type": "array"
+          },
+          "graph": {
+            "description": "The graph of a `graph` scope.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "month": {
+            "description": "`yyyy-mm` (UTC).",
+            "type": "string"
+          },
+          "months": {
+            "description": "The months with counts, oldest first.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "namespace": {
+            "description": "The namespace of a `namespace` scope.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "other_graphs": {
+            "description": "True when a bound hid graph names: the `*` rows hold counts of graphs\nthe rows cannot name. For a `namespace` scope those counts are not in\nthe answer at all.",
+            "type": "boolean"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DailyActivityScope"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/DailyActivityCounts",
+            "description": "The sum of every row of the scope."
+          }
+        },
+        "required": [
+          "month",
+          "months",
+          "scope",
+          "other_graphs",
+          "totals",
+          "by_day",
+          "by_graph",
+          "by_day_graph"
+        ],
+        "type": "object"
+      },
+      "DailyActivityScope": {
+        "description": "What a read of the daily counts covers.",
+        "enum": [
+          "environment",
+          "graph",
+          "namespace"
+        ],
+        "type": "string"
+      },
       "DateBucketGranularity": {
         "description": "The calendar unit a [`SparqlGroupKey::DateBucket`] truncates a datetime to.\nTruncation is in UTC; the label is the bucket's start as a sortable string.",
         "enum": [
@@ -47275,6 +47528,304 @@
           }
         ],
         "summary": "Revoke one application token; new admissions require fresh credential state (environment administrator only)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/activity/daily": {
+      "get": {
+        "operationId": "get_v1_activity_daily",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm (UTC); default: the current month",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one graph id; not with `only_namespace`",
+            "in": "query",
+            "name": "only_graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one catalog namespace id: its graphs and the namespaces below it; not with `only_graph`; needs the application catalog",
+            "in": "query",
+            "name": "only_namespace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyActivityResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The queries and the facts written of the environment in one month, per day and per graph: a query is a SPARQL read or a query over a namespace or a dataset, and a fact is a statement a commit added. Narrow it to one graph (`only_graph`) or to the graphs of one catalog namespace (`only_namespace`). An environment read; the answering node adds the counts it has not written to the record yet",
         "tags": [
           "system"
         ]

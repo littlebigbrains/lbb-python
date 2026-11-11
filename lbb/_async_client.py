@@ -2500,6 +2500,31 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
             models.ModelActivityResponse, await super().model_activity_model(month)
         )
 
+    async def daily_activity(
+        self,
+        month: str | None = None,
+        *,
+        only_graph: str | None = None,
+        only_namespace: str | None = None,
+    ) -> Any:
+        return await super().daily_activity(
+            month, only_graph=only_graph, only_namespace=only_namespace
+        )
+
+    async def daily_activity_model(
+        self,
+        month: str | None = None,
+        *,
+        only_graph: str | None = None,
+        only_namespace: str | None = None,
+    ) -> models.DailyActivityResponse:
+        return cast(
+            models.DailyActivityResponse,
+            await super().daily_activity_model(
+                month, only_graph=only_graph, only_namespace=only_namespace
+            ),
+        )
+
     def workflow_turn_reader(self, task: Body) -> AsyncWorkflowTurnReader:
         """Bind SELECT/ASK to a task claimed with include_execution_credential.
 
