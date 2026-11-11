@@ -28796,7 +28796,7 @@
         "type": "string"
       },
       "ReviewAnswer": {
-        "description": "A person's answer to a review item.\n\n`value` goes with `correct` and `option` with `choose`; `note` holds the\nfree text of an `answer` item. The server sets `by` and `at`.",
+        "description": "A person's answer to a review item.\n\n`value` goes with `correct` and `option` with `choose`; `note` holds the\nfree text of an `answer` item. The server sets `by`, `at` and `via`.",
         "properties": {
           "at": {
             "description": "When, RFC 3339, set by the server.",
@@ -28831,6 +28831,17 @@
           },
           "value": {
             "description": "The corrected value, for `correct`: a number, a string or a boolean\nin the type of the property it corrects."
+          },
+          "via": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewAnswerVia",
+                "description": "How the answer arrived, set by the server for an application token and\nabsent otherwise. A request body never sets it."
+              }
+            ]
           }
         },
         "required": [
@@ -28936,6 +28947,24 @@
         },
         "required": [
           "answer"
+        ],
+        "type": "object"
+      },
+      "ReviewAnswerVia": {
+        "description": "The application token an answer came through. `by` of the answer holds the\nend user the developer named when it issued the token. LBB records that\nlabel and does not verify it.",
+        "properties": {
+          "credential_id": {
+            "description": "The credential that answered: `credential_id` of the token.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Always `application_token`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "credential_id"
         ],
         "type": "object"
       },
@@ -31135,13 +31164,36 @@
         ],
         "type": "string"
       },
+      "ScopedOperation": {
+        "description": "What an application token may do. A token carries a set of operations and\none set of grants for all of them. A route outside the operations of the\ntoken is refused.",
+        "enum": [
+          "read",
+          "review",
+          "files"
+        ],
+        "type": "string"
+      },
       "ScopedTokenRequest": {
         "additionalProperties": false,
-        "description": "Mint a short-lived, read-only credential. Issuing credentials requires an\nenvironment administrator; a scoped token cannot mint another token.",
+        "description": "Mint a short-lived credential. `operations` says what it may do, and the\ndefault is `read`. Issuing credentials requires an environment\nadministrator; a scoped token cannot mint another token.",
         "properties": {
+          "end_user": {
+            "description": "The person behind the token, as the developer's application names them,\n1 to 200 characters without control characters. Required with any\noperation beyond `read`. LBB records it in the audit trail and on the\nanswers the token gives, and does not verify it. Use a stable id of\nyour own, not a name or an email address.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "grants": {
             "items": {
               "$ref": "#/components/schemas/ScopedGrantRequest"
+            },
+            "type": "array"
+          },
+          "operations": {
+            "description": "What the token may do. Absent or empty: `[\"read\"]`.",
+            "items": {
+              "$ref": "#/components/schemas/ScopedOperation"
             },
             "type": "array"
           },
@@ -31162,12 +31214,19 @@
           "credential_id": {
             "type": "string"
           },
+          "end_user": {
+            "description": "The `end_user` of the token, when it has one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "expires_at_ms": {
             "format": "int64",
             "type": "integer"
           },
           "operations": {
-            "description": "The initial release supports only `read` on its documented route set.",
+            "description": "The operations of the token, as issued.",
             "items": {
               "type": "string"
             },
@@ -46925,7 +46984,7 @@
             "bearer": []
           }
         ],
-        "summary": "Mint a short-lived read-only token for exact graphs or immutable namespace subtrees (environment administrator only)",
+        "summary": "Mint a short-lived token for exact graphs or immutable namespace subtrees, for the operations it names (environment administrator only)",
         "tags": [
           "system"
         ]
