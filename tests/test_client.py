@@ -2153,6 +2153,8 @@ class SyncClientTests(unittest.TestCase):
         for status, code in (
             (421, "stack_endpoint_required"),
             (403, "stack_endpoint_mismatch"),
+            (421, "environment_endpoint_required"),
+            (403, "environment_endpoint_mismatch"),
         ):
             seen: list[httpx.Request] = []
             with LbbClient(

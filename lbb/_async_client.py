@@ -78,6 +78,7 @@ from ._client_base import (
     _ModelSwitchesNamespace,
     _ModelTrialsNamespace,
     _NamedWorkflowsNamespace,
+    _OntologyBasesNamespace,
     _OntologyNamespace,
     _OntologyStartersNamespace,
     _open_download,
@@ -103,6 +104,7 @@ from ._client_base import (
 )
 from ._records import RecordsNamespace
 from ._workflow_execution import AsyncWorkflowTurnReader
+from .bases import StarterTerms, base_terms
 
 if TYPE_CHECKING:
     from .workflows._handles import WorkflowNamespace
@@ -167,8 +169,13 @@ class _AsyncOntologyStartersNamespace(_OntologyStartersNamespace):
     async def list(self) -> models.OntologyStarterList:
         return cast(models.OntologyStarterList, await super().list())
 
-    async def get(self, starter: str) -> models.OntologyStarterDetail:
-        return cast(models.OntologyStarterDetail, await super().get(starter))
+    async def get(
+        self, starter: str, *, version: str | None = None
+    ) -> models.OntologyStarterDetail:
+        return cast(
+            models.OntologyStarterDetail,
+            await super().get(starter, version=version),
+        )
 
     async def apply(
         self,
@@ -176,6 +183,7 @@ class _AsyncOntologyStartersNamespace(_OntologyStartersNamespace):
         *,
         dry_run: bool = False,
         expected_ontology_version: int | None = None,
+        version: str | None = None,
     ) -> models.OntologyStarterApplyResponse:
         return cast(
             models.OntologyStarterApplyResponse,
@@ -183,19 +191,48 @@ class _AsyncOntologyStartersNamespace(_OntologyStartersNamespace):
                 starter,
                 dry_run=dry_run,
                 expected_ontology_version=expected_ontology_version,
+                version=version,
             ),
         )
 
-    async def update(self, starter: str) -> models.OntologyStarterUpdateResponse:
-        return cast(models.OntologyStarterUpdateResponse, await super().update(starter))
+    async def update(
+        self, starter: str, *, version: str | None = None
+    ) -> models.OntologyStarterUpdateResponse:
+        return cast(
+            models.OntologyStarterUpdateResponse,
+            await super().update(starter, version=version),
+        )
+
+
+class _AsyncOntologyBasesNamespace(_OntologyBasesNamespace):
+    async def store(
+        self, document: models.OntologyStarterDocument | Mapping[str, Any]
+    ) -> models.OntologyBaseStoreResponse:
+        return cast(models.OntologyBaseStoreResponse, await super().store(document))
+
+    async def list(self) -> models.OntologyBaseList:
+        return cast(models.OntologyBaseList, await super().list())
+
+    async def get(
+        self, base: str, *, version: str | None = None
+    ) -> models.OntologyBaseDetail:
+        return cast(
+            models.OntologyBaseDetail,
+            await super().get(base, version=version),
+        )
+
+    async def terms(self, base: str, *, version: str | None = None) -> StarterTerms:
+        return base_terms((await self.get(base, version=version)).document)
 
 
 class _AsyncOntologyNamespace(_OntologyNamespace):
     starters: _AsyncOntologyStartersNamespace
+    bases: _AsyncOntologyBasesNamespace
 
     def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
         super().__init__(client, graph)
         self.starters = _AsyncOntologyStartersNamespace(client, graph)
+        self.bases = _AsyncOntologyBasesNamespace(client, graph)
 
     async def view(
         self, *, counts: bool = False, options: RequestOptions | None = None

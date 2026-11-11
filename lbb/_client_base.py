@@ -52,6 +52,7 @@ from pydantic import BaseModel, RootModel
 from . import models
 from . import models as _models  # for a function whose `models` names the models a test runs
 from ._version import __version__
+from .bases import StarterTerms, base_terms
 from .entities import ENTITY_ID_KEY_SENTINEL
 
 DEFAULT_BASE_URL = "http://127.0.0.1:7400"
@@ -171,9 +172,9 @@ class LbbCapabilityError(RuntimeError):
 
 
 def _endpoint_migration_hint(code: str | None) -> str | None:
-    if code == "stack_endpoint_required":
+    if code in ("stack_endpoint_required", "environment_endpoint_required"):
         return "Copy endpoint_url from the environment's Connect page and use it as base_url."
-    if code == "stack_endpoint_mismatch":
+    if code in ("stack_endpoint_mismatch", "environment_endpoint_mismatch"):
         return "Use the endpoint_url and API key from the same environment."
     return None
 
@@ -3664,13 +3665,22 @@ class _OntologyStartersNamespace:
             params=_graph_scoped(self._graph, None),
         )
 
-    def get(self, starter: str) -> models.OntologyStarterDetail:
-        """One starter's document, status and ``missing_ops``."""
+    def get(
+        self, starter: str, *, version: str | None = None
+    ) -> models.OntologyStarterDetail:
+        """One starter's document, status and ``missing_ops``.
+
+        ``version`` picks a version of a base ontology; omitted, the highest.
+        A built-in starter has one version.
+        """
         return self._client._model_request(
             models.OntologyStarterDetail,
             "GET",
             "/v1/ontology/starters/detail",
-            params=_graph_scoped(self._graph, {"starter": starter}),
+            params=_graph_scoped(
+                self._graph,
+                {"starter": starter, "version": version},
+            ),
         )
 
     def apply(
@@ -3679,14 +3689,18 @@ class _OntologyStartersNamespace:
         *,
         dry_run: bool = False,
         expected_ontology_version: int | None = None,
+        version: str | None = None,
     ) -> models.OntologyStarterApplyResponse:
         """Add what the graph lacks of a starter in one ontology version.
 
         A relation the graph has is widened. Applying again answers
         ``no_op: True``, so a retry is safe. A term the graph holds differently
-        fails with ``409 starter_conflict`` and writes nothing.
+        fails with ``409 starter_conflict`` and writes nothing. ``version``
+        picks a version of a base ontology; omitted, the highest.
         """
         body: dict[str, Any] = {"starter": starter}
+        if version is not None:
+            body["version"] = version
         if dry_run:
             body["dry_run"] = True
         if expected_ontology_version is not None:
@@ -3700,20 +3714,92 @@ class _OntologyStartersNamespace:
             options={"retry": True},
         )
 
-    def update(self, starter: str) -> models.OntologyStarterUpdateResponse:
+    def update(
+        self, starter: str, *, version: str | None = None
+    ) -> models.OntologyStarterUpdateResponse:
         """File what the graph lacks of a starter as one change suggestion.
 
         The suggestion is keyed ``starter:<id>/<version>``: asking again
-        returns the same one.
+        returns the same one. ``version`` is as for ``apply``.
         """
+        body: dict[str, Any] = {"starter": starter}
+        if version is not None:
+            body["version"] = version
         return self._client._model_request(
             models.OntologyStarterUpdateResponse,
             "POST",
             "/v1/ontology/starters/update",
             params=_graph_scoped(self._graph, None),
-            body={"starter": starter},
+            body=body,
             options={"retry": True},
         )
+
+
+class _OntologyBasesNamespace:
+    """The base ontologies a developer stores in the environment.
+
+    Behind the server's ``LBB_ONTOLOGY_BASES`` flag: a server with the flag off
+    answers ``404``. A base uses the starter document form. Its ``id`` is the
+    prefix of its terms (``acme.Agreement``), and a stored version never
+    changes. A graph applies a base through ``ontology.starters``.
+    """
+
+    def __init__(self, client: _BaseLbbClient, graph: str | None = None) -> None:
+        self._client = client
+        self._graph = graph
+
+    def store(
+        self, document: models.OntologyStarterDocument | Mapping[str, Any]
+    ) -> models.OntologyBaseStoreResponse:
+        """Store one version of a base.
+
+        The version must be higher than every stored one and a superset of the
+        highest (``409 base_not_superset``). Storing the same document again
+        answers ``created: False``, so a retry is safe. A different document
+        under a stored version fails with ``409 base_version_exists``.
+        """
+        if isinstance(document, Mapping):
+            document = models.OntologyStarterDocument.model_validate(document)
+        return self._client._model_request(
+            models.OntologyBaseStoreResponse,
+            "POST",
+            "/v1/ontology/bases",
+            params=_graph_scoped(self._graph, None),
+            body={"document": document.model_dump(mode="json", exclude_none=True)},
+            options={"retry": True},
+        )
+
+    def list(self) -> models.OntologyBaseList:
+        """The bases of the environment with their stored versions."""
+        return self._client._model_request(
+            models.OntologyBaseList,
+            "GET",
+            "/v1/ontology/bases",
+            params=_graph_scoped(self._graph, None),
+        )
+
+    def get(
+        self, base: str, *, version: str | None = None
+    ) -> models.OntologyBaseDetail:
+        """One stored version: the document with its local term names.
+
+        ``version`` omitted, the highest stored one.
+        """
+        return self._client._model_request(
+            models.OntologyBaseDetail,
+            "GET",
+            "/v1/ontology/bases/detail",
+            params=_graph_scoped(self._graph, {"base": base, "version": version}),
+        )
+
+    def terms(self, base: str, *, version: str | None = None) -> StarterTerms:
+        """The terms of a stored version, with the IRIs SPARQL uses.
+
+        Keyed by local name, with qualified names in ``name`` and the
+        references. For attribute access that a type checker reads, generate a
+        module from the document with ``gen-starter-terms.mjs --base``.
+        """
+        return base_terms(self.get(base, version=version).document)
 
 
 class _FitSourcesNamespace:
@@ -4268,6 +4354,7 @@ class _OntologyNamespace:
         self._client = client
         self._graph = graph
         self.starters = _OntologyStartersNamespace(client, graph)
+        self.bases = _OntologyBasesNamespace(client, graph)
         # Fit from text: suggestions made from the text of a class's instances.
         self.fit_sources = _FitSourcesNamespace(client, graph)
 

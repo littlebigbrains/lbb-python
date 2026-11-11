@@ -23164,8 +23164,15 @@
             ]
           },
           "starter": {
-            "description": "The starter id, for example `crm`.",
+            "description": "The starter id, for example `crm`, or the id of a base of the\nenvironment.",
             "type": "string"
+          },
+          "version": {
+            "description": "The version to apply. Omitted, a base's highest version; a built-in\nstarter has one version, and another answers `starter_version_not_found`.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -23488,6 +23495,14 @@
         ],
         "type": "object"
       },
+      "OntologyStarterOrigin": {
+        "description": "Where a starter comes from.",
+        "enum": [
+          "built_in",
+          "environment"
+        ],
+        "type": "string"
+      },
       "OntologyStarterPresent": {
         "description": "How many of a starter's terms the graph holds.",
         "properties": {
@@ -23699,11 +23714,29 @@
           "description": {
             "type": "string"
           },
+          "held_version": {
+            "description": "The highest version the graph holds in full, or null.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "type": "string"
           },
           "label": {
             "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/OntologyStarterOrigin",
+            "description": "`built_in` for an embedded starter, `environment` for a developer's base."
+          },
+          "prefix": {
+            "description": "The prefix of a base's terms, which is its id; null for a built-in\nstarter.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sources": {
             "items": {
@@ -23715,7 +23748,15 @@
             "$ref": "#/components/schemas/OntologyStarterStatus"
           },
           "version": {
+            "description": "For a base, the highest stored version. The row's counts and status\nare about this version.",
             "type": "string"
+          },
+          "versions": {
+            "description": "The versions that exist, lowest first.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -23733,8 +23774,15 @@
         "description": "File the operations a graph lacks of a starter as one ontology change\nsuggestion.",
         "properties": {
           "starter": {
-            "description": "The starter id, for example `crm`.",
+            "description": "The starter id, for example `crm`, or the id of a base of the\nenvironment.",
             "type": "string"
+          },
+          "version": {
+            "description": "The version, as for apply.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -109636,9 +109684,18 @@
             }
           },
           {
-            "description": "Starter id, for example crm",
+            "description": "Starter id, for example crm, or the id of a base ontology of the environment",
             "in": "query",
             "name": "starter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A version of a base ontology, MAJOR.MINOR.PATCH; omitted reads the highest. A built-in starter has one version",
+            "in": "query",
+            "name": "version",
             "required": false,
             "schema": {
               "type": "string"
