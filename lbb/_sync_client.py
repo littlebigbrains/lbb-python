@@ -88,6 +88,7 @@ from ._client_base import (
 from ._records import RecordsNamespace
 from ._workflow_execution import WorkflowTurnReader
 from .integrations import IntegrationsNamespace
+from .sandboxes import _SyncSandboxes
 
 ImportItem = Mapping[str, Any] | str | bytes
 ImportSource = Iterable[ImportItem] | str | bytes
@@ -913,6 +914,9 @@ class LbbClient(_BaseLbbClient):
         self.embeddings = _EmbeddingsNamespace(self)
         # Files of the graph: upload, list, bytes, parsed pages, delete.
         self.files = _FilesNamespace(self)
+        # Sandboxes: isolated code runs. ``run`` is one call; ``scoped`` and
+        # ``create`` give a handle with files and commands.
+        self.sandboxes = _SyncSandboxes(self)
         self.catalog = CatalogNamespace(self)
         self.access = AccessNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.
