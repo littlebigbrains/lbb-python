@@ -2890,6 +2890,62 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(typed.totals.queries, 0)
 
 
+def _model_budget_payload() -> dict[str, Any]:
+    return {
+        "month": "2026-11",
+        "months": ["2026-11"],
+        "recording": True,
+        "budget": {
+            "limit_micro_usd": 85_000_000,
+            "limit_source": "default",
+            "state": "warning",
+            "used_ratio": 0.9,
+            "warn_at_ratio": 0.8,
+            "resets_at": "2026-12-01T00:00:00Z",
+            "resets_at_ms": 1_795_000_000_000,
+        },
+        "spent_micro_usd": 76_500_000,
+        "left_micro_usd": 8_500_000,
+        "calls": 10,
+        "errors": 0,
+        "unpriced_calls": 0,
+        "by_feature": [{"feature": "workflows", "cost_micro_usd": 76_500_000}],
+        "by_model": [
+            {
+                "provider": "anthropic",
+                "model": "claude-sonnet-5-5",
+                "cost_micro_usd": 76_500_000,
+            }
+        ],
+        "by_day": [{"day": "2026-11-10", "cost_micro_usd": 76_500_000}],
+        "complete": True,
+        "dropped_micro_usd": 0,
+        "dropped_keys": 0,
+        "partial": [{"dimension": "spent", "reason": "training_not_in_dollars"}],
+    }
+
+
+class ModelBudgetTests(unittest.TestCase):
+    def test_model_budget_reads_the_limit_the_spend_and_the_state(self) -> None:
+        payload = _model_budget_payload()
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = client.model_budget("2026-11")
+            typed = client.model_budget_model()
+        self.assertEqual(raw["left_micro_usd"], 8_500_000)
+        self.assertEqual(typed.budget.state, model_module.ModelBudgetState.warning)
+        self.assertEqual(typed.by_feature[0].feature, "workflows")
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("GET", "/v1/models/budget"), ("GET", "/v1/models/budget")],
+        )
+        self.assertEqual(seen[0].url.params.get("month"), "2026-11")
+        self.assertNotIn("month", seen[1].url.params)
+
+
 class SearchAndEvalsNamespaceTests(unittest.TestCase):
     """The search setup, search, and evals namespaces send the documented requests."""
 
@@ -4404,6 +4460,21 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(typed.month, "2026-10")
         self.assertEqual(seen[0].url.path, "/v1/models/activity")
         self.assertEqual(seen[0].url.params.get("month"), "2026-10")
+        self.assertNotIn("month", seen[1].url.params)
+
+    async def test_async_model_budget_reads_the_month(self) -> None:
+        payload = _model_budget_payload()
+        seen: list[httpx.Request] = []
+        async with AsyncLbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}, {"json": payload}]),
+        ) as client:
+            raw = await client.model_budget("2026-11")
+            typed = await client.model_budget_model()
+        self.assertEqual(raw["spent_micro_usd"], 76_500_000)
+        self.assertIsInstance(typed, model_module.ModelBudgetResponse)
+        self.assertEqual(seen[0].url.path, "/v1/models/budget")
+        self.assertEqual(seen[0].url.params.get("month"), "2026-11")
         self.assertNotIn("month", seen[1].url.params)
 
     async def test_async_daily_activity_reads_the_month(self) -> None:

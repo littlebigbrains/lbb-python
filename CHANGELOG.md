@@ -30,6 +30,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   jitter, and honor `Retry-After`. After `lbb_wait_budget_ms` of waits for a
   turn (default one day; `0` turns them off), its failures count attempts
   again. A `WorkflowError` never waits.
+- `model_budget(month)` and `model_budget_model(month)` read the environment's
+  monthly model budget: the limit, what the month spent and what is left, the
+  state against the warning line, and the spend by feature, model and day
+  (`GET /v1/models/budget`).
 
 ## 0.35.0 (2026-11-07)
 
