@@ -6974,6 +6974,312 @@ class RowPage(BaseModel):
     total: Annotated[int, Field(ge=0)]
 
 
+class SandboxCommandCancelRequest(BaseModel):
+    """
+    `POST /v1/sandboxes/commands/cancel`: end a command.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    grace_ms: Annotated[
+        int | None,
+        Field(
+            description='Milliseconds between `SIGTERM` and `SIGKILL`: 0 to 60,000, default\n5,000.',
+            ge=0,
+        ),
+    ] = None
+
+
+class SandboxCommandReason(Enum):
+    """
+    Why a command ended as it did. A reason a later version writes reads as
+    `unknown`.
+    """
+
+    request = 'request'
+    sandbox_stopped = 'sandbox_stopped'
+    sandbox_destroyed = 'sandbox_destroyed'
+    budget = 'budget'
+    start_error = 'start_error'
+    start_lost = 'start_lost'
+    host_lost = 'host_lost'
+    unknown = 'unknown'
+
+
+class SandboxCommandRun(BaseModel):
+    """
+    The sizes of a `run` command's payload. The payload itself is read with
+    the command logs of the run, not here.
+    """
+
+    code_bytes: Annotated[int, Field(ge=0)]
+    config_bytes: Annotated[int, Field(ge=0)]
+    input_bytes: Annotated[int, Field(ge=0)]
+
+
+class SandboxCommandStatus(Enum):
+    """
+    Where a command stands: `queued` becomes `running`, then ends as
+    `exited`, `timed_out`, `cancelled`, `failed` or `lost`.
+    """
+
+    queued = 'queued'
+    running = 'running'
+    exited = 'exited'
+    timed_out = 'timed_out'
+    cancelled = 'cancelled'
+    failed = 'failed'
+    lost = 'lost'
+
+
+class SandboxFileDeleted(BaseModel):
+    """
+    `DELETE /v1/sandboxes/files`: the entry is gone. A delete of a path that
+    is already gone answers the same.
+    """
+
+    deleted: Annotated[bool, Field(description='Always `true`.')]
+    object: Annotated[str, Field(description='`sandbox_file`.')]
+    path: str
+
+
+class SandboxFileType(Enum):
+    """
+    What a workspace entry is.
+    """
+
+    file = 'file'
+    directory = 'directory'
+
+
+class SandboxKind(Enum):
+    """
+    What a sandbox is for: a call to the L1 shortcut (a create with `run`)
+    or a sandbox a caller keeps.
+    """
+
+    run = 'run'
+    sandbox = 'sandbox'
+
+
+class SandboxLimits(BaseModel):
+    """
+    The resource limits of a sandbox, as the sandbox holds them.
+    """
+
+    disk_mib: Annotated[
+        int, Field(description='Workspace disk in MiB: 256 to 10,240.', ge=0)
+    ]
+    memory_mib: Annotated[int, Field(description='Memory in MiB: 128 to 8,192.', ge=0)]
+    vcpus: Annotated[int, Field(description='Virtual CPUs: 1 to 4.', ge=0)]
+
+
+class SandboxLimitsInput(BaseModel):
+    """
+    The limits a request names. A field left out keeps the template's value,
+    else the default.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    disk_mib: Annotated[
+        int | None, Field(description='Workspace disk in MiB: 256 to 10,240.', ge=0)
+    ] = None
+    memory_mib: Annotated[
+        int | None, Field(description='Memory in MiB: 128 to 8,192.', ge=0)
+    ] = None
+    vcpus: Annotated[int | None, Field(description='Virtual CPUs: 1 to 4.', ge=0)] = (
+        None
+    )
+
+
+class SandboxLogGap(BaseModel):
+    """
+    The bytes a stream lost between its head and its tail.
+    """
+
+    from_: Annotated[
+        int,
+        Field(alias='from', description='The offset of the first dropped byte.', ge=0),
+    ]
+    to: Annotated[
+        int, Field(description='The offset after the last dropped byte.', ge=0)
+    ]
+
+
+class SandboxOwner(BaseModel):
+    """
+    The workflow turn that owns a sandbox. A sandbox made under a workflow
+    grant records its owner; a sandbox made by an environment key has none.
+    The owner is stored and shown; the fence it enables is not built yet, so
+    `owner` is always `null` for now.
+    """
+
+    object: Annotated[str, Field(description='`sandbox_owner`.')]
+    run: str
+    step: str
+    workflow: str
+
+
+class SandboxRunRequest(BaseModel):
+    """
+    The function a `run` calls: `run(input, config)` of a template's harness.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    code: Annotated[
+        str | None,
+        Field(
+            description="The code of `run`, 64 KiB at most; the template's code when absent."
+        ),
+    ] = None
+    config: Annotated[
+        Any | None,
+        Field(
+            description="The config, JSON of 1 MiB at most; it takes precedence over the\ntemplate's config."
+        ),
+    ] = None
+    input: Annotated[
+        Any | None, Field(description='The input, JSON of 1 MiB at most.')
+    ] = None
+    timeout_ms: Annotated[
+        int | None, Field(description='The command timeout in milliseconds.', ge=0)
+    ] = None
+
+
+class SandboxRunSummary(BaseModel):
+    """
+    What a create with `run` made of its command.
+    """
+
+    command: Annotated[str, Field(description="The command's id, `cmd_`.")]
+    exit_code: int | None = None
+    result: Annotated[
+        Any | None,
+        Field(description='What `run(input, config)` returned: JSON, 48 KiB at most.'),
+    ] = None
+    status: Annotated[SandboxCommandStatus, Field(description="The command's status.")]
+
+
+class SandboxStatus(Enum):
+    """
+    Where a sandbox stands. `starting` becomes `running` or `failed`;
+    `running` becomes `stopping`, `destroying` or `lost`; `stopped` becomes
+    `starting` (a resume), `destroying` or `lost`. `destroyed`, `failed` and
+    `lost` are final.
+    """
+
+    starting = 'starting'
+    running = 'running'
+    stopping = 'stopping'
+    stopped = 'stopped'
+    destroying = 'destroying'
+    destroyed = 'destroyed'
+    failed = 'failed'
+    lost = 'lost'
+
+
+class SandboxStatusReason(Enum):
+    """
+    Why a sandbox is in its status. A reason a later version writes reads as
+    `unknown`.
+    """
+
+    requested = 'requested'
+    idle = 'idle'
+    expired = 'expired'
+    run_ended = 'run_ended'
+    start_timeout = 'start_timeout'
+    start_error = 'start_error'
+    host_lost = 'host_lost'
+    unknown = 'unknown'
+
+
+class SandboxStream(Enum):
+    """
+    The stream of a command's output.
+    """
+
+    stdout = 'stdout'
+    stderr = 'stderr'
+
+
+class SandboxStreamSummary(BaseModel):
+    """
+    What one output stream of a command holds. The server keeps the first
+    256 KiB and the last 768 KiB of each stream.
+    """
+
+    bytes: Annotated[
+        int, Field(description='Bytes the command wrote to the stream.', ge=0)
+    ]
+    tail: Annotated[str, Field(description='The last 16 KiB of the stream, as text.')]
+    truncated_bytes: Annotated[
+        int,
+        Field(
+            description='Bytes between the head and the tail the server does not keep.',
+            ge=0,
+        ),
+    ]
+
+
+class SandboxTemplateFile(BaseModel):
+    """
+    A file a template copies into `/workspace`. A template with files needs
+    the import from Files, which is not available yet: a create with `files`
+    answers 400 `invalid_request`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    path: Annotated[str, Field(description='The path in `/workspace`.')]
+    source_sha256: Annotated[
+        str, Field(description='The SHA-256 of a file of the graph.')
+    ]
+
+
+class SandboxTemplateRef(BaseModel):
+    """
+    The template a sandbox was made from.
+    """
+
+    id: Annotated[str, Field(description='The exact version, `sbt_`.')]
+    name: Annotated[str, Field(description='The name the create gave.')]
+
+
+class SandboxUpdateRequest(BaseModel):
+    """
+    `POST /v1/sandboxes/update`: change a sandbox that has not ended.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    auto_stop_seconds: Annotated[
+        int | None,
+        Field(description='Idle seconds before the sandbox stops, 30 to 3,600.', ge=0),
+    ] = None
+    metadata: Annotated[
+        dict[str, str] | None, Field(description='Replaces the metadata whole.')
+    ] = None
+
+
+class SandboxUsage(BaseModel):
+    """
+    What a sandbox used, in seconds of its size. Metering is not built yet:
+    the counters stay 0.
+    """
+
+    disk_gib_seconds: Annotated[int, Field(ge=0)]
+    memory_gib_seconds: Annotated[int, Field(ge=0)]
+    vcpu_seconds: Annotated[int, Field(ge=0)]
+
+
 class SavedDatasetViewDefinition(BaseModel):
     """
     Optional reusable source selection. Names are query aliases, never grants.
@@ -16836,6 +17142,365 @@ class RoutingIndexRef(BaseModel):
     value_bytes: Annotated[int, Field(ge=0)]
 
 
+class Sandbox(BaseModel):
+    """
+    A sandbox: one VM with a workspace disk and no network.
+    """
+
+    auto_stop_at: Annotated[
+        int | None,
+        Field(
+            description='When an idle sandbox stops, Unix seconds; present while it runs. A\nsandbox is idle when no command is queued or running and no request\nnames it.'
+        ),
+    ] = None
+    auto_stop_seconds: Annotated[
+        int,
+        Field(description='Idle seconds before the sandbox stops, 30 to 3,600.', ge=0),
+    ]
+    created: Annotated[int, Field(description='When it was created, Unix seconds.')]
+    created_by: Annotated[
+        str, Field(description='Who created it: `key:<id>`, `account:<id>` or `token`.')
+    ]
+    expires_at: Annotated[
+        int,
+        Field(
+            description='When the sandbox is destroyed, Unix seconds. A resume does not move\nit.'
+        ),
+    ]
+    id: Annotated[str, Field(description='`sbx_`, an opaque id.')]
+    kind: Annotated[
+        SandboxKind,
+        Field(
+            description='`run` for a sandbox made by a create with `run`, else `sandbox`.'
+        ),
+    ]
+    limits: SandboxLimits
+    metadata: dict[str, str]
+    object: Annotated[str, Field(description='`sandbox`.')]
+    owner: SandboxOwner | None = None
+    run: SandboxRunSummary | None = None
+    status: SandboxStatus
+    status_reason: SandboxStatusReason | None = None
+    template: SandboxTemplateRef
+    usage: SandboxUsage
+
+
+class SandboxCommand(BaseModel):
+    """
+    A command on a sandbox. The record keeps the names of `env` and the size
+    of `stdin`; their values are never stored.
+    """
+
+    argv: Annotated[
+        list[str] | None,
+        Field(
+            description='The process and its arguments, for a command made with `argv`.'
+        ),
+    ] = None
+    created: Annotated[int, Field(description='When it was accepted, Unix seconds.')]
+    cwd: str | None = None
+    ended: Annotated[int | None, Field(description='When it ended, Unix seconds.')] = (
+        None
+    )
+    env_names: Annotated[
+        list[str],
+        Field(description='The names of the variables the command got, in order.'),
+    ]
+    exit_code: int | None = None
+    id: Annotated[str, Field(description='`cmd_`, an opaque id.')]
+    object: Annotated[str, Field(description='`sandbox_command`.')]
+    reason: SandboxCommandReason | None = None
+    result: Annotated[
+        Any | None,
+        Field(description='What `run(input, config)` returned: JSON, 48 KiB at most.'),
+    ] = None
+    run: SandboxCommandRun | None = None
+    sandbox: Annotated[str, Field(description="The sandbox's id, `sbx_`.")]
+    signal: Annotated[
+        int | None, Field(description='The signal that ended the process.')
+    ] = None
+    started: Annotated[
+        int | None, Field(description='When it started, Unix seconds.')
+    ] = None
+    status: SandboxCommandStatus
+    stderr: SandboxStreamSummary
+    stdin_bytes: Annotated[int, Field(description='The bytes of `stdin`.', ge=0)]
+    stdout: SandboxStreamSummary
+    timeout_ms: Annotated[int, Field(ge=0)]
+
+
+class SandboxCommandCreateRequest(BaseModel):
+    """
+    `POST /v1/sandboxes/commands`: start a command. Send `argv` or `run`.
+    The request needs an `Idempotency-Key`: a command never runs twice for
+    one key.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    argv: Annotated[
+        list[str] | None,
+        Field(
+            description='The process and its arguments. A shell is explicit:\n`["bash", "-lc", "..."]`.'
+        ),
+    ] = None
+    cwd: Annotated[
+        str | None, Field(description='The working directory, a path in `/workspace`.')
+    ] = None
+    env: Annotated[
+        dict[str, str] | None,
+        Field(
+            description='Variables for the command. Names that start with `LBB_` are refused.\nValues are never stored.'
+        ),
+    ] = None
+    run: SandboxRunRequest | None = None
+    stdin: Annotated[
+        str | None,
+        Field(
+            description='Text for the standard input, 1 MiB at most. It is never stored.'
+        ),
+    ] = None
+    timeout_ms: Annotated[
+        int | None,
+        Field(
+            description="The timeout in milliseconds, 1 to 3,600,000; the template's when\nabsent.",
+            ge=0,
+        ),
+    ] = None
+    wait_ms: Annotated[
+        int | None,
+        Field(
+            description='Milliseconds the answer waits for the command to end: 0 to 30,000.\nWith 0, the default, the answer does not wait.',
+            ge=0,
+        ),
+    ] = None
+
+
+class SandboxCommandList(BaseModel):
+    """
+    One page of commands, newest first.
+    """
+
+    data: list[SandboxCommand]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None, Field(description='Pass as `cursor` for the next page.')
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+
+
+class SandboxCreateRequest(BaseModel):
+    """
+    `POST /v1/sandboxes`: create a sandbox. With `run` it is the L1 shortcut:
+    the sandbox runs one command and is destroyed when the command ends. A
+    create with `run` needs an `Idempotency-Key`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    auto_stop_seconds: Annotated[
+        int | None,
+        Field(
+            description='Idle seconds before the sandbox stops: 30 to 3,600, default 300.',
+            ge=0,
+        ),
+    ] = None
+    expires_in_seconds: Annotated[
+        int | None,
+        Field(
+            description='Seconds until the sandbox is destroyed: 60 to 604,800, default\n3,600.',
+            ge=0,
+        ),
+    ] = None
+    limits: SandboxLimitsInput | None = None
+    metadata: Annotated[
+        dict[str, str] | None,
+        Field(
+            description='Up to 16 keys: a key of 40 characters at most, a value of 500.'
+        ),
+    ] = None
+    run: SandboxRunRequest | None = None
+    template: Annotated[
+        str | None,
+        Field(
+            description='A template name (its newest version) or id; `lbb/python` by default.'
+        ),
+    ] = None
+    wait_ms: Annotated[
+        int | None,
+        Field(
+            description='Milliseconds the answer waits for the run to end: 0 to 30,000. With\n0, the default, the answer does not wait.',
+            ge=0,
+        ),
+    ] = None
+
+
+class SandboxFile(BaseModel):
+    """
+    A file or a directory of `/workspace`.
+    """
+
+    bytes: Annotated[
+        int, Field(description='The bytes of a file; 0 for a directory.', ge=0)
+    ]
+    modified: Annotated[int, Field(description='The last change, Unix seconds.')]
+    object: Annotated[str, Field(description='`sandbox_file`.')]
+    path: Annotated[str, Field(description='The path in `/workspace`.')]
+    type: SandboxFileType
+
+
+class SandboxFileList(BaseModel):
+    """
+    One page of workspace entries, in path order.
+    """
+
+    data: list[SandboxFile]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None, Field(description='Pass as `cursor` for the next page.')
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+
+
+class SandboxList(BaseModel):
+    """
+    One page of sandboxes, newest first.
+    """
+
+    data: list[Sandbox]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None, Field(description='Pass as `cursor` for the next page.')
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+
+
+class SandboxLogFrame(BaseModel):
+    """
+    Bytes of a stream at `offset`, as text. A byte sequence that is not UTF-8
+    shows as U+FFFD.
+    """
+
+    object: Annotated[str, Field(description='`sandbox_log_frame`.')]
+    offset: Annotated[
+        int,
+        Field(
+            description='The byte offset of the first byte of `text` in the stream.',
+            ge=0,
+        ),
+    ]
+    stream: SandboxStream
+    text: str
+
+
+class SandboxTemplate(BaseModel):
+    """
+    A saved template: a base image, the `run` code, files, limits, a timeout
+    and a default config. Each create of a name is a new immutable version
+    with its own id; a name resolves to its newest version. The base
+    templates LBB publishes (`lbb/python`, `lbb/node`, `lbb/shell`) are
+    templates with `builtin: true`.
+    """
+
+    base: Annotated[str, Field(description='The base template the VM boots from.')]
+    builtin: Annotated[bool, Field(description='A base template LBB publishes.')]
+    code: Annotated[
+        str | None, Field(description='The `run` code, 64 KiB at most.')
+    ] = None
+    config: Annotated[
+        Any | None,
+        Field(description='The default config a `run` passes to `run(input, config)`.'),
+    ] = None
+    created: Annotated[
+        int, Field(description='When this version was saved, Unix seconds.')
+    ]
+    files: Annotated[
+        list[SandboxTemplateFile] | None,
+        Field(description='Files copied into `/workspace`.'),
+    ] = None
+    id: Annotated[str, Field(description='`sbt_`, an opaque id.')]
+    limits: Annotated[
+        SandboxLimits, Field(description='The limits of a sandbox of this template.')
+    ]
+    name: Annotated[
+        str, Field(description='The name a create resolves to its newest version.')
+    ]
+    object: Annotated[str, Field(description='`sandbox_template`.')]
+    revoked: Annotated[
+        bool,
+        Field(
+            description='A revoked template refuses new sandboxes (409\n`sandbox_template_revoked`).'
+        ),
+    ]
+    revoked_reason: Annotated[str | None, Field(description='Why it was revoked.')] = (
+        None
+    )
+    timeout_ms: Annotated[
+        int,
+        Field(
+            description='The timeout of a command, in milliseconds, when the command names\nnone.',
+            ge=0,
+        ),
+    ]
+
+
+class SandboxTemplateCreateRequest(BaseModel):
+    """
+    `POST /v1/sandboxes/templates`: save a new version of a template.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    base: Annotated[
+        str | None,
+        Field(
+            description='A base template: `lbb/python` (the default), `lbb/node` or\n`lbb/shell`.'
+        ),
+    ] = None
+    code: Annotated[
+        str | None, Field(description='The `run` code, 64 KiB at most.')
+    ] = None
+    config: Annotated[
+        Any | None, Field(description='The default config, JSON of 1 MiB at most.')
+    ] = None
+    files: Annotated[
+        list[SandboxTemplateFile] | None,
+        Field(
+            description='Files for `/workspace`. Not available yet; see\n[`SandboxTemplateFile`].'
+        ),
+    ] = None
+    limits: SandboxLimitsInput | None = None
+    name: Annotated[
+        str,
+        Field(
+            description='1 to 64 of `a-z`, `0-9`, `.`, `_` and `-`, not starting with `lbb/`.'
+        ),
+    ]
+    timeout_ms: Annotated[
+        int | None,
+        Field(
+            description='The default command timeout, 1 to 3,600,000 milliseconds.',
+            ge=0,
+        ),
+    ] = None
+
+
+class SandboxTemplateList(BaseModel):
+    """
+    One page of templates, newest first.
+    """
+
+    data: list[SandboxTemplate]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None, Field(description='Pass as `cursor` for the next page.')
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
+
+
 class SavedDatasetView(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -21013,6 +21678,26 @@ class RoutingPlan(BaseModel):
     ontology: RoutingObject | None = None
     ownership: CustomerOwnership
     scope: SourceCaptureScope
+
+
+class SandboxLog(BaseModel):
+    """
+    `GET /v1/sandboxes/commands/logs`: a page of one stream's bytes. It is
+    an exception to the list envelope, because it pages bytes.
+    """
+
+    data: list[SandboxLogFrame]
+    done: Annotated[
+        bool,
+        Field(
+            description='The command has ended and the page reaches the end of the stream.'
+        ),
+    ]
+    gap: SandboxLogGap | None = None
+    next_offset: Annotated[
+        int, Field(description='Pass as `offset` for the next page.', ge=0)
+    ]
+    object: Annotated[str, Field(description='`sandbox_log`.')]
 
 
 class SchemaPublishResponse(BaseModel):
