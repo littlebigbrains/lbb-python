@@ -42928,6 +42928,148 @@
         ],
         "type": "object"
       },
+      "WorkflowEnvironmentAttention": {
+        "description": "One graph with an instance that asks for a person.",
+        "properties": {
+          "blocked": {
+            "description": "Instances whose head failed under `block`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "branch_id": {
+            "type": "string"
+          },
+          "graph_id": {
+            "type": "string"
+          },
+          "inbox_full": {
+            "description": "Instances at their inbox cap.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "since_ms": {
+            "description": "When the graph first asked, in milliseconds since the Unix epoch.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "graph_id",
+          "branch_id",
+          "blocked",
+          "inbox_full",
+          "since_ms"
+        ],
+        "type": "object"
+      },
+      "WorkflowEnvironmentCounts": {
+        "description": "The counts of an environment. A count that never happened is 0.",
+        "properties": {
+          "graphs_blocked": {
+            "description": "Graphs with at least one instance whose head failed under `block`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graphs_due": {
+            "description": "Graphs with queued turns or a timer whose time has passed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graphs_inbox_full": {
+            "description": "Graphs with at least one instance at its inbox cap.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graphs_watching": {
+            "description": "Graphs with a watch pass due and no other work.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graphs_with_work": {
+            "description": "Graphs with work of any kind in the index.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "instances_blocked": {
+            "description": "Instances whose head failed under `block`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "oldest_waiting_message_at_ms": {
+            "description": "When the oldest unfinished turn of an instance that asks for a person\n(a blocked instance or a full inbox) was received, in milliseconds since\nthe Unix epoch. The index holds no queue depth for any other instance, so\nthis is not the oldest waiting message of the environment. Absent while\nno instance asks.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "graphs_with_work",
+          "graphs_due",
+          "graphs_watching",
+          "graphs_blocked",
+          "graphs_inbox_full",
+          "instances_blocked"
+        ],
+        "type": "object"
+      },
+      "WorkflowEnvironmentSummaryResponse": {
+        "description": "`GET /v1/workflows/environment/summary`.",
+        "properties": {
+          "as_of_ms": {
+            "description": "When the oldest of the shards the counts come from was read, in\nmilliseconds since the Unix epoch. Only with `state` `ready`. The answer\nof a node is reused for one poll interval.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "attention": {
+            "description": "The graphs that ask for a person, oldest first, at most 50. Empty unless\n`state` is `ready`. The counts hold every graph; this list holds the\noldest.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowEnvironmentAttention"
+            },
+            "type": "array"
+          },
+          "counts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowEnvironmentCounts",
+                "description": "Only with `state` `ready`."
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/WorkflowEnvironmentSummaryState"
+          }
+        },
+        "required": [
+          "state",
+          "attention"
+        ],
+        "type": "object"
+      },
+      "WorkflowEnvironmentSummaryState": {
+        "description": "What the summary can say.",
+        "enum": [
+          "off",
+          "building",
+          "ready"
+        ],
+        "type": "string"
+      },
       "WorkflowEvent": {
         "additionalProperties": false,
         "description": "One event a client sends.",
@@ -136449,6 +136591,277 @@
           }
         ],
         "summary": "Record a derivation once: the key, the run that made it (`run_id`, optional) and what it made (`outputs`, at most 16 KiB of JSON). A second record of the same key answers the stored one with `recorded: false`. With `content_uploaded_at` (the upload the check answered), the record writes only while that upload is the file's live one. When the file was deleted since, or deleted and uploaded again, nothing is written: 409 `derivation_upload_changed`, and the run of the current upload does the work. Only LBB's own worker records LBB's `lbb.*` types (403 `reserved_workflow_type`); a work token records nothing else (403 `worker_credential_scope`). 400 `derivation_invalid`",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/workflows/environment/summary": {
+      "get": {
+        "operationId": "get_v1_workflows_environment_summary",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvironmentSummaryResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "What the environment's graphs have waiting, in counts: graphs with work, graphs due, graphs only watching, graphs and instances that are blocked, graphs with a full inbox, the oldest message of an instance that asks for a person, and the 50 oldest graphs that ask. `state` is `off` while this server does not keep the environment ready index, `building` until the backfill of the graphs that had work before it is done (no counts: a count that is too low is worse than none), and `ready` after. It reads at most 64 ready and 64 attention shards (a HEAD each, a GET for a shard that changed) and no graph; a node reuses the answer for one poll interval. It does not say how many turns run. An environment read; the graph scope is not used",
         "tags": [
           "system"
         ]

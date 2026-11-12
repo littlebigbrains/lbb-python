@@ -10866,6 +10866,75 @@ class WorkflowContentTrigger(BaseModel):
     ]
 
 
+class WorkflowEnvironmentAttention(BaseModel):
+    """
+    One graph with an instance that asks for a person.
+    """
+
+    blocked: Annotated[
+        int, Field(description='Instances whose head failed under `block`.', ge=0)
+    ]
+    branch_id: str
+    graph_id: str
+    inbox_full: Annotated[int, Field(description='Instances at their inbox cap.', ge=0)]
+    since_ms: Annotated[
+        int,
+        Field(
+            description='When the graph first asked, in milliseconds since the Unix epoch.'
+        ),
+    ]
+
+
+class WorkflowEnvironmentCounts(BaseModel):
+    """
+    The counts of an environment. A count that never happened is 0.
+    """
+
+    graphs_blocked: Annotated[
+        int,
+        Field(
+            description='Graphs with at least one instance whose head failed under `block`.',
+            ge=0,
+        ),
+    ]
+    graphs_due: Annotated[
+        int,
+        Field(
+            description='Graphs with queued turns or a timer whose time has passed.',
+            ge=0,
+        ),
+    ]
+    graphs_inbox_full: Annotated[
+        int,
+        Field(description='Graphs with at least one instance at its inbox cap.', ge=0),
+    ]
+    graphs_watching: Annotated[
+        int, Field(description='Graphs with a watch pass due and no other work.', ge=0)
+    ]
+    graphs_with_work: Annotated[
+        int, Field(description='Graphs with work of any kind in the index.', ge=0)
+    ]
+    instances_blocked: Annotated[
+        int, Field(description='Instances whose head failed under `block`.', ge=0)
+    ]
+    oldest_waiting_message_at_ms: Annotated[
+        int | None,
+        Field(
+            description='When the oldest unfinished turn of an instance that asks for a person\n(a blocked instance or a full inbox) was received, in milliseconds since\nthe Unix epoch. The index holds no queue depth for any other instance, so\nthis is not the oldest waiting message of the environment. Absent while\nno instance asks.'
+        ),
+    ] = None
+
+
+class WorkflowEnvironmentSummaryState(Enum):
+    """
+    What the summary can say.
+    """
+
+    off = 'off'
+    building = 'building'
+    ready = 'ready'
+
+
 class WorkflowEvent(BaseModel):
     """
     One event a client sends.
@@ -19013,6 +19082,27 @@ class WorkflowAgentTestInput(BaseModel):
 
 class WorkflowClaimResponse(BaseModel):
     task: WorkflowTask | None = None
+
+
+class WorkflowEnvironmentSummaryResponse(BaseModel):
+    """
+    `GET /v1/workflows/environment/summary`.
+    """
+
+    as_of_ms: Annotated[
+        int | None,
+        Field(
+            description='When the oldest of the shards the counts come from was read, in\nmilliseconds since the Unix epoch. Only with `state` `ready`. The answer\nof a node is reused for one poll interval.'
+        ),
+    ] = None
+    attention: Annotated[
+        list[WorkflowEnvironmentAttention],
+        Field(
+            description='The graphs that ask for a person, oldest first, at most 50. Empty unless\n`state` is `ready`. The counts hold every graph; this list holds the\noldest.'
+        ),
+    ]
+    counts: WorkflowEnvironmentCounts | None = None
+    state: WorkflowEnvironmentSummaryState
 
 
 class WorkflowEventsMessage(BaseModel):
