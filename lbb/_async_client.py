@@ -137,6 +137,7 @@ from .integrations import (
     _queues_sync,
     _sync_after_request,
 )
+from .sandboxes import _AsyncSandboxes
 
 AsyncImportItem = Mapping[str, Any] | str | bytes
 AsyncImportSource = (
@@ -2131,6 +2132,8 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         self.embeddings = _EmbeddingsNamespace(self)
         # Files of the graph. Each method returns an awaitable here.
         self.files = _FilesNamespace(self)
+        # Sandboxes: isolated code runs. Each method returns an awaitable.
+        self.sandboxes = _AsyncSandboxes(self)
         self.catalog = CatalogNamespace(self)
         self.access = AccessNamespace(self)
         # Hosted integrations for your end customers, at ``integrations_url``.

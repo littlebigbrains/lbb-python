@@ -3700,13 +3700,13 @@ class ModelBudgetPartial(BaseModel):
     dimension: Annotated[
         str,
         Field(
-            description='What it concerns: `spent` for the total and every row of it.'
+            description='What it concerns: `spent` for the total and every row of it, `budget`\nfor the limit.'
         ),
     ]
     reason: Annotated[
         str,
         Field(
-            description='`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced` or `host_calls_not_asked`.'
+            description='`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced`, `host_calls_not_asked` or\n`plan_allowance_not_applied`.'
         ),
     ]
 

@@ -30,6 +30,21 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   jitter, and honor `Retry-After`. After `lbb_wait_budget_ms` of waits for a
   turn (default one day; `0` turns them off), its failures count attempts
   again. A `WorkflowError` never waits.
+- `client.sandboxes` and `async_client.sandboxes` run code in an isolated
+  sandbox with no network (the server feature `LBB_SANDBOX_BACKEND`, off by
+  default). `run(code=..., input=...)` makes a sandbox, runs
+  `run(input, config)` and destroys the sandbox, and answers a
+  `SandboxRunResult` (`result`, `ok`, `status`, `exit_code`, `command`,
+  `sandbox`; `from lbb.sandboxes import SandboxRunResult`). `run(template=..., input=...)` uses a saved template
+  (`sandboxes.templates.create`). `scoped(spec)` (`with`, or `async with` on the
+  async client) and `create(spec)` give a handle with `files`, `commands`, `run`,
+  `stop`, `resume`, `update` and `delete`. Every call that runs code sends an
+  `Idempotency-Key` (yours, or one the SDK makes), so a retry never runs the code
+  twice. A one-call run whose VM the host lost goes again under the next key, at
+  most `lost_retries` times (0 to 2; 2 by default and the most). `lbb.sandboxes.SandboxWaitError`
+  is raised for a run that outlives `max_wait_ms` (per attempt). The reads of that wait carry
+  the `options` of the call. An empty `idempotency_key` is no key. Level 4
+  (`ctx.sandboxes`) and the keep as a File come later.
 - `model_budget(month)` and `model_budget_model(month)` read the environment's
   monthly model budget: the limit, what the month spent and what is left, the
   state against the warning line, and the spend by feature, model and day
