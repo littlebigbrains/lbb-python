@@ -12696,6 +12696,12 @@ class DailyActivityResponse(BaseModel):
             description='True when a bound hid graph names: the `*` rows hold counts of graphs\nthe rows cannot name. For a `namespace` scope those counts are not in\nthe answer at all.'
         ),
     ]
+    recording: Annotated[
+        bool | None,
+        Field(
+            description='Whether this server records daily counts (`LBB_WORK_ACTIVITY_ENABLED`).\nWhen it is `false`, the rows are empty because nothing is counted, not\nbecause the month was quiet. A server of this version always sends it.\nAbsent in an answer of an older server: not known.'
+        ),
+    ] = None
     scope: DailyActivityScope
     totals: Annotated[
         DailyActivityCounts, Field(description='The sum of every row of the scope.')
