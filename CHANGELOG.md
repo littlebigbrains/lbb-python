@@ -9,7 +9,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   code for the environment's model budget from a later release. Handle both.
 - `daily_activity(month, only_graph=..., only_namespace=...)` and
   `daily_activity_model(...)` read the queries and the facts written of the
-  environment per day and per graph (`GET /v1/activity/daily`).
+  environment per day and per graph (`GET /v1/activity/daily`). The answer says
+  `recording` (`False` when the server does not record daily counts, so empty
+  rows are not a quiet month). `recording` is `None` in the answer of an older
+  server: not known.
 - `endpoint_hint` is set for the codes `environment_endpoint_required` and
   `environment_endpoint_mismatch`, as it is for `stack_endpoint_required` and
   `stack_endpoint_mismatch`. A server may send either code.

@@ -2830,6 +2830,7 @@ class SyncClientTests(unittest.TestCase):
             "month": "2026-11",
             "months": ["2026-10", "2026-11"],
             "scope": "namespace",
+            "recording": False,
             "namespace": "acme",
             "other_graphs": False,
             "totals": counts,
@@ -2847,6 +2848,9 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(raw["totals"]["queries"], 5)
         self.assertEqual(typed.by_day_graph[0].graph, "crm")
         self.assertEqual(typed.scope, model_module.DailyActivityScope.namespace)
+        # A server that records nothing says so: the rows are empty for that
+        # reason, not because the month was quiet.
+        self.assertFalse(typed.recording)
         self.assertEqual(
             [(request.method, request.url.path) for request in seen],
             [("GET", "/v1/activity/daily"), ("GET", "/v1/activity/daily")],
@@ -2855,6 +2859,35 @@ class SyncClientTests(unittest.TestCase):
         self.assertEqual(seen[0].url.params.get("only_namespace"), "acme")
         self.assertNotIn("month", seen[1].url.params)
         self.assertNotIn("only_graph", seen[1].url.params)
+
+    def test_daily_activity_reads_an_answer_without_recording(self) -> None:
+        # A client newer than its server meets an answer from before the
+        # field existed: absent is "not known", not an error and not False.
+        counts = {
+            "queries": 0,
+            "query_errors": 0,
+            "facts_added": 0,
+            "facts_removed": 0,
+            "last_at_ms": 0,
+        }
+        payload = {
+            "month": "2026-11",
+            "months": [],
+            "scope": "environment",
+            "other_graphs": False,
+            "totals": counts,
+            "by_day": [],
+            "by_graph": [],
+            "by_day_graph": [],
+        }
+        seen: list[httpx.Request] = []
+        with LbbClient(
+            "http://h",
+            transport=capturing_transport(seen, [{"json": payload}]),
+        ) as client:
+            typed = client.daily_activity_model()
+        self.assertIsNone(typed.recording)
+        self.assertEqual(typed.totals.queries, 0)
 
 
 class SearchAndEvalsNamespaceTests(unittest.TestCase):
@@ -4385,6 +4418,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             "month": "2026-11",
             "months": ["2026-11"],
             "scope": "graph",
+            "recording": True,
             "graph": "crm",
             "other_graphs": False,
             "totals": counts,
@@ -4401,6 +4435,7 @@ class AsyncClientTests(unittest.IsolatedAsyncioTestCase):
             typed = await client.daily_activity_model()
         self.assertEqual(raw["totals"]["facts_added"], 2)
         self.assertIsInstance(typed, model_module.DailyActivityResponse)
+        self.assertTrue(typed.recording)
         self.assertEqual(seen[0].url.path, "/v1/activity/daily")
         self.assertEqual(seen[0].url.params.get("only_graph"), "crm")
         self.assertNotIn("only_graph", seen[1].url.params)
