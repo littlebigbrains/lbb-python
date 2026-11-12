@@ -3636,6 +3636,83 @@ class ModelArtifact(BaseModel):
     ]
 
 
+class ModelBudgetDay(BaseModel):
+    """
+    The spend of one day (UTC).
+    """
+
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    day: Annotated[str, Field(description='`yyyy-mm-dd`.')]
+
+
+class ModelBudgetFeature(BaseModel):
+    """
+    The spend of one feature (`index`, `search`, `rerank`, `fit`, `judge`,
+    `rewrite`, `trial`, `workflows`) in the month.
+    """
+
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    feature: str
+
+
+class ModelBudgetLimitSource(Enum):
+    """
+    Where the limit in force comes from.
+    """
+
+    environment = 'environment'
+    default = 'default'
+
+
+class ModelBudgetModel(BaseModel):
+    """
+    The spend of one model in the month. At most 64 models; the rest sum
+    under `*` for both fields.
+    """
+
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    model: str
+    provider: str
+
+
+class ModelBudgetPartial(BaseModel):
+    """
+    A way the answer is partial.
+    """
+
+    amount: Annotated[
+        int | None,
+        Field(
+            description='How much, in millionths of a US dollar or in calls (see the reason),\nwhen it is known.',
+            ge=0,
+        ),
+    ] = None
+    dimension: Annotated[
+        str,
+        Field(
+            description='What it concerns: `spent` for the total and every row of it.'
+        ),
+    ]
+    reason: Annotated[
+        str,
+        Field(
+            description='`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced` or `host_calls_not_asked`.'
+        ),
+    ]
+
+
+class ModelBudgetState(Enum):
+    """
+    How much of the budget the month used.
+    """
+
+    ok = 'ok'
+    warning = 'warning'
+    spent = 'spent'
+    unlimited = 'unlimited'
+    not_recorded = 'not_recorded'
+
+
 class ModelCadenceResponse(BaseModel):
     """
     `GET /v1/models/cadence` — the auto-index doubling policy applied to
@@ -14953,6 +15030,97 @@ class ModelActivityWorkflow(BaseModel):
     provider: str
     tokens_estimate: Annotated[int, Field(ge=0)]
     workflow: str
+
+
+class ModelBudgetLimit(BaseModel):
+    """
+    The limit, and the state of the month against it.
+    """
+
+    limit_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The monthly limit in millionths of a US dollar. Null: no limit.',
+            ge=0,
+        ),
+    ] = None
+    limit_source: ModelBudgetLimitSource
+    resets_at: Annotated[
+        str,
+        Field(
+            description="When the month's budget is whole again: the first day of the next\nmonth, UTC (RFC 3339)."
+        ),
+    ]
+    resets_at_ms: int
+    state: ModelBudgetState
+    used_ratio: Annotated[
+        float | None,
+        Field(
+            description='Spent divided by the limit. Null when there is no limit or nothing\nis recorded.'
+        ),
+    ] = None
+    warn_at_ratio: Annotated[
+        float, Field(description='The ratio at which `state` becomes `warning`.')
+    ]
+
+
+class ModelBudgetResponse(BaseModel):
+    """
+    `GET /v1/models/budget`.
+    """
+
+    budget: ModelBudgetLimit
+    by_day: Annotated[
+        list[ModelBudgetDay], Field(description='The spend by day, oldest first.')
+    ]
+    by_feature: Annotated[
+        list[ModelBudgetFeature],
+        Field(description='The spend by feature, the largest first.'),
+    ]
+    by_model: Annotated[
+        list[ModelBudgetModel],
+        Field(description='The spend by model, the largest first.'),
+    ]
+    calls: Annotated[int, Field(ge=0)]
+    complete: Annotated[
+        bool, Field(description='False when a node dropped counts it could not write.')
+    ]
+    dropped_keys: Annotated[int, Field(ge=0)]
+    dropped_micro_usd: Annotated[int, Field(ge=0)]
+    errors: Annotated[int, Field(ge=0)]
+    left_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The limit minus the spend, never below 0. Null when there is no limit.',
+            ge=0,
+        ),
+    ] = None
+    month: Annotated[str, Field(description='`yyyy-mm` (UTC).')]
+    months: Annotated[
+        list[str], Field(description='The months that have a record, oldest first.')
+    ]
+    partial: Annotated[
+        list[ModelBudgetPartial], Field(description='Every way this answer is partial.')
+    ]
+    recording: Annotated[
+        bool,
+        Field(
+            description='Whether this server records the spend (`LBB_MODEL_BUDGET_SPEND_ENABLED`).\nWhen it is `false`, `spent_micro_usd` is 0 because nothing is\nrecorded, not because nothing was spent.'
+        ),
+    ]
+    spent_micro_usd: Annotated[
+        int,
+        Field(
+            description='Everything the environment spent on paid model calls in the month,\nin millionths of a US dollar. An estimate at list prices, not an\ninvoice.',
+            ge=0,
+        ),
+    ]
+    unpriced_calls: Annotated[
+        int,
+        Field(
+            description='Calls that used tokens and got no price: they count 0.', ge=0
+        ),
+    ]
 
 
 class ModelCalibrationAnswer(BaseModel):

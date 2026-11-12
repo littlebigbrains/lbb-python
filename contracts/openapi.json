@@ -16984,6 +16984,274 @@
         ],
         "type": "object"
       },
+      "ModelBudgetDay": {
+        "description": "The spend of one day (UTC).",
+        "properties": {
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "day": {
+            "description": "`yyyy-mm-dd`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "cost_micro_usd"
+        ],
+        "type": "object"
+      },
+      "ModelBudgetFeature": {
+        "description": "The spend of one feature (`index`, `search`, `rerank`, `fit`, `judge`,\n`rewrite`, `trial`, `workflows`) in the month.",
+        "properties": {
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "feature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "feature",
+          "cost_micro_usd"
+        ],
+        "type": "object"
+      },
+      "ModelBudgetLimit": {
+        "description": "The limit, and the state of the month against it.",
+        "properties": {
+          "limit_micro_usd": {
+            "description": "The monthly limit in millionths of a US dollar. Null: no limit.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "limit_source": {
+            "$ref": "#/components/schemas/ModelBudgetLimitSource"
+          },
+          "resets_at": {
+            "description": "When the month's budget is whole again: the first day of the next\nmonth, UTC (RFC 3339).",
+            "type": "string"
+          },
+          "resets_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ModelBudgetState"
+          },
+          "used_ratio": {
+            "description": "Spent divided by the limit. Null when there is no limit or nothing\nis recorded.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "warn_at_ratio": {
+            "description": "The ratio at which `state` becomes `warning`.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "limit_source",
+          "state",
+          "warn_at_ratio",
+          "resets_at",
+          "resets_at_ms"
+        ],
+        "type": "object"
+      },
+      "ModelBudgetLimitSource": {
+        "description": "Where the limit in force comes from.",
+        "enum": [
+          "environment",
+          "default"
+        ],
+        "type": "string"
+      },
+      "ModelBudgetModel": {
+        "description": "The spend of one model in the month. At most 64 models; the rest sum\nunder `*` for both fields.",
+        "properties": {
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "cost_micro_usd"
+        ],
+        "type": "object"
+      },
+      "ModelBudgetPartial": {
+        "description": "A way the answer is partial.",
+        "properties": {
+          "amount": {
+            "description": "How much, in millionths of a US dollar or in calls (see the reason),\nwhen it is known.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "dimension": {
+            "description": "What it concerns: `spent` for the total and every row of it.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced` or `host_calls_not_asked`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ModelBudgetResponse": {
+        "description": "`GET /v1/models/budget`.",
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/ModelBudgetLimit"
+          },
+          "by_day": {
+            "description": "The spend by day, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/ModelBudgetDay"
+            },
+            "type": "array"
+          },
+          "by_feature": {
+            "description": "The spend by feature, the largest first.",
+            "items": {
+              "$ref": "#/components/schemas/ModelBudgetFeature"
+            },
+            "type": "array"
+          },
+          "by_model": {
+            "description": "The spend by model, the largest first.",
+            "items": {
+              "$ref": "#/components/schemas/ModelBudgetModel"
+            },
+            "type": "array"
+          },
+          "calls": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "complete": {
+            "description": "False when a node dropped counts it could not write.",
+            "type": "boolean"
+          },
+          "dropped_keys": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dropped_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "left_micro_usd": {
+            "description": "The limit minus the spend, never below 0. Null when there is no limit.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "month": {
+            "description": "`yyyy-mm` (UTC).",
+            "type": "string"
+          },
+          "months": {
+            "description": "The months that have a record, oldest first.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "partial": {
+            "description": "Every way this answer is partial.",
+            "items": {
+              "$ref": "#/components/schemas/ModelBudgetPartial"
+            },
+            "type": "array"
+          },
+          "recording": {
+            "description": "Whether this server records the spend (`LBB_MODEL_BUDGET_SPEND_ENABLED`).\nWhen it is `false`, `spent_micro_usd` is 0 because nothing is\nrecorded, not because nothing was spent.",
+            "type": "boolean"
+          },
+          "spent_micro_usd": {
+            "description": "Everything the environment spent on paid model calls in the month,\nin millionths of a US dollar. An estimate at list prices, not an\ninvoice.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unpriced_calls": {
+            "description": "Calls that used tokens and got no price: they count 0.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "month",
+          "months",
+          "recording",
+          "budget",
+          "spent_micro_usd",
+          "calls",
+          "errors",
+          "unpriced_calls",
+          "by_feature",
+          "by_model",
+          "by_day",
+          "complete",
+          "dropped_micro_usd",
+          "dropped_keys",
+          "partial"
+        ],
+        "type": "object"
+      },
+      "ModelBudgetState": {
+        "description": "How much of the budget the month used.",
+        "enum": [
+          "ok",
+          "warning",
+          "spent",
+          "unlimited",
+          "not_recorded"
+        ],
+        "type": "string"
+      },
       "ModelCadenceResponse": {
         "description": "`GET /v1/models/cadence` — the auto-index doubling policy applied to\nmodels: retraining is due when the graph has doubled since the promoted\nrun was trained (or when nothing was ever trained).",
         "properties": {
@@ -92493,6 +92761,286 @@
           }
         ],
         "summary": "What each managed model did for the stack in one month: totals, by day and by graph per feature (index, search, fit, judge, training, rerank, rewrite, trial, workflows) and model, the workflows' calls per workflow and job, the months with activity, and the model each feature uses now. A stack read; the answering node adds the calls it has not written to the ledger yet",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/models/budget": {
+      "get": {
+        "operationId": "get_v1_models_budget",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm (UTC); default: the current month",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelBudgetResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The environment's monthly model budget: the limit, what the month spent and what is left, the state against the warning line, and the spend by feature, model and day. The spend is an estimate at list prices, not an invoice. `recording: false` means this server does not record the spend; the answering node adds the counts it has not written to the record yet",
         "tags": [
           "system"
         ]

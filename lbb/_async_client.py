@@ -2525,6 +2525,17 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
             ),
         )
 
+    async def model_budget(self, month: str | None = None) -> Any:
+        return await super().model_budget(month)
+
+    async def model_budget_model(
+        self, month: str | None = None
+    ) -> models.ModelBudgetResponse:
+        return cast(
+            models.ModelBudgetResponse,
+            await super().model_budget_model(month),
+        )
+
     def workflow_turn_reader(self, task: Body) -> AsyncWorkflowTurnReader:
         """Bind SELECT/ASK to a task claimed with include_execution_credential.
 

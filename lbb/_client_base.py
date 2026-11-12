@@ -3212,6 +3212,33 @@ class _BaseLbbClient(_StarterWorkflowMethods):
             params=_daily_activity_params(month, only_graph, only_namespace),
         )
 
+    def model_budget(self, month: str | None = None) -> Any:
+        """The environment's monthly model budget.
+
+        The limit, what the month spent and what is left, the state against
+        the warning line (``ok``, ``warning``, ``spent``, ``unlimited`` or
+        ``not_recorded``), and the spend by feature, model and day. The spend
+        is an estimate at list prices, not an invoice. ``month`` is ``yyyy-mm``
+        (UTC); the current month by default. An environment read: the client's
+        graph scope is not used.
+        """
+        return self._request(
+            "GET",
+            "/v1/models/budget",
+            params={"month": month} if month is not None else None,
+        )
+
+    def model_budget_model(
+        self, month: str | None = None
+    ) -> models.ModelBudgetResponse:
+        """The model budget validated as ``ModelBudgetResponse``."""
+        return self._model_request(
+            models.ModelBudgetResponse,
+            "GET",
+            "/v1/models/budget",
+            params={"month": month} if month is not None else None,
+        )
+
     def publication_status_model(self) -> models.PublicationStatusResponse:
         """Publication lifecycle validated as ``PublicationStatusResponse``."""
         return self._model_request(
