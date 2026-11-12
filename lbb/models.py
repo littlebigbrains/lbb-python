@@ -967,6 +967,13 @@ class DailyActivityCounts(BaseModel):
     query_errors: Annotated[
         int, Field(description='Queries that ended with a status of 400 or more.', ge=0)
     ]
+    workflow_runs: Annotated[
+        int | None,
+        Field(
+            description='New units of workflow work: a run started, or a turn accepted for an\ninstance. A retry of the same run or message counts nothing, and a\nfailure is not in it. An instance start is not a unit of work: one\ninstance takes many messages. Absent in an answer of an older server.',
+            ge=0,
+        ),
+    ] = None
 
 
 class DailyActivityDay(BaseModel):
@@ -980,6 +987,7 @@ class DailyActivityDay(BaseModel):
     last_at_ms: int
     queries: Annotated[int, Field(ge=0)]
     query_errors: Annotated[int, Field(ge=0)]
+    workflow_runs: Annotated[int | None, Field(ge=0)] = None
 
 
 class DailyActivityDayGraph(BaseModel):
@@ -995,6 +1003,7 @@ class DailyActivityDayGraph(BaseModel):
     last_at_ms: int
     queries: Annotated[int, Field(ge=0)]
     query_errors: Annotated[int, Field(ge=0)]
+    workflow_runs: Annotated[int | None, Field(ge=0)] = None
 
 
 class DailyActivityGraph(BaseModel):
@@ -1008,6 +1017,7 @@ class DailyActivityGraph(BaseModel):
     last_at_ms: int
     queries: Annotated[int, Field(ge=0)]
     query_errors: Annotated[int, Field(ge=0)]
+    workflow_runs: Annotated[int | None, Field(ge=0)] = None
 
 
 class DailyActivityScope(Enum):
@@ -13060,7 +13070,7 @@ class DailyActivityResponse(BaseModel):
     by_graph: Annotated[
         list[DailyActivityGraph],
         Field(
-            description='The graphs with the most work first (queries plus facts added), at\nmost 100, then `*`.'
+            description='The graphs with the most work first (queries, facts added and workflow\nruns), at most 100, then `*`.'
         ),
     ]
     graph: Annotated[str | None, Field(description='The graph of a `graph` scope.')] = (

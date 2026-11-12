@@ -34,6 +34,9 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   monthly model budget: the limit, what the month spent and what is left, the
   state against the warning line, and the spend by feature, model and day
   (`GET /v1/models/budget`).
+- Daily activity rows carry `workflow_runs`: new units of workflow work that day
+  (a run started, or a turn accepted for an instance). A retry counts nothing,
+  and an instance start is not counted. It reads as 0 from an older server.
 
 ## 0.35.0 (2026-11-07)
 

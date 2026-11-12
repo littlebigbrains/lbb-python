@@ -4446,6 +4446,12 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "workflow_runs": {
+            "description": "New units of workflow work: a run started, or a turn accepted for an\ninstance. A retry of the same run or message counts nothing, and a\nfailure is not in it. An instance start is not a unit of work: one\ninstance takes many messages. Absent in an answer of an older server.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -4484,6 +4490,11 @@
             "type": "integer"
           },
           "query_errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflow_runs": {
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -4532,6 +4543,11 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "workflow_runs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -4574,6 +4590,11 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "workflow_runs": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -4604,7 +4625,7 @@
             "type": "array"
           },
           "by_graph": {
-            "description": "The graphs with the most work first (queries plus facts added), at\nmost 100, then `*`.",
+            "description": "The graphs with the most work first (queries, facts added and workflow\nruns), at most 100, then `*`.",
             "items": {
               "$ref": "#/components/schemas/DailyActivityGraph"
             },

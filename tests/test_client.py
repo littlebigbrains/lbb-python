@@ -2824,6 +2824,7 @@ class SyncClientTests(unittest.TestCase):
             "query_errors": 1,
             "facts_added": 30,
             "facts_removed": 2,
+            "workflow_runs": 3,
             "last_at_ms": 1_790_000_000_000,
         }
         payload = {
@@ -2847,6 +2848,7 @@ class SyncClientTests(unittest.TestCase):
             typed = client.daily_activity_model()
         self.assertEqual(raw["totals"]["queries"], 5)
         self.assertEqual(typed.by_day_graph[0].graph, "crm")
+        self.assertEqual(typed.totals.workflow_runs, 3)
         self.assertEqual(typed.scope, model_module.DailyActivityScope.namespace)
         # A server that records nothing says so: the rows are empty for that
         # reason, not because the month was quiet.
