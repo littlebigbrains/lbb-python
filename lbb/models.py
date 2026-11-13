@@ -1592,6 +1592,26 @@ class EmbeddingModelRequest(BaseModel):
     model: str
 
 
+class EmbeddingPaused(BaseModel):
+    """
+    Why an embedding builds no new vectors, and when it goes on.
+    """
+
+    reason: Annotated[
+        str,
+        Field(
+            description="`model_budget`: the environment's monthly model budget is spent."
+        ),
+    ]
+    resumes_at: Annotated[
+        str,
+        Field(
+            description='The latest time the build goes on: the reset of the budget, the first\nday of the next month, UTC (RFC 3339). It goes on earlier when the\nbudget is raised.'
+        ),
+    ]
+    resumes_at_ms: int
+
+
 class Kind9(Enum):
     hash = 'hash'
 
@@ -13618,6 +13638,7 @@ class EmbeddingStatus(BaseModel):
         ),
     ] = None
     name: str
+    paused: EmbeddingPaused | None = None
     previous: Annotated[int | None, Field(ge=0)] = None
     published_seq: CommitSeq | None = None
     recipe: Annotated[EmbeddingRecipe, Field(description='The latest declared recipe.')]
