@@ -17057,6 +17057,19 @@
           "limit_source": {
             "$ref": "#/components/schemas/ModelBudgetLimitSource"
           },
+          "plan": {
+            "$ref": "#/components/schemas/ModelBudgetPlan",
+            "description": "Who pays for the model usage of this environment."
+          },
+          "plan_allowance_micro_usd": {
+            "description": "The plan allowance in millionths of a US dollar. Null: no allowance\napplies (the customer pays, or the cell has none).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "resets_at": {
             "description": "When the month's budget is whole again: the first day of the next\nmonth, UTC (RFC 3339).",
             "type": "string"
@@ -17084,6 +17097,7 @@
         },
         "required": [
           "limit_source",
+          "plan",
           "state",
           "warn_at_ratio",
           "resets_at",
@@ -17095,7 +17109,8 @@
         "description": "Where the limit in force comes from.",
         "enum": [
           "environment",
-          "default"
+          "default",
+          "plan"
         ],
         "type": "string"
       },
@@ -17134,11 +17149,11 @@
             ]
           },
           "dimension": {
-            "description": "What it concerns: `spent` for the total and every row of it, `budget`\nfor the limit.",
+            "description": "What it concerns: `spent` for the total and every row of it.",
             "type": "string"
           },
           "reason": {
-            "description": "`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced`, `host_calls_not_asked` or\n`plan_allowance_not_applied`.",
+            "description": "`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced` or `host_calls_not_asked`.",
             "type": "string"
           }
         },
@@ -17147,6 +17162,15 @@
           "reason"
         ],
         "type": "object"
+      },
+      "ModelBudgetPlan": {
+        "description": "Who pays for the model usage of the environment. It decides whether the\nplan allowance caps the budget.",
+        "enum": [
+          "we_pay",
+          "customer_pays",
+          "unknown"
+        ],
+        "type": "string"
       },
       "ModelBudgetResponse": {
         "description": "`GET /v1/models/budget`.",

@@ -52,6 +52,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 - Daily activity rows carry `workflow_runs`: new units of workflow work that day
   (a run started, or a turn accepted for an instance). A retry counts nothing,
   and an instance start is not counted. It reads as 0 from an older server.
+- `model_budget` says who pays for the environment's model usage
+  (`budget.plan`: `we_pay`, `customer_pays` or `unknown`) and the plan
+  allowance (`budget.plan_allowance_micro_usd`). `budget.limit_source` can be
+  `plan`: where LBB pays, the allowance is the limit.
 
 ## 0.35.0 (2026-11-07)
 

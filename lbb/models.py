@@ -3672,6 +3672,7 @@ class ModelBudgetLimitSource(Enum):
 
     environment = 'environment'
     default = 'default'
+    plan = 'plan'
 
 
 class ModelBudgetModel(BaseModel):
@@ -3700,15 +3701,26 @@ class ModelBudgetPartial(BaseModel):
     dimension: Annotated[
         str,
         Field(
-            description='What it concerns: `spent` for the total and every row of it, `budget`\nfor the limit.'
+            description='What it concerns: `spent` for the total and every row of it.'
         ),
     ]
     reason: Annotated[
         str,
         Field(
-            description='`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced`, `host_calls_not_asked` or\n`plan_allowance_not_applied`.'
+            description='`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced` or `host_calls_not_asked`.'
         ),
     ]
+
+
+class ModelBudgetPlan(Enum):
+    """
+    Who pays for the model usage of the environment. It decides whether the
+    plan allowance caps the budget.
+    """
+
+    we_pay = 'we_pay'
+    customer_pays = 'customer_pays'
+    unknown = 'unknown'
 
 
 class ModelBudgetState(Enum):
@@ -15124,6 +15136,17 @@ class ModelBudgetLimit(BaseModel):
         ),
     ] = None
     limit_source: ModelBudgetLimitSource
+    plan: Annotated[
+        ModelBudgetPlan,
+        Field(description='Who pays for the model usage of this environment.'),
+    ]
+    plan_allowance_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The plan allowance in millionths of a US dollar. Null: no allowance\napplies (the customer pays, or the cell has none).',
+            ge=0,
+        ),
+    ] = None
     resets_at: Annotated[
         str,
         Field(
