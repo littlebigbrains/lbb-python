@@ -94,6 +94,15 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   `resumes_at_ms`): it builds no new vectors because the environment's monthly
   model budget is spent, and it goes on by itself. A search with a text that must
   be embedded can answer `429 model_budget_exceeded`.
+- `EvalResults` has the optional `ran`, `partial` and `skipped_by`, and
+  `EvalVerdictDetail` the optional `skip_reason` (`model_budget`, `run_time`,
+  `daily_eval_budget`, `no_rewriter`, `not_asked`). `EvalScorePoint` has the
+  optional `partial`, `ran` and `total`. A run that skipped goldens is partial,
+  and on a partial run `regression` speaks only for the goldens that ran: read
+  `regression: false` with `partial: true` as "no regression among the goldens
+  that ran", never as a pass. A result stored before these fields has no `ran`;
+  the server serves it with `ran` as `total - skipped`. The server produces the
+  fields from a later release. Show `ran` of `total` for a partial run.
 
 ## 0.35.0 (2026-11-07)
 
