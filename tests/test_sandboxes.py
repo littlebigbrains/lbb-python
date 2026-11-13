@@ -503,6 +503,42 @@ class ScopedAndHandleSync(unittest.TestCase):
         self.assertEqual(service.requests[-1].method, "DELETE")
         self.assertEqual(service.requests[-1].url.params["recursive"], "true")
 
+    def test_the_handle_of_a_sandbox_that_exists_is_made_from_its_record_with_no_request(self) -> None:
+        service = Service()
+        client = sync_client(service)
+        made = client.sandboxes.create()
+        # A caller that stored the id reads the record, and makes the handle.
+        record = client.sandboxes.retrieve(made.id)
+        requests = len(service.requests)
+        sb = client.sandboxes.handle(record)
+        self.assertEqual(len(service.requests), requests, "the handle makes no request")
+        self.assertEqual((sb.id, sb.record["id"]), (made.id, made.id))
+        self.assertIsNot(sb.record, record, "the handle holds a copy of the record")
+        # Its files and its commands work on the sandbox that exists.
+        sb.files.write("data.csv", CSV)
+        put = service.requests[-1]
+        self.assertEqual((put.method, put.url.params["sandbox"]), ("PUT", made.id))
+        self.assertEqual(sb.files.read("data.csv"), CSV.encode())
+        self.assertEqual(sb.run(code=CODE, input=[1, 2])["result"], 3)
+        self.assertEqual(service.requests[-1].url.params["sandbox"], made.id)
+        self.assertEqual(sb.refresh()["id"], made.id)
+        self.assertEqual(sb.delete()["status"], "destroyed")
+
+    def test_read_text_decodes_a_file_as_utf8(self) -> None:
+        service = Service()
+        sb = sync_client(service).sandboxes.create()
+        sb.files.write("words.txt", "caf\u00e9 \u00fcber\n")
+        text = sb.files.read_text("words.txt")
+        self.assertIsInstance(text, str)
+        self.assertEqual(text, "caf\u00e9 \u00fcber\n")
+        get = service.requests[-1]
+        self.assertEqual((get.method, get.url.params["path"]), ("GET", "words.txt"))
+        # The range of read applies, and a byte that is not UTF-8 reads as U+FFFD.
+        sb.files.read_text("words.txt", start=1, end=3)
+        self.assertEqual(service.requests[-1].headers["range"], "bytes=1-3")
+        service.files[next(iter(service.files))] = b"ok \xff ok"
+        self.assertEqual(sb.files.read_text("words.txt"), "ok \ufffd ok")
+
     def test_the_handle_runs_code_and_commands_with_keys(self) -> None:
         service = Service()
         sb = sync_client(service).sandboxes.create()
@@ -661,6 +697,27 @@ class Async(unittest.TestCase):
             )
             with self.assertRaises(SandboxWaitError):
                 await async_client(service).sandboxes.run(code=CODE, max_wait_ms=50)
+
+        asyncio.run(go())
+
+    def test_the_handle_of_a_sandbox_that_exists_and_read_text_work_with_await(self) -> None:
+        async def go() -> None:
+            service = Service()
+            client = async_client(service)
+            made = await client.sandboxes.create()
+            record = await client.sandboxes.retrieve(made.id)
+            requests = len(service.requests)
+            # `handle` makes no request: a plain call, and no coroutine.
+            sb = client.sandboxes.handle(record)
+            self.assertFalse(asyncio.iscoroutine(sb))
+            self.assertEqual(len(service.requests), requests, "the handle makes no request")
+            self.assertEqual(sb.id, made.id)
+            await sb.files.write("words.txt", "caf\u00e9\n")
+            self.assertEqual(await sb.files.read_text("words.txt"), "caf\u00e9\n")
+            self.assertEqual(service.requests[-1].url.params["sandbox"], made.id)
+            service.files[next(iter(service.files))] = b"ok \xff ok"
+            self.assertEqual(await sb.files.read_text("words.txt"), "ok \ufffd ok")
+            self.assertEqual((await sb.delete())["status"], "destroyed")
 
         asyncio.run(go())
 

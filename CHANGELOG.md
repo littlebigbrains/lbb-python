@@ -4,6 +4,23 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `client.sandboxes.handle(record)` (and on `AsyncLbbClient`, as a plain call)
+  gives the handle of a sandbox that exists, from its record (the answer of
+  `retrieve`), with no request: files, commands and the life of the sandbox are
+  on it. `sb.files.read_text(path)` reads a file as UTF-8 text (a coroutine on
+  the async handle). Both match the TypeScript SDK's `sandboxes.handle` and
+  `files.readText`. No name changed and the wire is the same.
+- `Sandbox` has the optional `status_message` (`None` when absent). A sandbox
+  whose start failed because a file of its template could not be copied in
+  (`start_error`) names the file by its SHA-256 and the path it was to go to. No
+  code needs a change.
+- `FileOrigin` has the optional `sandbox` (`sbx_`, `None` when absent).
+  `workflow`, `run` and `step` stay required strings. A file kept from a
+  sandbox workspace (`POST /v1/files?source_sandbox=&source_path=`, from a later
+  release of the server with the sandbox feature on) has empty `workflow`,
+  `run` and `step` and an `origin.sandbox`. A file a workflow run wrote has the
+  three and no `sandbox`, as before. No code needs a change: a client that
+  requires the three fields reads every record.
 - A step that meets `429 model_budget_exceeded` waits for the reset the same way
   as one that meets `429 workflow_budget_exceeded`. The server produces the new
   code for the environment's model budget from a later release. Handle both.

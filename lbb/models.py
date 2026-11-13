@@ -2285,14 +2285,41 @@ class FileDeleteResponse(BaseModel):
 
 class FileOrigin(BaseModel):
     """
-    The run that wrote a generated file.
+    Where a generated file came from: the run that wrote it, or the sandbox
+    whose workspace file it keeps.
+
+    A file a workflow run wrote has `workflow`, `run` and `step`, and no
+    `sandbox`. A file kept from a sandbox (`POST /v1/files?source_sandbox=&source_path=`)
+    has `sandbox`, and `workflow`, `run` and `step` as empty strings, because no
+    run wrote it. The three are always strings, as they were before the keep
+    existed, so a client that requires them reads every record. The server sets
+    every field. A request never does.
     """
 
     run: Annotated[
-        str, Field(description='The run (one attempt of a turn) that wrote it.')
+        str,
+        Field(
+            description='The run (one attempt of a turn) that wrote it. Empty on a file kept\nfrom a sandbox by a key.'
+        ),
     ]
-    step: Annotated[str, Field(description='The step of the run that wrote it.')]
-    workflow: Annotated[str, Field(description='The workflow that wrote the file.')]
+    sandbox: Annotated[
+        str | None,
+        Field(
+            description='The sandbox (`sbx_`) whose workspace file this file keeps. Present only\non a file kept from a sandbox.'
+        ),
+    ] = None
+    step: Annotated[
+        str,
+        Field(
+            description='The step of the run that wrote it. Empty on a file kept from a sandbox\nby a key.'
+        ),
+    ]
+    workflow: Annotated[
+        str,
+        Field(
+            description='The workflow that wrote the file. Empty on a file kept from a sandbox\nby a key.'
+        ),
+    ]
 
 
 class FilePagesPutResponse(BaseModel):
@@ -7328,9 +7355,10 @@ class SandboxStreamSummary(BaseModel):
 
 class SandboxTemplateFile(BaseModel):
     """
-    A file a template copies into `/workspace`. A template with files needs
-    the import from Files, which is not available yet: a create with `files`
-    answers 400 `invalid_request`.
+    A file a template copies into `/workspace` when a sandbox of the template
+    first starts: a File of the graph, named by its SHA-256. A template holds
+    64 files at most and 16 MiB together. The path is under `/workspace`; the
+    template shows it as an absolute path.
     """
 
     model_config = ConfigDict(
@@ -7338,7 +7366,10 @@ class SandboxTemplateFile(BaseModel):
     )
     path: Annotated[str, Field(description='The path in `/workspace`.')]
     source_sha256: Annotated[
-        str, Field(description='The SHA-256 of a file of the graph.')
+        str,
+        Field(
+            description='The SHA-256 of a file of the graph, 64 hexadecimal characters.'
+        ),
     ]
 
 
@@ -17450,6 +17481,12 @@ class Sandbox(BaseModel):
     owner: SandboxOwner | None = None
     run: SandboxRunSummary | None = None
     status: SandboxStatus
+    status_message: Annotated[
+        str | None,
+        Field(
+            description='What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. Absent otherwise, and gone when\nthe status changes.'
+        ),
+    ] = None
     status_reason: SandboxStatusReason | None = None
     template: SandboxTemplateRef
     usage: SandboxUsage
@@ -17739,7 +17776,7 @@ class SandboxTemplateCreateRequest(BaseModel):
     files: Annotated[
         list[SandboxTemplateFile] | None,
         Field(
-            description='Files for `/workspace`. Not available yet; see\n[`SandboxTemplateFile`].'
+            description='Files for `/workspace`: Files of the graph, copied when a sandbox of\nthis template first starts. See [`SandboxTemplateFile`].'
         ),
     ] = None
     limits: SandboxLimitsInput | None = None
