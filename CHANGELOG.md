@@ -73,6 +73,12 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
   (`budget.plan`: `we_pay`, `customer_pays` or `unknown`) and the plan
   allowance (`budget.plan_allowance_micro_usd`). `budget.limit_source` can be
   `plan`: where LBB pays, the allowance is the limit.
+- `catalog.search(q, namespace_id=..., limit=...)` searches the graphs and namespaces of the
+  environment by name (`GET /v1/catalog/search`). Rows are ordered exact, prefix, substring,
+  and each was checked against its head. `more_graphs` and `more_namespaces` say that more
+  rows may exist. The server answers `403 graph_catalog_disabled` until its operator turns
+  the graph catalog reader on, and `503 graph_catalog_unavailable` (retry) for an
+  environment whose catalog is not yet verified.
 
 ## 0.35.0 (2026-11-07)
 
