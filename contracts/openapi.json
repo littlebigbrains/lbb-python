@@ -6668,6 +6668,29 @@
         ],
         "type": "object"
       },
+      "EmbeddingPaused": {
+        "description": "Why an embedding builds no new vectors, and when it goes on.",
+        "properties": {
+          "reason": {
+            "description": "`model_budget`: the environment's monthly model budget is spent.",
+            "type": "string"
+          },
+          "resumes_at": {
+            "description": "The latest time the build goes on: the reset of the budget, the first\nday of the next month, UTC (RFC 3339). It goes on earlier when the\nbudget is raised.",
+            "type": "string"
+          },
+          "resumes_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reason",
+          "resumes_at",
+          "resumes_at_ms"
+        ],
+        "type": "object"
+      },
       "EmbeddingPreviewRequest": {
         "allOf": [
           {
@@ -7466,6 +7489,17 @@
           },
           "name": {
             "type": "string"
+          },
+          "paused": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EmbeddingPaused",
+                "description": "Present when new vectors are not built because the environment's\nmonthly model budget is spent. The build keeps what it embedded and\ngoes on by itself."
+              }
+            ]
           },
           "previous": {
             "format": "int64",
