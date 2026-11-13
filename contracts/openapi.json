@@ -43002,6 +43002,51 @@
         ],
         "type": "object"
       },
+      "WorkflowEnvironmentClaim": {
+        "description": "A turn the environment claim assigned, and the graph it belongs to. The turn\ncalls that follow (heartbeat, checkpoint, complete, fail) go to that graph's\nown routes, with the turn's lease token.",
+        "properties": {
+          "branch_id": {
+            "type": "string"
+          },
+          "graph_epoch": {
+            "description": "The graph lifetime the turn belongs to. Send it as `expected_graph_epoch`\non the turn calls, so a graph that was deleted and created again is\nrefused.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graph_id": {
+            "type": "string"
+          },
+          "task": {
+            "$ref": "#/components/schemas/WorkflowTurnTask",
+            "description": "The turn, as the per-graph claim answers it."
+          }
+        },
+        "required": [
+          "graph_id",
+          "branch_id",
+          "graph_epoch",
+          "task"
+        ],
+        "type": "object"
+      },
+      "WorkflowEnvironmentClaimResponse": {
+        "description": "`POST /v1/workflows/environment/turns/claim`.",
+        "properties": {
+          "claim": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowEnvironmentClaim",
+                "description": "The turn and its graph, or `null` when no graph of the environment had a\nclaimable turn within `wait_ms`."
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
       "WorkflowEnvironmentCounts": {
         "description": "The counts of an environment. A count that never happened is 0.",
         "properties": {
@@ -136927,6 +136972,296 @@
           }
         ],
         "summary": "What the environment's graphs have waiting, in counts: graphs with work, graphs due, graphs only watching, graphs and instances that are blocked, graphs with a full inbox, the oldest message of an instance that asks for a person, and the 50 oldest graphs that ask. `state` is `off` while this server does not keep the environment ready index, `building` until the backfill of the graphs that had work before it is done (no counts: a count that is too low is worse than none), and `ready` after. It reads at most 64 ready and 64 attention shards (a HEAD each, a GET for a shard that changed) and no graph; a node reuses the answer for one poll interval. It does not say how many turns run. An environment read; the graph scope is not used",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/workflows/environment/turns/claim": {
+      "post": {
+        "operationId": "post_v1_workflows_environment_turns_claim",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowTurnClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowEnvironmentClaimResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Claim one turn from any graph of the environment that has work, found through the environment ready index (the claim path). The request is the one of the per-graph claim (`include_execution_credential` is refused: 400); `wait_ms` is at most 10000, and the first pass is always whole. The answer is `{claim: null}` when no graph had a claimable turn, else the graph (`graph_id`, `branch_id`, `graph_epoch`) and the `task` of the per-graph claim; the turn calls that follow stay on that graph's own routes. One claim visits at most 8 graphs, in a fair order, and takes one turn. The credential must have the whole environment as its scope: the environment key or a console session. A credential of a smaller scope (a work token, a worker pool credential, an application token) is refused (403), and a reserved workflow type (`lbb.*`) is refused as on the per-graph claim. A node that does not offer the route (LBB_WORKFLOW_READY_INDEX_CLAIM or LBB_WORKFLOW_READY_INDEX_WRITE is off) or whose environment has no complete index (the backfill is not done) answers 404 `not_found`: a 404 means use the per-graph claim (`POST /v1/workflows/turns/claim`), which stays, and never means there is no work (that is `{claim: null}`). A client that disconnects during `wait_ms` does not cancel the claim: a turn it takes is leased to nobody and is free again when its lease ends (the instance's `lease_ms`, 60 s by default), as on the per-graph claim. An environment route; the graph scope is not used",
         "tags": [
           "system"
         ]

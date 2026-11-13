@@ -23836,6 +23836,36 @@ class TripletCommitFile(BaseModel):
     workflow_fence: WorkflowFence | None = None
 
 
+class WorkflowEnvironmentClaim(BaseModel):
+    """
+    A turn the environment claim assigned, and the graph it belongs to. The turn
+    calls that follow (heartbeat, checkpoint, complete, fail) go to that graph's
+    own routes, with the turn's lease token.
+    """
+
+    branch_id: str
+    graph_epoch: Annotated[
+        int,
+        Field(
+            description='The graph lifetime the turn belongs to. Send it as `expected_graph_epoch`\non the turn calls, so a graph that was deleted and created again is\nrefused.',
+            ge=0,
+        ),
+    ]
+    graph_id: str
+    task: Annotated[
+        WorkflowTurnTask,
+        Field(description='The turn, as the per-graph claim answers it.'),
+    ]
+
+
+class WorkflowEnvironmentClaimResponse(BaseModel):
+    """
+    `POST /v1/workflows/environment/turns/claim`.
+    """
+
+    claim: WorkflowEnvironmentClaim | None = None
+
+
 class WorkflowGateCalibrationReport(BaseModel):
     """
     `GET /v1/workflows/triggered/calibration`: the gated workflows of the
