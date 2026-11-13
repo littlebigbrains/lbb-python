@@ -2133,13 +2133,28 @@ class EvalQueryType(Enum):
 
 class EvalScorePoint(BaseModel):
     failed: Annotated[int, Field(ge=0)]
+    partial: Annotated[
+        bool | None,
+        Field(description='The run skipped at least one golden: it is not a pass.'),
+    ] = None
     passed: Annotated[int, Field(ge=0)]
     precision: float | None = None
+    ran: Annotated[
+        int | None,
+        Field(
+            description='The goldens the run tested, and the suite it was asked about\n(`ran` of `total`).',
+            ge=0,
+        ),
+    ] = None
     ran_at: str
     recall: float | None = None
-    regression: bool
+    regression: Annotated[
+        bool,
+        Field(description='On a partial run it speaks only for the goldens that ran.'),
+    ]
     score: float
     served_at_seq: Annotated[int, Field(ge=0)]
+    total: Annotated[int | None, Field(ge=0)] = None
 
 
 class EvalSettings(BaseModel):
@@ -2157,6 +2172,18 @@ class EvalSettings(BaseModel):
     v: Annotated[
         int, Field(description='Settings format version. Currently `1`.', ge=0)
     ]
+
+
+class EvalSkipReason(Enum):
+    """
+    Why a golden was skipped: the run did not test it.
+    """
+
+    model_budget = 'model_budget'
+    run_time = 'run_time'
+    daily_eval_budget = 'daily_eval_budget'
+    no_rewriter = 'no_rewriter'
+    not_asked = 'not_asked'
 
 
 class EvalSurface(Enum):
@@ -23469,6 +23496,7 @@ class EvalVerdictDetail(BaseModel):
             ge=0,
         ),
     ] = None
+    skip_reason: EvalSkipReason | None = None
     sparql: Annotated[
         str | None,
         Field(
@@ -24174,11 +24202,24 @@ class EvalResults(BaseModel):
     goldens_version: Annotated[
         int, Field(description='The suite version the run read.', ge=0)
     ]
+    partial: Annotated[
+        bool | None,
+        Field(
+            description='True when the run skipped at least one golden, so `score` and the\ncounts speak for part of the suite. A partial run is not a pass: read\nit with `ran` and `skipped_by`. Absent only in a result stored before\nthe field existed; the server then reads it as `skipped > 0`.'
+        ),
+    ] = None
     passed: Annotated[int, Field(ge=0)]
     precision: Annotated[
         float | None,
         Field(
             description='Mean precision over the goldens with judged results returned.'
+        ),
+    ] = None
+    ran: Annotated[
+        int | None,
+        Field(
+            description='The goldens the run tested: `total` minus `skipped`. Absent only in a\nresult stored before the field existed; the server then reads it as\n`total - skipped` ([`EvalResults::normalized`]), never as 0.',
+            ge=0,
         ),
     ] = None
     ran_at: Annotated[str, Field(description='RFC 3339.')]
@@ -24188,7 +24229,10 @@ class EvalResults(BaseModel):
         Field(description='Mean recall over the goldens with known-relevant results.'),
     ] = None
     regression: Annotated[
-        bool, Field(description='True when `score` is below the settings threshold.')
+        bool,
+        Field(
+            description='True when `score` is below the settings threshold. On a partial run it\nspeaks only for the goldens that ran: `passed / ran` is below the\nthreshold, so a run that skipped goldens never reports a regression\nthat only the skipped goldens caused.'
+        ),
     ]
     review_traces: Annotated[
         int | None,
@@ -24221,6 +24265,12 @@ class EvalResults(BaseModel):
     ]
     served_at_seq: Annotated[int, Field(ge=0)]
     skipped: Annotated[int, Field(ge=0)]
+    skipped_by: Annotated[
+        dict[str, int] | None,
+        Field(
+            description='The skipped goldens by reason (`model_budget`, `run_time`,\n`daily_eval_budget`, `no_rewriter`, `not_asked`).'
+        ),
+    ] = None
     total: Annotated[int, Field(ge=0)]
     v: Annotated[int, Field(description='Results format version. Currently `2`.', ge=0)]
     verdicts: dict[str, EvalVerdictDetail]

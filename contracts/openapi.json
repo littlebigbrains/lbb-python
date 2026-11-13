@@ -9931,6 +9931,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "partial": {
+            "description": "True when the run skipped at least one golden, so `score` and the\ncounts speak for part of the suite. A partial run is not a pass: read\nit with `ran` and `skipped_by`. Absent only in a result stored before\nthe field existed; the server then reads it as `skipped > 0`.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "passed": {
             "minimum": 0,
             "type": "integer"
@@ -9939,6 +9946,14 @@
             "description": "Mean precision over the goldens with judged results returned.",
             "format": "float",
             "type": "number"
+          },
+          "ran": {
+            "description": "The goldens the run tested: `total` minus `skipped`. Absent only in a\nresult stored before the field existed; the server then reads it as\n`total - skipped` ([`EvalResults::normalized`]), never as 0.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "ran_at": {
             "description": "RFC 3339.",
@@ -9954,7 +9969,7 @@
             "type": "number"
           },
           "regression": {
-            "description": "True when `score` is below the settings threshold.",
+            "description": "True when `score` is below the settings threshold. On a partial run it\nspeaks only for the goldens that ran: `passed / ran` is below the\nthreshold, so a run that skipped goldens never reports a regression\nthat only the skipped goldens caused.",
             "type": "boolean"
           },
           "review_traces": {
@@ -9990,6 +10005,17 @@
           "skipped": {
             "minimum": 0,
             "type": "integer"
+          },
+          "skipped_by": {
+            "additionalProperties": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": "The skipped goldens by reason (`model_budget`, `run_time`,\n`daily_eval_budget`, `no_rewriter`, `not_asked`).",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "total": {
             "minimum": 0,
@@ -10186,6 +10212,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "partial": {
+            "description": "The run skipped at least one golden: it is not a pass.",
+            "type": "boolean"
+          },
           "passed": {
             "minimum": 0,
             "type": "integer"
@@ -10193,6 +10223,14 @@
           "precision": {
             "format": "float",
             "type": "number"
+          },
+          "ran": {
+            "description": "The goldens the run tested, and the suite it was asked about\n(`ran` of `total`).",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "ran_at": {
             "type": "string"
@@ -10202,6 +10240,7 @@
             "type": "number"
           },
           "regression": {
+            "description": "On a partial run it speaks only for the goldens that ran.",
             "type": "boolean"
           },
           "score": {
@@ -10210,6 +10249,10 @@
           },
           "served_at_seq": {
             "$ref": "#/components/schemas/CommitSeq"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -10270,6 +10313,17 @@
           "count"
         ],
         "type": "object"
+      },
+      "EvalSkipReason": {
+        "description": "Why a golden was skipped: the run did not test it.",
+        "enum": [
+          "model_budget",
+          "run_time",
+          "daily_eval_budget",
+          "no_rewriter",
+          "not_asked"
+        ],
+        "type": "string"
       },
       "EvalSummaryResponse": {
         "properties": {
@@ -10689,6 +10743,17 @@
             "type": [
               "integer",
               "null"
+            ]
+          },
+          "skip_reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalSkipReason",
+                "description": "Why the golden was skipped (`verdict: skipped`)."
+              }
             ]
           },
           "sparql": {
