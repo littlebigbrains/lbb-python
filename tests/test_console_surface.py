@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -52,6 +53,98 @@ def test_workflow_status_returns_a_model_and_preserves_the_epoch(
     assert seen[0].url.path == "/v1/workflows/status"
     assert seen[0].url.params["graph"] == "main"
     assert seen[0].url.params.get("expected_graph_epoch") == epoch
+
+
+CLAIM_REQUEST = {
+    "worker": "w1",
+    "workflows": [{"workflow_type": "counter", "version": "v1"}],
+    "wait_ms": 0,
+}
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_environment_claim_posts_once_and_returns_the_graph_with_the_claim(
+    asynchronous: bool,
+) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"claim": None})
+
+    transport = httpx.MockTransport(handler)
+    body = models.WorkflowTurnClaimRequest(
+        worker="w1",
+        workflows=[models.WorkflowWorkerType(workflow_type="counter", version="v1")],
+        wait_ms=0,
+    )
+
+    async def run() -> models.WorkflowEnvironmentClaimResponse:
+        async with AsyncLbbClient("http://h", graph="main", transport=transport) as client:
+            return await client.workflows.claim_environment_turn(body)
+
+    if asynchronous:
+        result = asyncio.run(run())
+    else:
+        with LbbClient("http://h", graph="main", transport=transport) as client:
+            result = client.workflows.claim_environment_turn(body)
+
+    assert isinstance(result, models.WorkflowEnvironmentClaimResponse)
+    assert result.claim is None
+    assert len(seen) == 1
+    assert seen[0].method == "POST"
+    assert seen[0].url.path == "/v1/workflows/environment/turns/claim"
+    assert json.loads(seen[0].content)["workflows"] == CLAIM_REQUEST["workflows"]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_environment_claim_is_not_retried(asynchronous: bool) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(503, json={"error": {"message": "busy"}})
+
+    transport = httpx.MockTransport(handler)
+    body = models.WorkflowTurnClaimRequest.model_validate(CLAIM_REQUEST)
+
+    async def run() -> None:
+        async with AsyncLbbClient("http://h", graph="main", transport=transport) as client:
+            await client.workflows.claim_environment_turn(body)
+
+    with pytest.raises(LbbError):
+        if asynchronous:
+            asyncio.run(run())
+        else:
+            with LbbClient("http://h", graph="main", transport=transport) as client:
+                client.workflows.claim_environment_turn(body)
+    assert len(seen) == 1
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_environment_summary_reads_the_environment_route(asynchronous: bool) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"state": "off", "attention": []})
+
+    transport = httpx.MockTransport(handler)
+
+    async def run() -> models.WorkflowEnvironmentSummaryResponse:
+        async with AsyncLbbClient("http://h", graph="main", transport=transport) as client:
+            return await client.workflows.environment_summary()
+
+    if asynchronous:
+        result = asyncio.run(run())
+    else:
+        with LbbClient("http://h", graph="main", transport=transport) as client:
+            result = client.workflows.environment_summary()
+
+    assert isinstance(result, models.WorkflowEnvironmentSummaryResponse)
+    assert result.state == models.WorkflowEnvironmentSummaryState.off
+    assert seen[0].method == "GET"
+    assert seen[0].url.path == "/v1/workflows/environment/summary"
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

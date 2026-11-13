@@ -233,6 +233,49 @@ class WorkflowNamespace:
             ),
         )
 
+    async def claim_environment_turn(
+        self, request: models.WorkflowTurnClaimRequest
+    ) -> models.WorkflowEnvironmentClaimResponse:
+        """Claim one turn from any graph of the environment that has work,
+        through the environment's ready index
+        (``POST /v1/workflows/environment/turns/claim``). ``request`` is the
+        claim of the per-graph worker. The answer's ``claim`` is ``None`` when
+        no graph had a claimable turn within ``wait_ms``, else the graph
+        (``graph_id``, ``branch_id``, ``graph_epoch``) and the ``task``; its turn
+        calls go to that graph's own routes, with ``expected_graph_epoch`` set to
+        ``graph_epoch``.
+
+        The credential must be the environment's (the environment key or a
+        console session): a credential of one graph, a worker pool credential
+        and an application token get 403. A 404 means this server or this
+        environment does not offer the route: use the per-graph claim, which
+        stays; it never means there is no work. Not retried: a lost answer must
+        not claim a second turn. Hosted workers still take LBB's own work
+        through the work board."""
+        return cast(
+            models.WorkflowEnvironmentClaimResponse,
+            await self._client._model_request(
+                models.WorkflowEnvironmentClaimResponse,
+                "POST",
+                "/v1/workflows/environment/turns/claim",
+                body=request,
+                options={"retry": False},
+            ),
+        )
+
+    async def environment_summary(self) -> models.WorkflowEnvironmentSummaryResponse:
+        """What the environment's graphs have waiting, in counts, from the
+        ready index and no graph read (``GET /v1/workflows/environment/summary``):
+        ``state`` is ``off``, ``building`` or ``ready``."""
+        return cast(
+            models.WorkflowEnvironmentSummaryResponse,
+            await self._client._model_request(
+                models.WorkflowEnvironmentSummaryResponse,
+                "GET",
+                "/v1/workflows/environment/summary",
+            ),
+        )
+
     async def start(
         self,
         definition: WorkflowDefinition[Any, Any],

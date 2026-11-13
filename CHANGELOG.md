@@ -4,6 +4,17 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `client.workflows.claim_environment_turn(request)` claims one turn from any
+  graph of the environment (`POST /v1/workflows/environment/turns/claim`), through
+  the environment's ready index, and `client.workflows.environment_summary()`
+  reads what the environment's graphs have waiting (`GET
+  /v1/workflows/environment/summary`); both on `AsyncLbbClient` as coroutines. The
+  claim answers a `claim` of `None` or the graph (`graph_id`, `branch_id`,
+  `graph_epoch`) with the `task`; the turn calls go to that graph's routes. A 404
+  means the server or the environment does not offer it: use the per-graph
+  claim. It is not retried. Needs the environment key or a console session. The
+  server offers it from a later release, behind a flag.
+
 - `client.sandboxes.handle(record)` (and on `AsyncLbbClient`, as a plain call)
   gives the handle of a sandbox that exists, from its record (the answer of
   `retrieve`), with no request: files, commands and the life of the sandbox are
