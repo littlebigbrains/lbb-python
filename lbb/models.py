@@ -3785,6 +3785,41 @@ class ModelArtifact(BaseModel):
     ]
 
 
+class ModelBudgetCheckResponse(BaseModel):
+    """
+    `GET /api/admin/model-budget/check` (database admin token): the answer for a
+    paid call of the SaaS API that may run (a spent budget is the error
+    `429 model_budget_exceeded`, an unreadable one `503 model_budget_unavailable`).
+    The caller keeps the answer for `ttl_ms` and spends at most
+    `headroom_micro_usd` with it.
+    """
+
+    allowed: Annotated[
+        bool, Field(description='Always `true`: a call that may not run is an error.')
+    ]
+    checked_at_ms: int
+    enforcing: Annotated[
+        bool,
+        Field(
+            description="False when the cell's check is off (`LBB_MODEL_BUDGET_ENFORCE`): the\nanswer is `allowed` and nothing was read."
+        ),
+    ]
+    headroom_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='What the environment can still spend this month, in millionths of a US\ndollar: the limit minus the spend this node knows. Null when the\nenvironment has no limit, or the check is off. The caller never spends\nmore than this between two answers.',
+            ge=0,
+        ),
+    ] = None
+    ttl_ms: Annotated[
+        int,
+        Field(
+            description='How long the answer holds, in milliseconds: the cache time of the check\n(10 s, 5 s from 80 % of the limit).',
+            ge=0,
+        ),
+    ]
+
+
 class ModelBudgetDay(BaseModel):
     """
     The spend of one day (UTC).
