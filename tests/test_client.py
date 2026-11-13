@@ -2899,7 +2899,9 @@ def _model_budget_payload() -> dict[str, Any]:
         "recording": True,
         "budget": {
             "limit_micro_usd": 85_000_000,
-            "limit_source": "default",
+            "limit_source": "plan",
+            "plan": "we_pay",
+            "plan_allowance_micro_usd": 85_000_000,
             "state": "warning",
             "used_ratio": 0.9,
             "warn_at_ratio": 0.8,
@@ -2939,6 +2941,11 @@ class ModelBudgetTests(unittest.TestCase):
             typed = client.model_budget_model()
         self.assertEqual(raw["left_micro_usd"], 8_500_000)
         self.assertEqual(typed.budget.state, model_module.ModelBudgetState.warning)
+        self.assertEqual(
+            typed.budget.limit_source, model_module.ModelBudgetLimitSource.plan
+        )
+        self.assertEqual(typed.budget.plan, model_module.ModelBudgetPlan.we_pay)
+        self.assertEqual(typed.budget.plan_allowance_micro_usd, 85_000_000)
         self.assertEqual(typed.by_feature[0].feature, "workflows")
         self.assertEqual(
             [(request.method, request.url.path) for request in seen],
