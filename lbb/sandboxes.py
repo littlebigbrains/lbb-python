@@ -158,6 +158,12 @@ def _file_bytes(data: str | bytes | bytearray | memoryview) -> bytes:
     return bytes(data)
 
 
+def _text_of(data: bytes | bytearray | memoryview) -> str:
+    """The text of file bytes, decoded as UTF-8. A byte that is not UTF-8 reads
+    as U+FFFD, as the TypeScript SDK's ``readText`` does."""
+    return bytes(data).decode("utf-8", errors="replace")
+
+
 class _SandboxFiles:
     """The files of a sandbox's ``/workspace``. Each method returns the answer
     (an awaitable on :class:`AsyncLbbClient`)."""
@@ -232,6 +238,20 @@ class _SandboxFiles:
             ),
             options={"retry": True},
         )
+
+
+class _SyncSandboxFiles(_SandboxFiles):
+    def read_text(self, path: str, *, start: int | None = None, end: int | None = None) -> str:
+        """A file's text, decoded as UTF-8: :meth:`read`, decoded. The same size
+        limit and the same ``start`` and ``end`` apply."""
+        return _text_of(self.read(path, start=start, end=end))
+
+
+class _AsyncSandboxFiles(_SandboxFiles):
+    async def read_text(self, path: str, *, start: int | None = None, end: int | None = None) -> str:
+        """A file's text, decoded as UTF-8: :meth:`read`, decoded. The same size
+        limit and the same ``start`` and ``end`` apply."""
+        return _text_of(await self.read(path, start=start, end=end))
 
 
 class _SandboxCommands:
@@ -354,11 +374,15 @@ class _SandboxCommands:
 class _SandboxHandleBase:
     """A sandbox you hold: its files, its commands and its life."""
 
+    #: The kind of ``files`` the handle has: the sync and the async handle each
+    #: set their own (``read_text`` is a call or a coroutine).
+    _files_type: type[_SandboxFiles] = _SandboxFiles
+
     def __init__(self, client: _BaseLbbClient, record: dict[str, Any]) -> None:
         self._client = client
         #: The last record the SDK read. :meth:`refresh` reads it again.
         self.record = record
-        self.files = _SandboxFiles(client, record["id"])
+        self.files = self._files_type(client, record["id"])
         self.commands = _SandboxCommands(client, record["id"])
 
     @property
@@ -396,6 +420,9 @@ class _SandboxHandleBase:
 
 
 class _SyncSandboxHandle(_SandboxHandleBase):
+    _files_type = _SyncSandboxFiles
+    files: _SyncSandboxFiles
+
     def refresh(self) -> dict[str, Any]:
         """Read the sandbox again."""
         self.record = self._client._request("GET", "/v1/sandboxes/get", params=self._params())
@@ -444,6 +471,9 @@ class _SyncSandboxHandle(_SandboxHandleBase):
 
 
 class _AsyncSandboxHandle(_SandboxHandleBase):
+    _files_type = _AsyncSandboxFiles
+    files: _AsyncSandboxFiles
+
     async def refresh(self) -> dict[str, Any]:
         """Read the sandbox again."""
         self.record = await self._client._request(
@@ -745,6 +775,14 @@ class _SyncSandboxes(_SandboxesBase):
     """Sandboxes: :meth:`run` (one call), :meth:`scoped` and :meth:`create` (a
     handle), and the resource calls."""
 
+    def handle(self, record: Mapping[str, Any]) -> _SyncSandboxHandle:
+        """The handle of a sandbox that exists, from its record (the answer of
+        :meth:`retrieve`, or of a list). It makes no request: files, commands
+        and the life of the sandbox are on the handle, as on the one
+        :meth:`create` answers. The handle holds a copy of the record;
+        :meth:`refresh <_SyncSandboxHandle.refresh>` reads it again."""
+        return _SyncSandboxHandle(self._client, dict(record))
+
     def _create_handle(self, body: dict[str, Any], key: str | None) -> _SyncSandboxHandle:
         record = self._client._request(
             "POST",
@@ -885,7 +923,17 @@ class _SyncSandboxes(_SandboxesBase):
 
 class _AsyncSandboxes(_SandboxesBase):
     """Sandboxes: :meth:`run` (one call), :meth:`scoped` and :meth:`create` (a
-    handle), and the resource calls. Every method returns an awaitable."""
+    handle), and the resource calls. Every method returns an awaitable, except
+    :meth:`handle` and :meth:`scoped`, which make no request."""
+
+    def handle(self, record: Mapping[str, Any]) -> _AsyncSandboxHandle:
+        """The handle of a sandbox that exists, from its record (the answer of
+        :meth:`retrieve`, or of a list). It makes no request, so it is a plain
+        call and no coroutine: files, commands and the life of the sandbox are on
+        the handle, as on the one :meth:`create` answers. The handle holds a copy
+        of the record; :meth:`refresh <_AsyncSandboxHandle.refresh>` reads it
+        again."""
+        return _AsyncSandboxHandle(self._client, dict(record))
 
     async def _create_handle(self, body: dict[str, Any], key: str | None) -> _AsyncSandboxHandle:
         record = await self._client._request(
