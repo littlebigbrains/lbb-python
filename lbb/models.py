@@ -667,6 +667,71 @@ class CatalogRawUsageProvenance(BaseModel):
     ]
 
 
+class CatalogSearchGraph(BaseModel):
+    """
+    A graph that matches a search by name.
+    """
+
+    graph_id: str
+    owner: CatalogNamespaceIdentity | None = None
+    path: Annotated[
+        str | None,
+        Field(
+            description='The path of the owner, not including the graph id. Absent for a graph in no namespace.'
+        ),
+    ] = None
+    state: Annotated[
+        str,
+        Field(
+            description='The state of the graph. Today only `live`. The set is open: a reader treats any other value as an unknown state and does not fail.'
+        ),
+    ]
+
+
+class CatalogSearchNamespace(BaseModel):
+    """
+    A namespace that matches a search by name.
+    """
+
+    depth: Annotated[int, Field(description='The number of names in `path`.', ge=0)]
+    identity: CatalogNamespaceIdentity
+    name: str
+    path: Annotated[
+        str,
+        Field(
+            description='The names from the first level, joined by `/`. The root has no row.'
+        ),
+    ]
+
+
+class CatalogSearchPage(BaseModel):
+    """
+    The answer of `GET /v1/catalog/search`. Rows are ordered exact match, then prefix, then substring; within a rank the shorter text comes first, then the lexicographic order. Every row was checked: a graph against its head and its binding, a namespace against the application catalog.
+    """
+
+    as_of_ms: Annotated[
+        int,
+        Field(
+            description='When the newest read of the view that answered finished, in milliseconds since the Unix epoch. A result can lag the heads by about this age.',
+            ge=0,
+        ),
+    ]
+    graphs: list[CatalogSearchGraph]
+    more_graphs: Annotated[
+        bool,
+        Field(
+            description='True when more matching graphs may exist, as for `more_namespaces`.'
+        ),
+    ]
+    more_namespaces: Annotated[
+        bool,
+        Field(
+            description='True when more matching namespaces may exist: a match beyond `limit` was found, or the call ended its read budget before it finished. There is no count.'
+        ),
+    ]
+    namespaces: list[CatalogSearchNamespace]
+
+
 class CatalogUsageTotals(BaseModel):
     model_config = ConfigDict(
         extra='forbid',

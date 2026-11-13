@@ -2145,6 +2145,108 @@
         ],
         "type": "object"
       },
+      "CatalogSearchGraph": {
+        "description": "A graph that matches a search by name.",
+        "properties": {
+          "graph_id": {
+            "type": "string"
+          },
+          "owner": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CatalogNamespaceIdentity",
+                "description": "The namespace that owns the graph. Absent for a graph in no namespace."
+              }
+            ]
+          },
+          "path": {
+            "description": "The path of the owner, not including the graph id. Absent for a graph in no namespace.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "description": "The state of the graph. Today only `live`. The set is open: a reader treats any other value as an unknown state and does not fail.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "graph_id",
+          "state"
+        ],
+        "type": "object"
+      },
+      "CatalogSearchNamespace": {
+        "description": "A namespace that matches a search by name.",
+        "properties": {
+          "depth": {
+            "description": "The number of names in `path`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/CatalogNamespaceIdentity"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "description": "The names from the first level, joined by `/`. The root has no row.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "name",
+          "path",
+          "depth"
+        ],
+        "type": "object"
+      },
+      "CatalogSearchPage": {
+        "description": "The answer of `GET /v1/catalog/search`. Rows are ordered exact match, then prefix, then substring; within a rank the shorter text comes first, then the lexicographic order. Every row was checked: a graph against its head and its binding, a namespace against the application catalog.",
+        "properties": {
+          "as_of_ms": {
+            "description": "When the newest read of the view that answered finished, in milliseconds since the Unix epoch. A result can lag the heads by about this age.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graphs": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSearchGraph"
+            },
+            "type": "array"
+          },
+          "more_graphs": {
+            "description": "True when more matching graphs may exist, as for `more_namespaces`.",
+            "type": "boolean"
+          },
+          "more_namespaces": {
+            "description": "True when more matching namespaces may exist: a match beyond `limit` was found, or the call ended its read budget before it finished. There is no count.",
+            "type": "boolean"
+          },
+          "namespaces": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSearchNamespace"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "namespaces",
+          "graphs",
+          "more_namespaces",
+          "more_graphs",
+          "as_of_ms"
+        ],
+        "type": "object"
+      },
       "CatalogUsagePage": {
         "oneOf": [
           {
@@ -52691,6 +52793,304 @@
           }
         ],
         "summary": "Read the environment's implicit catalog root identity (environment administrator only)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/catalog/search": {
+      "get": {
+        "operationId": "get_v1_catalog_search",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "required; 1 to 64 characters after trimming; no control character or backslash; a query with / finds namespaces only; a query of one or two characters matches by prefix only",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "optional stable namespace id; search only the graphs owned in its subtree and the namespaces below it (root or absent searches the environment); an unknown id is 404",
+            "in": "query",
+            "name": "namespace_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "rows of each kind, 1 through 25 (default 5)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSearchPage"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Search the graphs and namespaces of the environment by name (graph catalog; application tokens and worker credentials are refused; answers 403 graph_catalog_disabled while the graph catalog reader is off)",
         "tags": [
           "system"
         ]

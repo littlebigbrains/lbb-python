@@ -119,6 +119,29 @@ class CatalogNamespace:
             options=options,
         )
 
+    def search(
+        self,
+        q: str,
+        *,
+        namespace_id: str | None = None,
+        limit: int | None = None,
+        options: RequestOptions | None = None,
+    ) -> Any:
+        """Search the graphs and namespaces of the environment by name.
+
+        Rows are ordered exact match, then prefix, then substring, and each was checked
+        against its head. ``more_graphs`` and ``more_namespaces`` are true when more rows
+        may exist (there is no count). Needs an environment key and the graph catalog
+        reader on the node; otherwise ``graph_catalog_disabled`` (403) or
+        ``graph_catalog_unavailable`` (503, retry). Async clients return an awaitable.
+        """
+        return self._client._request(
+            "GET",
+            "/v1/catalog/search",
+            params={"q": q, "namespace_id": namespace_id, "limit": limit},
+            options=options,
+        )
+
     def pending_operations(
         self,
         *,

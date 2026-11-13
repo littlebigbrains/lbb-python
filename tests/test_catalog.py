@@ -293,3 +293,79 @@ def test_saved_dataset_views_preserve_exact_epochs_in_sync_and_async_clients() -
         assert seen[offset + 1].url.params["revision"] == revision
         assert json.loads(seen[offset + 2].content) == body
         assert seen[offset + 2].url.params["graph"] == "project"
+
+
+def test_catalog_search_sends_the_query_the_namespace_and_the_limit() -> None:
+    seen: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "namespaces": [],
+                "graphs": [{"graph_id": "acme-support", "state": "live"}],
+                "more_namespaces": False,
+                "more_graphs": True,
+                "as_of_ms": 1795000000000,
+            },
+        )
+
+    with LbbClient(
+        base_url="https://example.test",
+        graph="project",
+        environment="prod",
+        transport=httpx.MockTransport(handle),
+    ) as client:
+        page = client.catalog.search("acme", namespace_id="ns_stable", limit=3)
+        client.catalog.search("acme/pro")
+    assert page["graphs"][0]["graph_id"] == "acme-support"
+    assert page["more_graphs"] is True
+    assert seen[0].url.path == "/v1/catalog/search"
+    assert seen[0].url.params["q"] == "acme"
+    assert seen[0].url.params["namespace_id"] == "ns_stable"
+    assert seen[0].url.params["limit"] == "3"
+    assert seen[1].url.params["q"] == "acme/pro"
+    assert "namespace_id" not in seen[1].url.params
+    assert "limit" not in seen[1].url.params
+    for request in seen:
+        assert request.url.params["graph"] == "project"
+        assert request.url.params["stack"] == "prod"
+
+
+def test_async_catalog_search_uses_the_same_contract() -> None:
+    seen: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"graphs": [], "namespaces": []})
+
+    async def run() -> None:
+        async with AsyncLbbClient(
+            base_url="https://example.test", graph="project", transport=httpx.MockTransport(handle)
+        ) as client:
+            assert await client.catalog.search("acme", limit=2) == {"graphs": [], "namespaces": []}
+
+    asyncio.run(run())
+    assert seen[0].url.path == "/v1/catalog/search"
+    assert seen[0].url.params["limit"] == "2"
+
+
+def test_search_models_accept_a_state_and_fields_they_do_not_know() -> None:
+    from lbb.models import CatalogSearchPage
+
+    page = CatalogSearchPage.model_validate(
+        {
+            "namespaces": [],
+            "graphs": [
+                {"graph_id": "old", "state": "live"},
+                {"graph_id": "later", "state": "archived", "added_later": {"any": 1}},
+            ],
+            "more_namespaces": False,
+            "more_graphs": False,
+            "as_of_ms": 1,
+            "added_at_page_level": True,
+        }
+    )
+    assert [graph.state for graph in page.graphs] == ["live", "archived"]
+    assert page.graphs[0].owner is None and page.graphs[0].path is None
