@@ -17639,7 +17639,7 @@ class Sandbox(BaseModel):
     status_message: Annotated[
         str | None,
         Field(
-            description='What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. Absent otherwise, and gone when\nthe status changes.'
+            description='What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. A `stopped` sandbox has it after a\nresume that did not start (a static sentence: the sandbox keeps its\ndisk). Absent otherwise, and gone when the status changes.'
         ),
     ] = None
     status_reason: SandboxStatusReason | None = None
