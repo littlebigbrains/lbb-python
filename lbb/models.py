@@ -3790,8 +3790,9 @@ class ModelBudgetCheckResponse(BaseModel):
     `GET /api/admin/model-budget/check` (database admin token): the answer for a
     paid call of the SaaS API that may run (a spent budget is the error
     `429 model_budget_exceeded`, an unreadable one `503 model_budget_unavailable`).
-    The caller keeps the answer for `ttl_ms` and spends at most
-    `headroom_micro_usd` with it.
+    The caller keeps the answer for `ttl_ms` and takes `headroom_micro_usd` as
+    the room it has, less what it spent in the last 75 seconds that the headroom
+    does not hold yet (`docs/architecture/model-budget.md`, slice M3e-3).
     """
 
     allowed: Annotated[
@@ -3807,7 +3808,7 @@ class ModelBudgetCheckResponse(BaseModel):
     headroom_micro_usd: Annotated[
         int | None,
         Field(
-            description='What the environment can still spend this month, in millionths of a US\ndollar: the limit minus the spend this node knows. Null when the\nenvironment has no limit, or the check is off. The caller never spends\nmore than this between two answers.',
+            description="What the environment can still spend this month, in millionths of a US\ndollar: the limit minus the spend this node knows. It does not hold the\ncaller's own spend of the last 75 seconds (its report, the node's flush\nand this check's cache come between a call and the ledger), so the\ncaller takes that out. Null when the environment has no limit, or the\ncheck is off. It is not a bound on the overshoot of a cell.",
             ge=0,
         ),
     ] = None
@@ -3881,7 +3882,7 @@ class ModelBudgetPartial(BaseModel):
     reason: Annotated[
         str,
         Field(
-            description='`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced` or `host_calls_not_asked`.'
+            description='`dropped`, `unpriced_calls`, `training_not_in_dollars`,\n`host_jev_cost_not_priced`, `host_calls_not_asked` or\n`cdc_plan_spend_not_recorded` (the CDC plan runner reports its model\ncalls to no ledger, so its spend is not in the figure).'
         ),
     ]
 
