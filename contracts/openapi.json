@@ -31325,7 +31325,7 @@
             "$ref": "#/components/schemas/SandboxStatus"
           },
           "status_message": {
-            "description": "What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. Absent otherwise, and gone when\nthe status changes.",
+            "description": "What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. A `stopped` sandbox has it after a\nresume that did not start (a static sentence: the sandbox keeps its\ndisk). Absent otherwise, and gone when the status changes.",
             "type": [
               "string",
               "null"
@@ -123633,7 +123633,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create a sandbox: one VM with a workspace disk and no network, from a template (`lbb/python` by default). With `run` it is the L1 shortcut: the sandbox runs `run(input, config)` once and is destroyed when the command ends; the answer holds the run (`run`) and waits for it at most `wait_ms` (0 to 30,000, default 0). A create with `run` needs an `Idempotency-Key`; a repeat answers the same record, also a `failed` one, and a new attempt needs a new key. 400 `idempotency_key_required`, 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_template_not_found`, 409 `sandbox_template_revoked`, 409 `sandbox_not_enabled`, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default; a sandbox counts while it is starting, running, stopping or being destroyed), 503 `sandbox_unavailable`",
+        "summary": "Create a sandbox: one VM with a workspace disk and no network, from a template (`lbb/python` by default). With `run` it is the L1 shortcut: the sandbox runs `run(input, config)` once and is destroyed when the command ends; the answer holds the run (`run`) and waits for it at most `wait_ms` (0 to 30,000, default 0). A create with `run` needs an `Idempotency-Key`; a repeat answers the same record, also a `failed` one, and a new attempt needs a new key. 400 `idempotency_key_required`, 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_template_not_found`, 409 `sandbox_template_revoked`, 409 `sandbox_not_enabled`, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default; a sandbox counts while it is starting, running, stopping or being destroyed), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: nothing is made, so the same request with the same `Idempotency-Key` works later; retry after 30 seconds), 503 `sandbox_unavailable`",
         "tags": [
           "sandboxes"
         ]
@@ -127068,7 +127068,7 @@
             "bearer": []
           }
         ],
-        "summary": "Start a stopped sandbox again. A resume does not move `expires_at`. A resume of a starting or running sandbox answers the sandbox as it is. 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 409 `sandbox_not_running` for a sandbox that is stopping or has ended, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default), 503 `sandbox_unavailable`",
+        "summary": "Start a stopped sandbox again. A resume does not move `expires_at`. A resume of a starting or running sandbox answers the sandbox as it is. 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 409 `sandbox_not_running` for a sandbox that is stopping or has ended, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: the sandbox stays `stopped` with its disk; retry after 30 seconds), 503 `sandbox_unavailable`",
         "tags": [
           "sandboxes"
         ]
