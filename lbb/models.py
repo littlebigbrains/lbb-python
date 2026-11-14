@@ -3686,7 +3686,12 @@ class ModelActivityReportEntry(BaseModel):
     errors: Annotated[int | None, Field(ge=0)] = None
     feature: ModelActivityFeature
     gpu_seconds: Annotated[int | None, Field(ge=0)] = None
-    graph: str
+    graph: Annotated[
+        str,
+        Field(
+            description='A graph name (lowercase letters, digits, dashes and underscores, 1 to 32\ncharacters), or `@none` for a count that belongs to no graph. `@none` is\nreserved: it is not a graph name, so no graph can have it. The graph is\nnot checked to exist.'
+        ),
+    ]
     items: Annotated[int | None, Field(ge=0)] = None
     model: str
     provider: str
