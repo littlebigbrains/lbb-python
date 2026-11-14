@@ -3604,6 +3604,7 @@ class ModelActivityFeature(Enum):
     rewrite = 'rewrite'
     trial = 'trial'
     workflows = 'workflows'
+    cdc_plan = 'cdc_plan'
 
 
 class ModelActivityGraph(BaseModel):

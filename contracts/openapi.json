@@ -16746,7 +16746,8 @@
           "rerank",
           "rewrite",
           "trial",
-          "workflows"
+          "workflows",
+          "cdc_plan"
         ],
         "type": "string"
       },
