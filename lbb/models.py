@@ -3013,6 +3013,20 @@ class GraphForkResponse(BaseModel):
     src_graph_id: str
 
 
+class GraphHealthState(Enum):
+    """
+    One word for the state of a graph, with the first rule that holds in this
+    order.
+    """
+
+    blocked = 'blocked'
+    paused = 'paused'
+    slowed = 'slowed'
+    behind = 'behind'
+    current = 'current'
+    unavailable = 'unavailable'
+
+
 class GraphImportJobStage(Enum):
     """
     Low-cardinality execution stage exposed while a durable import is active.
@@ -14672,6 +14686,78 @@ class GraphEdgeRow(BaseModel):
     valid_time: ValidTime
 
 
+class GraphHealthRow(BaseModel):
+    """
+    The state of one graph's background work. Every field except `graph_id`
+    and `state` is `0` or `null` when `state` is `unavailable`.
+    """
+
+    active_items: Annotated[
+        int,
+        Field(
+            description='Items that are queued, waiting or running, among the newest 25.',
+            ge=0,
+        ),
+    ]
+    behind_ms: Annotated[
+        int | None,
+        Field(description='As `behind_ms` of `GET /v1/graph/activity`.', ge=0),
+    ] = None
+    embeddings_behind: Annotated[
+        int,
+        Field(
+            description='Embeddings that are backfilling or behind, and embeddings that failed.',
+            ge=0,
+        ),
+    ]
+    embeddings_failed: Annotated[int, Field(ge=0)]
+    epoch: Annotated[int, Field(ge=0)]
+    failed_items: Annotated[
+        int, Field(description='Failed items among the newest 25.', ge=0)
+    ]
+    graph_id: str
+    head_seq: Annotated[
+        int, Field(description='The newest commit written to the graph.', ge=0)
+    ]
+    lag_commits: Annotated[
+        int,
+        Field(
+            description='`target_seq - published_seq`, as in `GET /v1/graph/activity`.',
+            ge=0,
+        ),
+    ]
+    max_pending_commits: Annotated[int, Field(ge=0)]
+    observed_at_micros: Annotated[
+        int,
+        Field(
+            description='Server clock when this row was read (micros since the Unix epoch).'
+        ),
+    ]
+    oldest_wait_ms: Annotated[
+        int | None,
+        Field(
+            description='The longest `waited_ms` among the queued and waiting items.',
+            ge=0,
+        ),
+    ] = None
+    pending_commits: Annotated[
+        int,
+        Field(
+            description='Unpublished commits, the commit count at which writes start to slow\n(`0` when the server has no soft limit), and the count at which writes\nare refused.',
+            ge=0,
+        ),
+    ]
+    publication: PublicationState | None = None
+    published_seq: Annotated[
+        int,
+        Field(
+            description='The newest commit the published RDF generation covers.', ge=0
+        ),
+    ]
+    soft_pending_commits: Annotated[int, Field(ge=0)]
+    state: GraphHealthState
+
+
 class GraphImportJobAccepted(BaseModel):
     """
     Stable response returned when a durable import is accepted or replayed.
@@ -20085,6 +20171,13 @@ class ActivityItem(BaseModel):
     ] = None
     target_seq: CommitSeq | None = None
     updated_at_micros: int
+    waited_ms: Annotated[
+        int | None,
+        Field(
+            description="For a queued or waiting item: milliseconds since it was enqueued, at\nthe response's `observed_at_micros`. A waiting item counts the time it\nwas held back on purpose (its `stage` names the condition). `null` for\na running or finished item: the server keeps no start time.",
+            ge=0,
+        ),
+    ] = None
 
 
 class AnalyticCombinator1(BaseModel):
@@ -20951,6 +21044,13 @@ class GraphActivityResponse(BaseModel):
     reports it.
     """
 
+    behind_ms: Annotated[
+        int | None,
+        Field(
+            description='How long the oldest commit that the published generation does not\ncover has waited, in milliseconds, at `observed_at_micros`: the time\nsince the writer wrote it. `0` when `lag_commits` is 0. `null` when\ncommits wait but the head holds no write time for the oldest one (a\ncommit written before the head kept it).',
+            ge=0,
+        ),
+    ] = None
     embeddings: list[ActivityEmbedding]
     epoch: Annotated[int, Field(ge=0)]
     graph_id: str
@@ -21051,6 +21151,26 @@ class GraphExportResponse(BaseModel):
             description="Opaque, self-describing token for the exact snapshot this export reflects\n(`tenant:graph:branch:epoch:commit_seq`). Records the exported snapshot's\nprovenance so a caller can pin subsequent reads to — and verify\nreproducibility against — the same point in history."
         ),
     ]
+
+
+class GraphHealthResponse(BaseModel):
+    """
+    `GET /v1/graphs/health`: one page of the graphs of the environment, with
+    the state of each one's background work. The server reads each graph as
+    `GET /v1/graph/activity` does and keeps a row for 15 seconds, so a row is at
+    most that old (`observed_at_micros`). **[PIN]** the serde field names: the
+    console reads them.
+    """
+
+    data: list[GraphHealthRow]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='The cursor of the next page: the last graph id of this one.'
+        ),
+    ] = None
+    object: str
 
 
 class GraphImportJobStatus(BaseModel):

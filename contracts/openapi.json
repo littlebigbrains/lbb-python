@@ -171,6 +171,15 @@
           "updated_at_micros": {
             "format": "int64",
             "type": "integer"
+          },
+          "waited_ms": {
+            "description": "For a queued or waiting item: milliseconds since it was enqueued, at\nthe response's `observed_at_micros`. A waiting item counts the time it\nwas held back on purpose (its `stage` names the condition). `null` for\na running or finished item: the server keeps no start time.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -13765,6 +13774,15 @@
       "GraphActivityResponse": {
         "description": "The background work on one graph epoch, as `GET /v1/graph/activity`\nreports it.",
         "properties": {
+          "behind_ms": {
+            "description": "How long the oldest commit that the published generation does not\ncover has waited, in milliseconds, at `observed_at_micros`: the time\nsince the writer wrote it. `0` when `lag_commits` is 0. `null` when\ncommits wait but the head holds no write time for the oldest one (a\ncommit written before the head kept it).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "embeddings": {
             "items": {
               "$ref": "#/components/schemas/ActivityEmbedding"
@@ -14399,6 +14417,167 @@
           "poll"
         ],
         "type": "object"
+      },
+      "GraphHealthResponse": {
+        "description": "`GET /v1/graphs/health`: one page of the graphs of the environment, with\nthe state of each one's background work. The server reads each graph as\n`GET /v1/graph/activity` does and keeps a row for 15 seconds, so a row is at\nmost that old (`observed_at_micros`). **[PIN]** the serde field names: the\nconsole reads them.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/GraphHealthRow"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "The cursor of the next page: the last graph id of this one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "GraphHealthRow": {
+        "description": "The state of one graph's background work. Every field except `graph_id`\nand `state` is `0` or `null` when `state` is `unavailable`.",
+        "properties": {
+          "active_items": {
+            "description": "Items that are queued, waiting or running, among the newest 25.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "behind_ms": {
+            "description": "As `behind_ms` of `GET /v1/graph/activity`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "embeddings_behind": {
+            "description": "Embeddings that are backfilling or behind, and embeddings that failed.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "embeddings_failed": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "epoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed_items": {
+            "description": "Failed items among the newest 25.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "graph_id": {
+            "type": "string"
+          },
+          "head_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "The newest commit written to the graph."
+          },
+          "lag_commits": {
+            "description": "`target_seq - published_seq`, as in `GET /v1/graph/activity`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_pending_commits": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "observed_at_micros": {
+            "description": "Server clock when this row was read (micros since the Unix epoch).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "oldest_wait_ms": {
+            "description": "The longest `waited_ms` among the queued and waiting items.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pending_commits": {
+            "description": "Unpublished commits, the commit count at which writes start to slow\n(`0` when the server has no soft limit), and the count at which writes\nare refused.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "publication": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PublicationState"
+              }
+            ]
+          },
+          "published_seq": {
+            "$ref": "#/components/schemas/CommitSeq",
+            "description": "The newest commit the published RDF generation covers."
+          },
+          "soft_pending_commits": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/GraphHealthState"
+          }
+        },
+        "required": [
+          "graph_id",
+          "state",
+          "epoch",
+          "head_seq",
+          "published_seq",
+          "lag_commits",
+          "pending_commits",
+          "soft_pending_commits",
+          "max_pending_commits",
+          "active_items",
+          "failed_items",
+          "embeddings_behind",
+          "embeddings_failed",
+          "observed_at_micros"
+        ],
+        "type": "object"
+      },
+      "GraphHealthState": {
+        "description": "One word for the state of a graph, with the first rule that holds in this\norder.",
+        "enum": [
+          "blocked",
+          "paused",
+          "slowed",
+          "behind",
+          "current",
+          "unavailable"
+        ],
+        "type": "string"
       },
       "GraphId": {
         "type": "string"
@@ -93014,6 +93193,295 @@
           }
         ],
         "summary": "List the graphs under the scoped tenant",
+        "tags": [
+          "graph"
+        ]
+      }
+    },
+    "/v1/graphs/health": {
+      "get": {
+        "operationId": "get_v1_graphs_health",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max rows (default 25, at most 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque cursor from the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphHealthResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One page of the graphs under the scoped tenant with the state of each one's background work (index lag in commits and time, queued items and their wait, write limit); computed on read from the reads of the graph activity route, a row at most 15 seconds old",
         "tags": [
           "graph"
         ]
