@@ -4,6 +4,10 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `ModelActivityFeature` (`GET /v1/models/activity`) has a new member,
+  `cdc_plan`: the model calls of a CDC source's setup plan (the SaaS API reports
+  them once its release reports the label). Handle a feature you do not know.
+
 - `client.workflows.claim_environment_turn(request)` claims one turn from any
   graph of the environment (`POST /v1/workflows/environment/turns/claim`), through
   the environment's ready index, and `client.workflows.environment_summary()`
