@@ -31456,6 +31456,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "cost": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxCost",
+                "description": "What the sandbox cost so far. Present on a retrieve only, never on a\nlist or a create, and absent where the server prices nothing. A read\nthat cannot get the receipts in a short time leaves it out."
+              }
+            ]
+          },
           "created": {
             "description": "When it was created, Unix seconds.",
             "format": "int64",
@@ -31558,6 +31569,168 @@
           "metadata"
         ],
         "type": "object"
+      },
+      "SandboxBudgetLimit": {
+        "description": "The limit, and the state of the month against it.",
+        "properties": {
+          "limit_micro_usd": {
+            "description": "The monthly limit in millionths of a US dollar. Null: no limit.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "limit_source": {
+            "$ref": "#/components/schemas/SandboxBudgetLimitSource"
+          },
+          "resets_at": {
+            "description": "When the month's budget is whole again: the first day of the next month,\nUTC (RFC 3339).",
+            "type": "string"
+          },
+          "resets_at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SandboxBudgetState"
+          },
+          "used_ratio": {
+            "description": "Spent divided by the limit. Null when there is no limit or nothing is\npriced.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "warn_at_ratio": {
+            "description": "The ratio at which `state` becomes `warning`.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "limit_source",
+          "state",
+          "warn_at_ratio",
+          "resets_at",
+          "resets_at_ms"
+        ],
+        "type": "object"
+      },
+      "SandboxBudgetLimitSource": {
+        "description": "Where the limit in force comes from.",
+        "enum": [
+          "environment",
+          "default"
+        ],
+        "type": "string"
+      },
+      "SandboxBudgetPartial": {
+        "description": "A way the answer is partial.",
+        "properties": {
+          "dimension": {
+            "description": "What it concerns: `spent` or `open`.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "`unverified` (the month's sum was built from the intervals that ended and\nno check of the receipts has confirmed it yet, so `spent` may lack a\nreceipt) or `incomplete` (the last pass of the sweep did not see every\nsandbox that runs, so `open` may be low). `open` is left out when no pass\npriced the sandboxes that run now lately.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dimension",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SandboxBudgetResponse": {
+        "description": "`GET /v1/sandboxes/budget`: the environment's monthly sandbox budget, what the\nmonth spent and what is left. Amounts are millionths of a US dollar, and each is\nrounded up on its own, except `left_micro_usd`, which is rounded down. The answer\nholds no unit price.",
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/SandboxBudgetLimit"
+          },
+          "enforced": {
+            "description": "Whether the cell refuses calls and stops sandboxes at the budget. False\nwhen the budget is off for the cell (a default of 0) and where the server\nprices nothing. The environment's setting is kept either way.",
+            "type": "boolean"
+          },
+          "estimate_micro_usd": {
+            "description": "The part of `spent_micro_usd` that is an estimate for a lost VM. It\ncounts against the budget and is never billed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "left_micro_usd": {
+            "description": "The limit minus `spent_micro_usd`, never below 0. Null when there is no\nlimit.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "month": {
+            "description": "`yyyy-mm` (UTC).",
+            "type": "string"
+          },
+          "open_micro_usd": {
+            "description": "The sandboxes that run now, as the last pass of the sweep priced them.\nThey are not in `spent_micro_usd` until they stop. Null for a past month,\nand when no recent pass of the sweep priced them.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "partial": {
+            "description": "Every way this answer is partial.",
+            "items": {
+              "$ref": "#/components/schemas/SandboxBudgetPartial"
+            },
+            "type": "array"
+          },
+          "receipts": {
+            "description": "The intervals of run time the month holds.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "run_micro_usd": {
+            "description": "The part of `spent_micro_usd` the host measured.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "spent_micro_usd": {
+            "description": "What the month spent: the intervals that ended, and the estimates for\nlost VMs.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "month",
+          "enforced",
+          "budget",
+          "spent_micro_usd",
+          "run_micro_usd",
+          "estimate_micro_usd",
+          "receipts",
+          "partial"
+        ],
+        "type": "object"
+      },
+      "SandboxBudgetState": {
+        "description": "How much of the sandbox budget the month used.",
+        "enum": [
+          "ok",
+          "warning",
+          "spent",
+          "unlimited",
+          "not_recorded"
+        ],
+        "type": "string"
       },
       "SandboxCommand": {
         "description": "A command on a sandbox. The record keeps the names of `env` and the size\nof `stdin`; their values are never stored.",
@@ -31864,6 +32037,35 @@
           "lost"
         ],
         "type": "string"
+      },
+      "SandboxCost": {
+        "description": "What a sandbox cost so far, in millionths of a US dollar. A sandbox is paid\nfor each second it runs, by its reserved size. Time before the guest answers,\na failed start and a stopped disk are free. Each amount is rounded up to a\nwhole millionth on its own. Present on a retrieve of a sandbox only, and only\nwhere the server prices time.",
+        "properties": {
+          "estimate_micro_usd": {
+            "description": "The estimate for a VM the host lost. It counts against the budget and is\nnever billed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "open_micro_usd": {
+            "description": "The interval that runs now, up to the time of the read. It becomes\nsettled when the interval ends.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "settled_micro_usd": {
+            "description": "The intervals that ended, as the host measured them. This is what a later\ninvoice bills.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "settled_micro_usd",
+          "estimate_micro_usd",
+          "open_micro_usd"
+        ],
+        "type": "object"
       },
       "SandboxCreateRequest": {
         "additionalProperties": false,
@@ -32337,6 +32539,7 @@
           "start_timeout",
           "start_error",
           "host_lost",
+          "budget",
           "unknown"
         ],
         "type": "string"
@@ -124126,7 +124329,287 @@
             "bearer": []
           }
         ],
-        "summary": "Create a sandbox: one VM with a workspace disk and no network, from a template (`lbb/python` by default). With `run` it is the L1 shortcut: the sandbox runs `run(input, config)` once and is destroyed when the command ends; the answer holds the run (`run`) and waits for it at most `wait_ms` (0 to 30,000, default 0). A create with `run` needs an `Idempotency-Key`; a repeat answers the same record, also a `failed` one, and a new attempt needs a new key. 400 `idempotency_key_required`, 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_template_not_found`, 409 `sandbox_template_revoked`, 409 `sandbox_not_enabled`, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default; a sandbox counts while it is starting, running, stopping or being destroyed), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: nothing is made, so the same request with the same `Idempotency-Key` works later; retry after 30 seconds), 503 `sandbox_unavailable`",
+        "summary": "Create a sandbox: one VM with a workspace disk and no network, from a template (`lbb/python` by default). With `run` it is the L1 shortcut: the sandbox runs `run(input, config)` once and is destroyed when the command ends; the answer holds the run (`run`) and waits for it at most `wait_ms` (0 to 30,000, default 0). A create with `run` needs an `Idempotency-Key`; a repeat answers the same record, also a `failed` one, and a new attempt needs a new key. 400 `idempotency_key_required`, 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_template_not_found`, 409 `sandbox_template_revoked`, 409 `sandbox_not_enabled`, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default; a sandbox counts while it is starting, running, stopping or being destroyed), 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget; the error says `limit_source` and `retry_at`, and the same call is refused until the budget is raised or the month ends), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: nothing is made, so the same request with the same `Idempotency-Key` works later; retry after 30 seconds), 503 `sandbox_unavailable`",
+        "tags": [
+          "sandboxes"
+        ]
+      }
+    },
+    "/v1/sandboxes/budget": {
+      "get": {
+        "operationId": "get_v1_sandboxes_budget",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm (UTC); default: the current month",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxBudgetResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The environment's monthly sandbox budget: the limit and where it comes from (`environment` or `default`), what the month spent, what is left and the state against the warning line. A call that starts a sandbox is refused with 429 `sandbox_budget_exceeded` at the budget, and the running sandboxes stop with `status_reason` `budget`. An environment read. Amounts are millionths of a US dollar. The answer holds no unit price. 503 `storage_degraded` when the month's sum cannot be read",
         "tags": [
           "sandboxes"
         ]
@@ -124730,7 +125213,7 @@
             "bearer": []
           }
         ],
-        "summary": "Start a command: `argv` (an array, so a shell is explicit: `[\"bash\", \"-lc\", \"...\"]`) or `run` (`run(input, config)` of the template's harness), with `cwd`, `env`, `stdin`, `timeout_ms` and `wait_ms` (0 to 30,000, default 0). The request needs an `Idempotency-Key`: a command never runs twice for one key, and a command whose outcome cannot be settled stays `lost`. `env` values and `stdin` are never stored. A sandbox runs 8 commands at once and holds 32 waiting. 400 `idempotency_key_required`, 400 `sandbox_path_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 409 `sandbox_not_running`, 429 `sandbox_limit_reached`, 503 `sandbox_unavailable`",
+        "summary": "Start a command: `argv` (an array, so a shell is explicit: `[\"bash\", \"-lc\", \"...\"]`) or `run` (`run(input, config)` of the template's harness), with `cwd`, `env`, `stdin`, `timeout_ms` and `wait_ms` (0 to 30,000, default 0). The request needs an `Idempotency-Key`: a command never runs twice for one key, and a command whose outcome cannot be settled stays `lost`. `env` values and `stdin` are never stored. A sandbox runs 8 commands at once and holds 32 waiting. 400 `idempotency_key_required`, 400 `sandbox_path_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 409 `sandbox_not_running`, 429 `sandbox_limit_reached`, 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget), 503 `sandbox_unavailable`",
         "tags": [
           "sandboxes"
         ]
@@ -127272,7 +127755,7 @@
             "bearer": []
           }
         ],
-        "summary": "One sandbox, with its `run` for a sandbox of a create with `run`. 404 `sandbox_not_found`",
+        "summary": "One sandbox, with its `run` for a sandbox of a create with `run`, and its `cost` so far (computed from its receipts on this read; left out when they cannot be read in a short time, and where the server prices nothing). 404 `sandbox_not_found`",
         "tags": [
           "sandboxes"
         ]
@@ -127561,7 +128044,7 @@
             "bearer": []
           }
         ],
-        "summary": "Start a stopped sandbox again. A resume does not move `expires_at`. A resume of a starting or running sandbox answers the sandbox as it is. 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 409 `sandbox_not_running` for a sandbox that is stopping or has ended, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: the sandbox stays `stopped` with its disk; retry after 30 seconds), 503 `sandbox_unavailable`",
+        "summary": "Start a stopped sandbox again. A resume does not move `expires_at`. A resume of a starting or running sandbox answers the sandbox as it is. 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 409 `sandbox_not_running` for a sandbox that is stopping or has ended, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default), 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget; a sandbox that the budget stopped stays `stopped` with its disk, and nothing resumes it by itself), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: the sandbox stays `stopped` with its disk; retry after 30 seconds), 503 `sandbox_unavailable`",
         "tags": [
           "sandboxes"
         ]

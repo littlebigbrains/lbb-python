@@ -4,6 +4,16 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `Sandbox` has the optional `cost` (`settled_micro_usd`, `estimate_micro_usd`,
+  `open_micro_usd`; `None` when absent), and only a retrieve shows it.
+  `SandboxStatusReason` has a new member, `budget`: the server stopped the sandbox
+  because its environment spent its monthly sandbox budget. The models of
+  `GET /v1/sandboxes/budget` (`SandboxBudgetResponse`) exist, with no client method
+  yet. A create, a resume and a command create can answer
+  `429 sandbox_budget_exceeded`, which is not retryable (`retryable: false`); the
+  error has `limit_source`, `retry_at` and `retry_at_ms`. Handle a reason you do not
+  know. No code needs a change.
+
 - `ModelActivityFeature` (`GET /v1/models/activity`) has a new member,
   `cdc_plan`: the model calls of a CDC source's setup plan (the SaaS API reports
   them once its release reports the label). Handle a feature you do not know.

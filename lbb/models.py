@@ -7268,6 +7268,41 @@ class RowPage(BaseModel):
     total: Annotated[int, Field(ge=0)]
 
 
+class SandboxBudgetLimitSource(Enum):
+    """
+    Where the limit in force comes from.
+    """
+
+    environment = 'environment'
+    default = 'default'
+
+
+class SandboxBudgetPartial(BaseModel):
+    """
+    A way the answer is partial.
+    """
+
+    dimension: Annotated[str, Field(description='What it concerns: `spent` or `open`.')]
+    reason: Annotated[
+        str,
+        Field(
+            description="`unverified` (the month's sum was built from the intervals that ended and\nno check of the receipts has confirmed it yet, so `spent` may lack a\nreceipt) or `incomplete` (the last pass of the sweep did not see every\nsandbox that runs, so `open` may be low). `open` is left out when no pass\npriced the sandboxes that run now lately."
+        ),
+    ]
+
+
+class SandboxBudgetState(Enum):
+    """
+    How much of the sandbox budget the month used.
+    """
+
+    ok = 'ok'
+    warning = 'warning'
+    spent = 'spent'
+    unlimited = 'unlimited'
+    not_recorded = 'not_recorded'
+
+
 class SandboxCommandCancelRequest(BaseModel):
     """
     `POST /v1/sandboxes/commands/cancel`: end a command.
@@ -7325,6 +7360,38 @@ class SandboxCommandStatus(Enum):
     cancelled = 'cancelled'
     failed = 'failed'
     lost = 'lost'
+
+
+class SandboxCost(BaseModel):
+    """
+    What a sandbox cost so far, in millionths of a US dollar. A sandbox is paid
+    for each second it runs, by its reserved size. Time before the guest answers,
+    a failed start and a stopped disk are free. Each amount is rounded up to a
+    whole millionth on its own. Present on a retrieve of a sandbox only, and only
+    where the server prices time.
+    """
+
+    estimate_micro_usd: Annotated[
+        int,
+        Field(
+            description='The estimate for a VM the host lost. It counts against the budget and is\nnever billed.',
+            ge=0,
+        ),
+    ]
+    open_micro_usd: Annotated[
+        int,
+        Field(
+            description='The interval that runs now, up to the time of the read. It becomes\nsettled when the interval ends.',
+            ge=0,
+        ),
+    ]
+    settled_micro_usd: Annotated[
+        int,
+        Field(
+            description='The intervals that ended, as the host measured them. This is what a later\ninvoice bills.',
+            ge=0,
+        ),
+    ]
 
 
 class SandboxFileDeleted(BaseModel):
@@ -7490,6 +7557,7 @@ class SandboxStatusReason(Enum):
     start_timeout = 'start_timeout'
     start_error = 'start_error'
     host_lost = 'host_lost'
+    budget = 'budget'
     unknown = 'unknown'
 
 
@@ -17705,6 +17773,7 @@ class Sandbox(BaseModel):
         int,
         Field(description='Idle seconds before the sandbox stops, 30 to 3,600.', ge=0),
     ]
+    cost: SandboxCost | None = None
     created: Annotated[int, Field(description='When it was created, Unix seconds.')]
     created_by: Annotated[
         str, Field(description='Who created it: `key:<id>`, `account:<id>` or `token`.')
@@ -17737,6 +17806,94 @@ class Sandbox(BaseModel):
     status_reason: SandboxStatusReason | None = None
     template: SandboxTemplateRef
     usage: SandboxUsage
+
+
+class SandboxBudgetLimit(BaseModel):
+    """
+    The limit, and the state of the month against it.
+    """
+
+    limit_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The monthly limit in millionths of a US dollar. Null: no limit.',
+            ge=0,
+        ),
+    ] = None
+    limit_source: SandboxBudgetLimitSource
+    resets_at: Annotated[
+        str,
+        Field(
+            description="When the month's budget is whole again: the first day of the next month,\nUTC (RFC 3339)."
+        ),
+    ]
+    resets_at_ms: int
+    state: SandboxBudgetState
+    used_ratio: Annotated[
+        float | None,
+        Field(
+            description='Spent divided by the limit. Null when there is no limit or nothing is\npriced.'
+        ),
+    ] = None
+    warn_at_ratio: Annotated[
+        float, Field(description='The ratio at which `state` becomes `warning`.')
+    ]
+
+
+class SandboxBudgetResponse(BaseModel):
+    """
+    `GET /v1/sandboxes/budget`: the environment's monthly sandbox budget, what the
+    month spent and what is left. Amounts are millionths of a US dollar, and each is
+    rounded up on its own, except `left_micro_usd`, which is rounded down. The answer
+    holds no unit price.
+    """
+
+    budget: SandboxBudgetLimit
+    enforced: Annotated[
+        bool,
+        Field(
+            description="Whether the cell refuses calls and stops sandboxes at the budget. False\nwhen the budget is off for the cell (a default of 0) and where the server\nprices nothing. The environment's setting is kept either way."
+        ),
+    ]
+    estimate_micro_usd: Annotated[
+        int,
+        Field(
+            description='The part of `spent_micro_usd` that is an estimate for a lost VM. It\ncounts against the budget and is never billed.',
+            ge=0,
+        ),
+    ]
+    left_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The limit minus `spent_micro_usd`, never below 0. Null when there is no\nlimit.',
+            ge=0,
+        ),
+    ] = None
+    month: Annotated[str, Field(description='`yyyy-mm` (UTC).')]
+    open_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The sandboxes that run now, as the last pass of the sweep priced them.\nThey are not in `spent_micro_usd` until they stop. Null for a past month,\nand when no recent pass of the sweep priced them.',
+            ge=0,
+        ),
+    ] = None
+    partial: Annotated[
+        list[SandboxBudgetPartial],
+        Field(description='Every way this answer is partial.'),
+    ]
+    receipts: Annotated[
+        int, Field(description='The intervals of run time the month holds.', ge=0)
+    ]
+    run_micro_usd: Annotated[
+        int, Field(description='The part of `spent_micro_usd` the host measured.', ge=0)
+    ]
+    spent_micro_usd: Annotated[
+        int,
+        Field(
+            description='What the month spent: the intervals that ended, and the estimates for\nlost VMs.',
+            ge=0,
+        ),
+    ]
 
 
 class SandboxCommand(BaseModel):
