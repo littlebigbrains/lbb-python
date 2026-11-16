@@ -7394,6 +7394,37 @@ class SandboxCost(BaseModel):
     ]
 
 
+class SandboxEgressLimits(BaseModel):
+    """
+    The limits of a sandbox's network policy, as the sandbox holds them. A policy
+    that names no value gets the default of the server.
+    """
+
+    max_concurrent: Annotated[
+        int, Field(description='Connections open at once. 16.', ge=0)
+    ]
+    max_connections: Annotated[
+        int, Field(description='Connections in the life of the sandbox. 2,000.', ge=0)
+    ]
+    max_down_bytes: Annotated[
+        int,
+        Field(
+            description='Bytes the sandbox may receive in its life. Default 1 GiB, at most 8 GiB.',
+            ge=0,
+        ),
+    ]
+    max_new_per_second: Annotated[
+        int, Field(description='New connections in any one second. 8.', ge=0)
+    ]
+    max_up_bytes: Annotated[
+        int,
+        Field(
+            description='Bytes the sandbox may send in its life. Default 8 MiB, at most 64 MiB.',
+            ge=0,
+        ),
+    ]
+
+
 class SandboxFileDeleted(BaseModel):
     """
     `DELETE /v1/sandboxes/files`: the entry is gone. A delete of a path that
@@ -7585,6 +7616,25 @@ class SandboxStreamSummary(BaseModel):
         Field(
             description='Bytes between the head and the tail the server does not keep.',
             ge=0,
+        ),
+    ]
+
+
+class SandboxTemplateEgress(BaseModel):
+    """
+    The network policy a template names. A template never holds hosts: an owner
+    or an admin writes the policies of an environment, and a template only names
+    one. The template version is immutable, so the name is too. The policy is read
+    again when a sandbox is created, and the sandbox keeps what it read.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    policy: Annotated[
+        str,
+        Field(
+            description='The name of a network policy of the environment: 1 to 64 of `a-z`, `0-9`,\n`.`, `_` and `-`, starting with a letter or a digit.'
         ),
     ]
 
@@ -17758,56 +17808,6 @@ class RoutingIndexRef(BaseModel):
     value_bytes: Annotated[int, Field(ge=0)]
 
 
-class Sandbox(BaseModel):
-    """
-    A sandbox: one VM with a workspace disk and no network.
-    """
-
-    auto_stop_at: Annotated[
-        int | None,
-        Field(
-            description='When an idle sandbox stops, Unix seconds; present while it runs. A\nsandbox is idle when no command is queued or running and no request\nnames it.'
-        ),
-    ] = None
-    auto_stop_seconds: Annotated[
-        int,
-        Field(description='Idle seconds before the sandbox stops, 30 to 3,600.', ge=0),
-    ]
-    cost: SandboxCost | None = None
-    created: Annotated[int, Field(description='When it was created, Unix seconds.')]
-    created_by: Annotated[
-        str, Field(description='Who created it: `key:<id>`, `account:<id>` or `token`.')
-    ]
-    expires_at: Annotated[
-        int,
-        Field(
-            description='When the sandbox is destroyed, Unix seconds. A resume does not move\nit.'
-        ),
-    ]
-    id: Annotated[str, Field(description='`sbx_`, an opaque id.')]
-    kind: Annotated[
-        SandboxKind,
-        Field(
-            description='`run` for a sandbox made by a create with `run`, else `sandbox`.'
-        ),
-    ]
-    limits: SandboxLimits
-    metadata: dict[str, str]
-    object: Annotated[str, Field(description='`sandbox`.')]
-    owner: SandboxOwner | None = None
-    run: SandboxRunSummary | None = None
-    status: SandboxStatus
-    status_message: Annotated[
-        str | None,
-        Field(
-            description='What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. A `stopped` sandbox has it after a\nresume that did not start (a static sentence: the sandbox keeps its\ndisk). Absent otherwise, and gone when the status changes.'
-        ),
-    ] = None
-    status_reason: SandboxStatusReason | None = None
-    template: SandboxTemplateRef
-    usage: SandboxUsage
-
-
 class SandboxBudgetLimit(BaseModel):
     """
     The limit, and the state of the month against it.
@@ -18048,6 +18048,27 @@ class SandboxCreateRequest(BaseModel):
     ] = None
 
 
+class SandboxEgress(BaseModel):
+    """
+    The network policy a sandbox was made with: its name and the rules as they
+    were when the sandbox was created. A later change or removal of the policy
+    never changes this. Absent when the template names no policy. No backend
+    enforces a policy yet, so a create that would give a sandbox one answers 409
+    `sandbox_egress_not_available`.
+    """
+
+    hosts: Annotated[
+        list[str],
+        Field(
+            description='The exact host names the sandbox may reach, on port 443 only: the hosts of\nthe policy and of its presets, sorted, with no duplicate. This is text that\nan owner wrote, shown as it is.'
+        ),
+    ]
+    limits: SandboxEgressLimits
+    policy: Annotated[
+        str, Field(description='The name of the policy the template gave.')
+    ]
+
+
 class SandboxFile(BaseModel):
     """
     A file or a directory of `/workspace`.
@@ -18068,19 +18089,6 @@ class SandboxFileList(BaseModel):
     """
 
     data: list[SandboxFile]
-    has_more: bool
-    next_cursor: Annotated[
-        str | None, Field(description='Pass as `cursor` for the next page.')
-    ] = None
-    object: Annotated[str, Field(description='`list`.')]
-
-
-class SandboxList(BaseModel):
-    """
-    One page of sandboxes, newest first.
-    """
-
-    data: list[Sandbox]
     has_more: bool
     next_cursor: Annotated[
         str | None, Field(description='Pass as `cursor` for the next page.')
@@ -18127,6 +18135,7 @@ class SandboxTemplate(BaseModel):
     created: Annotated[
         int, Field(description='When this version was saved, Unix seconds.')
     ]
+    egress: SandboxTemplateEgress | None = None
     files: Annotated[
         list[SandboxTemplateFile] | None,
         Field(description='Files copied into `/workspace`.'),
@@ -18177,6 +18186,7 @@ class SandboxTemplateCreateRequest(BaseModel):
     config: Annotated[
         Any | None, Field(description='The default config, JSON of 1 MiB at most.')
     ] = None
+    egress: SandboxTemplateEgress | None = None
     files: Annotated[
         list[SandboxTemplateFile] | None,
         Field(
@@ -22451,6 +22461,70 @@ class RoutingPlan(BaseModel):
     ontology: RoutingObject | None = None
     ownership: CustomerOwnership
     scope: SourceCaptureScope
+
+
+class Sandbox(BaseModel):
+    """
+    A sandbox: one VM with a workspace disk and no network.
+    """
+
+    auto_stop_at: Annotated[
+        int | None,
+        Field(
+            description='When an idle sandbox stops, Unix seconds; present while it runs. A\nsandbox is idle when no command is queued or running and no request\nnames it.'
+        ),
+    ] = None
+    auto_stop_seconds: Annotated[
+        int,
+        Field(description='Idle seconds before the sandbox stops, 30 to 3,600.', ge=0),
+    ]
+    cost: SandboxCost | None = None
+    created: Annotated[int, Field(description='When it was created, Unix seconds.')]
+    created_by: Annotated[
+        str, Field(description='Who created it: `key:<id>`, `account:<id>` or `token`.')
+    ]
+    egress: SandboxEgress | None = None
+    expires_at: Annotated[
+        int,
+        Field(
+            description='When the sandbox is destroyed, Unix seconds. A resume does not move\nit.'
+        ),
+    ]
+    id: Annotated[str, Field(description='`sbx_`, an opaque id.')]
+    kind: Annotated[
+        SandboxKind,
+        Field(
+            description='`run` for a sandbox made by a create with `run`, else `sandbox`.'
+        ),
+    ]
+    limits: SandboxLimits
+    metadata: dict[str, str]
+    object: Annotated[str, Field(description='`sandbox`.')]
+    owner: SandboxOwner | None = None
+    run: SandboxRunSummary | None = None
+    status: SandboxStatus
+    status_message: Annotated[
+        str | None,
+        Field(
+            description='What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. A `stopped` sandbox has it after a\nresume that did not start (a static sentence: the sandbox keeps its\ndisk). Absent otherwise, and gone when the status changes.'
+        ),
+    ] = None
+    status_reason: SandboxStatusReason | None = None
+    template: SandboxTemplateRef
+    usage: SandboxUsage
+
+
+class SandboxList(BaseModel):
+    """
+    One page of sandboxes, newest first.
+    """
+
+    data: list[Sandbox]
+    has_more: bool
+    next_cursor: Annotated[
+        str | None, Field(description='Pass as `cursor` for the next page.')
+    ] = None
+    object: Annotated[str, Field(description='`list`.')]
 
 
 class SandboxLog(BaseModel):
