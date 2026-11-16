@@ -13818,6 +13818,14 @@
             "minimum": 0,
             "type": "integer"
           },
+          "last_write_at_micros": {
+            "description": "The time of the newest commit of data, in microseconds since the Unix\nepoch, as the writer recorded it. It does not move for maintenance, a\nschema change or an index change. `null` when the graph has no commit,\nor when the newest commit has no recorded time (a commit written before\n2026-10-06), or when the server could not read it now.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "observed_at_micros": {
             "description": "Server clock when the route read the state (micros since the Unix\nepoch).",
             "format": "int64",
@@ -14419,7 +14427,7 @@
         "type": "object"
       },
       "GraphHealthResponse": {
-        "description": "`GET /v1/graphs/health`: one page of the graphs of the environment, with\nthe state of each one's background work. The server reads each graph as\n`GET /v1/graph/activity` does and keeps a row for 15 seconds, so a row is at\nmost that old (`observed_at_micros`). **[PIN]** the serde field names: the\nconsole reads them.",
+        "description": "`GET /v1/graphs/health`: one page of the graphs of the environment, or, with\n`namespace_id`, of the graphs of that namespace and its descendants, with\nthe state of each one's background work. The server reads each graph as\n`GET /v1/graph/activity` does and keeps a row for 15 seconds, so a row is at\nmost that old (`observed_at_micros`). **[PIN]** the serde field names: the\nconsole reads them.",
         "properties": {
           "data": {
             "items": {
@@ -14431,7 +14439,7 @@
             "type": "boolean"
           },
           "next_cursor": {
-            "description": "The cursor of the next page: the last graph id of this one.",
+            "description": "The cursor of the next page. Without `namespace_id` it is the last graph\nid of this page. With `namespace_id` it is the catalog's own cursor:\nopaque, to be passed back as it is, with the same `namespace_id`. A page\ncan hold fewer rows than `limit`, or none, and still have a next cursor.",
             "type": [
               "string",
               "null"
@@ -14500,6 +14508,14 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "last_write_at_micros": {
+            "description": "As `last_write_at_micros` of `GET /v1/graph/activity`: the time of the\nnewest commit of data; it does not move for maintenance, a schema\nchange or an index change.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "max_pending_commits": {
             "format": "int64",
@@ -93249,9 +93265,18 @@
             }
           },
           {
-            "description": "Opaque cursor from the previous page",
+            "description": "Opaque cursor from the previous page, to be passed back with the same namespace_id",
             "in": "query",
             "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Catalog id of a namespace: only the graphs of that namespace and its descendants, in the catalog's order (needs the application catalog); root is the whole environment",
+            "in": "query",
+            "name": "namespace_id",
             "required": false,
             "schema": {
               "type": "string"
@@ -93481,7 +93506,7 @@
             "bearer": []
           }
         ],
-        "summary": "One page of the graphs under the scoped tenant with the state of each one's background work (index lag in commits and time, queued items and their wait, write limit); computed on read from the reads of the graph activity route, a row at most 15 seconds old",
+        "summary": "One page of the graphs under the scoped tenant, or of one namespace and its descendants, with the state of each one's background work (index lag in commits and time, queued items and their wait, write limit, time of the newest commit); computed on read from the reads of the graph activity route, a row at most 15 seconds old",
         "tags": [
           "graph"
         ]
