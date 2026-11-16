@@ -31476,6 +31476,17 @@
             "description": "Who created it: `key:<id>`, `account:<id>` or `token`.",
             "type": "string"
           },
+          "egress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxEgress",
+                "description": "The network policy the sandbox was made with. Absent: no network."
+              }
+            ]
+          },
           "expires_at": {
             "description": "When the sandbox is destroyed, Unix seconds. A resume does not move\nit.",
             "format": "int64",
@@ -32142,6 +32153,74 @@
         },
         "type": "object"
       },
+      "SandboxEgress": {
+        "description": "The network policy a sandbox was made with: its name and the rules as they\nwere when the sandbox was created. A later change or removal of the policy\nnever changes this. Absent when the template names no policy. No backend\nenforces a policy yet, so a create that would give a sandbox one answers 409\n`sandbox_egress_not_available`.",
+        "properties": {
+          "hosts": {
+            "description": "The exact host names the sandbox may reach, on port 443 only: the hosts of\nthe policy and of its presets, sorted, with no duplicate. This is text that\nan owner wrote, shown as it is.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/SandboxEgressLimits"
+          },
+          "policy": {
+            "description": "The name of the policy the template gave.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy",
+          "hosts",
+          "limits"
+        ],
+        "type": "object"
+      },
+      "SandboxEgressLimits": {
+        "description": "The limits of a sandbox's network policy, as the sandbox holds them. A policy\nthat names no value gets the default of the server.",
+        "properties": {
+          "max_concurrent": {
+            "description": "Connections open at once. 16.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_connections": {
+            "description": "Connections in the life of the sandbox. 2,000.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_down_bytes": {
+            "description": "Bytes the sandbox may receive in its life. Default 1 GiB, at most 8 GiB.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_new_per_second": {
+            "description": "New connections in any one second. 8.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_up_bytes": {
+            "description": "Bytes the sandbox may send in its life. Default 8 MiB, at most 64 MiB.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_up_bytes",
+          "max_down_bytes",
+          "max_concurrent",
+          "max_new_per_second",
+          "max_connections"
+        ],
+        "type": "object"
+      },
       "SandboxFile": {
         "description": "A file or a directory of `/workspace`.",
         "properties": {
@@ -32605,6 +32684,17 @@
             "format": "int64",
             "type": "integer"
           },
+          "egress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxTemplateEgress",
+                "description": "The network policy a sandbox of this template takes, by name. Absent: the\nsandbox has no network."
+              }
+            ]
+          },
           "files": {
             "description": "Files copied into `/workspace`.",
             "items": {
@@ -32680,6 +32770,17 @@
           "config": {
             "description": "The default config, JSON of 1 MiB at most."
           },
+          "egress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxTemplateEgress",
+                "description": "The network policy a sandbox of this template takes, by name. The policy\nmust exist in the environment (404 `sandbox_egress_policy_not_found`), and\nthe name must be valid (400 `sandbox_egress_invalid`). Left out: the sandbox\nhas no network."
+              }
+            ]
+          },
           "files": {
             "description": "Files for `/workspace`: Files of the graph, copied when a sandbox of\nthis template first starts. See [`SandboxTemplateFile`].",
             "items": {
@@ -32713,6 +32814,20 @@
         },
         "required": [
           "name"
+        ],
+        "type": "object"
+      },
+      "SandboxTemplateEgress": {
+        "additionalProperties": false,
+        "description": "The network policy a template names. A template never holds hosts: an owner\nor an admin writes the policies of an environment, and a template only names\none. The template version is immutable, so the name is too. The policy is read\nagain when a sandbox is created, and the sandbox keeps what it read.",
+        "properties": {
+          "policy": {
+            "description": "The name of a network policy of the environment: 1 to 64 of `a-z`, `0-9`,\n`.`, `_` and `-`, starting with a letter or a digit.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy"
         ],
         "type": "object"
       },
@@ -124329,7 +124444,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create a sandbox: one VM with a workspace disk and no network, from a template (`lbb/python` by default). With `run` it is the L1 shortcut: the sandbox runs `run(input, config)` once and is destroyed when the command ends; the answer holds the run (`run`) and waits for it at most `wait_ms` (0 to 30,000, default 0). A create with `run` needs an `Idempotency-Key`; a repeat answers the same record, also a `failed` one, and a new attempt needs a new key. 400 `idempotency_key_required`, 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_template_not_found`, 409 `sandbox_template_revoked`, 409 `sandbox_not_enabled`, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default; a sandbox counts while it is starting, running, stopping or being destroyed), 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget; the error says `limit_source` and `retry_at`, and the same call is refused until the budget is raised or the month ends), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: nothing is made, so the same request with the same `Idempotency-Key` works later; retry after 30 seconds), 503 `sandbox_unavailable`",
+        "summary": "Create a sandbox: one VM with a workspace disk and no network, from a template (`lbb/python` by default). With `run` it is the L1 shortcut: the sandbox runs `run(input, config)` once and is destroyed when the command ends; the answer holds the run (`run`) and waits for it at most `wait_ms` (0 to 30,000, default 0). A create with `run` needs an `Idempotency-Key`; a repeat answers the same record, also a `failed` one, and a new attempt needs a new key. 400 `idempotency_key_required`, 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_egress_policy_not_found` (the template names a network policy that the environment does not hold), 404 `sandbox_template_not_found`, 409 `sandbox_egress_not_available` (the template names a network policy and the sandbox backend cannot enforce one: nothing is made, and no backend enforces a policy yet), 409 `sandbox_template_revoked`, 409 `sandbox_not_enabled`, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default; a sandbox counts while it is starting, running, stopping or being destroyed), 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget; the error says `limit_source` and `retry_at`, and the same call is refused until the budget is raised or the month ends), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: nothing is made, so the same request with the same `Idempotency-Key` works later; retry after 30 seconds), 503 `sandbox_unavailable`, 503 `storage_degraded` (the template names a network policy and the policies of the environment cannot be read: nothing is made, and the same request works when they can)",
         "tags": [
           "sandboxes"
         ]
@@ -128919,7 +129034,7 @@
             "bearer": []
           }
         ],
-        "summary": "Save a template: a base template, the `run` code (64 KiB), limits, a command timeout and a default config. Each call writes a new immutable version with a new `sbt_` id, and the name then resolves to it. `files` are Files of the graph by SHA-256 (`{path, source_sha256}`, 64 at most and 16 MiB together): the server copies them into `/workspace` when a sandbox of the template first starts, before the sandbox is `running`. A file the graph does not hold is refused with 404 `file_not_found`; a path outside `/workspace` with 400 `sandbox_path_invalid`. The optional `Idempotency-Key` makes a repeat answer the same version; the same key with another body answers 409 `idempotency_conflict`. 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 409 `sandbox_not_enabled`",
+        "summary": "Save a template: a base template, the `run` code (64 KiB), limits, a command timeout and a default config. Each call writes a new immutable version with a new `sbt_` id, and the name then resolves to it. `files` are Files of the graph by SHA-256 (`{path, source_sha256}`, 64 at most and 16 MiB together): the server copies them into `/workspace` when a sandbox of the template first starts, before the sandbox is `running`. A file the graph does not hold is refused with 404 `file_not_found`; a path outside `/workspace` with 400 `sandbox_path_invalid`. `egress` names a network policy of the environment by its `policy` name; a template never holds hosts, and the policy is read again when a sandbox is created. The optional `Idempotency-Key` makes a repeat answer the same version; the same key with another body answers 409 `idempotency_conflict`. 400 `sandbox_egress_invalid` (the policy name is not valid), 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_egress_policy_not_found` (the environment holds no policy of that name), 409 `sandbox_not_enabled`, 503 `storage_degraded` (the network policies of the environment cannot be read; the same request works when they can)",
         "tags": [
           "sandboxes"
         ]

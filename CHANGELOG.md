@@ -4,6 +4,16 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `SandboxTemplate` and `SandboxTemplateCreateRequest` have the optional `egress`
+  (`SandboxTemplateEgress`, one field, `policy`): the name of a network policy of the
+  environment. `Sandbox` has the optional `egress` (`SandboxEgress`: `policy`, `hosts`
+  and `limits`), the rules the sandbox was made with. Both are `None` when absent. No
+  server enforces a network policy yet, so a create from a template that names one
+  answers `409 sandbox_egress_not_available` and makes nothing. A template save or a
+  create can also answer `404 sandbox_egress_policy_not_found` and
+  `400 sandbox_egress_invalid`. The client has no argument for `egress` yet. No code
+  needs a change.
+
 - `Sandbox` has the optional `cost` (`settled_micro_usd`, `estimate_micro_usd`,
   `open_micro_usd`; `None` when absent), and only a retrieve shows it.
   `SandboxStatusReason` has a new member, `budget`: the server stopped the sandbox
