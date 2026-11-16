@@ -14726,6 +14726,12 @@ class GraphHealthRow(BaseModel):
             ge=0,
         ),
     ]
+    last_write_at_micros: Annotated[
+        int | None,
+        Field(
+            description='As `last_write_at_micros` of `GET /v1/graph/activity`: the time of the\nnewest commit of data; it does not move for maintenance, a schema\nchange or an index change.'
+        ),
+    ] = None
     max_pending_commits: Annotated[int, Field(ge=0)]
     observed_at_micros: Annotated[
         int,
@@ -21072,6 +21078,12 @@ class GraphActivityResponse(BaseModel):
     lag_commits: Annotated[
         int, Field(description='`target_seq - published_seq`.', ge=0)
     ]
+    last_write_at_micros: Annotated[
+        int | None,
+        Field(
+            description='The time of the newest commit of data, in microseconds since the Unix\nepoch, as the writer recorded it. It does not move for maintenance, a\nschema change or an index change. `null` when the graph has no commit,\nor when the newest commit has no recorded time (a commit written before\n2026-10-06), or when the server could not read it now.'
+        ),
+    ] = None
     observed_at_micros: Annotated[
         int,
         Field(
@@ -21155,7 +21167,8 @@ class GraphExportResponse(BaseModel):
 
 class GraphHealthResponse(BaseModel):
     """
-    `GET /v1/graphs/health`: one page of the graphs of the environment, with
+    `GET /v1/graphs/health`: one page of the graphs of the environment, or, with
+    `namespace_id`, of the graphs of that namespace and its descendants, with
     the state of each one's background work. The server reads each graph as
     `GET /v1/graph/activity` does and keeps a row for 15 seconds, so a row is at
     most that old (`observed_at_micros`). **[PIN]** the serde field names: the
@@ -21167,7 +21180,7 @@ class GraphHealthResponse(BaseModel):
     next_cursor: Annotated[
         str | None,
         Field(
-            description='The cursor of the next page: the last graph id of this one.'
+            description="The cursor of the next page. Without `namespace_id` it is the last graph\nid of this page. With `namespace_id` it is the catalog's own cursor:\nopaque, to be passed back as it is, with the same `namespace_id`. A page\ncan hold fewer rows than `limit`, or none, and still have a next cursor."
         ),
     ] = None
     object: str
