@@ -4725,6 +4725,24 @@ class ModelTrialCandidate(BaseModel):
     ] = None
 
 
+class ModelTrialLimitRequest(BaseModel):
+    """
+    `POST /v1/models/trials/limit?graph&id`: change the cost limit of a
+    trial. A trial that ended done before its target and its days opens
+    again with the new limit.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    max_cost_usd: Annotated[
+        float,
+        Field(
+            description='The new cost limit, in US dollars: more than the trial spent, at\nmost 100.'
+        ),
+    ]
+
+
 class ModelTrialModel(BaseModel):
     """
     A model: the candidate of a trial, or the model a job uses now.
@@ -4811,6 +4829,12 @@ class ModelTrialStartRequest(BaseModel):
         list[ModelJob] | None,
         Field(
             description='The jobs to test it on; absent: every job it can do that has checked\ncalls.'
+        ),
+    ] = None
+    max_cost_usd: Annotated[
+        float | None,
+        Field(
+            description="The cost limit of each trial, in US dollars: more than 0, at most\n100; default the server's (`budget_micro_usd` of the options)."
         ),
     ] = None
     target: Annotated[
@@ -21813,8 +21837,19 @@ class ModelTrialOptionsResponse(BaseModel):
             description='Trials can run here: workflows are on and the catalog has a checker.'
         ),
     ]
+    budget_max_micro_usd: Annotated[
+        int | None,
+        Field(
+            description='The largest cost limit a trial takes, in millionths of a US dollar.',
+            ge=0,
+        ),
+    ] = None
     budget_micro_usd: Annotated[
-        int, Field(description='The budget of one trial (`LBB_MODEL_TRIAL_USD`).', ge=0)
+        int,
+        Field(
+            description='The default cost limit of one trial (`LBB_MODEL_TRIAL_USD`).',
+            ge=0,
+        ),
     ]
     jobs: list[ModelTrialJobOption]
     reason: str | None = None

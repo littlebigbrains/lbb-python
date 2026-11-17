@@ -3662,6 +3662,7 @@ class ModelTrialsAndSwitchesTests(unittest.TestCase):
             {"json": trial_payload()},
             {"json": {"trial": TRIAL_ID, "job": "ask", "compared": compared, "answer": {"output": {}, "current": {"output": {}}}}},
             {"json": trial_payload("stopped")},
+            {"json": trial_payload("running")},
             {"json": {"switches": []}},
             {"json": switch_payload()},
             {"json": {"switches": []}},
@@ -3675,6 +3676,7 @@ class ModelTrialsAndSwitchesTests(unittest.TestCase):
             trial = client.models.trials.get(TRIAL_ID)
             call = client.models.trials.call(TRIAL_ID, "c1")
             stopped = client.models.trials.stop(TRIAL_ID)
+            client.models.trials.limit(TRIAL_ID, 10.0)
             client.models.switches.list()
             switched = client.models.switches.create(trial=TRIAL_ID)
             client.models.switches.revert(model_module.ModelJob.ask)
@@ -3697,6 +3699,7 @@ class ModelTrialsAndSwitchesTests(unittest.TestCase):
                 ("GET", "/v1/models/trials/get", {"graph": "crm", "id": TRIAL_ID}),
                 ("GET", "/v1/models/trials/call", {"graph": "crm", "id": TRIAL_ID, "call": "c1"}),
                 ("POST", "/v1/models/trials/stop", {"graph": "crm", "id": TRIAL_ID}),
+                ("POST", "/v1/models/trials/limit", {"graph": "crm", "id": TRIAL_ID}),
                 ("GET", "/v1/models/switches", {"graph": "crm"}),
                 ("POST", "/v1/models/switches", {"graph": "crm"}),
                 ("POST", "/v1/models/switches/revert", {"graph": "crm", "job": "ask"}),
@@ -3706,7 +3709,8 @@ class ModelTrialsAndSwitchesTests(unittest.TestCase):
             json.loads(seen[1].content),
             {"candidate": HAIKU_LOW, "jobs": ["ask", "route"], "target": 20},
         )
-        self.assertEqual(json.loads(seen[7].content), {"trial": TRIAL_ID})
+        self.assertEqual(json.loads(seen[6].content), {"max_cost_usd": 10.0})
+        self.assertEqual(json.loads(seen[8].content), {"trial": TRIAL_ID})
 
     def test_a_typed_candidate_drops_an_unset_effort(self) -> None:
         seen: list[httpx.Request] = []

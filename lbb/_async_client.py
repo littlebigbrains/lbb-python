@@ -1324,10 +1324,17 @@ class _AsyncModelTrialsNamespace(_ModelTrialsNamespace):
         jobs: Sequence[str | models.ModelJob] | None = None,
         target: int | None = None,
         days: int | None = None,
+        max_cost_usd: float | None = None,
     ) -> models.ModelTrialStartResponse:
         return cast(
             models.ModelTrialStartResponse,
-            await super().create(candidate=candidate, jobs=jobs, target=target, days=days),
+            await super().create(
+                candidate=candidate,
+                jobs=jobs,
+                target=target,
+                days=days,
+                max_cost_usd=max_cost_usd,
+            ),
         )
 
     async def list(
@@ -1343,6 +1350,9 @@ class _AsyncModelTrialsNamespace(_ModelTrialsNamespace):
 
     async def stop(self, trial_id: str) -> models.ModelTrial:
         return cast(models.ModelTrial, await super().stop(trial_id))
+
+    async def limit(self, trial_id: str, max_cost_usd: float) -> models.ModelTrial:
+        return cast(models.ModelTrial, await super().limit(trial_id, max_cost_usd))
 
     async def wait(
         self,
