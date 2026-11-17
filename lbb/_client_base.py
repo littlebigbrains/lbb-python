@@ -6158,6 +6158,7 @@ class _ModelTrialsNamespace:
         jobs: Sequence[str | models.ModelJob] | None = None,
         target: int | None = None,
         days: int | None = None,
+        max_cost_usd: float | None = None,
     ) -> models.ModelTrialStartResponse:
         """Start a trial of ``candidate`` on each use in ``jobs``
         (``POST /v1/models/trials``); without ``jobs``, on every use it can do
@@ -6167,7 +6168,9 @@ class _ModelTrialsNamespace:
         this is safe to call again. A use the candidate cannot do, or that
         runs it now, is in ``skipped`` with the reason. ``target`` is the
         calls to compare (default 40, at most 100); ``days`` how long the
-        trial takes new checks (default 14, at most 30). Raises
+        trial takes new checks (default 14, at most 30); ``max_cost_usd``
+        the cost limit of each trial in US dollars (default the server's, at
+        most 100). Raises
         :class:`LbbError` ``trials_unavailable`` (503) without workflows or a
         checker, ``trial_candidate_unavailable`` (409) without the provider's
         key.
@@ -6179,6 +6182,8 @@ class _ModelTrialsNamespace:
             body["target"] = target
         if days is not None:
             body["days"] = days
+        if max_cost_usd is not None:
+            body["max_cost_usd"] = max_cost_usd
         return self._client._model_request(
             models.ModelTrialStartResponse, "POST", "/v1/models/trials", body=body
         )
@@ -6223,6 +6228,18 @@ class _ModelTrialsNamespace:
         It keeps what it compared."""
         return self._client._model_request(
             models.ModelTrial, "POST", "/v1/models/trials/stop", params={"id": trial_id}
+        )
+
+    def limit(self, trial_id: str, max_cost_usd: float) -> models.ModelTrial:
+        """Change the cost limit of a trial, in US dollars
+        (``POST /v1/models/trials/limit``). A trial that ended at its limit,
+        before its target and its days, opens again."""
+        return self._client._model_request(
+            models.ModelTrial,
+            "POST",
+            "/v1/models/trials/limit",
+            params={"id": trial_id},
+            body={"max_cost_usd": max_cost_usd},
         )
 
 

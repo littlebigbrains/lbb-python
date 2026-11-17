@@ -21313,6 +21313,21 @@
         ],
         "type": "object"
       },
+      "ModelTrialLimitRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/models/trials/limit?graph&id`: change the cost limit of a\ntrial. A trial that ended done before its target and its days opens\nagain with the new limit.",
+        "properties": {
+          "max_cost_usd": {
+            "description": "The new cost limit, in US dollars: more than the trial spent, at\nmost 100.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "max_cost_usd"
+        ],
+        "type": "object"
+      },
       "ModelTrialListResponse": {
         "description": "`GET /v1/models/trials?graph`: trials, newest first, without their calls.",
         "properties": {
@@ -21361,8 +21376,14 @@
             "description": "Trials can run here: workflows are on and the catalog has a checker.",
             "type": "boolean"
           },
+          "budget_max_micro_usd": {
+            "description": "The largest cost limit a trial takes, in millionths of a US dollar.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "budget_micro_usd": {
-            "description": "The budget of one trial (`LBB_MODEL_TRIAL_USD`).",
+            "description": "The default cost limit of one trial (`LBB_MODEL_TRIAL_USD`).",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -21546,6 +21567,14 @@
             },
             "type": [
               "array",
+              "null"
+            ]
+          },
+          "max_cost_usd": {
+            "description": "The cost limit of each trial, in US dollars: more than 0, at most\n100; default the server's (`budget_micro_usd` of the options).",
+            "format": "double",
+            "type": [
+              "number",
               "null"
             ]
           },
@@ -106062,7 +106091,7 @@
             "bearer": []
           }
         ],
-        "summary": "Test a candidate model: one trial per job (`jobs`, default every job it can do that has checked calls). A trial answers the job's checked calls with the candidate, newest first, scores each answer against the call's ground truth (a decision and an order without a model, an `ask` answer by the checker with the ground truth as reference) beside the current model's score, and adds each new check of the job until it has `target` calls (default 40) or its `days` end (default 14). It runs on the graph's `lbb.model-trials` workflow and changes no model. An open trial of the same job and candidate is answered as it is; `skipped` names the jobs left out. 503 when workflows are off or the catalog has no checker",
+        "summary": "Test a candidate model: one trial per job (`jobs`, default every job it can do that has checked calls). A trial answers the job's checked calls with the candidate, newest first, scores each answer against the call's ground truth (a decision and an order without a model, an `ask` answer by the checker with the ground truth as reference) beside the current model's score, and adds each new check of the job until it has `target` calls (default 40) or its `days` end (default 14), or it spends `max_cost_usd` (default the server's, at most 100). It runs on the graph's `lbb.model-trials` workflow and changes no model. An open trial of the same job and candidate is answered as it is; `skipped` names the jobs left out. 503 when workflows are off or the catalog has no checker",
         "tags": [
           "system"
         ]
@@ -106637,6 +106666,305 @@
         ]
       }
     },
+    "/v1/models/trials/limit": {
+      "post": {
+        "operationId": "post_v1_models_trials_limit",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the trial id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelTrialLimitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelTrial"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change the cost limit of a trial (`max_cost_usd`, more than it spent, at most 100). A running or collecting trial goes on with the new limit; a trial that ended done before its target and its days, and that compared with the model the job uses now, opens again and compares its next calls. 400 `invalid_trial_request` for a limit out of range; 409 `trial_not_continuable` with the reason for a trial that cannot go on",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/v1/models/trials/options": {
       "get": {
         "operationId": "get_v1_models_trials_options",
@@ -106902,7 +107230,7 @@
             "bearer": []
           }
         ],
-        "summary": "What a model trial can test on the graph: per job (route, fit, rerank, label, ask) the model it uses now, its checked calls of the last three months, and the candidate models with their efforts, prices and whether this server holds their key; whether trials can run here (workflows and a checker) and the budget of one trial",
+        "summary": "What a model trial can test on the graph: per job (route, fit, rerank, label, ask) the model it uses now, its checked calls of the last three months, and the candidate models with their efforts, prices and whether this server holds their key; whether trials can run here (workflows and a checker), and the default and largest cost limit of one trial",
         "tags": [
           "system"
         ]

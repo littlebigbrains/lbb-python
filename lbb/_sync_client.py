@@ -341,10 +341,17 @@ class _SyncModelTrialsNamespace(_ModelTrialsNamespace):
         jobs: Sequence[str | models.ModelJob] | None = None,
         target: int | None = None,
         days: int | None = None,
+        max_cost_usd: float | None = None,
     ) -> models.ModelTrialStartResponse:
         return cast(
             models.ModelTrialStartResponse,
-            super().create(candidate=candidate, jobs=jobs, target=target, days=days),
+            super().create(
+                candidate=candidate,
+                jobs=jobs,
+                target=target,
+                days=days,
+                max_cost_usd=max_cost_usd,
+            ),
         )
 
     def list(
@@ -360,6 +367,9 @@ class _SyncModelTrialsNamespace(_ModelTrialsNamespace):
 
     def stop(self, trial_id: str) -> models.ModelTrial:
         return cast(models.ModelTrial, super().stop(trial_id))
+
+    def limit(self, trial_id: str, max_cost_usd: float) -> models.ModelTrial:
+        return cast(models.ModelTrial, super().limit(trial_id, max_cost_usd))
 
     def wait(
         self,
