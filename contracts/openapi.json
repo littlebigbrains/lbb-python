@@ -25108,6 +25108,115 @@
         ],
         "type": "object"
       },
+      "PlannerAccessPath": {
+        "description": "Subject-major or object-major copies of groups of PSO tables.",
+        "properties": {
+          "groups": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "logical_bytes": {
+            "description": "Uncompressed canonical record bytes, not the stored size of the tables.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "present": {
+            "description": "The generation names at least one group.",
+            "type": "boolean"
+          },
+          "records": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tables": {
+            "description": "Over every stored group.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tombstones": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "usable_groups": {
+            "description": "Groups whose covered PSO tables are all still tables of the generation.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "present",
+          "groups",
+          "usable_groups",
+          "tables",
+          "records",
+          "tombstones",
+          "logical_bytes"
+        ],
+        "type": "object"
+      },
+      "PlannerDictionarySet": {
+        "description": "A set of dictionary tables.",
+        "properties": {
+          "logical_bytes": {
+            "description": "Uncompressed canonical record bytes, not the stored size of the tables.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "records": {
+            "description": "Records stored. A term that several L0 windows hold counts once for\neach window, until a compaction collapses them.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tables": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tables",
+          "records",
+          "logical_bytes"
+        ],
+        "type": "object"
+      },
+      "PlannerHistogramArtifact": {
+        "description": "One key-histogram artifact: the size of its base and its delta layers.",
+        "properties": {
+          "bytes": {
+            "description": "Compressed chunk bytes of this artifact, base and layers.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "layer_bytes": {
+            "description": "Compressed chunk bytes the layers alone occupy.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "layers": {
+            "description": "Delta layers over this artifact, not yet folded into its base.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "layers",
+          "bytes",
+          "layer_bytes"
+        ],
+        "type": "object"
+      },
       "PlannerKeyHistograms": {
         "description": "The per-(predicate, subject) and per-(predicate, object) count histograms.",
         "properties": {
@@ -25129,21 +25238,186 @@
             "minimum": 0,
             "type": "integer"
           },
+          "object": {
+            "$ref": "#/components/schemas/PlannerHistogramArtifact",
+            "description": "The `(predicate, object)` counts, from the POS view. All zero when the\nhistograms are not present."
+          },
           "present": {
             "type": "boolean"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/PlannerHistogramArtifact",
+            "description": "The `(predicate, subject)` counts, from the PSO view. All zero when the\nhistograms are not present."
           }
         },
         "required": [
           "present",
           "layers",
           "bytes",
-          "layer_bytes"
+          "layer_bytes",
+          "subject",
+          "object"
+        ],
+        "type": "object"
+      },
+      "PlannerLattice": {
+        "description": "The class lattice (`rdfs:subClassOf`) of the generation.",
+        "properties": {
+          "l0_windows": {
+            "description": "L0 windows that hold lattice statements.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ontology_version": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "present": {
+            "description": "The generation records the ontology version of its lattice.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "present",
+          "l0_windows"
+        ],
+        "type": "object"
+      },
+      "PlannerLevel": {
+        "description": "The tables of one level.",
+        "properties": {
+          "dict": {
+            "$ref": "#/components/schemas/PlannerDictionarySet",
+            "description": "Dictionary tables."
+          },
+          "level": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pos": {
+            "$ref": "#/components/schemas/PlannerTableSet",
+            "description": "Predicate-object-subject tables."
+          },
+          "pso": {
+            "$ref": "#/components/schemas/PlannerTableSet",
+            "description": "Predicate-subject-object tables."
+          },
+          "windows": {
+            "description": "L0 windows. Present on level 0 only.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "level",
+          "pso",
+          "pos",
+          "dict"
+        ],
+        "type": "object"
+      },
+      "PlannerLevelTotals": {
+        "description": "The tables of every level, summed.",
+        "properties": {
+          "dict": {
+            "$ref": "#/components/schemas/PlannerDictionarySet"
+          },
+          "pos": {
+            "$ref": "#/components/schemas/PlannerTableSet"
+          },
+          "pso": {
+            "$ref": "#/components/schemas/PlannerTableSet"
+          }
+        },
+        "required": [
+          "pso",
+          "pos",
+          "dict"
+        ],
+        "type": "object"
+      },
+      "PlannerMemberOrder": {
+        "description": "The member-order pairs an operator declared.",
+        "properties": {
+          "declared": {
+            "description": "At most 64 pairs, in the order of the manifest.",
+            "items": {
+              "$ref": "#/components/schemas/PlannerMemberOrderPair"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "declared"
+        ],
+        "type": "object"
+      },
+      "PlannerMemberOrderPair": {
+        "description": "One declared member-order pair and the state of its index.",
+        "properties": {
+          "bytes": {
+            "description": "Stored size of the parts of the index.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "member": {
+            "description": "The IRI of the member predicate.",
+            "type": "string"
+          },
+          "order": {
+            "description": "The IRI of the order predicate.",
+            "type": "string"
+          },
+          "parts": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rows": {
+            "description": "Rows of the index. Zero when `state` is `declared`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "state": {
+            "description": "`built`: an index exists and describes the view the levels hold now.\n`declared`: no usable index yet; maintenance builds one. A writer drops\nan index that describes an older view.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member",
+          "order",
+          "state",
+          "rows",
+          "parts",
+          "bytes"
         ],
         "type": "object"
       },
       "PlannerPairCounts": {
         "description": "The pairwise join-count sidecar.",
         "properties": {
+          "bytes": {
+            "description": "Size of the sidecar object. Zero when there is none.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "declined": {
+            "description": "The sidecar records that the generation has too many predicates for a\ncount matrix. Then `present` is `false` and `predicates` is `0`.",
+            "type": "boolean"
+          },
           "predicates": {
             "description": "Predicates its count matrix covers.",
             "format": "int64",
@@ -25156,7 +25430,59 @@
         },
         "required": [
           "present",
-          "predicates"
+          "predicates",
+          "bytes",
+          "declined"
+        ],
+        "type": "object"
+      },
+      "PlannerPredicatePatterns": {
+        "description": "The predicate-pattern index: for each subject, the set of its predicates.",
+        "properties": {
+          "bytes": {
+            "description": "Stored size of those objects.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "parts": {
+            "description": "Objects of the index, subject rows and pattern rows together.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pattern_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "patterns": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "present": {
+            "description": "The generation names an index.",
+            "type": "boolean"
+          },
+          "subjects": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "usable": {
+            "description": "Readers use it: it describes the watermark the generation serves.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "present",
+          "usable",
+          "subjects",
+          "patterns",
+          "pattern_rows",
+          "parts",
+          "bytes"
         ],
         "type": "object"
       },
@@ -25224,11 +25550,44 @@
           "key_histograms": {
             "$ref": "#/components/schemas/PlannerKeyHistograms"
           },
+          "lattice": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlannerLattice",
+                "description": "The class lattice. First page only."
+              }
+            ]
+          },
+          "member_order": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlannerMemberOrder",
+                "description": "The declared member-order pairs and the state of their indexes. First\npage only."
+              }
+            ]
+          },
           "next_cursor": {
             "description": "Pass as `cursor` for the next page; `null` on the last page. A cursor\nbelongs to this generation: after a newer one is published it is\nrefused with `400` (`planner-stats cursor expired`), and paging starts\nagain without a cursor.",
             "type": [
               "string",
               "null"
+            ]
+          },
+          "object_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlannerAccessPath",
+                "description": "Object-major (OPS) access groups. First page only."
+              }
             ]
           },
           "pair_counts": {
@@ -25239,6 +25598,17 @@
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "predicate_patterns": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlannerPredicatePatterns",
+                "description": "The predicate-pattern index. First page only."
+              }
+            ]
           },
           "predicates": {
             "description": "One page of predicates, by triple count descending, then IRI.",
@@ -25265,6 +25635,28 @@
               }
             ]
           },
+          "subject_access": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlannerAccessPath",
+                "description": "Subject-major (SPO) access groups. First page only."
+              }
+            ]
+          },
+          "tables": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlannerTables",
+                "description": "The tables of the generation, by level. Only on the first page (no\ncursor); later pages omit it, as they omit the sections below."
+              }
+            ]
+          },
           "trigram": {
             "$ref": "#/components/schemas/PlannerTrigram"
           },
@@ -25286,6 +25678,60 @@
           "pair_counts",
           "trigram",
           "value_order_index"
+        ],
+        "type": "object"
+      },
+      "PlannerTableSet": {
+        "description": "A set of PSO or POS tables.",
+        "properties": {
+          "logical_bytes": {
+            "description": "Uncompressed canonical record bytes, not the stored size of the tables.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "records": {
+            "description": "Records stored, tombstones included.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tables": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tombstones": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tables",
+          "records",
+          "tombstones",
+          "logical_bytes"
+        ],
+        "type": "object"
+      },
+      "PlannerTables": {
+        "description": "The tables of a generation, by level. Level 0 is the L0 windows (commit\nordered, overlapping runs); levels 1 and up are the leveled tables.",
+        "properties": {
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/PlannerLevel"
+            },
+            "type": "array"
+          },
+          "total": {
+            "$ref": "#/components/schemas/PlannerLevelTotals",
+            "description": "The sum over every level."
+          }
+        },
+        "required": [
+          "levels",
+          "total"
         ],
         "type": "object"
       },
