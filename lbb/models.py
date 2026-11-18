@@ -5559,6 +5559,80 @@ class OwnedOutputsOutcome(BaseModel):
     ]
 
 
+class PlannerAccessPath(BaseModel):
+    """
+    Subject-major or object-major copies of groups of PSO tables.
+    """
+
+    groups: Annotated[int, Field(ge=0)]
+    logical_bytes: Annotated[
+        int,
+        Field(
+            description='Uncompressed canonical record bytes, not the stored size of the tables.',
+            ge=0,
+        ),
+    ]
+    present: Annotated[
+        bool, Field(description='The generation names at least one group.')
+    ]
+    records: Annotated[int, Field(ge=0)]
+    tables: Annotated[int, Field(description='Over every stored group.', ge=0)]
+    tombstones: Annotated[int, Field(ge=0)]
+    usable_groups: Annotated[
+        int,
+        Field(
+            description='Groups whose covered PSO tables are all still tables of the generation.',
+            ge=0,
+        ),
+    ]
+
+
+class PlannerDictionarySet(BaseModel):
+    """
+    A set of dictionary tables.
+    """
+
+    logical_bytes: Annotated[
+        int,
+        Field(
+            description='Uncompressed canonical record bytes, not the stored size of the tables.',
+            ge=0,
+        ),
+    ]
+    records: Annotated[
+        int,
+        Field(
+            description='Records stored. A term that several L0 windows hold counts once for\neach window, until a compaction collapses them.',
+            ge=0,
+        ),
+    ]
+    tables: Annotated[int, Field(ge=0)]
+
+
+class PlannerHistogramArtifact(BaseModel):
+    """
+    One key-histogram artifact: the size of its base and its delta layers.
+    """
+
+    bytes: Annotated[
+        int,
+        Field(
+            description='Compressed chunk bytes of this artifact, base and layers.',
+            ge=0,
+        ),
+    ]
+    layer_bytes: Annotated[
+        int, Field(description='Compressed chunk bytes the layers alone occupy.', ge=0)
+    ]
+    layers: Annotated[
+        int,
+        Field(
+            description='Delta layers over this artifact, not yet folded into its base.',
+            ge=0,
+        ),
+    ]
+
+
 class PlannerKeyHistograms(BaseModel):
     """
     The per-(predicate, subject) and per-(predicate, object) count histograms.
@@ -5581,7 +5655,59 @@ class PlannerKeyHistograms(BaseModel):
             ge=0,
         ),
     ]
+    object: Annotated[
+        PlannerHistogramArtifact,
+        Field(
+            description='The `(predicate, object)` counts, from the POS view. All zero when the\nhistograms are not present.'
+        ),
+    ]
     present: bool
+    subject: Annotated[
+        PlannerHistogramArtifact,
+        Field(
+            description='The `(predicate, subject)` counts, from the PSO view. All zero when the\nhistograms are not present.'
+        ),
+    ]
+
+
+class PlannerLattice(BaseModel):
+    """
+    The class lattice (`rdfs:subClassOf`) of the generation.
+    """
+
+    l0_windows: Annotated[
+        int, Field(description='L0 windows that hold lattice statements.', ge=0)
+    ]
+    ontology_version: Annotated[int | None, Field(ge=0)] = None
+    present: Annotated[
+        bool,
+        Field(
+            description='The generation records the ontology version of its lattice.'
+        ),
+    ]
+
+
+class PlannerMemberOrderPair(BaseModel):
+    """
+    One declared member-order pair and the state of its index.
+    """
+
+    bytes: Annotated[
+        int, Field(description='Stored size of the parts of the index.', ge=0)
+    ]
+    member: Annotated[str, Field(description='The IRI of the member predicate.')]
+    order: Annotated[str, Field(description='The IRI of the order predicate.')]
+    parts: Annotated[int, Field(ge=0)]
+    rows: Annotated[
+        int,
+        Field(description='Rows of the index. Zero when `state` is `declared`.', ge=0),
+    ]
+    state: Annotated[
+        str,
+        Field(
+            description='`built`: an index exists and describes the view the levels hold now.\n`declared`: no usable index yet; maintenance builds one. A writer drops\nan index that describes an older view.'
+        ),
+    ]
 
 
 class PlannerPairCounts(BaseModel):
@@ -5589,10 +5715,45 @@ class PlannerPairCounts(BaseModel):
     The pairwise join-count sidecar.
     """
 
+    bytes: Annotated[
+        int,
+        Field(description='Size of the sidecar object. Zero when there is none.', ge=0),
+    ]
+    declined: Annotated[
+        bool,
+        Field(
+            description='The sidecar records that the generation has too many predicates for a\ncount matrix. Then `present` is `false` and `predicates` is `0`.'
+        ),
+    ]
     predicates: Annotated[
         int, Field(description='Predicates its count matrix covers.', ge=0)
     ]
     present: bool
+
+
+class PlannerPredicatePatterns(BaseModel):
+    """
+    The predicate-pattern index: for each subject, the set of its predicates.
+    """
+
+    bytes: Annotated[int, Field(description='Stored size of those objects.', ge=0)]
+    parts: Annotated[
+        int,
+        Field(
+            description='Objects of the index, subject rows and pattern rows together.',
+            ge=0,
+        ),
+    ]
+    pattern_rows: Annotated[int, Field(ge=0)]
+    patterns: Annotated[int, Field(ge=0)]
+    present: Annotated[bool, Field(description='The generation names an index.')]
+    subjects: Annotated[int, Field(ge=0)]
+    usable: Annotated[
+        bool,
+        Field(
+            description='Readers use it: it describes the watermark the generation serves.'
+        ),
+    ]
 
 
 class PlannerPredicateStats(BaseModel):
@@ -5623,6 +5784,25 @@ class PlannerServingDefaults(BaseModel):
         int,
         Field(description='The promoted registry run this adapter came from.', ge=0),
     ]
+
+
+class PlannerTableSet(BaseModel):
+    """
+    A set of PSO or POS tables.
+    """
+
+    logical_bytes: Annotated[
+        int,
+        Field(
+            description='Uncompressed canonical record bytes, not the stored size of the tables.',
+            ge=0,
+        ),
+    ]
+    records: Annotated[
+        int, Field(description='Records stored, tombstones included.', ge=0)
+    ]
+    tables: Annotated[int, Field(ge=0)]
+    tombstones: Annotated[int, Field(ge=0)]
 
 
 class PlannerTrigram(BaseModel):
@@ -16690,46 +16870,55 @@ class OntologyView(BaseModel):
     ] = None
 
 
-class PlannerStatsResponse(BaseModel):
+class PlannerLevel(BaseModel):
     """
-    The statistics the SPARQL planner reads for the published generation a
-    latest read uses (`GET /v1/graph/planner-stats`). Read from the
-    generation's manifest and sidecar metadata; never a scan of the graph.
+    The tables of one level.
     """
 
-    generation: Annotated[int | None, Field(ge=0)] = None
-    key_histograms: PlannerKeyHistograms
-    next_cursor: Annotated[
-        str | None,
-        Field(
-            description='Pass as `cursor` for the next page; `null` on the last page. A cursor\nbelongs to this generation: after a newer one is published it is\nrefused with `400` (`planner-stats cursor expired`), and paging starts\nagain without a cursor.'
-        ),
+    dict_: Annotated[
+        PlannerDictionarySet, Field(alias='dict', description='Dictionary tables.')
+    ]
+    level: Annotated[int, Field(ge=0)]
+    pos: Annotated[
+        PlannerTableSet, Field(description='Predicate-object-subject tables.')
+    ]
+    pso: Annotated[
+        PlannerTableSet, Field(description='Predicate-subject-object tables.')
+    ]
+    windows: Annotated[
+        int | None, Field(description='L0 windows. Present on level 0 only.', ge=0)
     ] = None
-    pair_counts: PlannerPairCounts
-    predicate_count: Annotated[
-        int, Field(description='Predicates in the generation, across all pages.', ge=0)
+
+
+class PlannerLevelTotals(BaseModel):
+    """
+    The tables of every level, summed.
+    """
+
+    dict_: Annotated[PlannerDictionarySet, Field(alias='dict')]
+    pos: PlannerTableSet
+    pso: PlannerTableSet
+
+
+class PlannerMemberOrder(BaseModel):
+    """
+    The member-order pairs an operator declared.
+    """
+
+    declared: Annotated[
+        list[PlannerMemberOrderPair],
+        Field(description='At most 64 pairs, in the order of the manifest.'),
     ]
-    predicates: Annotated[
-        list[PlannerPredicateStats],
-        Field(
-            description='One page of predicates, by triple count descending, then IRI.'
-        ),
-    ]
-    published_at: Annotated[
-        str | None,
-        Field(
-            description='When the generation was published (RFC 3339, UTC). `null` while the\npublished manifest records no wall-clock time: its `created_at_micros`\nonly orders generations.'
-        ),
-    ] = None
-    served_at_seq: CommitSeq | None = None
-    trigram: PlannerTrigram
-    triple_count: Annotated[int, Field(ge=0)]
-    value_order_index: Annotated[
-        IndexUpgradePlan,
-        Field(
-            description='Value-order index coverage: the plan `GET /v1/graph/index-upgrade`\nreports.'
-        ),
-    ]
+
+
+class PlannerTables(BaseModel):
+    """
+    The tables of a generation, by level. Level 0 is the L0 windows (commit
+    ordered, overlapping runs); levels 1 and up are the leveled tables.
+    """
+
+    levels: list[PlannerLevel]
+    total: Annotated[PlannerLevelTotals, Field(description='The sum over every level.')]
 
 
 class PostgresTable(BaseModel):
@@ -22265,6 +22454,54 @@ class OntologyStarterList(BaseModel):
         ),
     ] = None
     starters: list[OntologyStarterSummary]
+
+
+class PlannerStatsResponse(BaseModel):
+    """
+    The statistics the SPARQL planner reads for the published generation a
+    latest read uses (`GET /v1/graph/planner-stats`). Read from the
+    generation's manifest and sidecar metadata; never a scan of the graph.
+    """
+
+    generation: Annotated[int | None, Field(ge=0)] = None
+    key_histograms: PlannerKeyHistograms
+    lattice: PlannerLattice | None = None
+    member_order: PlannerMemberOrder | None = None
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page; `null` on the last page. A cursor\nbelongs to this generation: after a newer one is published it is\nrefused with `400` (`planner-stats cursor expired`), and paging starts\nagain without a cursor.'
+        ),
+    ] = None
+    object_access: PlannerAccessPath | None = None
+    pair_counts: PlannerPairCounts
+    predicate_count: Annotated[
+        int, Field(description='Predicates in the generation, across all pages.', ge=0)
+    ]
+    predicate_patterns: PlannerPredicatePatterns | None = None
+    predicates: Annotated[
+        list[PlannerPredicateStats],
+        Field(
+            description='One page of predicates, by triple count descending, then IRI.'
+        ),
+    ]
+    published_at: Annotated[
+        str | None,
+        Field(
+            description='When the generation was published (RFC 3339, UTC). `null` while the\npublished manifest records no wall-clock time: its `created_at_micros`\nonly orders generations.'
+        ),
+    ] = None
+    served_at_seq: CommitSeq | None = None
+    subject_access: PlannerAccessPath | None = None
+    tables: PlannerTables | None = None
+    trigram: PlannerTrigram
+    triple_count: Annotated[int, Field(ge=0)]
+    value_order_index: Annotated[
+        IndexUpgradePlan,
+        Field(
+            description='Value-order index coverage: the plan `GET /v1/graph/index-upgrade`\nreports.'
+        ),
+    ]
 
 
 class PostgresCatalog(BaseModel):
