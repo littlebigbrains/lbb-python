@@ -5522,6 +5522,124 @@
         ],
         "type": "object"
       },
+      "DiagnosisCause": {
+        "description": "The finer cause behind an outcome, for tools and tests.",
+        "enum": [
+          "plan",
+          "present_not_found",
+          "too_coarse",
+          "absent",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "DiagnosisEvidence": {
+        "description": "One entity a probe found or the answer reached, with the checker's grade.",
+        "properties": {
+          "class": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "embedding": {
+            "description": "The embedding a search hit came from.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grade": {
+            "description": "0 unrelated, 1 related, 2 relevant, 3 answers the question.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "probe": {
+            "description": "`search` (found by meaning), `linked` (a name the server linked\nbefore the answer loop) or `reached` (a citation, a row value or an\nIRI of one of the answer's queries).",
+            "type": "string"
+          },
+          "rank": {
+            "description": "The hit's place in the search's list, from 1.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reached": {
+            "description": "Whether the answer reached the entity.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "iri",
+          "probe",
+          "grade",
+          "reached"
+        ],
+        "type": "object"
+      },
+      "DiagnosisNextStep": {
+        "description": "One thing the developer can do next.",
+        "properties": {
+          "iri": {
+            "description": "The entity the step is about.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DiagnosisStepKind"
+          },
+          "reference": {
+            "description": "For `accept_stand_in`: the reference to correct the check with.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "One sentence for a person.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ],
+        "type": "object"
+      },
+      "DiagnosisOutcome": {
+        "description": "What a diagnosis tells the developer: one of four outcomes, each with\nits next steps.",
+        "enum": [
+          "missed",
+          "broader_only",
+          "answered_badly",
+          "not_in_graph"
+        ],
+        "type": "string"
+      },
+      "DiagnosisStepKind": {
+        "description": "What a next step asks the developer to do.",
+        "enum": [
+          "add_alias",
+          "tune_search",
+          "declare_embedding",
+          "accept_stand_in",
+          "add_data",
+          "keep_as_test",
+          "add_source"
+        ],
+        "type": "string"
+      },
       "Digest": {
         "description": "Validated content address. Deserialization cannot introduce an object path.",
         "type": "string"
@@ -19721,6 +19839,127 @@
           "cost_micro_usd",
           "limit_micro_usd",
           "checks"
+        ],
+        "type": "object"
+      },
+      "ModelCheckDiagnosis": {
+        "description": "The diagnosis of one Ask call. Start with `outcome`, `summary` and\n`next_steps`; `best` and `used` are the two entities that explain it, and\n`evidence` holds everything the checker graded.",
+        "properties": {
+          "at_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "best": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DiagnosisEvidence",
+                "description": "The most relevant entity the probes found."
+              }
+            ]
+          },
+          "call": {
+            "type": "string"
+          },
+          "cause": {
+            "$ref": "#/components/schemas/DiagnosisCause"
+          },
+          "cost_micro_usd": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "evidence": {
+            "description": "Graded items, best first.",
+            "items": {
+              "$ref": "#/components/schemas/DiagnosisEvidence"
+            },
+            "type": "array"
+          },
+          "judge_model": {
+            "type": "string"
+          },
+          "next_steps": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosisNextStep"
+            },
+            "type": "array"
+          },
+          "notes": {
+            "description": "Findings beside the outcome: `linking_noise` (a linked name graded 0).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/DiagnosisOutcome"
+          },
+          "question": {
+            "type": "string"
+          },
+          "reference_draft": {
+            "description": "For `broader_only`: the reference a test grades against until a\nperson reviews the check.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "searched": {
+            "description": "The embeddings the search probe read.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "served_at_seq": {
+            "description": "The commit the call's answer read; the probes read the same one.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sub_cause": {
+            "description": "For `present_not_found`: `no_search` (no query of the answer searched\nby meaning) or `ranking` (it searched and did not read the entity).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "description": "The outcome in one or two sentences, with the entities named.",
+            "type": "string"
+          },
+          "used": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DiagnosisEvidence",
+                "description": "The most relevant entity the answer reached."
+              }
+            ]
+          },
+          "v": {
+            "description": "2 since outcomes and next steps; a version 1 object gets them on read.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "call",
+          "question",
+          "at_ms",
+          "cause",
+          "evidence",
+          "cost_micro_usd"
         ],
         "type": "object"
       },
@@ -98159,7 +98398,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ModelCheckDiagnosis"
                 }
               }
             },
@@ -98377,7 +98616,7 @@
             "bearer": []
           }
         ],
-        "summary": "Diagnose one `ask` call: probe the graph at the commit the call read (a search by meaning of the question on each serving embedding, the names the server linked), let the checker grade what the probes found, and store the cause (`plan`, `present_not_found`, `too_coarse`, `absent` or `unknown`) with its evidence. Calls the checker model and counts on the check budget",
+        "summary": "Diagnose one `ask` call: probe the graph at the commit the call read (a search by meaning of the question on the serving embeddings, the names the server linked, the entities the answer reached), let the checker grade them, and store the outcome (`missed`, `broader_only`, `answered_badly` or `not_in_graph`) with a summary, next steps and the evidence. Calls the checker model and counts on the check budget",
         "tags": [
           "system"
         ]
@@ -98439,7 +98678,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/ModelCheckDiagnosis"
                 }
               }
             },
@@ -98657,7 +98896,7 @@
             "bearer": []
           }
         ],
-        "summary": "The stored diagnosis of one `ask` call",
+        "summary": "The stored diagnosis of one `ask` call: its outcome, summary, next steps and evidence",
         "tags": [
           "system"
         ]

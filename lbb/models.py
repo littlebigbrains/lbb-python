@@ -1379,6 +1379,77 @@ class DerivationRecordRequest(DerivationKey):
     ] = None
 
 
+class DiagnosisCause(Enum):
+    """
+    The finer cause behind an outcome, for tools and tests.
+    """
+
+    plan = 'plan'
+    present_not_found = 'present_not_found'
+    too_coarse = 'too_coarse'
+    absent = 'absent'
+    unknown = 'unknown'
+
+
+class DiagnosisEvidence(BaseModel):
+    """
+    One entity a probe found or the answer reached, with the checker's grade.
+    """
+
+    class_: Annotated[str | None, Field(alias='class')] = None
+    embedding: Annotated[
+        str | None, Field(description='The embedding a search hit came from.')
+    ] = None
+    grade: Annotated[
+        int,
+        Field(
+            description='0 unrelated, 1 related, 2 relevant, 3 answers the question.',
+            ge=0,
+        ),
+    ]
+    iri: str
+    label: str | None = None
+    probe: Annotated[
+        str,
+        Field(
+            description="`search` (found by meaning), `linked` (a name the server linked\nbefore the answer loop) or `reached` (a citation, a row value or an\nIRI of one of the answer's queries)."
+        ),
+    ]
+    rank: Annotated[
+        int | None,
+        Field(description="The hit's place in the search's list, from 1.", ge=0),
+    ] = None
+    reached: Annotated[
+        bool, Field(description='Whether the answer reached the entity.')
+    ]
+
+
+class DiagnosisOutcome(Enum):
+    """
+    What a diagnosis tells the developer: one of four outcomes, each with
+    its next steps.
+    """
+
+    missed = 'missed'
+    broader_only = 'broader_only'
+    answered_badly = 'answered_badly'
+    not_in_graph = 'not_in_graph'
+
+
+class DiagnosisStepKind(Enum):
+    """
+    What a next step asks the developer to do.
+    """
+
+    add_alias = 'add_alias'
+    tune_search = 'tune_search'
+    declare_embedding = 'declare_embedding'
+    accept_stand_in = 'accept_stand_in'
+    add_data = 'add_data'
+    keep_as_test = 'keep_as_test'
+    add_source = 'add_source'
+
+
 class DiscoveryApprovalReference(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -13766,6 +13837,24 @@ class DerivationRecordResponse(BaseModel):
     recorded: bool
 
 
+class DiagnosisNextStep(BaseModel):
+    """
+    One thing the developer can do next.
+    """
+
+    iri: Annotated[str | None, Field(description='The entity the step is about.')] = (
+        None
+    )
+    kind: DiagnosisStepKind
+    reference: Annotated[
+        str | None,
+        Field(
+            description='For `accept_stand_in`: the reference to correct the check with.'
+        ),
+    ] = None
+    text: Annotated[str, Field(description='One sentence for a person.')]
+
+
 class DiscoveryPhase2(BaseModel):
     lease: ReaderLease
     state: State1
@@ -16148,6 +16237,69 @@ class ModelCheckBrief(BaseModel):
     reviewed: bool
     score: float
     verdict: CheckVerdict
+
+
+class ModelCheckDiagnosis(BaseModel):
+    """
+    The diagnosis of one Ask call. Start with `outcome`, `summary` and
+    `next_steps`; `best` and `used` are the two entities that explain it, and
+    `evidence` holds everything the checker graded.
+    """
+
+    at_ms: int
+    best: DiagnosisEvidence | None = None
+    call: str
+    cause: DiagnosisCause
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    evidence: Annotated[
+        list[DiagnosisEvidence], Field(description='Graded items, best first.')
+    ]
+    judge_model: str | None = None
+    next_steps: list[DiagnosisNextStep] | None = None
+    notes: Annotated[
+        list[str] | None,
+        Field(
+            description='Findings beside the outcome: `linking_noise` (a linked name graded 0).'
+        ),
+    ] = None
+    outcome: DiagnosisOutcome | None = None
+    question: str
+    reference_draft: Annotated[
+        str | None,
+        Field(
+            description='For `broader_only`: the reference a test grades against until a\nperson reviews the check.'
+        ),
+    ] = None
+    searched: Annotated[
+        list[str] | None, Field(description='The embeddings the search probe read.')
+    ] = None
+    served_at_seq: Annotated[
+        int | None,
+        Field(
+            description="The commit the call's answer read; the probes read the same one.",
+            ge=0,
+        ),
+    ] = None
+    sub_cause: Annotated[
+        str | None,
+        Field(
+            description='For `present_not_found`: `no_search` (no query of the answer searched\nby meaning) or `ranking` (it searched and did not read the entity).'
+        ),
+    ] = None
+    summary: Annotated[
+        str | None,
+        Field(
+            description='The outcome in one or two sentences, with the entities named.'
+        ),
+    ] = None
+    used: DiagnosisEvidence | None = None
+    v: Annotated[
+        int,
+        Field(
+            description='2 since outcomes and next steps; a version 1 object gets them on read.',
+            ge=0,
+        ),
+    ]
 
 
 class ModelCheckFile(BaseModel):
