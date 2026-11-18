@@ -5826,6 +5826,30 @@ class _ChecksNamespace:
             "POST", "/v1/models/checks/review", params={"id": call_id}, body=body
         )
 
+    def diagnose(self, call_id: str) -> Any:
+        """Find why one answer of ``ask`` was weak, and what to do about it
+        (``POST /v1/models/checks/diagnose``).
+
+        At the commit the call read, the judge grades the entities the
+        answer reached, the names the server linked and the hits of one
+        search of the question over the graph. The result (the shape of
+        ``models.ModelCheckDiagnosis``) leads with ``outcome`` (``missed``,
+        ``broader_only``, ``answered_badly`` or ``not_in_graph``),
+        ``summary`` and ``next_steps``; ``best`` and ``used`` are the
+        entities that explain it, and ``evidence`` holds every graded
+        entity. Uses the judge and counts on the check budget.
+        """
+        return self._client._request(
+            "POST", "/v1/models/checks/diagnose", params={"call": call_id}
+        )
+
+    def diagnosis(self, call_id: str) -> Any:
+        """The stored diagnosis of one ``ask`` call
+        (``GET /v1/models/checks/diagnosis``); 404 when it has none."""
+        return self._client._request(
+            "GET", "/v1/models/checks/diagnosis", params={"call": call_id}
+        )
+
     def export(
         self,
         *,

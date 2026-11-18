@@ -3503,6 +3503,46 @@ class ModelChecksAndTuningTests(unittest.TestCase):
         self.assertEqual(dict(seen[3].url.params), {"id": CALL_ID})
         self.assertEqual(seen[3].content, b"")
 
+    def test_checks_diagnose_and_read_a_diagnosis(self) -> None:
+        seen: list[httpx.Request] = []
+        diagnosis = {
+            "v": 2,
+            "call": CALL_ID,
+            "question": "which groups work on topic X?",
+            "at_ms": 1_790_000_100_000,
+            "served_at_seq": 168,
+            "outcome": "missed",
+            "summary": 'Your graph holds "Topic X", which is relevant to the question, but the answer did not reach it.',
+            "next_steps": [
+                {"kind": "add_alias", "text": "Add an alias.", "iri": "https://x.test/topic/x"},
+                {"kind": "tune_search", "text": "Test search settings."},
+            ],
+            "best": {"iri": "https://x.test/topic/x", "label": "Topic X", "probe": "search", "rank": 3, "grade": 3, "reached": False},
+            "cause": "present_not_found",
+            "sub_cause": "ranking",
+            "notes": [],
+            "evidence": [{"iri": "https://x.test/topic/x", "label": "Topic X", "probe": "search", "rank": 3, "grade": 3, "reached": False}],
+            "searched": ["topic"],
+            "cost_micro_usd": 90_000,
+            "judge_model": "claude-opus-5-5",
+        }
+        responses = [{"json": diagnosis}, {"json": diagnosis}]
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, responses)
+        ) as client:
+            made = client.checks.diagnose(CALL_ID)
+            read = client.checks.diagnosis(CALL_ID)
+        typed = model_module.ModelCheckDiagnosis.model_validate(made)
+        self.assertEqual(typed.outcome, model_module.DiagnosisOutcome.missed)
+        self.assertEqual(typed.next_steps[0].kind, model_module.DiagnosisStepKind.add_alias)
+        self.assertEqual(read, made)
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [("POST", "/v1/models/checks/diagnose"), ("GET", "/v1/models/checks/diagnosis")],
+        )
+        self.assertEqual(dict(seen[0].url.params), {"graph": "crm", "call": CALL_ID})
+        self.assertEqual(seen[0].content, b"")
+
     def test_checks_list_review_summarize_and_export_a_month(self) -> None:
         seen: list[httpx.Request] = []
         corrected = model_check_payload(
