@@ -21617,6 +21617,12 @@ class ModelCallRow(BaseModel):
     job: ModelJob
     model: str
     ok: bool
+    origin_route: Annotated[
+        str | None,
+        Field(
+            description="The route that made the call (`ModelCall::origin.route`):\n`/v1/query/ask` for a question, `/v1/search`, `/v1/models/trials` for a\nmodel trial's replay, `integrations/fit`. Absent when the call names\nnone. `GET /v1/models/calls` filters by it (`route`, `without_route`)."
+        ),
+    ] = None
     provider: str
     run_id: Annotated[
         str | None,
