@@ -30202,6 +30202,328 @@
         ],
         "type": "object"
       },
+      "RequestActivityClass": {
+        "description": "What a request was: one class for each data request.",
+        "enum": [
+          "query",
+          "search",
+          "ask",
+          "write",
+          "other"
+        ],
+        "type": "string"
+      },
+      "RequestActivityDropped": {
+        "description": "New graph and namespace rows that the stored counts refused for their\nsize. A refused row is not counted for its graph or namespace (the\nenvironment rows are never refused), so a graph or namespace figure is lower\nthan the truth when these are not 0 (`incomplete` says so).",
+        "properties": {
+          "graph_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "namespace_rows": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "graph_rows",
+          "namespace_rows"
+        ],
+        "type": "object"
+      },
+      "RequestActivityGranularity": {
+        "description": "How a series is cut into periods.",
+        "enum": [
+          "day",
+          "hour"
+        ],
+        "type": "string"
+      },
+      "RequestActivityResponse": {
+        "description": "`GET /v1/activity/requests`.",
+        "properties": {
+          "as_of_ms": {
+            "description": "What the stored counts of this answer are as of, in milliseconds since\nthe Unix epoch: the time the answering server read the oldest of them,\nor the time of the answer when it read none. An answer a server kept\n(up to 60 seconds) keeps its time.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "cut": {
+            "description": "A list stopped before the end of the month (or the page filled): pass\n`next_cursor` for the rest.",
+            "type": "boolean"
+          },
+          "dropped": {
+            "$ref": "#/components/schemas/RequestActivityDropped"
+          },
+          "from": {
+            "description": "`yyyy-mm-dd` (UTC): the first and the last day the rows cover (in a\nlist, the first and the last day of its month).",
+            "type": "string"
+          },
+          "granularity": {
+            "$ref": "#/components/schemas/RequestActivityGranularity"
+          },
+          "includes_unwritten": {
+            "description": "The answer adds the counts that the answering server holds and has not\nwritten yet (a series of the environment or a graph, and the rows of a\nnamespace it has already resolved). The counts of other servers appear\nwhen those servers write them. Always `false` in a list.",
+            "type": "boolean"
+          },
+          "incomplete": {
+            "description": "The numbers are short: a graph or namespace figure misses requests\nbecause a full stored record refused new rows (`dropped`), or a stored\nrecord in the range is of a format this server does not read.",
+            "type": "boolean"
+          },
+          "list": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RequestActivitySubjects",
+                "description": "What a list names (`list=graphs` or `list=namespaces`). Absent in a\nseries."
+              }
+            ]
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` for the next page of a list; absent on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recording": {
+            "description": "`false` when this server does not count requests\n(`LBB_REQUEST_ACTIVITY_ENABLED` is off): there are no rows, which is\nnot a quiet period.",
+            "type": "boolean"
+          },
+          "rows": {
+            "description": "The series: one row for each period and class that has requests, oldest\nperiod first, the classes in the order query, search, ask, write,\nother. Empty in a list.",
+            "items": {
+              "$ref": "#/components/schemas/RequestActivityRow"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/RequestActivityScope"
+          },
+          "subject": {
+            "description": "The graph id or the namespace id of the scope. Absent for the\nenvironment.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subjects": {
+            "description": "The subjects this page covered, in storage order. The caller sorts.\nEmpty in a series.",
+            "items": {
+              "$ref": "#/components/schemas/RequestActivitySubject"
+            },
+            "type": "array"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recording",
+          "scope",
+          "granularity",
+          "from",
+          "to",
+          "rows",
+          "cut",
+          "as_of_ms",
+          "incomplete",
+          "dropped",
+          "includes_unwritten"
+        ],
+        "type": "object"
+      },
+      "RequestActivityRow": {
+        "description": "One period and class of a series. A count that never happened is 0.",
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/RequestActivityClass"
+          },
+          "client_errors": {
+            "description": "Requests that ended with a 4xx other than 429: the caller's request was\nwrong.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Requests that ended with a 5xx: the server failed, or a deadline passed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_ms": {
+            "description": "The longest duration in whole milliseconds, rounded up.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ok": {
+            "description": "Requests that ended with a status below 400.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "p50_ms": {
+            "description": "The median duration in milliseconds: the upper edge of its bucket,\nnever below the true value and never above `max_ms`. Absent below 20\nrequests.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "p95_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "p99_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "period": {
+            "description": "`yyyy-mm-dd` (UTC) for a day, `yyyy-mm-ddThh` for an hour.",
+            "type": "string"
+          },
+          "refused": {
+            "description": "Requests that a limit refused (the rate limits, the capacity of the\nnode, the free plan's fair share, the memory guard and a quota, which\nanswers `402`). A refusal is in `requests` with a duration of 0, so the\nmean and the quantiles include it.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "requests": {
+            "description": "Requests that reached the data route and were counted.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sum_ms": {
+            "description": "The sum of the durations in whole milliseconds. With `requests` it gives\nthe mean. Within half a millisecond for each flush that wrote the row.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "class",
+          "requests",
+          "ok",
+          "client_errors",
+          "failed",
+          "refused",
+          "sum_ms",
+          "max_ms"
+        ],
+        "type": "object"
+      },
+      "RequestActivityScope": {
+        "description": "What a read of the request activity covers.",
+        "enum": [
+          "environment",
+          "graph",
+          "namespace"
+        ],
+        "type": "string"
+      },
+      "RequestActivitySubject": {
+        "description": "One subject of a list: a graph or a catalog namespace, with its counts over\nthe month (all classes, or the one named by `class`).",
+        "properties": {
+          "client_errors": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ok": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "p50_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "p95_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "p99_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "refused": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "requests": {
+            "description": "The fields below are those of a row of a series.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subject": {
+            "description": "The graph id or the namespace id. A namespace row can also be\n`@none` (graphs of no namespace) or `@unknown` (graphs whose namespace\ncould not be read when the requests were counted).",
+            "type": "string"
+          },
+          "sum_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subject",
+          "requests",
+          "ok",
+          "client_errors",
+          "failed",
+          "refused",
+          "sum_ms",
+          "max_ms"
+        ],
+        "type": "object"
+      },
+      "RequestActivitySubjects": {
+        "description": "What a list names (`list=graphs`, `list=namespaces`).",
+        "enum": [
+          "graphs",
+          "namespaces"
+        ],
+        "type": "string"
+      },
       "RequiredFactRow": {
         "description": "A row of a suggestion's facts that an accept must keep.",
         "properties": {
@@ -51010,6 +51332,367 @@
           }
         ],
         "summary": "The queries and the facts written of the environment in one month, per day and per graph: a query is a SPARQL read or a query over a namespace or a dataset, and a fact is a statement a commit added. Narrow it to one graph (`only_graph`) or to the graphs of one catalog namespace (`only_namespace`). An environment read; the answering node adds the counts it has not written to the record yet",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/activity/requests": {
+      "get": {
+        "operationId": "get_v1_activity_requests",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm-dd (UTC), first day of a series; default: 30 days before `to` (2 days for hours)",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm-dd (UTC), last day of a series; default: today",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "day (default) or hour; hour is for the environment and keeps the last 48 hours",
+            "in": "query",
+            "name": "granularity",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "query, search, ask, write or other: only that class",
+            "in": "query",
+            "name": "class",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one graph id; not with `only_namespace` or `list`",
+            "in": "query",
+            "name": "only_graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "one catalog namespace id: its graphs and the namespaces below it; not with `only_graph` or `list`; needs the application catalog",
+            "in": "query",
+            "name": "only_namespace",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "graphs or namespaces: the subjects of one month with their totals instead of a series",
+            "in": "query",
+            "name": "list",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "yyyy-mm (UTC) of a list; default: the current month",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "subjects of a list, 1 to 100; default 50",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next_cursor` of the previous page of a list",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestActivityResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The requests the environment's data routes answered, how they ended (ok, client error, failed, refused by a limit) and how long they took (sum, longest, p50, p95, p99), per period and class: a series of the environment, of one graph (`only_graph`) or of the graphs of one catalog namespace (`only_namespace`), by day or, for the environment, by hour; or a list of the graphs or namespaces of one month (`list`), a bounded part of the month a page with a cursor. A quantile is given only with 20 or more requests. Off by default: `recording: false` says the server does not count requests. An environment read; the answering node adds the counts it has not written yet to a series",
         "tags": [
           "system"
         ]
