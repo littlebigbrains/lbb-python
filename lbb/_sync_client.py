@@ -54,6 +54,7 @@ from ._client_base import (
     _EvalsNamespace,
     _file_head,
     _FilesNamespace,
+    _InstructionsNamespace,
     _is_earlier_list,
     _jittered_backoff,
     _list_envelope,
@@ -225,6 +226,7 @@ class _SyncQueryNamespace(_QueryNamespace):
         include_grounding: bool | None = None,
         anchor: Sequence[str] | None = None,
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
+        instructions: Mapping[str, str] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> QueryAskResult:
@@ -247,6 +249,9 @@ class _SyncQueryNamespace(_QueryNamespace):
         200) names the commit of each date, for graphs whose commits stand
         for other dates. ``include_grounding=True`` returns the graph
         description the models read in ``response["grounding"]["text"]``.
+        ``instructions={"id": ..., "version": ...}`` runs that version of
+        the environment's ``ask`` instructions for this call, a draft too
+        (``client.instructions``).
 
         Each call uses model tokens, so a failed call is not retried unless
         ``options={"retry": True}``. A ``429 rewrite_limit`` means the environment
@@ -264,6 +269,7 @@ class _SyncQueryNamespace(_QueryNamespace):
                 include_grounding=include_grounding,
                 anchor=anchor,
                 timeline=timeline,
+                instructions=instructions,
                 consistency=consistency,
                 options=options,
             )
@@ -282,6 +288,7 @@ class _SyncQueryNamespace(_QueryNamespace):
         include_grounding: bool | None = None,
         anchor: Sequence[str] | None = None,
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
+        instructions: Mapping[str, str] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> Generator[QueryAskStreamEvent, None, None]:
@@ -313,6 +320,7 @@ class _SyncQueryNamespace(_QueryNamespace):
             include_grounding=include_grounding,
             anchor=anchor,
             timeline=timeline,
+            instructions=instructions,
         )
         params = self._client._consistency_params(consistency, None)
         client = cast("LbbClient", self._client)
@@ -958,6 +966,7 @@ class LbbClient(_BaseLbbClient):
         self.evals = _SyncEvalsNamespace(self)
         # Model checks: the call log, the judge's checks, and reviews.
         self.checks = _ChecksNamespace(self)
+        self.instructions = _InstructionsNamespace(self)
         # Review: questions for a person, and their answers.
         self.reviews = _SyncReviewsNamespace(self)
         # Model trials of other models on the graph's uses, and switches.

@@ -68,6 +68,7 @@ from ._client_base import (
     _file_head,
     _FilesNamespace,
     _GraphNamespace,
+    _InstructionsNamespace,
     _is_earlier_list,
     _jittered_backoff,
     _list_envelope,
@@ -485,6 +486,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         include_grounding: bool | None = None,
         anchor: Sequence[str] | None = None,
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
+        instructions: Mapping[str, str] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> QueryAskResult:
@@ -503,6 +505,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
             include_grounding=include_grounding,
             anchor=anchor,
             timeline=timeline,
+            instructions=instructions,
             consistency=consistency,
             options=options,
         )
@@ -521,6 +524,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
         include_grounding: bool | None = None,
         anchor: Sequence[str] | None = None,
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
+        instructions: Mapping[str, str] | None = None,
         consistency: str | None = None,
         options: RequestOptions | None = None,
     ) -> AsyncGenerator[QueryAskStreamEvent, None]:
@@ -538,6 +542,7 @@ class _AsyncQueryNamespace(_QueryNamespace):
             include_grounding=include_grounding,
             anchor=anchor,
             timeline=timeline,
+            instructions=instructions,
         )
         params = self._client._consistency_params(consistency, None)
         client = cast("AsyncLbbClient", self._client)
@@ -2135,6 +2140,7 @@ class AsyncLbbClient(_AsyncStarterWorkflowMethods, _BaseLbbClient):
         # Model checks: the call log, the judge's checks, and reviews. Each
         # method returns an awaitable here.
         self.checks = _ChecksNamespace(self)
+        self.instructions = _InstructionsNamespace(self)
         # Review: questions for a person, and their answers.
         self.reviews = _AsyncReviewsNamespace(self)
         # Model trials of other models on the graph's uses, and switches.
