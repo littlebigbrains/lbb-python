@@ -5047,6 +5047,7 @@ class _QueryNamespace:
         include_grounding: bool | None,
         anchor: Sequence[str] | None,
         timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None,
+        instructions: Mapping[str, str] | None,
         consistency: str | None,
         options: RequestOptions | None,
     ) -> Any:
@@ -5067,6 +5068,7 @@ class _QueryNamespace:
             include_grounding=include_grounding,
             anchor=anchor,
             timeline=timeline,
+            instructions=instructions,
         )
         params = self._client._consistency_params(consistency, None)
         return self._client._request(
@@ -5090,6 +5092,7 @@ def _ask_body(
     include_grounding: bool | None = None,
     anchor: Sequence[str] | None = None,
     timeline: Sequence[Mapping[str, Any] | models.QueryRewriteTimelinePoint] | None = None,
+    instructions: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """The ``QueryRewriteRequest`` body of ``POST /v1/query/ask``. A field
     the caller left at ``None`` stays off the wire: each one has a server
@@ -5116,6 +5119,8 @@ def _ask_body(
             dict(point) if isinstance(point, Mapping) else _coerce_body(point)
             for point in timeline
         ]
+    if instructions is not None:
+        body["instructions"] = {"id": instructions["id"], "version": instructions["version"]}
     return body
 
 
@@ -7082,6 +7087,180 @@ class _ModelChoicesNamespace:
             params={"use": _enum_value(use), "workflow": workflow},
             idempotency_key=idempotency_key
             or self._client.idempotency_key("models.choices.delete"),
+        )
+
+
+class _InstructionsNamespace:
+    """Instructions: your notes and worked examples for a use of a model
+    (``ask``: the answer loop of ``query.ask``), kept as content-addressed
+    versions. A version is a draft until you publish it; a binding names
+    the published version that applies to the environment or to one graph.
+    A call of ``ask`` reads, in order: the request's ``instructions`` (a
+    draft too), the graph's binding, the graph's rewrite profile, the
+    environment's binding.
+
+    Example::
+
+        made = client.instructions.create(
+            name="topics", text="Topic questions: search the topic class by meaning."
+        )
+        # Try the draft on one question before you publish it.
+        client.query.ask(
+            "Which groups work on lattice-assisted fusion?",
+            instructions={"id": made.id, "version": made.version},
+        )
+        client.instructions.publish(id=made.id, version=made.version)
+        client.instructions.bind(id=made.id, version=made.version, expected_version="")
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def list(self, *, use: str | models.InstructionsUse | None = None) -> models.InstructionsList:
+        """The environment's instructions, newest first, and the bindings of
+        the environment and the graph (``GET /v1/instructions``)."""
+        return self._client._model_request(
+            models.InstructionsList,
+            "GET",
+            "/v1/instructions",
+            params={"use": _enum_value(use)},
+        )
+
+    def get(self, id: str, *, version: str | None = None) -> models.Instructions:
+        """One object with one version's content (``GET
+        /v1/instructions/get``): the version named, else the newest
+        published, else the newest."""
+        return self._client._model_request(
+            models.Instructions,
+            "GET",
+            "/v1/instructions/get",
+            params={"id": id, "version": version},
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        text: str = "",
+        examples: Sequence[Mapping[str, Any]] | None = None,
+        use: str | models.InstructionsUse = "ask",
+        from_profile: bool = False,
+        why: str | None = None,
+        publish: bool = False,
+        idempotency_key: str | None = None,
+    ) -> models.Instructions:
+        """Make instructions and their first version (``POST
+        /v1/instructions``), a draft unless ``publish``. ``from_profile``
+        copies the graph's rewrite profile. The client sends an idempotency
+        key unless you pass one."""
+        body: dict[str, Any] = {"use": _enum_value(use), "name": name}
+        if text:
+            body["text"] = text
+        if examples:
+            body["examples"] = [dict(example) for example in examples]
+        if from_profile:
+            body["from_profile"] = True
+        if why is not None:
+            body["why"] = why
+        if publish:
+            body["publish"] = True
+        return self._client._model_request(
+            models.Instructions,
+            "POST",
+            "/v1/instructions",
+            body=body,
+            idempotency_key=idempotency_key
+            or self._client.idempotency_key("instructions.create"),
+        )
+
+    def add_version(
+        self,
+        *,
+        id: str,
+        text: str = "",
+        examples: Sequence[Mapping[str, Any]] | None = None,
+        from_version: str | None = None,
+        why: str | None = None,
+        publish: bool = False,
+    ) -> models.Instructions:
+        """Add a version (``POST /v1/instructions/versions``), a draft unless
+        ``publish``. The same content answers the version the object has."""
+        body: dict[str, Any] = {"id": id, "text": text}
+        if examples:
+            body["examples"] = [dict(example) for example in examples]
+        if from_version is not None:
+            body["from_version"] = from_version
+        if why is not None:
+            body["why"] = why
+        if publish:
+            body["publish"] = True
+        return self._client._model_request(
+            models.Instructions, "POST", "/v1/instructions/versions", body=body
+        )
+
+    def publish(self, *, id: str, version: str) -> models.Instructions:
+        """Publish a version, so a binding may name it (``POST
+        /v1/instructions/publish``)."""
+        return self._client._model_request(
+            models.Instructions,
+            "POST",
+            "/v1/instructions/publish",
+            body={"id": id, "version": version},
+        )
+
+    def bind(
+        self,
+        *,
+        id: str,
+        version: str,
+        use: str | models.InstructionsUse = "ask",
+        scope: str | models.InstructionsScope = "environment",
+        expected_version: str | None = None,
+    ) -> models.InstructionsBinding:
+        """Bind a published version for a use in the ``environment`` or the
+        ``graph`` (``PUT /v1/instructions/bindings``). ``expected_version``
+        (the version bound now, ``""`` for none) makes the write
+        conditional: another binding raises ``conflict`` (409)."""
+        body: dict[str, Any] = {
+            "use": _enum_value(use),
+            "scope": _enum_value(scope),
+            "id": id,
+            "version": version,
+        }
+        if expected_version is not None:
+            body["expected_version"] = expected_version
+        return self._client._model_request(
+            models.InstructionsBinding, "PUT", "/v1/instructions/bindings", body=body
+        )
+
+    def unbind(
+        self,
+        *,
+        use: str | models.InstructionsUse = "ask",
+        scope: str | models.InstructionsScope = "environment",
+        expected_version: str | None = None,
+    ) -> models.InstructionsUnbound:
+        """Remove a binding (``DELETE /v1/instructions/bindings``): the use
+        reads the next level."""
+        return self._client._model_request(
+            models.InstructionsUnbound,
+            "DELETE",
+            "/v1/instructions/bindings",
+            params={
+                "use": _enum_value(use),
+                "scope": _enum_value(scope),
+                "expected_version": expected_version,
+            },
+        )
+
+    def resolve(self, use: str | models.InstructionsUse = "ask") -> models.InstructionsResolved:
+        """What a call of the use on the graph reads now, and from where
+        (``GET /v1/instructions/resolve``)."""
+        return self._client._model_request(
+            models.InstructionsResolved,
+            "GET",
+            "/v1/instructions/resolve",
+            params={"use": _enum_value(use)},
         )
 
 

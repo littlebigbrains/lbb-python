@@ -3543,6 +3543,93 @@ class ModelChecksAndTuningTests(unittest.TestCase):
         self.assertEqual(dict(seen[0].url.params), {"graph": "crm", "call": CALL_ID})
         self.assertEqual(seen[0].content, b"")
 
+    def test_instructions_make_publish_bind_resolve_and_ask_with_a_draft(self) -> None:
+        seen: list[httpx.Request] = []
+        made = {
+            "id": "ins_0123456789abcdef01234567",
+            "object": "instructions",
+            "use": "ask",
+            "name": "topics",
+            "created_at": "2026-11-19T10:00:00.000Z",
+            "version": "b1cb9dd7c3275c16033a21c0",
+            "text": "Topic questions: search the topic class by meaning.",
+            "examples": [],
+            "versions": [
+                {
+                    "version": "b1cb9dd7c3275c16033a21c0",
+                    "state": "draft",
+                    "source": "person",
+                    "created_at": "2026-11-19T10:00:00.000Z",
+                    "created_by": "token",
+                }
+            ],
+            "bindings": [],
+        }
+        binding = {
+            "use": "ask",
+            "scope": "environment",
+            "id": made["id"],
+            "version": made["version"],
+            "since": "2026-11-19T10:01:00.000Z",
+            "by": "token",
+        }
+        responses = [
+            {"json": made},
+            {"json": {**made, "published_version": made["version"]}},
+            {"json": binding},
+            {"json": {"use": "ask", "from": "environment", "text": made["text"], "examples": []}},
+        ]
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, responses)
+        ) as client:
+            created = client.instructions.create(name="topics", text=made["text"])
+            published = client.instructions.publish(id=created.id, version=created.version)
+            bound = client.instructions.bind(
+                id=created.id, version=created.version, expected_version=""
+            )
+            resolved = client.instructions.resolve()
+        self.assertEqual(created.versions[0].state, model_module.InstructionsVersionState.draft)
+        self.assertEqual(published.published_version, made["version"])
+        self.assertEqual(bound.scope, model_module.InstructionsScope.environment)
+        self.assertEqual(resolved.from_, model_module.InstructionsResolvedFrom.environment)
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [
+                ("POST", "/v1/instructions"),
+                ("POST", "/v1/instructions/publish"),
+                ("PUT", "/v1/instructions/bindings"),
+                ("GET", "/v1/instructions/resolve"),
+            ],
+        )
+        self.assertIn("idempotency-key", seen[0].headers)
+        self.assertEqual(
+            json.loads(seen[0].content),
+            {"use": "ask", "name": "topics", "text": made["text"]},
+        )
+        self.assertEqual(
+            json.loads(seen[2].content),
+            {
+                "use": "ask",
+                "scope": "environment",
+                "id": made["id"],
+                "version": made["version"],
+                "expected_version": "",
+            },
+        )
+        from lbb._client_base import _ask_body
+
+        body = _ask_body(
+            "q",
+            context=None,
+            route=None,
+            mode=None,
+            limit=None,
+            as_of_commit_seq=None,
+            today=None,
+            instructions={"id": made["id"], "version": made["version"]},
+        )
+        self.assertEqual(body["instructions"], {"id": made["id"], "version": made["version"]})
+
     def test_checks_list_review_summarize_and_export_a_month(self) -> None:
         seen: list[httpx.Request] = []
         corrected = model_check_payload(

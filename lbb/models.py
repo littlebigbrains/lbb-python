@@ -3626,6 +3626,82 @@ class IndexVisibilityFamily(Enum):
     ann = 'ann'
 
 
+class InstructionsPublishRequest(BaseModel):
+    """
+    `POST /v1/instructions/publish`: publish a draft version. Publishing a
+    published version changes nothing.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: str
+    version: str
+
+
+class InstructionsRef(BaseModel):
+    """
+    One version of one instructions object. An Ask request's
+    `instructions` runs it for that call, a draft too; the call log names
+    the version a call ran.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: str
+    version: str
+
+
+class InstructionsResolvedFrom(Enum):
+    """
+    What a call of a use reads, and why.
+    """
+
+    request = 'request'
+    graph = 'graph'
+    profile = 'profile'
+    environment = 'environment'
+    none = 'none'
+
+
+class InstructionsScope(Enum):
+    """
+    Where a binding applies.
+    """
+
+    environment = 'environment'
+    graph = 'graph'
+
+
+class InstructionsSource(Enum):
+    """
+    Where a version came from.
+    """
+
+    person = 'person'
+    profile = 'profile'
+
+
+class InstructionsUse(Enum):
+    """
+    The model use an instructions object steers. Fixed for the object's
+    life. The workflow step kinds (`extract`, `decide`, `agent`) come with
+    the steps that read them.
+    """
+
+    ask = 'ask'
+
+
+class InstructionsVersionState(Enum):
+    """
+    Whether a version may be bound.
+    """
+
+    draft = 'draft'
+    published = 'published'
+
+
 class LbbErrorBody(BaseModel):
     code: Annotated[str, Field(examples=['missing_idempotency_key'])]
     doc_url: str | None
@@ -6446,6 +6522,7 @@ class QueryRewriteGrounding(BaseModel):
             ge=0,
         ),
     ] = None
+    instructions: InstructionsRef | None = None
     names: Annotated[
         int | None,
         Field(
@@ -15766,6 +15843,155 @@ class IndexUpgradeResponse(BaseModel):
     queued: bool
 
 
+class InstructionsBindRequest(BaseModel):
+    """
+    `PUT /v1/instructions/bindings`: bind a published version for a use in
+    a scope.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    expected_version: Annotated[
+        str | None,
+        Field(
+            description='The version bound now in this scope, `""` when none is. Another\nbinding answers `409 conflict` and changes nothing. Without it, the\nwrite replaces any binding.'
+        ),
+    ] = None
+    id: str
+    scope: InstructionsScope | None = None
+    use: InstructionsUse | None = None
+    version: str
+
+
+class InstructionsBinding(BaseModel):
+    """
+    A binding: the version of one instructions object that applies to a use
+    in a scope.
+    """
+
+    by: str
+    graph: Annotated[
+        str | None, Field(description='The graph of a `graph` binding.')
+    ] = None
+    id: str
+    previous: InstructionsRef | None = None
+    scope: InstructionsScope
+    since: Annotated[str, Field(description='RFC 3339.')]
+    use: InstructionsUse
+    version: str
+
+
+class InstructionsCreateRequest(BaseModel):
+    """
+    `POST /v1/instructions`: make an instructions object and its first
+    version (a draft unless `publish`).
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    examples: list[QueryRewriteExample] | None = None
+    from_profile: Annotated[
+        bool | None,
+        Field(
+            description="Copy the request graph's rewrite profile as the first version\n(`source: profile`). Send no `text` and no `examples` with it."
+        ),
+    ] = None
+    name: str
+    publish: Annotated[
+        bool | None, Field(description='Publish the first version at once.')
+    ] = None
+    text: str | None = None
+    use: InstructionsUse | None = None
+    why: str | None = None
+
+
+class InstructionsResolved(BaseModel):
+    """
+    `GET /v1/instructions/resolve`: what a call of the use on the request's
+    graph reads now.
+    """
+
+    examples: list[QueryRewriteExample]
+    from_: Annotated[InstructionsResolvedFrom, Field(alias='from')]
+    instructions: InstructionsRef | None = None
+    profile_version: Annotated[
+        int | None, Field(description="The profile's version, for `profile`.", ge=0)
+    ] = None
+    text: str
+    use: InstructionsUse
+
+
+class InstructionsSummary(BaseModel):
+    """
+    One row of the list: an instructions object without content.
+    """
+
+    created_at: str
+    id: str
+    name: str
+    object: str
+    use: InstructionsUse
+
+
+class InstructionsUnbound(BaseModel):
+    """
+    `DELETE /v1/instructions/bindings`: the binding removed.
+    """
+
+    removed: InstructionsRef | None = None
+    scope: InstructionsScope
+    use: InstructionsUse
+
+
+class InstructionsVersion(BaseModel):
+    """
+    One version of an instructions object, without its content.
+    """
+
+    created_at: Annotated[str, Field(description='RFC 3339.')]
+    created_by: Annotated[
+        str, Field(description='`account:<id>`, `key:<id>` or `token`.')
+    ]
+    from_version: Annotated[
+        str | None,
+        Field(description='The version it was made from, when the request named one.'),
+    ] = None
+    published_at: str | None = None
+    published_by: str | None = None
+    source: InstructionsSource
+    state: InstructionsVersionState
+    version: Annotated[
+        str,
+        Field(
+            description='24 hex characters of the blake3 of the use, the text and the\nexamples.'
+        ),
+    ]
+    why: Annotated[
+        str | None, Field(description='Why it was made, at most 1,000 characters.')
+    ] = None
+
+
+class InstructionsVersionRequest(BaseModel):
+    """
+    `POST /v1/instructions/versions`: add a version. The same content as a
+    version the object has answers that version and adds nothing.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    examples: list[QueryRewriteExample] | None = None
+    from_version: Annotated[
+        str | None, Field(description='The version it changes, for the history.')
+    ] = None
+    id: str
+    publish: Annotated[bool | None, Field(description='Publish it at once.')] = None
+    text: str | None = None
+    why: str | None = None
+
+
 class ManagedModel(BaseModel):
     dim: Annotated[
         int | None,
@@ -17801,6 +18027,7 @@ class QueryRewriteRequest(BaseModel):
             description="Return the graph description the models read in `grounding.text`:\nto see why an answer came out as it did, or to reuse the description\nin an app's own prompt."
         ),
     ] = None
+    instructions: InstructionsRef | None = None
     limit: Annotated[
         int | None,
         Field(
@@ -21966,6 +22193,57 @@ class HybridMultiSearchResponse(BaseModel):
     snapshot: SnapshotView
 
 
+class Instructions(BaseModel):
+    """
+    An instructions object: one version's content, every version's
+    metadata, and the bindings that name it from the environment and from
+    the request's graph.
+    """
+
+    bindings: Annotated[
+        list[InstructionsBinding],
+        Field(
+            description="The bindings that name this object, of the environment and of the\nrequest's graph."
+        ),
+    ]
+    created_at: Annotated[str, Field(description='RFC 3339.')]
+    examples: list[QueryRewriteExample]
+    id: Annotated[str, Field(description='`ins_` and 24 hex characters.')]
+    name: Annotated[
+        str, Field(description='Unique in the environment, at most 100 characters.')
+    ]
+    object: Annotated[str, Field(description='Always `instructions`.')]
+    published_version: Annotated[
+        str | None, Field(description='The newest published version, when one is.')
+    ] = None
+    text: str
+    use: InstructionsUse
+    version: Annotated[
+        str,
+        Field(
+            description='The version whose content `text` and `examples` hold: the one the\nrequest named, else the newest published, else the newest.'
+        ),
+    ]
+    versions: Annotated[
+        list[InstructionsVersion], Field(description='Every version, newest first.')
+    ]
+
+
+class InstructionsList(BaseModel):
+    """
+    `GET /v1/instructions`: the environment's instructions, newest first.
+    """
+
+    bindings: Annotated[
+        list[InstructionsBinding],
+        Field(
+            description="The bindings of the environment and of the request's graph."
+        ),
+    ]
+    data: list[InstructionsSummary]
+    object: Annotated[str, Field(description='Always `list`.')]
+
+
 class IssuedWorkerCredential(BaseModel):
     """
     No Debug implementation: credentials must not appear in diagnostic output.
@@ -22118,6 +22396,7 @@ class ModelCall(BaseModel):
             description='The provider-neutral request, at most 64 KiB of JSON. A long system\ntext is stored once and named by its hash (`{"grounding": "<hash>"}`).'
         ),
     ]
+    instructions: InstructionsRef | None = None
     job: ModelJob
     model: str
     ok: bool
