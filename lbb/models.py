@@ -7197,6 +7197,148 @@ class RenameRelationOp(BaseModel):
     to: str
 
 
+class RequestActivityClass(Enum):
+    """
+    What a request was: one class for each data request.
+    """
+
+    query = 'query'
+    search = 'search'
+    ask = 'ask'
+    write = 'write'
+    other = 'other'
+
+
+class RequestActivityDropped(BaseModel):
+    """
+    New graph and namespace rows that the stored counts refused for their
+    size. A refused row is not counted for its graph or namespace (the
+    environment rows are never refused), so a graph or namespace figure is lower
+    than the truth when these are not 0 (`incomplete` says so).
+    """
+
+    graph_rows: Annotated[int, Field(ge=0)]
+    namespace_rows: Annotated[int, Field(ge=0)]
+
+
+class RequestActivityGranularity(Enum):
+    """
+    How a series is cut into periods.
+    """
+
+    day = 'day'
+    hour = 'hour'
+
+
+class RequestActivityRow(BaseModel):
+    """
+    One period and class of a series. A count that never happened is 0.
+    """
+
+    class_: Annotated[RequestActivityClass, Field(alias='class')]
+    client_errors: Annotated[
+        int,
+        Field(
+            description="Requests that ended with a 4xx other than 429: the caller's request was\nwrong.",
+            ge=0,
+        ),
+    ]
+    failed: Annotated[
+        int,
+        Field(
+            description='Requests that ended with a 5xx: the server failed, or a deadline passed.',
+            ge=0,
+        ),
+    ]
+    max_ms: Annotated[
+        int,
+        Field(
+            description='The longest duration in whole milliseconds, rounded up.', ge=0
+        ),
+    ]
+    ok: Annotated[
+        int, Field(description='Requests that ended with a status below 400.', ge=0)
+    ]
+    p50_ms: Annotated[
+        int | None,
+        Field(
+            description='The median duration in milliseconds: the upper edge of its bucket,\nnever below the true value and never above `max_ms`. Absent below 20\nrequests.',
+            ge=0,
+        ),
+    ] = None
+    p95_ms: Annotated[int | None, Field(ge=0)] = None
+    p99_ms: Annotated[int | None, Field(ge=0)] = None
+    period: Annotated[
+        str,
+        Field(description='`yyyy-mm-dd` (UTC) for a day, `yyyy-mm-ddThh` for an hour.'),
+    ]
+    refused: Annotated[
+        int,
+        Field(
+            description="Requests that a limit refused (the rate limits, the capacity of the\nnode, the free plan's fair share, the memory guard and a quota, which\nanswers `402`). A refusal is in `requests` with a duration of 0, so the\nmean and the quantiles include it.",
+            ge=0,
+        ),
+    ]
+    requests: Annotated[
+        int,
+        Field(
+            description='Requests that reached the data route and were counted.', ge=0
+        ),
+    ]
+    sum_ms: Annotated[
+        int,
+        Field(
+            description='The sum of the durations in whole milliseconds. With `requests` it gives\nthe mean. Within half a millisecond for each flush that wrote the row.',
+            ge=0,
+        ),
+    ]
+
+
+class RequestActivityScope(Enum):
+    """
+    What a read of the request activity covers.
+    """
+
+    environment = 'environment'
+    graph = 'graph'
+    namespace = 'namespace'
+
+
+class RequestActivitySubject(BaseModel):
+    """
+    One subject of a list: a graph or a catalog namespace, with its counts over
+    the month (all classes, or the one named by `class`).
+    """
+
+    client_errors: Annotated[int, Field(ge=0)]
+    failed: Annotated[int, Field(ge=0)]
+    max_ms: Annotated[int, Field(ge=0)]
+    ok: Annotated[int, Field(ge=0)]
+    p50_ms: Annotated[int | None, Field(ge=0)] = None
+    p95_ms: Annotated[int | None, Field(ge=0)] = None
+    p99_ms: Annotated[int | None, Field(ge=0)] = None
+    refused: Annotated[int, Field(ge=0)]
+    requests: Annotated[
+        int, Field(description='The fields below are those of a row of a series.', ge=0)
+    ]
+    subject: Annotated[
+        str,
+        Field(
+            description='The graph id or the namespace id. A namespace row can also be\n`@none` (graphs of no namespace) or `@unknown` (graphs whose namespace\ncould not be read when the requests were counted).'
+        ),
+    ]
+    sum_ms: Annotated[int, Field(ge=0)]
+
+
+class RequestActivitySubjects(Enum):
+    """
+    What a list names (`list=graphs`, `list=namespaces`).
+    """
+
+    graphs = 'graphs'
+    namespaces = 'namespaces'
+
+
 class RequiredFactRow(BaseModel):
     """
     A row of a suggestion's facts that an accept must keep.
@@ -17892,6 +18034,79 @@ class ReplaceOwnedInput(BaseModel):
     subjects: Annotated[
         list[NamedEntityInput], Field(description='The instances this write is for.')
     ]
+
+
+class RequestActivityResponse(BaseModel):
+    """
+    `GET /v1/activity/requests`.
+    """
+
+    as_of_ms: Annotated[
+        int,
+        Field(
+            description='What the stored counts of this answer are as of, in milliseconds since\nthe Unix epoch: the time the answering server read the oldest of them,\nor the time of the answer when it read none. An answer a server kept\n(up to 60 seconds) keeps its time.'
+        ),
+    ]
+    cut: Annotated[
+        bool,
+        Field(
+            description='A list stopped before the end of the month (or the page filled): pass\n`next_cursor` for the rest.'
+        ),
+    ]
+    dropped: RequestActivityDropped
+    from_: Annotated[
+        str,
+        Field(
+            alias='from',
+            description='`yyyy-mm-dd` (UTC): the first and the last day the rows cover (in a\nlist, the first and the last day of its month).',
+        ),
+    ]
+    granularity: RequestActivityGranularity
+    includes_unwritten: Annotated[
+        bool,
+        Field(
+            description='The answer adds the counts that the answering server holds and has not\nwritten yet (a series of the environment or a graph, and the rows of a\nnamespace it has already resolved). The counts of other servers appear\nwhen those servers write them. Always `false` in a list.'
+        ),
+    ]
+    incomplete: Annotated[
+        bool,
+        Field(
+            description='The numbers are short: a graph or namespace figure misses requests\nbecause a full stored record refused new rows (`dropped`), or a stored\nrecord in the range is of a format this server does not read.'
+        ),
+    ]
+    list_: Annotated[RequestActivitySubjects | None, Field(alias='list')] = None
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next page of a list; absent on the last page.'
+        ),
+    ] = None
+    recording: Annotated[
+        bool,
+        Field(
+            description='`false` when this server does not count requests\n(`LBB_REQUEST_ACTIVITY_ENABLED` is off): there are no rows, which is\nnot a quiet period.'
+        ),
+    ]
+    rows: Annotated[
+        list[RequestActivityRow],
+        Field(
+            description='The series: one row for each period and class that has requests, oldest\nperiod first, the classes in the order query, search, ask, write,\nother. Empty in a list.'
+        ),
+    ]
+    scope: RequestActivityScope
+    subject: Annotated[
+        str | None,
+        Field(
+            description='The graph id or the namespace id of the scope. Absent for the\nenvironment.'
+        ),
+    ] = None
+    subjects: Annotated[
+        list[RequestActivitySubject] | None,
+        Field(
+            description='The subjects this page covered, in storage order. The caller sorts.\nEmpty in a series.'
+        ),
+    ] = None
+    to: str
 
 
 class ResolutionResult(BaseModel):
