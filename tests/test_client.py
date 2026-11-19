@@ -3543,6 +3543,56 @@ class ModelChecksAndTuningTests(unittest.TestCase):
         self.assertEqual(dict(seen[0].url.params), {"graph": "crm", "call": CALL_ID})
         self.assertEqual(seen[0].content, b"")
 
+    def test_checks_answer_tests_estimate_start_and_read_a_verdict(self) -> None:
+        seen: list[httpx.Request] = []
+        test = {
+            "id": "atest_0123456789abcdef01234567",
+            "object": "answer_test",
+            "created": "2026-11-19T19:00:00Z",
+            "call": CALL_ID,
+            "step": "tune_search",
+            "change": {"kind": "ask_rerank"},
+            "status": "done",
+            "verdict": "no_change",
+            "warnings": [],
+            "replays": 2,
+            "max_cost_micro_usd": 15_000_000,
+            "estimate_micro_usd": 3_000_000,
+            "cost_micro_usd": 2_400_000,
+            "failed": {"items": 4, "a": 0.5, "b": 0.5, "delta": 0.0, "ci_low": -0.25, "ci_high": 0.25},
+            "items": [],
+        }
+        estimate = {
+            "object": "answer_test_estimate",
+            "failed_items": 4,
+            "guard_items": 10,
+            "answers": 36,
+            "estimate_micro_usd": 3_000_000,
+            "max_cost_micro_usd": 15_000_000,
+        }
+        responses = [{"json": estimate}, {"json": test}, {"json": test}]
+        with LbbClient(
+            "http://h", graph="crm", transport=capturing_transport(seen, responses)
+        ) as client:
+            priced = client.checks.answer_tests.estimate(CALL_ID, step=0, guard=10)
+            started = client.checks.answer_tests.create(CALL_ID, step=0, guard=10)
+            read = client.checks.answer_tests.get(started["id"])
+        self.assertEqual(priced["answers"], 36)
+        typed = model_module.AnswerTest.model_validate(read)
+        self.assertEqual(typed.verdict, model_module.AnswerTestVerdict.no_change)
+        self.assertEqual(typed.change.kind, model_module.AnswerTestChangeKind.ask_rerank)
+        self.assertEqual(
+            [(request.method, request.url.path) for request in seen],
+            [
+                ("POST", "/v1/models/checks/answer-tests/estimate"),
+                ("POST", "/v1/models/checks/answer-tests"),
+                ("GET", "/v1/models/checks/answer-tests/get"),
+            ],
+        )
+        self.assertEqual(dict(seen[1].url.params), {"graph": "crm", "call": CALL_ID})
+        self.assertEqual(json.loads(seen[1].content), {"step": 0, "guard": 10})
+        self.assertEqual(dict(seen[2].url.params), {"graph": "crm", "id": test["id"]})
+
     def test_instructions_make_publish_bind_resolve_and_ask_with_a_draft(self) -> None:
         seen: list[httpx.Request] = []
         made = {

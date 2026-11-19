@@ -329,6 +329,102 @@ class AnnTargetKind(Enum):
     path = 'path'
 
 
+class AnswerTestChangeKind(Enum):
+    """
+    The kind of change arm B runs.
+    """
+
+    ask_rerank = 'ask_rerank'
+    instructions = 'instructions'
+
+
+class AnswerTestEstimate(BaseModel):
+    """
+    What a start would cost: `POST /v1/models/checks/answer-tests/estimate`.
+    """
+
+    answers: Annotated[
+        int, Field(description='Ask answers both arms give together.', ge=0)
+    ]
+    estimate_micro_usd: Annotated[int, Field(ge=0)]
+    failed_items: Annotated[
+        int,
+        Field(
+            description='Failed items (the question, and the rewordings when they are on).',
+            ge=0,
+        ),
+    ]
+    guard_items: Annotated[int, Field(description='Guard items found.', ge=0)]
+    max_cost_micro_usd: Annotated[int, Field(ge=0)]
+    object: Annotated[str, Field(description='Always `answer_test_estimate`.')]
+
+
+class AnswerTestFinishReason(Enum):
+    """
+    Why a test ended before every item ran.
+    """
+
+    max_cost = 'max_cost'
+    budget = 'budget'
+
+
+class AnswerTestReferenceKind(Enum):
+    """
+    Where an item's reference comes from.
+    """
+
+    person = 'person'
+    draft = 'draft'
+    weakness = 'weakness'
+    checked = 'checked'
+
+
+class AnswerTestSet(Enum):
+    """
+    Which set an item belongs to.
+    """
+
+    failed = 'failed'
+    guard = 'guard'
+
+
+class AnswerTestSetReport(BaseModel):
+    """
+    One set's comparison: the mean score of each arm over the items both
+    answered, and the difference with its paired bootstrap 95% interval.
+    """
+
+    a: float
+    b: float
+    ci_high: float
+    ci_low: float
+    delta: float
+    items: Annotated[int, Field(ge=0)]
+
+
+class AnswerTestStatus(Enum):
+    """
+    Where an answer test is.
+    """
+
+    queued = 'queued'
+    running = 'running'
+    done = 'done'
+    failed = 'failed'
+    cancelled = 'cancelled'
+
+
+class AnswerTestVerdict(Enum):
+    """
+    What the test says about the change.
+    """
+
+    worked = 'worked'
+    no_change = 'no_change'
+    worse = 'worse'
+    too_few = 'too_few'
+
+
 class ApplyMode(Enum):
     running = 'running'
     paused = 'paused'
@@ -13408,6 +13504,70 @@ class AnalyticTriplePattern(BaseModel):
     ]
 
 
+class AnswerTestChange(BaseModel):
+    """
+    The one change arm B runs.
+    """
+
+    instructions: InstructionsRef | None = None
+    kind: AnswerTestChangeKind
+
+
+class AnswerTestCreateRequest(BaseModel):
+    """
+    The body of `POST /v1/models/checks/answer-tests?call=` and of its
+    estimate. Name `step` (an index of the diagnosis's `next_steps`) or
+    `change`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    change: AnswerTestChange | None = None
+    guard: Annotated[
+        int | None,
+        Field(
+            description='Guard items, 0 to 40 (default 10). 0 runs the test without a guard\nset; the result then warns.',
+            ge=0,
+        ),
+    ] = None
+    max_cost_usd: Annotated[
+        float | None, Field(description='Default 15, at most 100.')
+    ] = None
+    replays: Annotated[
+        int | None,
+        Field(description='Replays of each failed item, 1 to 5 (default 2).', ge=0),
+    ] = None
+    rewordings: Annotated[
+        bool | None,
+        Field(description="The checker's 3 rewordings of the question (default true)."),
+    ] = None
+    step: Annotated[int | None, Field(ge=0)] = None
+
+
+class AnswerTestRun(BaseModel):
+    """
+    One answer of one arm to one item.
+    """
+
+    answer: Annotated[str | None, Field(description="The answer's first words.")] = None
+    cost_micro_usd: Annotated[
+        int, Field(description='The answer and the checker together.', ge=0)
+    ]
+    failed: Annotated[
+        bool | None,
+        Field(description='The arm gave no answer, or the checker did not grade it.'),
+    ] = None
+    reason: Annotated[str | None, Field(description="The checker's reason.")] = None
+    score: Annotated[
+        float,
+        Field(
+            description="The checker's score, 0 to 1; 0 when the arm gave no answer."
+        ),
+    ]
+    verdict: CheckVerdict | None = None
+
+
 class ApplyRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -21290,6 +21450,34 @@ class AnalyticQueryRequest(BaseModel):
     patterns: list[AnalyticTriplePattern]
 
 
+class AnswerTestItem(BaseModel):
+    """
+    One question of a test, with both arms' answers.
+    """
+
+    a: Annotated[
+        list[AnswerTestRun] | None,
+        Field(description="Arm A's answers, one per replay."),
+    ] = None
+    b: Annotated[
+        list[AnswerTestRun] | None,
+        Field(description="Arm B's answers, one per replay."),
+    ] = None
+    call: Annotated[
+        str | None,
+        Field(description='The Ask call the item comes from; absent for a rewording.'),
+    ] = None
+    question: str
+    reference: Annotated[
+        str | None,
+        Field(
+            description='The right answer the checker grades against; absent for `weakness`.'
+        ),
+    ] = None
+    reference_kind: AnswerTestReferenceKind
+    set: AnswerTestSet
+
+
 class CapturedSignal(BaseModel):
     """
     One captured signal as the range reader returns it: the stored envelope
@@ -24311,6 +24499,57 @@ class WorkflowTypeInboxResponse(BaseModel):
         ),
     ]
     workflow_type: str
+
+
+class AnswerTest(BaseModel):
+    """
+    An answer test. Start with `status`, `verdict` and `warnings`.
+    """
+
+    at_seq: Annotated[
+        int | None,
+        Field(
+            description='The commit both arms read; absent until the first answer.',
+            ge=0,
+        ),
+    ] = None
+    call: Annotated[str, Field(description='The diagnosed Ask call.')]
+    change: AnswerTestChange
+    cost_micro_usd: Annotated[int, Field(ge=0)]
+    created: Annotated[str, Field(description='When the test started (RFC 3339).')]
+    created_by: str | None = None
+    error: str | None = None
+    estimate_micro_usd: Annotated[int, Field(ge=0)]
+    failed: AnswerTestSetReport | None = None
+    finish_reason: AnswerTestFinishReason | None = None
+    finished: str | None = None
+    guard: AnswerTestSetReport | None = None
+    id: Annotated[str, Field(description='`atest_…`.')]
+    items: list[AnswerTestItem]
+    max_cost_micro_usd: Annotated[int, Field(ge=0)]
+    object: Annotated[str, Field(description='Always `answer_test`.')]
+    replays: Annotated[
+        int,
+        Field(description='Replays of each failed item; a guard item runs once.', ge=0),
+    ]
+    status: AnswerTestStatus
+    step: DiagnosisStepKind | None = None
+    verdict: AnswerTestVerdict | None = None
+    warnings: Annotated[
+        list[str] | None,
+        Field(
+            description='Plain sentences a person should read with the verdict: no guard set,\na drafted reference, an unpinned commit.'
+        ),
+    ] = None
+
+
+class AnswerTestList(BaseModel):
+    """
+    `GET /v1/models/checks/answer-tests`: newest first.
+    """
+
+    data: list[AnswerTest]
+    object: Annotated[str, Field(description='Always `list`.')]
 
 
 class CdcDiscoveryCompleteRequest(BaseModel):

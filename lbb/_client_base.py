@@ -5745,6 +5745,104 @@ def _enum_value(value: Any) -> Any:
     return getattr(value, "value", value)
 
 
+class _AnswerTestsNamespace:
+    """Answer tests: one change tested on a diagnosed ``ask`` call before
+    anyone applies it (``/v1/models/checks/answer-tests``).
+
+    Arm A is Ask as it is, arm B is Ask with the change. Both answer the
+    question, the checker's rewordings of it and a guard set of questions
+    answered right, at one pinned commit, and the checker grades each
+    answer. The test runs as a workflow turn; ``verdict`` says whether the
+    change worked (``worked``, ``no_change``, ``worse``, ``too_few``).
+    Nothing is applied.
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    def create(
+        self,
+        call_id: str,
+        *,
+        step: int | None = None,
+        change: dict[str, Any] | None = None,
+        guard: int | None = None,
+        rewordings: bool | None = None,
+        replays: int | None = None,
+        max_cost_usd: float | None = None,
+    ) -> Any:
+        """Start a test of next step ``step`` (an index of the diagnosis's
+        ``next_steps``) or of ``change`` (``{"kind": "ask_rerank"}``, or
+        ``{"kind": "instructions", "instructions": {"id", "version"}}``).
+        Call :meth:`estimate` first and show its cost. A step with no test
+        yet raises ``diagnosis_step_untestable``."""
+        return self._client._request(
+            "POST",
+            "/v1/models/checks/answer-tests",
+            params={"call": call_id},
+            body=_answer_test_body(step, change, guard, rewordings, replays, max_cost_usd),
+        )
+
+    def estimate(
+        self,
+        call_id: str,
+        *,
+        step: int | None = None,
+        change: dict[str, Any] | None = None,
+        guard: int | None = None,
+        rewordings: bool | None = None,
+        replays: int | None = None,
+        max_cost_usd: float | None = None,
+    ) -> Any:
+        """What :meth:`create` with the same arguments would cost. Writes
+        nothing and calls no model."""
+        return self._client._request(
+            "POST",
+            "/v1/models/checks/answer-tests/estimate",
+            params={"call": call_id},
+            body=_answer_test_body(step, change, guard, rewordings, replays, max_cost_usd),
+        )
+
+    def list(self, *, call: str | None = None) -> Any:
+        """The graph's tests, newest first; with ``call``, that call's."""
+        return self._client._request(
+            "GET", "/v1/models/checks/answer-tests", params={"call": call}
+        )
+
+    def get(self, test_id: str) -> Any:
+        """One test with each arm's answers, the reports and the verdict.
+        Read it again until ``status`` is ``done``, ``failed`` or
+        ``cancelled``."""
+        return self._client._request(
+            "GET", "/v1/models/checks/answer-tests/get", params={"id": test_id}
+        )
+
+    def cancel(self, test_id: str) -> Any:
+        """Cancel a test; it keeps the verdict of what it compared."""
+        return self._client._request(
+            "POST", "/v1/models/checks/answer-tests/cancel", params={"id": test_id}
+        )
+
+
+def _answer_test_body(
+    step: int | None,
+    change: dict[str, Any] | None,
+    guard: int | None,
+    rewordings: bool | None,
+    replays: int | None,
+    max_cost_usd: float | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "step": step,
+        "change": change,
+        "guard": guard,
+        "rewordings": rewordings,
+        "replays": replays,
+        "max_cost_usd": max_cost_usd,
+    }
+    return {key: value for key, value in body.items() if value is not None}
+
+
 class _ChecksNamespace:
     """Model checks: the log of the model calls LBB makes for its own work on
     the graph (rerank, route, rewrite, fit, propose, label, embed, answer,
@@ -5757,6 +5855,7 @@ class _ChecksNamespace:
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client
+        self.answer_tests = _AnswerTestsNamespace(client)
 
     def summary(self, *, month: str | None = None) -> Any:
         """One month of checks (``yyyy-mm``, UTC; the current month by
