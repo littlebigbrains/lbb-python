@@ -14068,7 +14068,7 @@ class DiagnosisNextStep(BaseModel):
     reference: Annotated[
         str | None,
         Field(
-            description='For `accept_stand_in`: the reference to correct the check with.'
+            description='For `accept_stand_in` and `keep_as_test`: the reference to correct\nthe check with.'
         ),
     ] = None
     text: Annotated[str, Field(description='One sentence for a person.')]
@@ -16635,7 +16635,7 @@ class ModelCheckDiagnosis(BaseModel):
     reference_draft: Annotated[
         str | None,
         Field(
-            description='For `broader_only`: the reference a test grades against until a\nperson reviews the check.'
+            description='For `broader_only`, and for `not_in_graph` when the answer was\n`unsupported`: the reference a test grades against until a person\nreviews the check.'
         ),
     ] = None
     searched: Annotated[
@@ -16660,11 +16660,17 @@ class ModelCheckDiagnosis(BaseModel):
             description='The outcome in one or two sentences, with the entities named.'
         ),
     ] = None
+    unsupported: Annotated[
+        bool | None,
+        Field(
+            description='The answer reached entities and the checker graded every one of them\n0: it answered without support from the graph.'
+        ),
+    ] = None
     used: DiagnosisEvidence | None = None
     v: Annotated[
         int,
         Field(
-            description='2 since outcomes and next steps; a version 1 object gets them on read.',
+            description='2 since outcomes and next steps; 3 since `unsupported` and a broader\nmatch (best grade 1) giving `broader_only`. An older object gets the\nnewer fields on read.',
             ge=0,
         ),
     ]
