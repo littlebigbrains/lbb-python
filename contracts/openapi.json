@@ -1036,9 +1036,45 @@
         ],
         "type": "object"
       },
+      "AnswerTestAlias": {
+        "additionalProperties": false,
+        "description": "An alias arm B links as a label of `iri`.",
+        "properties": {
+          "classes": {
+            "description": "The entity's classes, which name linking reads; the start reads them\nfrom the graph when the request names none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "iri": {
+            "type": "string"
+          },
+          "label": {
+            "description": "The words people use for the entity; from a next step, the question.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "iri",
+          "label"
+        ],
+        "type": "object"
+      },
       "AnswerTestChange": {
         "description": "The one change arm B runs.",
         "properties": {
+          "alias": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnswerTestAlias",
+                "description": "For `alias`: the alias arm B links."
+              }
+            ]
+          },
           "instructions": {
             "oneOf": [
               {
@@ -1063,7 +1099,8 @@
         "description": "The kind of change arm B runs.",
         "enum": [
           "ask_rerank",
-          "instructions"
+          "instructions",
+          "alias"
         ],
         "type": "string"
       },
@@ -102906,7 +102943,7 @@
             "bearer": []
           }
         ],
-        "summary": "Test one change for a diagnosed `ask` call before you apply it: name a next step of the diagnosis (`step`, its index; `tune_search` tests rerank in Ask's searches) or a `change` (`ask_rerank`, or `instructions` with a version, a draft too). The test asks the question, the checker's 3 rewordings (`rewordings: false` turns them off) and up to `guard` questions rated right (default 10, at most 40; 0 runs without a guard set and the result warns) on arm A (Ask as it is) and arm B (Ask with the change), at one pinned commit, and the checker grades each answer. It runs as a turn of the graph's `eval-experiments` workflow. The result's `verdict`: `worked`, `no_change`, `worse` or `too_few`. Nothing is applied. The estimate must fit `max_cost_usd` (default 15, at most 100). A step with no test yet answers 400 `diagnosis_step_untestable`",
+        "summary": "Test one change for a diagnosed `ask` call before you apply it: name a next step of the diagnosis (`step`, its index; `tune_search` tests rerank in Ask's searches, `add_alias` the alias of its entity) or a `change` (`ask_rerank`; `instructions` with a version, a draft too; or `alias` with `{iri, label}`, which name linking reads as a label of the entity). The test asks the question, the checker's 3 rewordings (`rewordings: false` turns them off) and up to `guard` questions rated right (default 10, at most 40; 0 runs without a guard set and the result warns) on arm A (Ask as it is) and arm B (Ask with the change), at one pinned commit, and the checker grades each answer. It runs as a turn of the graph's `eval-experiments` workflow. The result's `verdict`: `worked`, `no_change`, `worse` or `too_few`. Nothing is applied. The estimate must fit `max_cost_usd` (default 15, at most 100). A step with no test yet answers 400 `diagnosis_step_untestable`",
         "tags": [
           "system"
         ]
