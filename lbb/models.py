@@ -329,6 +329,29 @@ class AnnTargetKind(Enum):
     path = 'path'
 
 
+class AnswerTestAlias(BaseModel):
+    """
+    An alias arm B links as a label of `iri`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    classes: Annotated[
+        list[str] | None,
+        Field(
+            description="The entity's classes, which name linking reads; the start reads them\nfrom the graph when the request names none."
+        ),
+    ] = None
+    iri: str
+    label: Annotated[
+        str,
+        Field(
+            description='The words people use for the entity; from a next step, the question.'
+        ),
+    ]
+
+
 class AnswerTestChangeKind(Enum):
     """
     The kind of change arm B runs.
@@ -336,6 +359,7 @@ class AnswerTestChangeKind(Enum):
 
     ask_rerank = 'ask_rerank'
     instructions = 'instructions'
+    alias = 'alias'
 
 
 class AnswerTestEstimate(BaseModel):
@@ -13509,6 +13533,7 @@ class AnswerTestChange(BaseModel):
     The one change arm B runs.
     """
 
+    alias: AnswerTestAlias | None = None
     instructions: InstructionsRef | None = None
     kind: AnswerTestChangeKind
 
