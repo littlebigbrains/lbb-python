@@ -8299,15 +8299,25 @@ class SandboxUpdateRequest(BaseModel):
     ] = None
 
 
-class SandboxUsage(BaseModel):
+class SandboxUsageState(Enum):
     """
-    What a sandbox used, in seconds of its size. Metering is not built yet:
-    the counters stay 0.
+    How far the counters of a `usage` can be trusted. `measured`: the receipts of
+    the sandbox were read, and the numbers are exact for what they hold and for the
+    interval that runs now, which counts up to the time of the read. Not yet in them
+    are the run that a stop or a destroy is closing and the VM that a start or a
+    resume is booting: each is added when its receipt is written. `not_read`: this
+    answer did not read the receipts, so the counters are 0 and say nothing; only a
+    retrieve reads them. `unknown`: a retrieve could not measure the usage (the
+    sandbox has more receipts than a read takes, a receipt could not be read, the
+    store did not answer in time, or the server prices nothing), so the counters are
+    0 and say nothing; never a partial number. The states are a closed set: a new
+    state is a change of the contract and needs a new SDK, because the Python enum
+    rejects a value it does not know.
     """
 
-    disk_gib_seconds: Annotated[int, Field(ge=0)]
-    memory_gib_seconds: Annotated[int, Field(ge=0)]
-    vcpu_seconds: Annotated[int, Field(ge=0)]
+    measured = 'measured'
+    not_read = 'not_read'
+    unknown = 'unknown'
 
 
 class SavedDatasetViewDefinition(BaseModel):
@@ -18907,10 +18917,29 @@ class SandboxCommand(BaseModel):
         ),
     ] = None
     created: Annotated[int, Field(description='When it was accepted, Unix seconds.')]
+    created_ms: Annotated[
+        int | None,
+        Field(
+            description='When it was accepted, Unix milliseconds, by the clock of the server. The exact\ntime that `created` rounds down to seconds.'
+        ),
+    ] = None
     cwd: str | None = None
+    duration_ms: Annotated[
+        int | None,
+        Field(
+            description='How long it ran, in milliseconds: `ended_ms` minus `started_ms`, both from the\nclock of the guest. Absent while it runs, when it never started, and for a lost\ncommand (its end is then a time of the server).',
+            ge=0,
+        ),
+    ] = None
     ended: Annotated[int | None, Field(description='When it ended, Unix seconds.')] = (
         None
     )
+    ended_ms: Annotated[
+        int | None,
+        Field(
+            description='When it ended, Unix milliseconds. The guest reports it, by its own clock; a\ncommand that ended with no word of the guest (lost, or cancelled or failed\nbefore it started) has the time of the server. The exact time that `ended`\nrounds down to seconds.'
+        ),
+    ] = None
     env_names: Annotated[
         list[str],
         Field(description='The names of the variables the command got, in order.'),
@@ -18930,6 +18959,12 @@ class SandboxCommand(BaseModel):
     ] = None
     started: Annotated[
         int | None, Field(description='When it started, Unix seconds.')
+    ] = None
+    started_ms: Annotated[
+        int | None,
+        Field(
+            description='When it started, Unix milliseconds, by the clock of the guest (which the host\nsets from its own clock when it launches the VM). The exact time that `started`\nrounds down to seconds.'
+        ),
     ] = None
     status: SandboxCommandStatus
     stderr: SandboxStreamSummary
@@ -19218,6 +19253,82 @@ class SandboxTemplateList(BaseModel):
         str | None, Field(description='Pass as `cursor` for the next page.')
     ] = None
     object: Annotated[str, Field(description='`list`.')]
+
+
+class SandboxUsage(BaseModel):
+    """
+    What a sandbox used, in seconds of its size, from the receipts of its time. A
+    retrieve measures it (`state` is `measured`); every other answer does not
+    (`not_read`). The counters use the same billed seconds as the cost, so usage and
+    cost agree: each run interval is billed from the first answer of the guest to its
+    end (less the silent time of a run that ended `cell_silent`), rounded up to a
+    whole second for each interval. `vcpu_seconds` is the billed seconds times the
+    vCPUs. Memory and disk are kept in MiB-seconds, before any rounding to GiB, and
+    the GiB-seconds are those figures divided by 1,024 and rounded up once for the
+    whole sandbox, never for each interval. The interval that runs now counts up to
+    the time of the read. Not yet in it are the run that a stop or a destroy is
+    closing and the VM that a start or a resume is booting: each is added when its
+    receipt is written. The estimate for a VM the host lost is in the cost only,
+    never in usage. The counters are 0 and mean nothing unless `state` is `measured`.
+    """
+
+    billed_ms: Annotated[
+        int | None,
+        Field(
+            description='The billed time in milliseconds: the billed seconds of every interval, each\nrounded up to a whole second, times 1,000. It is a multiple of 1,000. Absent\nunless `state` is `measured`.',
+            ge=0,
+        ),
+    ] = None
+    disk_gib_seconds: Annotated[
+        int,
+        Field(
+            description='GiB-seconds of the disk while the sandbox was stopped: `disk_mib_seconds`\ndivided by 1,024 and rounded up once. A stopped disk is free.',
+            ge=0,
+        ),
+    ]
+    disk_mib_seconds: Annotated[
+        int | None,
+        Field(
+            description='The disk in MiB-seconds while the sandbox was stopped: the seconds of each\nstopped interval, rounded up to a whole second, times the disk limit in MiB.\nThe disk of a running VM is part of the run and is not counted here. A resume\nthat still boots counts the stopped time up to the moment of the resume. Absent\nunless `state` is `measured`.',
+            ge=0,
+        ),
+    ] = None
+    elapsed_ms: Annotated[
+        int | None,
+        Field(
+            description='The time the VMs ran in milliseconds, from the start of each VM to its end, or\nto the time of the read for the one that runs now. It includes the free time\nbefore the guest answered and the silent time of a run that ended `cell_silent`.\nAbsent unless `state` is `measured`.',
+            ge=0,
+        ),
+    ] = None
+    intervals: Annotated[
+        int | None,
+        Field(
+            description='The run intervals counted: the ones the host measured and the one that runs\nnow. Absent unless `state` is `measured`.',
+            ge=0,
+        ),
+    ] = None
+    memory_gib_seconds: Annotated[
+        int,
+        Field(
+            description='GiB-seconds of memory: `memory_mib_seconds` divided by 1,024 and rounded up\nonce. The figure before the rounding is `memory_mib_seconds`.',
+            ge=0,
+        ),
+    ]
+    memory_mib_seconds: Annotated[
+        int | None,
+        Field(
+            description='Memory in MiB-seconds, not rounded: the billed seconds times the memory limit\nin MiB. Absent unless `state` is `measured`.',
+            ge=0,
+        ),
+    ] = None
+    state: SandboxUsageState | None = None
+    vcpu_seconds: Annotated[
+        int,
+        Field(
+            description='vCPU-seconds: the billed seconds times the vCPUs, for the intervals the host\nmeasured and the one that runs now.',
+            ge=0,
+        ),
+    ]
 
 
 class SavedDatasetView(BaseModel):
@@ -23617,22 +23728,53 @@ class Sandbox(BaseModel):
             description='When an idle sandbox stops, Unix seconds; present while it runs. A\nsandbox is idle when no command is queued or running and no request\nnames it.'
         ),
     ] = None
+    auto_stop_at_ms: Annotated[
+        int | None,
+        Field(
+            description='When an idle sandbox stops, Unix milliseconds; present while it runs. The exact\ntime that `auto_stop_at` rounds down to seconds.'
+        ),
+    ] = None
     auto_stop_seconds: Annotated[
         int,
         Field(description='Idle seconds before the sandbox stops, 30 to 3,600.', ge=0),
     ]
     cost: SandboxCost | None = None
+    create_to_ready_ms: Annotated[
+        int | None,
+        Field(
+            description='How long the first run took to become ready, in milliseconds: the first answer of\nthe guest (the clock of the host) minus `created_ms` (the clock of the server), so\nit includes any difference of the two clocks. Present on a retrieve only, once the\nfirst run was ready; absent when the host puts that answer before the create.',
+            ge=0,
+        ),
+    ] = None
     created: Annotated[int, Field(description='When it was created, Unix seconds.')]
     created_by: Annotated[
         str, Field(description='Who created it: `key:<id>`, `account:<id>` or `token`.')
     ]
+    created_ms: Annotated[
+        int | None,
+        Field(
+            description='When it was created, Unix milliseconds, by the clock of the server. The exact\ntime that `created` rounds down to seconds.'
+        ),
+    ] = None
     egress: SandboxEgress | None = None
+    ended_ms: Annotated[
+        int | None,
+        Field(
+            description='When the VM of the latest run ended, Unix milliseconds, by the clock of the host.\nIt is the end of that run, not of the sandbox: a stopped sandbox has it too.\nPresent on a retrieve only, under the rules of `started_ms`, and absent while the\nrun goes on.'
+        ),
+    ] = None
     expires_at: Annotated[
         int,
         Field(
             description='When the sandbox is destroyed, Unix seconds. A resume does not move\nit.'
         ),
     ]
+    expires_at_ms: Annotated[
+        int | None,
+        Field(
+            description='When the sandbox is destroyed, Unix milliseconds. The exact time that\n`expires_at` rounds down to seconds.'
+        ),
+    ] = None
     id: Annotated[str, Field(description='`sbx_`, an opaque id.')]
     kind: Annotated[
         SandboxKind,
@@ -23644,7 +23786,19 @@ class Sandbox(BaseModel):
     metadata: dict[str, str]
     object: Annotated[str, Field(description='`sandbox`.')]
     owner: SandboxOwner | None = None
+    ready_ms: Annotated[
+        int | None,
+        Field(
+            description='When the guest of the latest run first answered, Unix milliseconds, by the clock\nof the host. Billing starts here. Present on a retrieve only, under the rules of\n`started_ms`, and absent for a run whose guest never answered.'
+        ),
+    ] = None
     run: SandboxRunSummary | None = None
+    started_ms: Annotated[
+        int | None,
+        Field(
+            description='When the latest run started, Unix milliseconds, by the clock of the host: the\nmoment the host launched its VM. Present on a retrieve only, from the receipts\nof a sandbox that is stopped or has ended, and from the host for a running one\n(left out when the host does not answer). Absent while the sandbox starts, stops\nor is destroyed, and when its latest interval is the estimate for a lost VM.'
+        ),
+    ] = None
     status: SandboxStatus
     status_message: Annotated[
         str | None,

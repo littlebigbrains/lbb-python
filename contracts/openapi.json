@@ -33543,6 +33543,14 @@
               "null"
             ]
           },
+          "auto_stop_at_ms": {
+            "description": "When an idle sandbox stops, Unix milliseconds; present while it runs. The exact\ntime that `auto_stop_at` rounds down to seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "auto_stop_seconds": {
             "description": "Idle seconds before the sandbox stops, 30 to 3,600.",
             "format": "int32",
@@ -33560,6 +33568,15 @@
               }
             ]
           },
+          "create_to_ready_ms": {
+            "description": "How long the first run took to become ready, in milliseconds: the first answer of\nthe guest (the clock of the host) minus `created_ms` (the clock of the server), so\nit includes any difference of the two clocks. Present on a retrieve only, once the\nfirst run was ready; absent when the host puts that answer before the create.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "created": {
             "description": "When it was created, Unix seconds.",
             "format": "int64",
@@ -33568,6 +33585,14 @@
           "created_by": {
             "description": "Who created it: `key:<id>`, `account:<id>` or `token`.",
             "type": "string"
+          },
+          "created_ms": {
+            "description": "When it was created, Unix milliseconds, by the clock of the server. The exact\ntime that `created` rounds down to seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "egress": {
             "oneOf": [
@@ -33580,10 +33605,26 @@
               }
             ]
           },
+          "ended_ms": {
+            "description": "When the VM of the latest run ended, Unix milliseconds, by the clock of the host.\nIt is the end of that run, not of the sandbox: a stopped sandbox has it too.\nPresent on a retrieve only, under the rules of `started_ms`, and absent while the\nrun goes on.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "expires_at": {
             "description": "When the sandbox is destroyed, Unix seconds. A resume does not move\nit.",
             "format": "int64",
             "type": "integer"
+          },
+          "expires_at_ms": {
+            "description": "When the sandbox is destroyed, Unix milliseconds. The exact time that\n`expires_at` rounds down to seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "id": {
             "description": "`sbx_`, an opaque id.",
@@ -33620,6 +33661,14 @@
               }
             ]
           },
+          "ready_ms": {
+            "description": "When the guest of the latest run first answered, Unix milliseconds, by the clock\nof the host. Billing starts here. Present on a retrieve only, under the rules of\n`started_ms`, and absent for a run whose guest never answered.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "run": {
             "oneOf": [
               {
@@ -33629,6 +33678,14 @@
                 "$ref": "#/components/schemas/SandboxRunSummary",
                 "description": "The command of a create with `run`. Present on a create and a\nretrieve of such a sandbox."
               }
+            ]
+          },
+          "started_ms": {
+            "description": "When the latest run started, Unix milliseconds, by the clock of the host: the\nmoment the host launched its VM. Present on a retrieve only, from the receipts\nof a sandbox that is stopped or has ended, and from the host for a running one\n(left out when the host does not answer). Absent while the sandbox starts, stops\nor is destroyed, and when its latest interval is the estimate for a lost VM.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
             ]
           },
           "status": {
@@ -33854,14 +33911,39 @@
             "format": "int64",
             "type": "integer"
           },
+          "created_ms": {
+            "description": "When it was accepted, Unix milliseconds, by the clock of the server. The exact\ntime that `created` rounds down to seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "cwd": {
             "type": [
               "string",
               "null"
             ]
           },
+          "duration_ms": {
+            "description": "How long it ran, in milliseconds: `ended_ms` minus `started_ms`, both from the\nclock of the guest. Absent while it runs, when it never started, and for a lost\ncommand (its end is then a time of the server).",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "ended": {
             "description": "When it ended, Unix seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ended_ms": {
+            "description": "When it ended, Unix milliseconds. The guest reports it, by its own clock; a\ncommand that ended with no word of the guest (lost, or cancelled or failed\nbefore it started) has the time of the server. The exact time that `ended`\nrounds down to seconds.",
             "format": "int64",
             "type": [
               "integer",
@@ -33928,6 +34010,14 @@
           },
           "started": {
             "description": "When it started, Unix seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "started_ms": {
+            "description": "When it started, Unix milliseconds, by the clock of the guest (which the host\nsets from its own clock when it launches the VM). The exact time that `started`\nrounds down to seconds.",
             "format": "int64",
             "type": [
               "integer",
@@ -35022,19 +35112,78 @@
         "type": "object"
       },
       "SandboxUsage": {
-        "description": "What a sandbox used, in seconds of its size. Metering is not built yet:\nthe counters stay 0.",
+        "description": "What a sandbox used, in seconds of its size, from the receipts of its time. A\nretrieve measures it (`state` is `measured`); every other answer does not\n(`not_read`). The counters use the same billed seconds as the cost, so usage and\ncost agree: each run interval is billed from the first answer of the guest to its\nend (less the silent time of a run that ended `cell_silent`), rounded up to a\nwhole second for each interval. `vcpu_seconds` is the billed seconds times the\nvCPUs. Memory and disk are kept in MiB-seconds, before any rounding to GiB, and\nthe GiB-seconds are those figures divided by 1,024 and rounded up once for the\nwhole sandbox, never for each interval. The interval that runs now counts up to\nthe time of the read. Not yet in it are the run that a stop or a destroy is\nclosing and the VM that a start or a resume is booting: each is added when its\nreceipt is written. The estimate for a VM the host lost is in the cost only,\nnever in usage. The counters are 0 and mean nothing unless `state` is `measured`.",
         "properties": {
+          "billed_ms": {
+            "description": "The billed time in milliseconds: the billed seconds of every interval, each\nrounded up to a whole second, times 1,000. It is a multiple of 1,000. Absent\nunless `state` is `measured`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "disk_gib_seconds": {
+            "description": "GiB-seconds of the disk while the sandbox was stopped: `disk_mib_seconds`\ndivided by 1,024 and rounded up once. A stopped disk is free.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
+          },
+          "disk_mib_seconds": {
+            "description": "The disk in MiB-seconds while the sandbox was stopped: the seconds of each\nstopped interval, rounded up to a whole second, times the disk limit in MiB.\nThe disk of a running VM is part of the run and is not counted here. A resume\nthat still boots counts the stopped time up to the moment of the resume. Absent\nunless `state` is `measured`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "elapsed_ms": {
+            "description": "The time the VMs ran in milliseconds, from the start of each VM to its end, or\nto the time of the read for the one that runs now. It includes the free time\nbefore the guest answered and the silent time of a run that ended `cell_silent`.\nAbsent unless `state` is `measured`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "intervals": {
+            "description": "The run intervals counted: the ones the host measured and the one that runs\nnow. Absent unless `state` is `measured`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "memory_gib_seconds": {
+            "description": "GiB-seconds of memory: `memory_mib_seconds` divided by 1,024 and rounded up\nonce. The figure before the rounding is `memory_mib_seconds`.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
           },
+          "memory_mib_seconds": {
+            "description": "Memory in MiB-seconds, not rounded: the billed seconds times the memory limit\nin MiB. Absent unless `state` is `measured`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "state": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxUsageState",
+                "description": "Whether the counters can be trusted: `measured`, `not_read` or `unknown`.\nAbsent from a server that measures nothing."
+              }
+            ]
+          },
           "vcpu_seconds": {
+            "description": "vCPU-seconds: the billed seconds times the vCPUs, for the intervals the host\nmeasured and the one that runs now.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -35046,6 +35195,15 @@
           "disk_gib_seconds"
         ],
         "type": "object"
+      },
+      "SandboxUsageState": {
+        "description": "How far the counters of a `usage` can be trusted. `measured`: the receipts of\nthe sandbox were read, and the numbers are exact for what they hold and for the\ninterval that runs now, which counts up to the time of the read. Not yet in them\nare the run that a stop or a destroy is closing and the VM that a start or a\nresume is booting: each is added when its receipt is written. `not_read`: this\nanswer did not read the receipts, so the counters are 0 and say nothing; only a\nretrieve reads them. `unknown`: a retrieve could not measure the usage (the\nsandbox has more receipts than a read takes, a receipt could not be read, the\nstore did not answer in time, or the server prices nothing), so the counters are\n0 and say nothing; never a partial number. The states are a closed set: a new\nstate is a change of the contract and needs a new SDK, because the Python enum\nrejects a value it does not know.",
+        "enum": [
+          "measured",
+          "not_read",
+          "unknown"
+        ],
+        "type": "string"
       },
       "SavedDatasetView": {
         "additionalProperties": false,
@@ -134958,7 +135116,7 @@
             "bearer": []
           }
         ],
-        "summary": "One sandbox, with its `run` for a sandbox of a create with `run`, and its `cost` so far (computed from its receipts on this read; left out when they cannot be read in a short time, and where the server prices nothing). 404 `sandbox_not_found`",
+        "summary": "One sandbox, with its `run` for a sandbox of a create with `run`, its `cost` so far, its `usage` and the times of its latest run (`started_ms`, `ready_ms`, `ended_ms`, `create_to_ready_ms`). The cost and the usage are computed from its receipts on this read, with the same billed seconds: `cost` is left out and `usage.state` is `unknown` when the receipts cannot be read in a short time or the server prices nothing. A create, a list and every other answer do not read the receipts, and their `usage.state` is `not_read`. 404 `sandbox_not_found`",
         "tags": [
           "sandboxes"
         ]
