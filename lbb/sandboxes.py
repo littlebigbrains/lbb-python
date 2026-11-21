@@ -201,6 +201,24 @@ class _SandboxFiles:
             options={"retry": True},
         )
 
+    def import_file(
+        self, path: str, *, source_graph: str, source_sha256: str, idempotency_key: str | None = None
+    ) -> Any:
+        """Copy a File from the named graph into the workspace."""
+        return self._client._request(
+            "PUT", "/v1/sandboxes/files/content",
+            params={"sandbox": self._sandbox, "path": path, "source_graph": source_graph, "source_sha256": source_sha256},
+            idempotency_key=idempotency_key,
+        )
+
+    def keep(self, path: str, *, graph: str, idempotency_key: str | None = None) -> Any:
+        """Keep a workspace file in the named destination graph."""
+        return self._client._request(
+            "POST", "/v1/files",
+            params={"source_sandbox": self._sandbox, "source_path": path, "graph": graph},
+            idempotency_key=idempotency_key,
+        )
+
     def list(
         self,
         path: str = "/workspace",
@@ -535,6 +553,7 @@ class _SandboxTemplates:
         name: str,
         base: str | None = None,
         code: str | None = None,
+        files: list[Mapping[str, str]] | None = None,
         limits: Mapping[str, int] | None = None,
         timeout_ms: int | None = None,
         config: Any = UNSET,
@@ -553,6 +572,7 @@ class _SandboxTemplates:
                 "base": base,
                 "code": code,
                 "limits": dict(limits) if limits is not None else None,
+                "files": files,
                 "timeout_ms": timeout_ms,
             }
         )
@@ -581,7 +601,7 @@ class _SandboxTemplates:
 
 
 class _SandboxesBase:
-    """The sandboxes of the graph in scope."""
+    """The sandboxes of the environment."""
 
     def __init__(self, client: _BaseLbbClient) -> None:
         self._client = client

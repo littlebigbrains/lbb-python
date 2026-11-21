@@ -33715,7 +33715,7 @@
             "$ref": "#/components/schemas/SandboxStatus"
           },
           "status_message": {
-            "description": "What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. A `stopped` sandbox has it after a\nresume that did not start (a static sentence: the sandbox keeps its\ndisk). Absent otherwise, and gone when the status changes.",
+            "description": "What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, a source graph changed during the copy, or the image of\nthe sandbox is older than the server. A `stopped` sandbox has it after a\nresume that did not start (a static sentence: the sandbox keeps its\ndisk). Absent otherwise, and gone when the status changes.",
             "type": [
               "string",
               "null"
@@ -34988,7 +34988,7 @@
             ]
           },
           "files": {
-            "description": "Files for `/workspace`: Files of the graph, copied when a sandbox of\nthis template first starts. See [`SandboxTemplateFile`].",
+            "description": "Files copied from their named source graphs into `/workspace` when a sandbox of\nthis template first starts. See [`SandboxTemplateFile`].",
             "items": {
               "$ref": "#/components/schemas/SandboxTemplateFile"
             },
@@ -35039,19 +35039,24 @@
       },
       "SandboxTemplateFile": {
         "additionalProperties": false,
-        "description": "A file a template copies into `/workspace` when a sandbox of the template\nfirst starts: a File of the graph, named by its SHA-256. A template holds\n64 files at most and 16 MiB together. The path is under `/workspace`; the\ntemplate shows it as an absolute path.",
+        "description": "A file a template copies into `/workspace` when a sandbox of the template\nfirst starts: a File of the chosen source graph, named by its SHA-256. A template holds\n64 files at most and 16 MiB together. The path is under `/workspace`; the\ntemplate shows it as an absolute path.",
         "properties": {
           "path": {
             "description": "The path in `/workspace`.",
             "type": "string"
           },
+          "source_graph": {
+            "description": "The graph of this environment that holds the File.",
+            "type": "string"
+          },
           "source_sha256": {
-            "description": "The SHA-256 of a file of the graph, 64 hexadecimal characters.",
+            "description": "The SHA-256 of a File in the source graph, 64 hexadecimal characters.",
             "type": "string"
           }
         },
         "required": [
           "path",
+          "source_graph",
           "source_sha256"
         ],
         "type": "object"
@@ -130815,15 +130820,6 @@
         "operationId": "delete_v1_sandboxes",
         "parameters": [
           {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
             "name": "Lbb-Version",
@@ -131101,15 +131097,6 @@
       "get": {
         "operationId": "get_v1_sandboxes",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -131425,7 +131412,7 @@
             "bearer": []
           }
         ],
-        "summary": "The graph's sandboxes, newest first. 409 `sandbox_not_enabled`",
+        "summary": "The environment's sandboxes, newest first. 409 `sandbox_not_enabled`",
         "tags": [
           "sandboxes"
         ]
@@ -131433,15 +131420,6 @@
       "post": {
         "operationId": "post_v1_sandboxes",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -131713,7 +131691,7 @@
             "bearer": []
           }
         ],
-        "summary": "Create a sandbox: one VM with a workspace disk and no network, from a template (`lbb/python` by default). With `run` it is the L1 shortcut: the sandbox runs `run(input, config)` once and is destroyed when the command ends; the answer holds the run (`run`) and waits for it at most `wait_ms` (0 to 30,000, default 0). A create with `run` needs an `Idempotency-Key`; a repeat answers the same record, also a `failed` one, and a new attempt needs a new key. 400 `idempotency_key_required`, 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_egress_policy_not_found` (the template names a network policy that the environment does not hold), 404 `sandbox_template_not_found`, 409 `sandbox_egress_not_available` (the template names a network policy and the sandbox backend cannot enforce one: nothing is made, and no backend enforces a policy yet), 409 `sandbox_template_revoked`, 409 `sandbox_not_enabled`, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default; a sandbox counts while it is starting, running, stopping or being destroyed), 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget; the error says `limit_source` and `retry_at`, and the same call is refused until the budget is raised or the month ends), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: nothing is made, so the same request with the same `Idempotency-Key` works later; retry after 30 seconds), 503 `sandbox_unavailable`, 503 `storage_degraded` (the template names a network policy and the policies of the environment cannot be read: nothing is made, and the same request works when they can)",
+        "summary": "Create a sandbox: one VM with a workspace disk and no network, from a template (`lbb/python` by default). With `run` it is the L1 shortcut: the sandbox runs `run(input, config)` once and is destroyed when the command ends; the answer holds the run (`run`) and waits for it at most `wait_ms` (0 to 30,000, default 0). A create with `run` needs an `Idempotency-Key`; a repeat answers the same record, also a `failed` one, and a new attempt needs a new key. 400 `idempotency_key_required`, 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_egress_policy_not_found` (the template names a network policy that the environment does not hold), 404 `sandbox_template_not_found`, 409 `sandbox_egress_not_available` (the template names a network policy and the sandbox backend cannot enforce one: nothing is made, and no backend enforces a policy yet), 409 `sandbox_template_revoked`, 409 `sandbox_not_enabled`, 429 `sandbox_limit_reached` (the environment has reached its running sandbox limit, 10 by default; a sandbox counts while it is starting, running, stopping or being destroyed), 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget; the error says `limit_source` and `retry_at`, and the same call is refused until the budget is raised or the month ends), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: nothing is made, so the same request with the same `Idempotency-Key` works later; retry after 30 seconds), 503 `sandbox_unavailable`, 503 `storage_degraded` (the template names a network policy and the policies of the environment cannot be read: nothing is made, and the same request works when they can)",
         "tags": [
           "sandboxes"
         ]
@@ -131723,15 +131701,6 @@
       "get": {
         "operationId": "get_v1_sandboxes_budget",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -132003,15 +131972,6 @@
       "get": {
         "operationId": "get_v1_sandboxes_commands",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -132309,15 +132269,6 @@
         "operationId": "post_v1_sandboxes_commands",
         "parameters": [
           {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
             "name": "Lbb-Version",
@@ -132607,15 +132558,6 @@
       "post": {
         "operationId": "post_v1_sandboxes_commands_cancel",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -132916,15 +132858,6 @@
         "operationId": "get_v1_sandboxes_commands_get",
         "parameters": [
           {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
             "name": "Lbb-Version",
@@ -133204,15 +133137,6 @@
       "get": {
         "operationId": "get_v1_sandboxes_commands_logs",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -133536,15 +133460,6 @@
         "operationId": "delete_v1_sandboxes_files",
         "parameters": [
           {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
             "name": "Lbb-Version",
@@ -133840,15 +133755,6 @@
       "get": {
         "operationId": "get_v1_sandboxes_files",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -134156,15 +134062,6 @@
       "get": {
         "operationId": "get_v1_sandboxes_files_content",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -134551,15 +134448,6 @@
         "operationId": "put_v1_sandboxes_files_content",
         "parameters": [
           {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
             "name": "Lbb-Version",
@@ -134609,6 +134497,15 @@
             "description": "the file's path in `/workspace`",
             "in": "query",
             "name": "path",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the source graph in this environment; required for an import with source_sha256",
+            "in": "query",
+            "name": "source_graph",
             "required": false,
             "schema": {
               "type": "string"
@@ -134859,7 +134756,7 @@
             "bearer": []
           }
         ],
-        "summary": "Write a file of `/workspace` with the request body, 4 MiB at most, and make its directories. An empty body is an empty file. The same bytes again change nothing. With `source_sha256` the body is empty and the file is the File of the graph with that SHA-256 (an import): the server reads it from storage and sends it to the guest in parts of 512 KiB, up to the server's file limit (`LBB_FILES_MAX_BYTES`) and the sandbox's disk, and checks its SHA-256 before the file appears at `path`; a File whose bytes do not match is refused and the path stays as it was. 400 `sandbox_path_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 404 `file_not_found` (an import), 409 `sandbox_not_running`, 409 `graph_epoch_changed` (an import), 413 `sandbox_file_too_large`, 413 `file_too_large` (an import)",
+        "summary": "Write a file of `/workspace` with the request body, 4 MiB at most, and make its directories. An empty body is an empty file. The same bytes again change nothing. With `source_sha256` and `source_graph` the body is empty and the file is the File with that SHA-256 in the named graph (an import): the server reads it from storage and sends it to the guest in parts of 512 KiB, up to the server's file limit (`LBB_FILES_MAX_BYTES`) and the sandbox's disk, and checks its SHA-256 before the file appears at `path`; a File whose bytes do not match is refused and the path stays as it was. 400 `sandbox_path_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 404 `file_not_found` (an import), 409 `sandbox_not_running`, 409 `graph_epoch_changed` (an import), 413 `sandbox_file_too_large`, 413 `file_too_large` (an import)",
         "tags": [
           "sandboxes"
         ]
@@ -134869,15 +134766,6 @@
       "get": {
         "operationId": "get_v1_sandboxes_get",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -135150,15 +135038,6 @@
         "operationId": "post_v1_sandboxes_resume",
         "parameters": [
           {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
             "name": "Lbb-Version",
@@ -135428,7 +135307,7 @@
             "bearer": []
           }
         ],
-        "summary": "Start a stopped sandbox again. A resume does not move `expires_at`. A resume of a starting or running sandbox answers the sandbox as it is. 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 409 `sandbox_not_running` for a sandbox that is stopping or has ended, 429 `sandbox_limit_reached` (the graph or the environment already holds as many sandboxes as the limits of the cell allow, 5 for a graph and 10 for an environment by default), 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget; a sandbox that the budget stopped stays `stopped` with its disk, and nothing resumes it by itself), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: the sandbox stays `stopped` with its disk; retry after 30 seconds), 503 `sandbox_unavailable`",
+        "summary": "Start a stopped sandbox again. A resume does not move `expires_at`. A resume of a starting or running sandbox answers the sandbox as it is. 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_not_found`, 409 `sandbox_not_running` for a sandbox that is stopping or has ended, 429 `sandbox_limit_reached` (the environment has reached its running sandbox limit, 10 by default), 429 `sandbox_budget_exceeded` (the environment spent its monthly sandbox budget; a sandbox that the budget stopped stays `stopped` with its disk, and nothing resumes it by itself), 503 `sandbox_capacity_unavailable` (the sandbox host has no room: the sandbox stays `stopped` with its disk; retry after 30 seconds), 503 `sandbox_unavailable`",
         "tags": [
           "sandboxes"
         ]
@@ -135438,15 +135317,6 @@
       "post": {
         "operationId": "post_v1_sandboxes_stop",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -135728,15 +135598,6 @@
         "operationId": "get_v1_sandboxes_templates",
         "parameters": [
           {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
             "name": "Lbb-Version",
@@ -136015,7 +135876,7 @@
             "bearer": []
           }
         ],
-        "summary": "The saved templates of the graph, newest version first. A name resolves to its newest version; each save of a name is a version with its own id. The base templates LBB publishes are read by id (`sbt_lbb_python`, `sbt_lbb_node`, `sbt_lbb_shell`). 409 `sandbox_not_enabled`",
+        "summary": "The saved templates of the environment, newest version first. A name resolves to its newest version; each save of a name is a version with its own id. The base templates LBB publishes are read by id (`sbt_lbb_python`, `sbt_lbb_node`, `sbt_lbb_shell`). 409 `sandbox_not_enabled`",
         "tags": [
           "sandboxes"
         ]
@@ -136023,15 +135884,6 @@
       "post": {
         "operationId": "post_v1_sandboxes_templates",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -136303,7 +136155,7 @@
             "bearer": []
           }
         ],
-        "summary": "Save a template: a base template, the `run` code (64 KiB), limits, a command timeout and a default config. Each call writes a new immutable version with a new `sbt_` id, and the name then resolves to it. `files` are Files of the graph by SHA-256 (`{path, source_sha256}`, 64 at most and 16 MiB together): the server copies them into `/workspace` when a sandbox of the template first starts, before the sandbox is `running`. A file the graph does not hold is refused with 404 `file_not_found`; a path outside `/workspace` with 400 `sandbox_path_invalid`. `egress` names a network policy of the environment by its `policy` name; a template never holds hosts, and the policy is read again when a sandbox is created. The optional `Idempotency-Key` makes a repeat answer the same version; the same key with another body answers 409 `idempotency_conflict`. 400 `sandbox_egress_invalid` (the policy name is not valid), 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_egress_policy_not_found` (the environment holds no policy of that name), 409 `sandbox_not_enabled`, 503 `storage_degraded` (the network policies of the environment cannot be read; the same request works when they can)",
+        "summary": "Save a template: a base template, the `run` code (64 KiB), limits, a command timeout and a default config. Each call writes a new immutable version with a new `sbt_` id, and the name then resolves to it. `files` are Files from their named source graphs (`{path, source_graph, source_sha256}`, 64 at most and 16 MiB together): the server copies them into `/workspace` when a sandbox of the template first starts, before the sandbox is `running`. A file the graph does not hold is refused with 404 `file_not_found`; a path outside `/workspace` with 400 `sandbox_path_invalid`. `egress` names a network policy of the environment by its `policy` name; a template never holds hosts, and the policy is read again when a sandbox is created. The optional `Idempotency-Key` makes a repeat answer the same version; the same key with another body answers 409 `idempotency_conflict`. 400 `sandbox_egress_invalid` (the policy name is not valid), 400 `sandbox_limits_invalid`, 403 `sandbox_plan_unavailable` (a Free account), 404 `sandbox_egress_policy_not_found` (the environment holds no policy of that name), 409 `sandbox_not_enabled`, 503 `storage_degraded` (the network policies of the environment cannot be read; the same request works when they can)",
         "tags": [
           "sandboxes"
         ]
@@ -136313,15 +136165,6 @@
       "get": {
         "operationId": "get_v1_sandboxes_templates_get",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
@@ -136593,15 +136436,6 @@
       "post": {
         "operationId": "post_v1_sandboxes_update",
         "parameters": [
-          {
-            "description": "Graph name (default `main`)",
-            "in": "query",
-            "name": "graph",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
             "in": "header",
