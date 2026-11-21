@@ -1568,6 +1568,7 @@ class DiagnosisStepKind(Enum):
     add_data = 'add_data'
     keep_as_test = 'keep_as_test'
     add_source = 'add_source'
+    add_instruction = 'add_instruction'
 
 
 class DiscoveryApprovalReference(BaseModel):
@@ -13546,6 +13547,12 @@ class AnswerTestChange(BaseModel):
     alias: AnswerTestAlias | None = None
     instructions: InstructionsRef | None = None
     kind: AnswerTestChangeKind
+    note: Annotated[
+        str | None,
+        Field(
+            description='For `instructions` from an `add_instruction` step: the note the\ndraft version adds to the instructions that apply. The start makes\nthe draft (nothing is published or bound) and names it in\n`instructions`.'
+        ),
+    ] = None
 
 
 class AnswerTestCreateRequest(BaseModel):
@@ -14256,10 +14263,22 @@ class DiagnosisNextStep(BaseModel):
     One thing the developer can do next.
     """
 
+    alias: Annotated[
+        str | None,
+        Field(
+            description='For `add_alias`: the words of the question that name the entity, the\nproposed label. Edit it before you add it.'
+        ),
+    ] = None
     iri: Annotated[str | None, Field(description='The entity the step is about.')] = (
         None
     )
     kind: DiagnosisStepKind
+    note: Annotated[
+        str | None,
+        Field(
+            description='For `add_instruction`: the drafted note for the Ask instructions.'
+        ),
+    ] = None
     reference: Annotated[
         str | None,
         Field(
@@ -24698,7 +24717,13 @@ class AnswerTest(BaseModel):
     created: Annotated[str, Field(description='When the test started (RFC 3339).')]
     created_by: str | None = None
     error: str | None = None
-    estimate_micro_usd: Annotated[int, Field(ge=0)]
+    estimate_micro_usd: Annotated[
+        int,
+        Field(
+            description="The estimate of the items the test holds. It is lower than the\nestimate route's answer when the checker wrote fewer rewordings than\nasked for: that answer counts the rewordings before they exist.",
+            ge=0,
+        ),
+    ]
     failed: AnswerTestSetReport | None = None
     finish_reason: AnswerTestFinishReason | None = None
     finished: str | None = None

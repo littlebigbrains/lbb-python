@@ -923,6 +923,7 @@
             ]
           },
           "estimate_micro_usd": {
+            "description": "The estimate of the items the test holds. It is lower than the\nestimate route's answer when the checker wrote fewer rewordings than\nasked for: that answer counts the rewordings before they exist.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -1088,6 +1089,13 @@
           },
           "kind": {
             "$ref": "#/components/schemas/AnswerTestChangeKind"
+          },
+          "note": {
+            "description": "For `instructions` from an `add_instruction` step: the note the\ndraft version adds to the instructions that apply. The start makes\nthe draft (nothing is published or bound) and names it in\n`instructions`.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -6112,6 +6120,13 @@
       "DiagnosisNextStep": {
         "description": "One thing the developer can do next.",
         "properties": {
+          "alias": {
+            "description": "For `add_alias`: the words of the question that name the entity, the\nproposed label. Edit it before you add it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "iri": {
             "description": "The entity the step is about.",
             "type": [
@@ -6121,6 +6136,13 @@
           },
           "kind": {
             "$ref": "#/components/schemas/DiagnosisStepKind"
+          },
+          "note": {
+            "description": "For `add_instruction`: the drafted note for the Ask instructions.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "reference": {
             "description": "For `accept_stand_in` and `keep_as_test`: the reference to correct\nthe check with.",
@@ -6159,7 +6181,8 @@
           "accept_stand_in",
           "add_data",
           "keep_as_test",
-          "add_source"
+          "add_source",
+          "add_instruction"
         ],
         "type": "string"
       },
