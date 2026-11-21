@@ -4,6 +4,18 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `Sandbox.usage` is measured on a retrieve, from the receipts of the sandbox, in the same
+  billed seconds as its `cost`. `SandboxUsage` has the optional `state` (`SandboxUsageState`:
+  `measured`, `not_read` or `unknown`) and the exact figures `intervals`, `billed_ms`,
+  `elapsed_ms`, `memory_mib_seconds` and `disk_mib_seconds` (`None` when absent). A create, a
+  list and every other answer have `state` `not_read`, and a retrieve that cannot measure has
+  `unknown`: in both the counters are 0 and say nothing, so read them only when `state` is
+  `measured`. The GiB figures are the MiB-seconds divided by 1,024 and rounded up once.
+  `Sandbox` has the optional times in milliseconds `created_ms`, `expires_at_ms` and
+  `auto_stop_at_ms`, and a retrieve adds the times of the latest run (`started_ms`,
+  `ready_ms`, `ended_ms`) and `create_to_ready_ms`. `SandboxCommand` has the optional
+  `created_ms`, `started_ms`, `ended_ms` and `duration_ms`. No code needs a change.
+
 - `SandboxTemplate` and `SandboxTemplateCreateRequest` have the optional `egress`
   (`SandboxTemplateEgress`, one field, `policy`): the name of a network policy of the
   environment. `Sandbox` has the optional `egress` (`SandboxEgress`: `policy`, `hosts`

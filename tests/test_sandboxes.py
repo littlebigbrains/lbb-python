@@ -799,6 +799,105 @@ EXAMPLES: dict[str, tuple[bool, str]] = {
 }
 
 
+class Telemetry(unittest.TestCase):
+    """The models read what a retrieve measures: usage, cost and times in milliseconds."""
+
+    RETRIEVED: dict[str, Any] = {
+        "id": SBX,
+        "object": "sandbox",
+        "created": 1_793_174_400,
+        "created_ms": 1_793_174_400_123,
+        "status": "stopped",
+        "kind": "sandbox",
+        "template": {"id": "sbt_lbb_python", "name": "lbb/python"},
+        "limits": {"vcpus": 1, "memory_mib": 1024, "disk_mib": 4096},
+        "auto_stop_seconds": 300,
+        "expires_at": 1_793_178_000,
+        "expires_at_ms": 1_793_178_000_123,
+        "owner": None,
+        "created_by": "key:test",
+        "usage": {
+            "vcpu_seconds": 90,
+            "memory_gib_seconds": 90,
+            "disk_gib_seconds": 4,
+            "state": "measured",
+            "intervals": 1,
+            "billed_ms": 90_000,
+            "elapsed_ms": 94_000,
+            "memory_mib_seconds": 92_160,
+            "disk_mib_seconds": 4_096,
+        },
+        "cost": {"settled_micro_usd": 1_665, "estimate_micro_usd": 0, "open_micro_usd": 0},
+        "started_ms": 1_793_174_401_000,
+        "ready_ms": 1_793_174_402_500,
+        "ended_ms": 1_793_174_495_000,
+        "create_to_ready_ms": 2_377,
+        "metadata": {},
+    }
+
+    def test_the_sandbox_model_has_the_measured_usage_and_the_latest_run(self) -> None:
+        from lbb import models
+
+        sandbox = models.Sandbox.model_validate(self.RETRIEVED)
+        self.assertIs(sandbox.usage.state, models.SandboxUsageState.measured)
+        self.assertEqual(sandbox.usage.billed_ms, 90_000)
+        self.assertEqual(sandbox.usage.elapsed_ms, 94_000)
+        self.assertEqual(sandbox.usage.memory_mib_seconds, 92_160)
+        self.assertEqual(sandbox.usage.disk_mib_seconds, 4_096)
+        self.assertEqual(sandbox.usage.intervals, 1)
+        self.assertEqual(sandbox.cost.settled_micro_usd if sandbox.cost else None, 1_665)
+        self.assertEqual(
+            (sandbox.created_ms, sandbox.started_ms, sandbox.ready_ms, sandbox.ended_ms),
+            (1_793_174_400_123, 1_793_174_401_000, 1_793_174_402_500, 1_793_174_495_000),
+        )
+        self.assertEqual(sandbox.create_to_ready_ms, 2_377)
+
+    def test_an_unread_answer_and_an_older_answer_have_no_exact_figure(self) -> None:
+        from lbb import models
+
+        counters = {"vcpu_seconds": 0, "memory_gib_seconds": 0, "disk_gib_seconds": 0}
+        unread = models.Sandbox.model_validate(
+            {**self.RETRIEVED, "usage": {**counters, "state": "not_read"}}
+        )
+        self.assertIs(unread.usage.state, models.SandboxUsageState.not_read)
+        self.assertIsNone(unread.usage.billed_ms)
+        older = models.Sandbox.model_validate({**self.RETRIEVED, "usage": counters})
+        self.assertIsNone(older.usage.state)
+        unknown = models.SandboxUsage.model_validate({**counters, "state": "unknown"})
+        self.assertIs(unknown.state, models.SandboxUsageState.unknown)
+        states = {state.value for state in models.SandboxUsageState}
+        self.assertEqual(states, {"measured", "not_read", "unknown"})
+
+    def test_the_command_model_has_its_times_in_milliseconds_and_its_duration(self) -> None:
+        from lbb import models
+
+        command = models.SandboxCommand.model_validate(
+            {
+                "id": "cmd_1793174400000a1b2c3d4e5f6",
+                "object": "sandbox_command",
+                "created": 1_793_174_410,
+                "created_ms": 1_793_174_410_400,
+                "sandbox": SBX,
+                "status": "exited",
+                "env_names": [],
+                "stdin_bytes": 0,
+                "timeout_ms": 60_000,
+                "exit_code": 0,
+                "started": 1_793_174_411,
+                "ended": 1_793_174_412,
+                "started_ms": 1_793_174_411_250,
+                "ended_ms": 1_793_174_412_100,
+                "duration_ms": 850,
+                "stdout": {"bytes": 0, "truncated_bytes": 0, "tail": ""},
+                "stderr": {"bytes": 0, "truncated_bytes": 0, "tail": ""},
+            }
+        )
+        self.assertEqual(
+            (command.created_ms, command.started_ms, command.ended_ms, command.duration_ms),
+            (1_793_174_410_400, 1_793_174_411_250, 1_793_174_412_100, 850),
+        )
+
+
 class GuideExamples(unittest.TestCase):
     @unittest.skipIf(_GUIDE is None, "the guide is not in this checkout")
     def test_the_ladders_examples_are_in_the_guide_as_written_and_they_run(self) -> None:
