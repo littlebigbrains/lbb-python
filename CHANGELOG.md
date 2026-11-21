@@ -4,6 +4,8 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- Sync and async `client.sandboxes` calls use the environment, including templates, lifecycle, commands and workspace files. `import_file` and template entries accept `source_graph`. `keep` takes the destination `graph`.
+
 - `Sandbox.usage` is measured on a retrieve, from the receipts of the sandbox, in the same
   billed seconds as its `cost`. `SandboxUsage` has the optional `state` (`SandboxUsageState`:
   `measured`, `not_read` or `unknown`) and the exact figures `intervals`, `billed_ms`,

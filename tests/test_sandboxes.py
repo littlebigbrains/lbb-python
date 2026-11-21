@@ -251,7 +251,7 @@ class RunSync(unittest.TestCase):
         self.assertEqual(len(service.requests), 1)
         request = service.requests[0]
         self.assertEqual((request.method, request.url.path), ("POST", "/v1/sandboxes"))
-        self.assertEqual(request.url.params["graph"], "main")
+        self.assertNotIn("graph", request.url.params)
         self.assertRegex(request.headers["idempotency-key"], r"^sandboxes\.run:")
         self.assertEqual(
             json.loads(request.content),
@@ -483,6 +483,20 @@ class ScopedAndHandleSync(unittest.TestCase):
             with sync_client(broken).sandboxes.scoped():
                 pass
         self.assertEqual(caught.exception.status_code, 403)
+
+    def test_workspace_transfers_select_an_explicit_graph(self) -> None:
+        service = Service()
+        sandbox = sync_client(service).sandboxes.create()
+        service.responders.append(lambda request: answer({}))
+        sandbox.files.import_file("data.txt", source_graph="inputs", source_sha256="a" * 64, idempotency_key="copy")
+        sandbox.files.keep("data.txt", graph="outputs", idempotency_key="keep")
+        imported, kept = service.requests[-2:]
+        self.assertEqual(imported.url.params["source_graph"], "inputs")
+        self.assertNotIn("graph", imported.url.params)
+        self.assertEqual(kept.url.params["graph"], "outputs")
+        self.assertEqual(kept.url.path, "/v1/files")
+        self.assertEqual(imported.headers["idempotency-key"], "copy")
+        self.assertEqual(kept.headers["idempotency-key"], "keep")
 
     def test_the_handle_reads_writes_lists_and_deletes_files(self) -> None:
         service = Service()

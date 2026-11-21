@@ -8257,7 +8257,7 @@ class SandboxTemplateEgress(BaseModel):
 class SandboxTemplateFile(BaseModel):
     """
     A file a template copies into `/workspace` when a sandbox of the template
-    first starts: a File of the graph, named by its SHA-256. A template holds
+    first starts: a File of the chosen source graph, named by its SHA-256. A template holds
     64 files at most and 16 MiB together. The path is under `/workspace`; the
     template shows it as an absolute path.
     """
@@ -8266,10 +8266,13 @@ class SandboxTemplateFile(BaseModel):
         extra='forbid',
     )
     path: Annotated[str, Field(description='The path in `/workspace`.')]
+    source_graph: Annotated[
+        str, Field(description='The graph of this environment that holds the File.')
+    ]
     source_sha256: Annotated[
         str,
         Field(
-            description='The SHA-256 of a file of the graph, 64 hexadecimal characters.'
+            description='The SHA-256 of a File in the source graph, 64 hexadecimal characters.'
         ),
     ]
 
@@ -19242,7 +19245,7 @@ class SandboxTemplateCreateRequest(BaseModel):
     files: Annotated[
         list[SandboxTemplateFile] | None,
         Field(
-            description='Files for `/workspace`: Files of the graph, copied when a sandbox of\nthis template first starts. See [`SandboxTemplateFile`].'
+            description='Files copied from their named source graphs into `/workspace` when a sandbox of\nthis template first starts. See [`SandboxTemplateFile`].'
         ),
     ] = None
     limits: SandboxLimitsInput | None = None
@@ -23822,7 +23825,7 @@ class Sandbox(BaseModel):
     status_message: Annotated[
         str | None,
         Field(
-            description='What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, the graph was deleted and made again, or the image of\nthe sandbox is older than the server. A `stopped` sandbox has it after a\nresume that did not start (a static sentence: the sandbox keeps its\ndisk). Absent otherwise, and gone when the status changes.'
+            description='What went wrong, in words, for a sandbox whose start failed for a cause\nof its own: a file of its template is gone or cannot be copied in (it\nnames the file by its SHA-256 and the path it was to go to), the\ntemplate is gone, a source graph changed during the copy, or the image of\nthe sandbox is older than the server. A `stopped` sandbox has it after a\nresume that did not start (a static sentence: the sandbox keeps its\ndisk). Absent otherwise, and gone when the status changes.'
         ),
     ] = None
     status_reason: SandboxStatusReason | None = None
