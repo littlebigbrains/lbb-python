@@ -1172,7 +1172,7 @@ class LbbClient(_BaseLbbClient):
             idempotency_key=idempotency_key,
             headers=request_options.get("headers"),
             scoped=scoped,
-            graph_scoped=path != "/v1/query/namespace",
+            graph_scoped=path not in {"/v1/query/namespace", "/v1/sandboxes"} and not path.startswith("/v1/sandboxes/"),
         )
         if "timeout" in request_options:
             kwargs["timeout"] = request_options["timeout"]
