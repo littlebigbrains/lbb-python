@@ -13,8 +13,9 @@ The rules are those of the TypeScript ``WorkflowWorker``
 - ``turns/operation``, ``turns/progress``, ``turns/checkpoint``,
   ``turns/wait-signal`` and ``turns/complete`` are retried: the same request
   again changes nothing more.
-- A ``409`` or a ``404`` on a turn route, and ``409 workflow_fence_lost`` on a
-  fenced commit, stop the turn: the worker sends nothing more for it. The
+- A ``409`` or a ``404`` on a turn route, ``409 workflow_fence_lost`` on a
+  fenced commit and ``409 sandbox_fence_lost`` on a fenced sandbox create,
+  stop the turn: the worker sends nothing more for it. The
   server answers ``409 turn_lease_lost`` when the attempt's token no longer
   holds the turn (another attempt holds it, its lease ended, or it
   finished) and ``409 conflict`` for the other conflicts of a turn route;
@@ -45,6 +46,7 @@ from pydantic import BaseModel, ValidationError
 from .. import models
 from .._client_base import LbbError, _coerce_body, _is_transport_failure
 from .._workflow_execution import AsyncWorkflowTurnReader, WorkflowExecutionError
+from ..sandboxes import UNSET
 from ._results import (
     RunResultsCollector,
     message_instances,
@@ -738,6 +740,78 @@ class WorkflowStepContext:
         done_here.result()
 
 
+class WorkflowSandboxes:
+    """Sandboxes as steps of a turn (``ctx.sandboxes``)."""
+
+    def __init__(self, ctx: WorkflowContext) -> None:
+        self._ctx = ctx
+
+    async def run(
+        self,
+        key: str,
+        *,
+        code: Any = UNSET,
+        input: Any = UNSET,
+        config: Any = UNSET,
+        template: str | None = None,
+        limits: Mapping[str, int] | None = None,
+        timeout_ms: int | None = None,
+        wait_ms: int | None = None,
+        max_wait_ms: int = 600_000,
+        lost_retries: int = 2,
+        step_timeout_ms: int = 300_000,
+    ) -> dict[str, Any]:
+        """Run code once in a new sandbox, as step ``key`` of the turn: the L1
+        call of ``client.sandboxes.run`` with a checkpoint. The server records
+        the turn as the sandbox's owner (workflow, run, step ``key``, graph), so
+        the run shows under its step. The key of the call is the step's effect
+        id, so a later attempt of the turn answers the same run, and a finished
+        step is not run again. A turn whose lease ended stops: the next holder
+        runs the step.
+
+        Returns ``{result, status, exit_code, command, ok, sandbox}``, with the
+        sandbox by its id. Check ``ok`` before you use ``result``.
+        ``timeout_ms`` is the command's own timeout; ``step_timeout_ms`` limits
+        one attempt of the step."""
+        turn = self._ctx._turn
+        sandboxes = turn._client.sandboxes
+
+        async def ran(step: WorkflowStepContext) -> dict[str, Any]:
+            fence: dict[str, Any] = dict(
+                step.fence.model_dump() if step.fence is not None else turn._lease
+            )
+            if step.graph is not None:
+                fence["graph"] = step.graph
+            fence["step"] = key
+            extra: dict[str, Any] = {}
+            if wait_ms is not None:
+                extra["wait_ms"] = wait_ms
+            result = await sandboxes.run(
+                code=code,
+                input=input,
+                config=config,
+                template=template,
+                limits=limits,
+                timeout_ms=timeout_ms,
+                max_wait_ms=max_wait_ms,
+                lost_retries=lost_retries,
+                idempotency_key=step.effect_id,
+                workflow_fence=fence,
+                **extra,
+            )
+            return {
+                "result": result.result,
+                "status": result.status,
+                "exit_code": result.exit_code,
+                "command": result.command,
+                "ok": result.ok,
+                "sandbox": str(result.sandbox.get("id", "")),
+            }
+
+        output: dict[str, Any] = await self._ctx.step(key, ran, timeout_ms=step_timeout_ms)
+        return output
+
+
 class WorkflowContext:
     """What a turn's handler gets: the turn's identity, and the durable
     operations of the turn (steps, signal waits, sleeps)."""
@@ -753,6 +827,8 @@ class WorkflowContext:
         #: The named workflow of this identity (a shard's or a fan-in
         #: identity's), if any.
         self.workflow_name: str | None = workflow_of_identity(self.workflow_id)
+        #: Sandboxes as steps of this turn: ``ctx.sandboxes.run(key, ...)``.
+        self.sandboxes = WorkflowSandboxes(self)
 
     @overload
     async def step(
@@ -1401,8 +1477,11 @@ class _Turn:
                 raise
             await self._ended_here()
         except Exception as error:
-            if isinstance(error, LbbError) and error.code == "workflow_fence_lost":
-                return  # The turn's next holder makes the commit.
+            if isinstance(error, LbbError) and error.code in (
+                "workflow_fence_lost",
+                "sandbox_fence_lost",
+            ):
+                return  # The turn's next holder makes the commit or the sandbox.
             if self._abort is not None:
                 await self._ended_here()
                 return

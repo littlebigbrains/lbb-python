@@ -133,6 +133,20 @@ def _run_body(
     return body
 
 
+def _fenced(
+    body: dict[str, Any], fence: Mapping[str, Any] | None, attempt: int
+) -> dict[str, Any]:
+    """The body of one attempt of a run: with the turn's fence, whose step is
+    ``<step>.<attempt>`` after the first, as the key is ``<key>.<attempt>``."""
+    if fence is None:
+        return body
+    step = str(fence["step"])
+    return {
+        **body,
+        "workflow_fence": {**fence, "step": step if attempt == 1 else f"{step}.{attempt}"},
+    }
+
+
 def _result_of(sandbox: dict[str, Any]) -> SandboxRunResult:
     run = sandbox.get("run") or {}
     status = run.get("status") or "failed"
@@ -881,6 +895,7 @@ class _SyncSandboxes(_SandboxesBase):
         max_wait_ms: int = 600_000,
         lost_retries: int = 2,
         idempotency_key: str | None = None,
+        workflow_fence: Mapping[str, Any] | None = None,
         options: RequestOptions | None = None,
     ) -> SandboxRunResult:
         """Level 1 and 2: run code once. The call makes a sandbox, runs
@@ -904,7 +919,14 @@ class _SyncSandboxes(_SandboxesBase):
         create does.
 
         Check ``ok`` before you use ``result``: a run whose code raised is a
-        result with ``exit_code`` 1, not an error."""
+        result with ``exit_code`` 1, not an error.
+
+        ``workflow_fence`` names the workflow turn that makes the sandbox: the
+        server records it as the sandbox's owner, and the call needs the step's
+        effect id as its ``idempotency_key``. ``ctx.sandboxes.run`` of a
+        workflow worker sets both; set it yourself only from a worker of your
+        own. A run that goes again after a loss sends the step ``<step>.2``
+        with the key ``<key>.2``."""
         body = {
             **self._create_body(
                 template=template,
@@ -922,7 +944,11 @@ class _SyncSandboxes(_SandboxesBase):
         while True:
             key = base_key if attempt == 1 else f"{base_key}.{attempt}"
             sandbox: dict[str, Any] = self._client._request(
-                "POST", "/v1/sandboxes", body=body, idempotency_key=key, options=options
+                "POST",
+                "/v1/sandboxes",
+                body=_fenced(body, workflow_fence, attempt),
+                idempotency_key=key,
+                options=options,
             )
             began = time.monotonic()
             pause = 0.25
@@ -1033,6 +1059,7 @@ class _AsyncSandboxes(_SandboxesBase):
         max_wait_ms: int = 600_000,
         lost_retries: int = 2,
         idempotency_key: str | None = None,
+        workflow_fence: Mapping[str, Any] | None = None,
         options: RequestOptions | None = None,
     ) -> SandboxRunResult:
         """Level 1 and 2: run code once, as the sync client's ``run`` does."""
@@ -1053,7 +1080,11 @@ class _AsyncSandboxes(_SandboxesBase):
         while True:
             key = base_key if attempt == 1 else f"{base_key}.{attempt}"
             sandbox: dict[str, Any] = await self._client._request(
-                "POST", "/v1/sandboxes", body=body, idempotency_key=key, options=options
+                "POST",
+                "/v1/sandboxes",
+                body=_fenced(body, workflow_fence, attempt),
+                idempotency_key=key,
+                options=options,
             )
             began = time.monotonic()
             pause = 0.25

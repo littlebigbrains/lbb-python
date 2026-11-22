@@ -1046,3 +1046,99 @@ def test_a_turn_waits_for_lbb_without_an_attempt_until_its_budget_is_spent(
         await client.aclose()
 
     asyncio.run(main())
+
+
+def test_ctx_sandboxes_run_runs_code_as_a_step_under_the_effect_id_and_the_fence() -> None:
+    fake = Fake([task()])
+    creates: list[tuple[str | None, Any]] = []
+    plain = fake.handle
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/sandboxes":
+            creates.append(
+                (request.headers.get("idempotency-key"), json.loads(request.content))
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "id": "sbx_1",
+                    "object": "sandbox",
+                    "status": "destroyed",
+                    "run": {"status": "exited", "exit_code": 0, "result": 6, "command": "cmd_1"},
+                },
+            )
+        return await plain(request)
+
+    fake.handle = handle  # type: ignore[method-assign]
+    ran: list[Any] = []
+
+    async def main() -> None:
+        async with fake.client() as client:
+
+            @workflow(name="counter", version="v1", initial_state={})
+            async def counter(
+                ctx: WorkflowContext, state: Any, message: Any
+            ) -> WorkflowResult[Any]:
+                ran.append(
+                    await ctx.sandboxes.run(
+                        "sum", code="def run(input, config):\n    return sum(input)", input=[1, 2, 3]
+                    )
+                )
+                return WorkflowResult(state=state)
+
+            await WorkflowWorker(client, [counter], worker="w").run_once()
+
+    asyncio.run(main())
+    assert len(creates) == 1
+    key, body = creates[0]
+    assert key == "prefix-1/sum"
+    assert body["workflow_fence"] == {
+        "workflow_id": "agent-1",
+        "turn": 1,
+        "token": "token-1",
+        "graph": "main",
+        "step": "sum",
+    }
+    assert body["run"]["input"] == [1, 2, 3]
+    assert ran == [
+        {
+            "result": 6,
+            "status": "exited",
+            "exit_code": 0,
+            "command": "cmd_1",
+            "ok": True,
+            "sandbox": "sbx_1",
+        }
+    ]
+    assert len(fake.bodies("complete")) == 1
+
+
+def test_a_lost_sandbox_fence_stops_the_attempt_and_fails_nothing() -> None:
+    fake = Fake([task()])
+    fake.routes["/v1/sandboxes"] = lambda _: httpx.Response(
+        409,
+        json={
+            "error": {
+                "type": "conflict_error",
+                "code": "sandbox_fence_lost",
+                "message": "the workflow_fence does not hold turn 1",
+                "param": "workflow_fence",
+            }
+        },
+    )
+
+    async def main() -> None:
+        async with fake.client() as client:
+
+            @workflow(name="counter", version="v1", initial_state={})
+            async def counter(
+                ctx: WorkflowContext, state: Any, message: Any
+            ) -> WorkflowResult[Any]:
+                await ctx.sandboxes.run("sum", code="def run(i, c):\n    return 1")
+                return WorkflowResult(state=state)
+
+            await WorkflowWorker(client, [counter], worker="w").run_once()
+
+    asyncio.run(main())
+    assert fake.bodies("fail") == []
+    assert fake.bodies("complete") == []

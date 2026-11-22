@@ -33680,7 +33680,7 @@
               },
               {
                 "$ref": "#/components/schemas/SandboxOwner",
-                "description": "The workflow turn that owns it; `null` for now."
+                "description": "The workflow turn that owns it: set for a sandbox made in a step of a\nworkflow, else `null`."
               }
             ]
           },
@@ -34355,6 +34355,17 @@
               "integer",
               "null"
             ]
+          },
+          "workflow_fence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxWorkflowFence",
+                "description": "The workflow turn that makes the sandbox: the server records it as the\nowner. Needs an `Idempotency-Key`, which is the step's effect id."
+              }
+            ]
           }
         },
         "type": "object"
@@ -34719,19 +34730,32 @@
         "type": "object"
       },
       "SandboxOwner": {
-        "description": "The workflow turn that owns a sandbox. A sandbox made under a workflow\ngrant records its owner; a sandbox made by an environment key has none.\nThe owner is stored and shown; the fence it enables is not built yet, so\n`owner` is always `null` for now.",
+        "description": "The workflow turn that owns a sandbox. A sandbox made in a step of a workflow\n(a create with a `workflow_fence`) records its owner; any other sandbox has\nnone. The server takes every field from the turn the fence holds, never from\nthe body.",
         "properties": {
+          "graph": {
+            "description": "The graph the workflow runs in. An attribute only: it gives no right to\nthe sandbox, and a graph delete does not end it.",
+            "type": "string"
+          },
+          "graph_epoch": {
+            "description": "The lifetime of that graph when the sandbox was made.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "object": {
             "description": "`sandbox_owner`.",
             "type": "string"
           },
           "run": {
+            "description": "The run of the turn: the `id` of a run of the runs routes.",
             "type": "string"
           },
           "step": {
+            "description": "The step key that made the sandbox (`ctx.sandboxes.run(key, …)`).",
             "type": "string"
           },
           "workflow": {
+            "description": "The named workflow of the turn, or the engine identity when the turn\nbelongs to no named workflow.",
             "type": "string"
           }
         },
@@ -34739,7 +34763,9 @@
           "object",
           "workflow",
           "run",
-          "step"
+          "step",
+          "graph",
+          "graph_epoch"
         ],
         "type": "object"
       },
@@ -35232,6 +35258,41 @@
           "unknown"
         ],
         "type": "string"
+      },
+      "SandboxWorkflowFence": {
+        "additionalProperties": false,
+        "description": "The turn of a workflow that makes a sandbox (`workflow_fence` of\n`POST /v1/sandboxes`), as a commit names it, with the graph of the turn and\nthe step key. The create runs only while `token` holds turn `turn` of instance\n`workflow_id` (`409 sandbox_fence_lost`); a repeat of its `Idempotency-Key`\nanswers the sandbox it made. The key must be the step's effect id: the\neffect prefix of the turn, `/`, then `step`.",
+        "properties": {
+          "graph": {
+            "description": "The graph of the workflow. Absent: the graph that a call with no graph\nreaches, as for the worker's other calls.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "step": {
+            "description": "The step key: 1 to 128 characters.",
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "turn": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "turn",
+          "token",
+          "step"
+        ],
+        "type": "object"
       },
       "SavedDatasetView": {
         "additionalProperties": false,
