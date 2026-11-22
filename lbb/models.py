@@ -12043,6 +12043,8 @@ class WorkflowExecutionOperation(Enum):
     review = 'review'
     revision_read = 'revision_read'
     file_write = 'file_write'
+    sandbox_read = 'sandbox_read'
+    sandbox_write = 'sandbox_write'
 
 
 class WorkflowFence(BaseModel):
