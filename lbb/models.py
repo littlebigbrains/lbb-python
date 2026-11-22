@@ -8118,16 +8118,41 @@ class SandboxLogGap(BaseModel):
 
 class SandboxOwner(BaseModel):
     """
-    The workflow turn that owns a sandbox. A sandbox made under a workflow
-    grant records its owner; a sandbox made by an environment key has none.
-    The owner is stored and shown; the fence it enables is not built yet, so
-    `owner` is always `null` for now.
+    The workflow turn that owns a sandbox. A sandbox made in a step of a workflow
+    (a create with a `workflow_fence`) records its owner; any other sandbox has
+    none. The server takes every field from the turn the fence holds, never from
+    the body.
     """
 
+    graph: Annotated[
+        str,
+        Field(
+            description='The graph the workflow runs in. An attribute only: it gives no right to\nthe sandbox, and a graph delete does not end it.'
+        ),
+    ]
+    graph_epoch: Annotated[
+        int,
+        Field(
+            description='The lifetime of that graph when the sandbox was made.', ge=0
+        ),
+    ]
     object: Annotated[str, Field(description='`sandbox_owner`.')]
-    run: str
-    step: str
-    workflow: str
+    run: Annotated[
+        str,
+        Field(description='The run of the turn: the `id` of a run of the runs routes.'),
+    ]
+    step: Annotated[
+        str,
+        Field(
+            description='The step key that made the sandbox (`ctx.sandboxes.run(key, …)`).'
+        ),
+    ]
+    workflow: Annotated[
+        str,
+        Field(
+            description='The named workflow of the turn, or the engine identity when the turn\nbelongs to no named workflow.'
+        ),
+    ]
 
 
 class SandboxRunRequest(BaseModel):
@@ -8322,6 +8347,31 @@ class SandboxUsageState(Enum):
     measured = 'measured'
     not_read = 'not_read'
     unknown = 'unknown'
+
+
+class SandboxWorkflowFence(BaseModel):
+    """
+    The turn of a workflow that makes a sandbox (`workflow_fence` of
+    `POST /v1/sandboxes`), as a commit names it, with the graph of the turn and
+    the step key. The create runs only while `token` holds turn `turn` of instance
+    `workflow_id` (`409 sandbox_fence_lost`); a repeat of its `Idempotency-Key`
+    answers the sandbox it made. The key must be the step's effect id: the
+    effect prefix of the turn, `/`, then `step`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    graph: Annotated[
+        str | None,
+        Field(
+            description="The graph of the workflow. Absent: the graph that a call with no graph\nreaches, as for the worker's other calls."
+        ),
+    ] = None
+    step: Annotated[str, Field(description='The step key: 1 to 128 characters.')]
+    token: str
+    turn: Annotated[int, Field(ge=0)]
+    workflow_id: str
 
 
 class SavedDatasetViewDefinition(BaseModel):
@@ -19101,6 +19151,7 @@ class SandboxCreateRequest(BaseModel):
             ge=0,
         ),
     ] = None
+    workflow_fence: SandboxWorkflowFence | None = None
 
 
 class SandboxEgress(BaseModel):

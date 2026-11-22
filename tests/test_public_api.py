@@ -107,6 +107,7 @@ def test_the_workflow_worker_exports_are_explicit_and_stable() -> None:
             "WorkflowHandle",
             "WorkflowNamespace",
             "WorkflowResult",
+            "WorkflowSandboxes",
             "WorkflowSignalResult",
             "WorkflowStepContext",
             "WorkflowWait",
