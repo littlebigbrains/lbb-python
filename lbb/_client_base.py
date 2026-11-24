@@ -6065,6 +6065,86 @@ def _missing_route(error: LbbError) -> bool:
     return error.status_code == 404 and str(error).startswith("no route for")
 
 
+class _ErasuresNamespace:
+    """Subject erasure (GDPR): remove what a person said from a graph.
+
+    An erasure retracts every statement that names a subject, as subject or
+    object, in one commit. From that commit on, every read at every
+    ``as_of_commit_seq`` hides those statements. A background purge then
+    deletes them from storage, backups included, before the erasure's
+    ``deadline``. An erasure cannot be undone.
+
+    Text is not searched. A passage or quote that only mentions the person
+    goes when you name it, or when a ``follow`` rule reaches it through a
+    link, for example ``{"predicate": "https://…/spokenBy", "direction":
+    "in"}``. Call :meth:`preview` first to see the scope.
+    """
+
+    def __init__(self, client: _BaseLbbClient) -> None:
+        self._client = client
+
+    @staticmethod
+    def _scope(
+        subjects: Sequence[str] | None,
+        files: Sequence[str] | None,
+        follow: Sequence[Mapping[str, Any]] | None,
+        accept_shape_violations: bool,
+        dry_run: bool,
+    ) -> dict[str, Any]:
+        return {
+            "subjects": list(subjects or []),
+            "files": list(files or []),
+            "follow": [dict(rule) for rule in follow or []],
+            "accept_shape_violations": accept_shape_violations,
+            "dry_run": dry_run,
+        }
+
+    def preview(
+        self,
+        *,
+        subjects: Sequence[str] | None = None,
+        files: Sequence[str] | None = None,
+        follow: Sequence[Mapping[str, Any]] | None = None,
+        accept_shape_violations: bool = False,
+    ) -> Any:
+        """The scope of an erasure at the head: ``{object:
+        "erasure_preview", counts, follow, samples, shape_violations}`` (up
+        to 50 sample statements). Writes nothing."""
+        return self._client._request(
+            "POST",
+            "/v1/erasures",
+            body=self._scope(subjects, files, follow, accept_shape_violations, True),
+        )
+
+    def erase(
+        self,
+        *,
+        subjects: Sequence[str] | None = None,
+        files: Sequence[str] | None = None,
+        follow: Sequence[Mapping[str, Any]] | None = None,
+        accept_shape_violations: bool = False,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        """Erase the scope and return the erasure (``ers_…``). Pass your own
+        ``idempotency_key`` so that a rerun of your code answers the first
+        erasure (``idempotent_replay: True``) instead of starting another."""
+        return self._client._request(
+            "POST",
+            "/v1/erasures",
+            body=self._scope(subjects, files, follow, accept_shape_violations, False),
+            idempotency_key=idempotency_key or self._client.idempotency_key("erase"),
+        )
+
+    def get(self, id: str) -> Any:
+        """One erasure by its id (``ers_…``)."""
+        return self._client._request("GET", "/v1/erasures/get", params={"id": id})
+
+    def list(self) -> Any:
+        """The graph's erasures, newest first: ``{object: "list", data,
+        has_more}``."""
+        return self._client._request("GET", "/v1/erasures")
+
+
 class _ReviewsNamespace:
     """Review: questions for a person (human in the loop).
 
