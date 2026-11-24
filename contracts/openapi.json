@@ -34851,6 +34851,7 @@
           "start_error",
           "host_lost",
           "budget",
+          "owner_ended",
           "unknown"
         ],
         "type": "string"

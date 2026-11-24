@@ -8229,6 +8229,7 @@ class SandboxStatusReason(Enum):
     start_error = 'start_error'
     host_lost = 'host_lost'
     budget = 'budget'
+    owner_ended = 'owner_ended'
     unknown = 'unknown'
 
 
