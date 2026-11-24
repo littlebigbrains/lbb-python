@@ -46,6 +46,7 @@ from ._client_base import (
     _EarlierList,
     _EmbeddingsNamespace,
     _EntityNamespace,
+    _ErasuresNamespace,
     _error_body_field,
     _eval_experiment_open,
     _eval_experiment_timeout,
@@ -969,6 +970,7 @@ class LbbClient(_BaseLbbClient):
         self.instructions = _InstructionsNamespace(self)
         # Review: questions for a person, and their answers.
         self.reviews = _SyncReviewsNamespace(self)
+        self.erasures = _ErasuresNamespace(self)
         # Model trials of other models on the graph's uses, and switches.
         self.models = _SyncModelsNamespace(self)
         # Tests of a workflow on chosen inputs, which write nothing.

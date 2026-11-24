@@ -4,6 +4,8 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `client.erasures` (sync and async): `preview`, `erase`, `get` and `list` for `/v1/erasures`, the subject erasure of a graph (GDPR). `erase` sends an `Idempotency-Key`; pass `idempotency_key` to make a rerun answer the first erasure. Typed models: `Erasure`, `ErasurePreview`, `ErasureList`, `ErasureCreateRequest`, `ErasureFollowRule`, `ErasureStatus`.
+
 - Sync and async `client.sandboxes` calls use the environment, including templates, lifecycle, commands and workspace files. `import_file` and template entries accept `source_graph`. `keep` takes the destination `graph`.
 
 - `Sandbox.usage` is measured on a retrieve, from the receipts of the sandbox, in the same

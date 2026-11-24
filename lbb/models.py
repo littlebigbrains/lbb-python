@@ -1995,6 +1995,84 @@ class EntityView(BaseModel):
     type: str
 
 
+class ErasureCounts(BaseModel):
+    """
+    What an erasure covers.
+    """
+
+    files: Annotated[int, Field(ge=0)]
+    followed: Annotated[int, Field(ge=0)]
+    statement_nodes: Annotated[int, Field(ge=0)]
+    statements: Annotated[int, Field(ge=0)]
+    subjects: Annotated[int, Field(ge=0)]
+
+
+class ErasureFollowDirection(Enum):
+    """
+    Which way a follow rule walks its predicate.
+    """
+
+    in_ = 'in'
+    out = 'out'
+
+
+class ErasureFollowRule(BaseModel):
+    """
+    A follow rule: the nodes linked to the set by `predicate` join the set.
+    `in` adds the subjects of `?node <predicate> <member>`, `out` the objects of
+    `<member> <predicate> ?node`. Rules repeat up to 3 steps.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    direction: ErasureFollowDirection
+    predicate: str
+
+
+class ErasurePreviewRule(BaseModel):
+    """
+    A follow rule of a dry run, with the nodes it added.
+    """
+
+    added: Annotated[int, Field(ge=0)]
+    direction: ErasureFollowDirection
+    predicate: str
+
+
+class ErasureSample(BaseModel):
+    """
+    A statement the erasure would retract, in N-Triples term form.
+    """
+
+    object: str
+    predicate: str
+    subject: str
+
+
+class ErasureShapeViolation(BaseModel):
+    """
+    A shape result that the retraction creates.
+    """
+
+    focus_node: str
+    path: str | None = None
+    shape: str
+
+
+class ErasureStatus(Enum):
+    """
+    The state of an erasure.
+    """
+
+    masking = 'masking'
+    masked = 'masked'
+    purging = 'purging'
+    verifying = 'verifying'
+    complete = 'complete'
+    failed = 'failed'
+
+
 class EvalDatasetDeleted(BaseModel):
     """
     `DELETE /v1/evals/datasets?id=`: the dataset was deleted. A delete
@@ -14741,6 +14819,97 @@ class EntityMetadataResponse(BaseModel):
     snapshot: SnapshotView
 
 
+class Erasure(BaseModel):
+    """
+    One erasure. It never names its subjects.
+    """
+
+    accept_shape_violations: bool
+    counts: ErasureCounts
+    created: Annotated[int, Field(description='Unix seconds.')]
+    deadline: Annotated[
+        int, Field(description='Unix seconds: the purge completes before this time.')
+    ]
+    external_copies_expire: Annotated[
+        int | None,
+        Field(description='Unix seconds: when the last backup copy is gone.'),
+    ] = None
+    failure: str | None = None
+    follow: list[ErasureFollowRule]
+    graph: str
+    id: Annotated[str, Field(description='`ers_` and the id.')]
+    idempotent_replay: Annotated[
+        bool | None,
+        Field(
+            description='On `POST /v1/erasures` only: whether the key answered an earlier\nrequest.'
+        ),
+    ] = None
+    masked_at_commit_seq: Annotated[
+        int | None,
+        Field(description='The commit that retracted the scope and masked it.', ge=0),
+    ] = None
+    object: str
+    receipt: Annotated[
+        Any | None, Field(description='The purge receipt, once the purge has one.')
+    ] = None
+    shape_violations: list[ErasureShapeViolation]
+    shape_violations_total: Annotated[int, Field(ge=0)]
+    status: ErasureStatus
+
+
+class ErasureCreateRequest(BaseModel):
+    """
+    `POST /v1/erasures`: erase subjects and files, or preview the erasure with
+    `dry_run`.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    accept_shape_violations: Annotated[
+        bool | None, Field(description='Erase even when the retraction breaks a shape.')
+    ] = None
+    dry_run: Annotated[
+        bool | None, Field(description='Compute the scope and write nothing.')
+    ] = None
+    files: Annotated[
+        list[str] | None, Field(description='SHA-256 hex digests of files to erase.')
+    ] = None
+    follow: list[ErasureFollowRule] | None = None
+    subjects: Annotated[
+        list[str] | None, Field(description='Absolute IRIs of the subjects to erase.')
+    ] = None
+
+
+class ErasureList(BaseModel):
+    """
+    `GET /v1/erasures`: the graph's erasures.
+    """
+
+    data: list[Erasure]
+    has_more: bool
+    object: str
+
+
+class ErasurePreview(BaseModel):
+    """
+    The answer to a dry run: the scope at the head, and nothing written.
+    """
+
+    commit_seq: Annotated[
+        int, Field(description='The commit the scope was computed at.', ge=0)
+    ]
+    counts: ErasureCounts
+    dry_run: bool
+    follow: list[ErasurePreviewRule]
+    graph: str
+    object: str
+    samples: list[ErasureSample]
+    samples_limit: Annotated[int, Field(ge=0)]
+    shape_violations: list[ErasureShapeViolation]
+    shape_violations_total: Annotated[int, Field(ge=0)]
+
+
 class EvalAskInput(BaseModel):
     """
     The inputs of an Ask request (`POST /v1/query/ask`) that shape its
@@ -22054,6 +22223,15 @@ class EntityRdfRelations(BaseModel):
     incoming_truncation: TruncatedCollection | None = None
     outgoing: list[RdfEntityRelation]
     outgoing_truncation: TruncatedCollection | None = None
+
+
+class ErasureCreateResponse(RootModel[Erasure | ErasurePreview]):
+    root: Annotated[
+        Erasure | ErasurePreview,
+        Field(
+            description='The answer to `POST /v1/erasures`: the erasure, or its preview for a dry\nrun.'
+        ),
+    ]
 
 
 class EvalExpectedValue(BaseModel):

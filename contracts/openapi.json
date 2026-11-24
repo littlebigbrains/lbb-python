@@ -9034,6 +9034,376 @@
         ],
         "type": "object"
       },
+      "Erasure": {
+        "description": "One erasure. It never names its subjects.",
+        "properties": {
+          "accept_shape_violations": {
+            "type": "boolean"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ErasureCounts"
+          },
+          "created": {
+            "description": "Unix seconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "deadline": {
+            "description": "Unix seconds: the purge completes before this time.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "external_copies_expire": {
+            "description": "Unix seconds: when the last backup copy is gone.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "failure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "follow": {
+            "items": {
+              "$ref": "#/components/schemas/ErasureFollowRule"
+            },
+            "type": "array"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "id": {
+            "description": "`ers_` and the id.",
+            "type": "string"
+          },
+          "idempotent_replay": {
+            "description": "On `POST /v1/erasures` only: whether the key answered an earlier\nrequest.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "masked_at_commit_seq": {
+            "description": "The commit that retracted the scope and masked it.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "object": {
+            "type": "string"
+          },
+          "receipt": {
+            "description": "The purge receipt, once the purge has one."
+          },
+          "shape_violations": {
+            "items": {
+              "$ref": "#/components/schemas/ErasureShapeViolation"
+            },
+            "type": "array"
+          },
+          "shape_violations_total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ErasureStatus"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "graph",
+          "status",
+          "counts",
+          "deadline",
+          "follow",
+          "accept_shape_violations",
+          "shape_violations",
+          "shape_violations_total"
+        ],
+        "type": "object"
+      },
+      "ErasureCounts": {
+        "description": "What an erasure covers.",
+        "properties": {
+          "files": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "followed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "statement_nodes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "statements": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subjects": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subjects",
+          "statement_nodes",
+          "followed",
+          "files",
+          "statements"
+        ],
+        "type": "object"
+      },
+      "ErasureCreateRequest": {
+        "additionalProperties": false,
+        "description": "`POST /v1/erasures`: erase subjects and files, or preview the erasure with\n`dry_run`.",
+        "properties": {
+          "accept_shape_violations": {
+            "description": "Erase even when the retraction breaks a shape.",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "description": "Compute the scope and write nothing.",
+            "type": "boolean"
+          },
+          "files": {
+            "description": "SHA-256 hex digests of files to erase.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "follow": {
+            "items": {
+              "$ref": "#/components/schemas/ErasureFollowRule"
+            },
+            "type": "array"
+          },
+          "subjects": {
+            "description": "Absolute IRIs of the subjects to erase.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ErasureCreateResponse": {
+        "description": "The answer to `POST /v1/erasures`: the erasure, or its preview for a dry\nrun.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Erasure"
+          },
+          {
+            "$ref": "#/components/schemas/ErasurePreview"
+          }
+        ]
+      },
+      "ErasureFollowDirection": {
+        "description": "Which way a follow rule walks its predicate.",
+        "enum": [
+          "in",
+          "out"
+        ],
+        "type": "string"
+      },
+      "ErasureFollowRule": {
+        "additionalProperties": false,
+        "description": "A follow rule: the nodes linked to the set by `predicate` join the set.\n`in` adds the subjects of `?node <predicate> <member>`, `out` the objects of\n`<member> <predicate> ?node`. Rules repeat up to 3 steps.",
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/ErasureFollowDirection"
+          },
+          "predicate": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "predicate",
+          "direction"
+        ],
+        "type": "object"
+      },
+      "ErasureList": {
+        "description": "`GET /v1/erasures`: the graph's erasures.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Erasure"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "object": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "ErasurePreview": {
+        "description": "The answer to a dry run: the scope at the head, and nothing written.",
+        "properties": {
+          "commit_seq": {
+            "description": "The commit the scope was computed at.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ErasureCounts"
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "follow": {
+            "items": {
+              "$ref": "#/components/schemas/ErasurePreviewRule"
+            },
+            "type": "array"
+          },
+          "graph": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/ErasureSample"
+            },
+            "type": "array"
+          },
+          "samples_limit": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "shape_violations": {
+            "items": {
+              "$ref": "#/components/schemas/ErasureShapeViolation"
+            },
+            "type": "array"
+          },
+          "shape_violations_total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "object",
+          "graph",
+          "dry_run",
+          "commit_seq",
+          "counts",
+          "follow",
+          "samples",
+          "samples_limit",
+          "shape_violations",
+          "shape_violations_total"
+        ],
+        "type": "object"
+      },
+      "ErasurePreviewRule": {
+        "description": "A follow rule of a dry run, with the nodes it added.",
+        "properties": {
+          "added": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/ErasureFollowDirection"
+          },
+          "predicate": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "predicate",
+          "direction",
+          "added"
+        ],
+        "type": "object"
+      },
+      "ErasureSample": {
+        "description": "A statement the erasure would retract, in N-Triples term form.",
+        "properties": {
+          "object": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "predicate",
+          "object"
+        ],
+        "type": "object"
+      },
+      "ErasureShapeViolation": {
+        "description": "A shape result that the retraction creates.",
+        "properties": {
+          "focus_node": {
+            "type": "string"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shape": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "focus_node",
+          "shape"
+        ],
+        "type": "object"
+      },
+      "ErasureStatus": {
+        "description": "The state of an erasure.",
+        "enum": [
+          "masking",
+          "masked",
+          "purging",
+          "verifying",
+          "complete",
+          "failed"
+        ],
+        "type": "string"
+      },
       "EvalAskInput": {
         "description": "The inputs of an Ask request (`POST /v1/query/ask`) that shape its\nanswer, kept on an `ask` trace and its golden so a run asks the same way.\nEvery field is optional. An object stored before 2026-10-06 may hold\n`previous`, the earlier steps of the removed one-shot rewrite: they read\nas notes at the end of `context` (the loop reads what the app knows\nthere), so a follow-up question keeps its meaning when a run asks it\nagain.",
         "properties": {
@@ -77419,6 +77789,845 @@
           }
         ],
         "summary": "Run one bounded step of the embed job now (backfill pages, the commit deltas, a fold, a switch)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/erasures": {
+      "get": {
+        "operationId": "get_v1_erasures",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErasureList"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The graph's erasures, newest first",
+        "tags": [
+          "system"
+        ]
+      },
+      "post": {
+        "operationId": "post_v1_erasures",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable client-generated key for safely retrying mutations and supervision writes.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ErasureCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErasureCreateResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Erase subjects and files from the graph: one commit retracts every statement that names a subject (as subject or object), the statement nodes about those statements, the nodes the `follow` rules reach and the files, and masks their terms on every read at every `as_of_commit_seq`. A background purge then deletes them from storage, backups included, before `deadline`. It cannot be undone. Needs an `Idempotency-Key`; a retry answers the same erasure with `idempotent_replay: true`. With `dry_run: true` the answer is an `erasure_preview` (counts, up to 50 statements, the shape results it would create) and nothing is written; a dry run needs no key. 409 `erasure_not_enabled` until the cell records its build floor; 409 `erasure_fork_in_progress` while a fork of the graph runs; 400 `erasure_scope_empty`, `erasure_scope_too_large`, `erasure_unsupported`; 409 `erasure_shape_conflict` (send `accept_shape_violations: true`)",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/erasures/get": {
+      "get": {
+        "operationId": "get_v1_erasures_get",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the erasure's id (`ers_`)",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erasure"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One erasure by its id (`ers_`). `GET /v1/erasures/{id}` answers the same. 404 `not_found`",
         "tags": [
           "system"
         ]
