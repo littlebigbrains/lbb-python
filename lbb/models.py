@@ -7482,6 +7482,12 @@ class RequestActivityClass(Enum):
     search = 'search'
     ask = 'ask'
     write = 'write'
+    graph = 'graph'
+    ontology = 'ontology'
+    models = 'models'
+    workflows = 'workflows'
+    files = 'files'
+    status = 'status'
     other = 'other'
 
 
@@ -7613,6 +7619,15 @@ class RequestActivitySubjects(Enum):
 
     graphs = 'graphs'
     namespaces = 'namespaces'
+
+
+class RequestFailureOutcome(Enum):
+    """
+    How a request ended.
+    """
+
+    failed = 'failed'
+    refused = 'refused'
 
 
 class RequiredFactRow(BaseModel):
@@ -18762,7 +18777,7 @@ class RequestActivityResponse(BaseModel):
     rows: Annotated[
         list[RequestActivityRow],
         Field(
-            description='The series: one row for each period and class that has requests, oldest\nperiod first, the classes in the order query, search, ask, write,\nother. Empty in a list.'
+            description='The series: one row for each period and class that has requests, oldest\nperiod first, the classes in the order query, search, ask, write,\ngraph, ontology, models, workflows, files, status, other. Empty in a\nlist.'
         ),
     ]
     scope: RequestActivityScope
@@ -18779,6 +18794,76 @@ class RequestActivityResponse(BaseModel):
         ),
     ] = None
     to: str
+
+
+class RequestFailure(BaseModel):
+    """
+    One request that failed or that a limit refused.
+    """
+
+    at_ms: Annotated[
+        int,
+        Field(
+            description='When the request ended, in milliseconds since the Unix epoch.'
+        ),
+    ]
+    class_: Annotated[
+        str,
+        Field(
+            alias='class',
+            description='The class of the request: `query`, `search`, `ask`, `write` or `other`\n(the classes of `GET /v1/activity/requests`).',
+        ),
+    ]
+    duration_ms: Annotated[
+        int,
+        Field(
+            description='How long the request took, in whole milliseconds; 0 for a request that a\nlimit refused before the route ran.',
+            ge=0,
+        ),
+    ]
+    error_code: Annotated[
+        str | None,
+        Field(
+            description='The `error.code` of the error envelope, when the answer has one.'
+        ),
+    ] = None
+    outcome: RequestFailureOutcome
+    request_id: Annotated[
+        str | None,
+        Field(
+            description='The request id: the `X-Request-Id` of the answer. Absent when the request\nhad none.'
+        ),
+    ] = None
+    route: Annotated[
+        str,
+        Field(
+            description="The route as the canonical `/api/...` path of a route the server has, or\n`other`. Never the caller's own path."
+        ),
+    ]
+    status: Annotated[int, Field(description='The HTTP status of the answer.', ge=0)]
+
+
+class RequestFailuresResponse(BaseModel):
+    """
+    `GET /v1/activity/requests/failed`.
+    """
+
+    failures: Annotated[
+        list[RequestFailure], Field(description='The entries, newest first.')
+    ]
+    graph: Annotated[str, Field(description='The graph the entries are of.')]
+    next_cursor: Annotated[
+        str | None,
+        Field(
+            description='Pass as `cursor` for the next, older page; absent on the last page.'
+        ),
+    ] = None
+    recording: Annotated[
+        bool,
+        Field(
+            description='`false` when this server does not log requests\n(`LBB_REQUEST_ACTIVITY_ENABLED` is off): there are no entries, which is\nnot a quiet period.'
+        ),
+    ]
 
 
 class ResolutionResult(BaseModel):
