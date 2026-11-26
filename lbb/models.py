@@ -8249,6 +8249,25 @@ class SandboxOwner(BaseModel):
     ]
 
 
+class SandboxRunEnd(Enum):
+    """
+    How a run of the machine of a sandbox ended, as the host says it. A word that a later
+    version adds reads as `unknown` in the Rust types. The Python enum rejects a value it does
+    not know, so a new word is a change of the contract that needs a new SDK.
+    """
+
+    stop = 'stop'
+    deadline = 'deadline'
+    exit = 'exit'
+    killed = 'killed'
+    oom = 'oom'
+    crashed = 'crashed'
+    host_restart = 'host_restart'
+    destroy = 'destroy'
+    cell_silent = 'cell_silent'
+    unknown = 'unknown'
+
+
 class SandboxRunRequest(BaseModel):
     """
     The function a `run` calls: `run(input, config)` of a template's harness.
@@ -19479,6 +19498,79 @@ class SandboxLogFrame(BaseModel):
     text: str
 
 
+class SandboxMachine(BaseModel):
+    """
+    What the host measured of the machine of a sandbox in its latest run, with how the run
+    ended. It comes from the cgroup of the VM and from the exit of its process, and never from
+    the guest. A figure is absent when the host did not measure it (a host that is older, a
+    kernel that has no such counter, a run that a reboot of the host ended), and a zero is a
+    measure: `oom_kills` of 0 says that the kernel killed nothing. The object is absent when
+    there is nothing of the latest run to say, which is the case for a run that is going on:
+    the host reports a run when it has ended. Present on a retrieve only.
+
+    What the figures count. `peak_memory_bytes` is the highest memory the cgroup of the VM
+    was charged: the memory of the guest that the guest touched (a guest never gives memory
+    back, so it includes the page cache of the guest), the VM process, and the cache of the
+    disks on the host. It is an upper bound of what the programs needed, and it can read near
+    `memory_limit_bytes` for a VM that read many files. `memory_limit_bytes` is the limit that
+    the host enforces, which is the `memory_mib` of the sandbox and the overhead of the VM
+    process, so it is more than `limits.memory_mib`. `cpu_time_ms` is the CPU time of the VM
+    process and its threads, which run the guest, so it is measured on the host and not by
+    the guest. It is set beside the billed vCPU-seconds of the same run: `billed_ms` / 1,000
+    times `limits.vcpus`.
+    """
+
+    billed_ms: Annotated[
+        int | None,
+        Field(
+            description='The billed time of the run in milliseconds: its billed seconds (from the first\nanswer of the guest to its end, rounded up, less the silent time of a run that ended\n`cell_silent`) times 1,000. Billed vCPU-seconds of the run are this divided by 1,000\nand multiplied by the vCPUs of the sandbox. Absent when the run was not priced.',
+            ge=0,
+        ),
+    ] = None
+    cpu_time_ms: Annotated[
+        int | None,
+        Field(
+            description='The CPU time that the VM process and its threads used in the run, in milliseconds,\nfrom the cgroup of the VM.',
+            ge=0,
+        ),
+    ] = None
+    end_reason: SandboxRunEnd | None = None
+    exit_code: Annotated[
+        int | None,
+        Field(
+            description='The exit status of the VM process, when it ended by an exit.'
+        ),
+    ] = None
+    exit_signal: Annotated[
+        int | None,
+        Field(
+            description='The number of the signal that ended the VM process, when a signal ended it. A run\nthat the host itself ended (a stop that had to kill it, a destroy, the deadline) has\nneither this nor an exit status: its `end_reason` says why.',
+            ge=0,
+        ),
+    ] = None
+    memory_limit_bytes: Annotated[
+        int | None,
+        Field(
+            description='The memory limit of the cgroup of the VM, in bytes: the memory of the guest and the\noverhead of the VM process.',
+            ge=0,
+        ),
+    ] = None
+    oom_kills: Annotated[
+        int | None,
+        Field(
+            description='The processes of the cgroup of the VM that the kernel killed for memory in the run.\nAt least 1 for a run that ended `oom`.',
+            ge=0,
+        ),
+    ] = None
+    peak_memory_bytes: Annotated[
+        int | None,
+        Field(
+            description='The highest memory the cgroup of the VM was charged in the run, in bytes.',
+            ge=0,
+        ),
+    ] = None
+
+
 class SandboxTemplate(BaseModel):
     """
     A saved template: a base image, the `run` code, files, limits, a timeout
@@ -24124,6 +24216,7 @@ class Sandbox(BaseModel):
         ),
     ]
     limits: SandboxLimits
+    machine: SandboxMachine | None = None
     metadata: dict[str, str]
     object: Annotated[str, Field(description='`sandbox`.')]
     owner: SandboxOwner | None = None

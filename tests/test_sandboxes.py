@@ -912,6 +912,84 @@ class Telemetry(unittest.TestCase):
         )
 
 
+class Machine(unittest.TestCase):
+    """The models read what the host measured of the machine of the latest run."""
+
+    RETRIEVED = Telemetry.RETRIEVED
+
+    def test_the_sandbox_model_has_how_the_run_ended_and_what_the_host_measured(self) -> None:
+        from lbb import models
+
+        machine = {
+            "end_reason": "oom",
+            "billed_ms": 60_000,
+            "cpu_time_ms": 1_840,
+            "peak_memory_bytes": 629_145_600,
+            "memory_limit_bytes": 671_088_640,
+            "oom_kills": 1,
+            "exit_signal": 9,
+        }
+        sandbox = models.Sandbox.model_validate({**self.RETRIEVED, "machine": machine})
+        assert sandbox.machine is not None
+        self.assertIs(sandbox.machine.end_reason, models.SandboxRunEnd.oom)
+        self.assertEqual(sandbox.machine.billed_ms, 60_000)
+        self.assertEqual(sandbox.machine.cpu_time_ms, 1_840)
+        self.assertEqual(sandbox.machine.peak_memory_bytes, 629_145_600)
+        self.assertEqual(sandbox.machine.memory_limit_bytes, 671_088_640)
+        self.assertEqual(sandbox.machine.oom_kills, 1)
+        self.assertEqual(sandbox.machine.exit_signal, 9)
+        # A figure the host did not measure is None, and never a zero in its place.
+        self.assertIsNone(sandbox.machine.exit_code)
+
+    def test_a_run_that_no_host_measured_has_the_end_and_no_figure(self) -> None:
+        from lbb import models
+
+        sandbox = models.Sandbox.model_validate(
+            {**self.RETRIEVED, "machine": {"end_reason": "crashed", "billed_ms": 12_000}}
+        )
+        assert sandbox.machine is not None
+        self.assertIs(sandbox.machine.end_reason, models.SandboxRunEnd.crashed)
+        self.assertEqual(sandbox.machine.billed_ms, 12_000)
+        for name in (
+            "cpu_time_ms",
+            "peak_memory_bytes",
+            "memory_limit_bytes",
+            "oom_kills",
+            "exit_code",
+            "exit_signal",
+        ):
+            self.assertIsNone(getattr(sandbox.machine, name), name)
+
+    def test_a_run_that_goes_on_and_an_older_server_have_no_machine(self) -> None:
+        from lbb import models
+
+        self.assertIsNone(models.Sandbox.model_validate(self.RETRIEVED).machine)
+
+    def test_the_words_of_the_end_are_the_ones_the_host_says_and_the_enum_rejects_others(self) -> None:
+        from pydantic import ValidationError
+
+        from lbb import models
+
+        words = {word.value for word in models.SandboxRunEnd}
+        self.assertEqual(
+            words,
+            {
+                "stop",
+                "deadline",
+                "exit",
+                "killed",
+                "oom",
+                "crashed",
+                "host_restart",
+                "destroy",
+                "cell_silent",
+                "unknown",
+            },
+        )
+        with self.assertRaises(ValidationError):
+            models.SandboxMachine.model_validate({"end_reason": "meteor"})
+
+
 class GuideExamples(unittest.TestCase):
     @unittest.skipIf(_GUIDE is None, "the guide is not in this checkout")
     def test_the_ladders_examples_are_in_the_guide_as_written_and_they_run(self) -> None:

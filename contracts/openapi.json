@@ -34134,6 +34134,17 @@
           "limits": {
             "$ref": "#/components/schemas/SandboxLimits"
           },
+          "machine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxMachine",
+                "description": "What the host measured of the machine in the latest run, and how that run ended:\nthe peak memory, the CPU time, the kills of the kernel for memory, and the exit.\nPresent on a retrieve whose `usage.state` is `measured`, once the latest run has\nended: from the receipt of a sandbox that is stopped or has ended, and from the host\nfor a run that ended and is not settled yet. Absent for a run that goes on. A figure\ninside it is absent where the host did not measure it."
+              }
+            ]
+          },
           "metadata": {
             "additionalProperties": {
               "type": "string"
@@ -35203,6 +35214,85 @@
         ],
         "type": "object"
       },
+      "SandboxMachine": {
+        "description": "What the host measured of the machine of a sandbox in its latest run, with how the run\nended. It comes from the cgroup of the VM and from the exit of its process, and never from\nthe guest. A figure is absent when the host did not measure it (a host that is older, a\nkernel that has no such counter, a run that a reboot of the host ended), and a zero is a\nmeasure: `oom_kills` of 0 says that the kernel killed nothing. The object is absent when\nthere is nothing of the latest run to say, which is the case for a run that is going on:\nthe host reports a run when it has ended. Present on a retrieve only.\n\nWhat the figures count. `peak_memory_bytes` is the highest memory the cgroup of the VM\nwas charged: the memory of the guest that the guest touched (a guest never gives memory\nback, so it includes the page cache of the guest), the VM process, and the cache of the\ndisks on the host. It is an upper bound of what the programs needed, and it can read near\n`memory_limit_bytes` for a VM that read many files. `memory_limit_bytes` is the limit that\nthe host enforces, which is the `memory_mib` of the sandbox and the overhead of the VM\nprocess, so it is more than `limits.memory_mib`. `cpu_time_ms` is the CPU time of the VM\nprocess and its threads, which run the guest, so it is measured on the host and not by\nthe guest. It is set beside the billed vCPU-seconds of the same run: `billed_ms` / 1,000\ntimes `limits.vcpus`.",
+        "properties": {
+          "billed_ms": {
+            "description": "The billed time of the run in milliseconds: its billed seconds (from the first\nanswer of the guest to its end, rounded up, less the silent time of a run that ended\n`cell_silent`) times 1,000. Billed vCPU-seconds of the run are this divided by 1,000\nand multiplied by the vCPUs of the sandbox. Absent when the run was not priced.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cpu_time_ms": {
+            "description": "The CPU time that the VM process and its threads used in the run, in milliseconds,\nfrom the cgroup of the VM.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "end_reason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxRunEnd",
+                "description": "How the run ended. Absent while it goes on."
+              }
+            ]
+          },
+          "exit_code": {
+            "description": "The exit status of the VM process, when it ended by an exit.",
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "exit_signal": {
+            "description": "The number of the signal that ended the VM process, when a signal ended it. A run\nthat the host itself ended (a stop that had to kill it, a destroy, the deadline) has\nneither this nor an exit status: its `end_reason` says why.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "memory_limit_bytes": {
+            "description": "The memory limit of the cgroup of the VM, in bytes: the memory of the guest and the\noverhead of the VM process.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "oom_kills": {
+            "description": "The processes of the cgroup of the VM that the kernel killed for memory in the run.\nAt least 1 for a run that ended `oom`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "peak_memory_bytes": {
+            "description": "The highest memory the cgroup of the VM was charged in the run, in bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "SandboxOwner": {
         "description": "The workflow turn that owns a sandbox. A sandbox made in a step of a workflow\n(a create with a `workflow_fence`) records its owner; any other sandbox has\nnone. The server takes every field from the turn the fence holds, never from\nthe body.",
         "properties": {
@@ -35242,6 +35332,22 @@
           "graph_epoch"
         ],
         "type": "object"
+      },
+      "SandboxRunEnd": {
+        "description": "How a run of the machine of a sandbox ended, as the host says it. A word that a later\nversion adds reads as `unknown` in the Rust types. The Python enum rejects a value it does\nnot know, so a new word is a change of the contract that needs a new SDK.",
+        "enum": [
+          "stop",
+          "deadline",
+          "exit",
+          "killed",
+          "oom",
+          "crashed",
+          "host_restart",
+          "destroy",
+          "cell_silent",
+          "unknown"
+        ],
+        "type": "string"
       },
       "SandboxRunRequest": {
         "additionalProperties": false,
@@ -136708,7 +136814,7 @@
             "bearer": []
           }
         ],
-        "summary": "One sandbox, with its `run` for a sandbox of a create with `run`, its `cost` so far, its `usage` and the times of its latest run (`started_ms`, `ready_ms`, `ended_ms`, `create_to_ready_ms`). The cost and the usage are computed from its receipts on this read, with the same billed seconds: `cost` is left out and `usage.state` is `unknown` when the receipts cannot be read in a short time or the server prices nothing. A create, a list and every other answer do not read the receipts, and their `usage.state` is `not_read`. 404 `sandbox_not_found`",
+        "summary": "One sandbox, with its `run` for a sandbox of a create with `run`, its `cost` so far, its `usage`, the times of its latest run (`started_ms`, `ready_ms`, `ended_ms`, `create_to_ready_ms`) and, once that run ended, what the host measured of its machine (`machine`: the peak memory, the CPU time, the kills of the kernel for memory, the exit, and how the run ended, with `oom` named). The cost and the usage are computed from its receipts on this read, with the same billed seconds: `cost` is left out and `usage.state` is `unknown` when the receipts cannot be read in a short time or the server prices nothing. A create, a list and every other answer do not read the receipts, and their `usage.state` is `not_read`. 404 `sandbox_not_found`",
         "tags": [
           "sandboxes"
         ]
