@@ -31655,6 +31655,12 @@
           "search",
           "ask",
           "write",
+          "graph",
+          "ontology",
+          "models",
+          "workflows",
+          "files",
+          "status",
           "other"
         ],
         "type": "string"
@@ -31740,7 +31746,7 @@
             "type": "boolean"
           },
           "rows": {
-            "description": "The series: one row for each period and class that has requests, oldest\nperiod first, the classes in the order query, search, ask, write,\nother. Empty in a list.",
+            "description": "The series: one row for each period and class that has requests, oldest\nperiod first, the classes in the order query, search, ask, write,\ngraph, ontology, models, workflows, files, status, other. Empty in a\nlist.",
             "items": {
               "$ref": "#/components/schemas/RequestActivityRow"
             },
@@ -31969,6 +31975,103 @@
           "namespaces"
         ],
         "type": "string"
+      },
+      "RequestFailure": {
+        "description": "One request that failed or that a limit refused.",
+        "properties": {
+          "at_ms": {
+            "description": "When the request ended, in milliseconds since the Unix epoch.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "class": {
+            "description": "The class of the request: `query`, `search`, `ask`, `write` or `other`\n(the classes of `GET /v1/activity/requests`).",
+            "type": "string"
+          },
+          "duration_ms": {
+            "description": "How long the request took, in whole milliseconds; 0 for a request that a\nlimit refused before the route ran.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error_code": {
+            "description": "The `error.code` of the error envelope, when the answer has one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/RequestFailureOutcome"
+          },
+          "request_id": {
+            "description": "The request id: the `X-Request-Id` of the answer. Absent when the request\nhad none.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "route": {
+            "description": "The route as the canonical `/api/...` path of a route the server has, or\n`other`. Never the caller's own path.",
+            "type": "string"
+          },
+          "status": {
+            "description": "The HTTP status of the answer.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at_ms",
+          "class",
+          "route",
+          "status",
+          "outcome",
+          "duration_ms"
+        ],
+        "type": "object"
+      },
+      "RequestFailureOutcome": {
+        "description": "How a request ended.",
+        "enum": [
+          "failed",
+          "refused"
+        ],
+        "type": "string"
+      },
+      "RequestFailuresResponse": {
+        "description": "`GET /v1/activity/requests/failed`.",
+        "properties": {
+          "failures": {
+            "description": "The entries, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/RequestFailure"
+            },
+            "type": "array"
+          },
+          "graph": {
+            "description": "The graph the entries are of.",
+            "type": "string"
+          },
+          "next_cursor": {
+            "description": "Pass as `cursor` for the next, older page; absent on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recording": {
+            "description": "`false` when this server does not log requests\n(`LBB_REQUEST_ACTIVITY_ENABLED` is off): there are no entries, which is\nnot a quiet period.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recording",
+          "graph",
+          "failures"
+        ],
+        "type": "object"
       },
       "RequiredFactRow": {
         "description": "A row of a suggestion's facts that an accept must keep.",
@@ -53079,7 +53182,7 @@
             }
           },
           {
-            "description": "query, search, ask, write or other: only that class",
+            "description": "query, search, ask, write, graph, ontology, models, workflows, files, status or other: only that class",
             "in": "query",
             "name": "class",
             "required": false,
@@ -53366,6 +53469,304 @@
           }
         ],
         "summary": "The requests the environment's data routes answered, how they ended (ok, client error, failed, refused by a limit) and how long they took (sum, longest, p50, p95, p99), per period and class: a series of the environment, of one graph (`only_graph`) or of the graphs of one catalog namespace (`only_namespace`), by day or, for the environment, by hour; or a list of the graphs or namespaces of one month (`list`), a bounded part of the month a page with a cursor. A quantile is given only with 20 or more requests. Off by default: `recording: false` says the server does not count requests. An environment read; the answering node adds the counts it has not written yet to a series",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/activity/requests/failed": {
+      "get": {
+        "operationId": "get_v1_activity_requests_failed",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "query, search, ask, write or other: only that class",
+            "in": "query",
+            "name": "class",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "entries of a page, 1 to 100; default 50",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the `next_cursor` of the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestFailuresResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The single requests of one graph (`graph`, required) that failed (a 5xx or a deadline) or that a limit refused, newest first, over the last 30 days: the time, class, route, status, outcome, error code, duration and request id of each. No query, body or other customer text. The log keeps the newest 500 entries of a graph and a UTC day. A page reads at most three stored days; pass `next_cursor` as `cursor` for the next, older page. Off by default: `recording: false` says the server does not log requests. The answering node adds the entries it has not written yet",
         "tags": [
           "system"
         ]
