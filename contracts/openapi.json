@@ -50635,6 +50635,12 @@
       "WorkflowTestProperty": {
         "description": "One property a `values.extract` test reads: its name, value type and,\nfor a number, the unit the property holds.",
         "properties": {
+          "allowed_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "name": {
             "type": "string"
           },

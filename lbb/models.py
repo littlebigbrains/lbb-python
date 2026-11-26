@@ -13206,6 +13206,7 @@ class WorkflowTestProperty(BaseModel):
     for a number, the unit the property holds.
     """
 
+    allowed_values: list[str] | None = None
     name: str
     unit: str | None = None
     value_type: str
