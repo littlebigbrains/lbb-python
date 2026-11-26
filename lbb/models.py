@@ -7479,6 +7479,7 @@ class RequestActivityClass(Enum):
     """
 
     query = 'query'
+    query_search = 'query_search'
     search = 'search'
     ask = 'ask'
     write = 'write'
@@ -18777,7 +18778,7 @@ class RequestActivityResponse(BaseModel):
     rows: Annotated[
         list[RequestActivityRow],
         Field(
-            description='The series: one row for each period and class that has requests, oldest\nperiod first, the classes in the order query, search, ask, write,\ngraph, ontology, models, workflows, files, status, other. Empty in a\nlist.'
+            description='The series: one row for each period and class that has requests, oldest\nperiod first, the classes in the order query, query_search, search,\nask, write, graph, ontology, models, workflows, files, status, other.\nEmpty in a list.'
         ),
     ]
     scope: RequestActivityScope
