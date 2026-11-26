@@ -18885,6 +18885,13 @@ class RequestFailuresResponse(BaseModel):
             description='`false` when this server does not log requests\n(`LBB_REQUEST_ACTIVITY_ENABLED` is off): there are no entries, which is\nnot a quiet period.'
         ),
     ]
+    skipped: Annotated[
+        int | None,
+        Field(
+            description='The failures of the days this page read that the log does not list. A\nnode keeps at most 20 entries of a graph for each 30 seconds, and a day\nkeeps its first 100 and newest 400. Counted for all classes of the\ngraph. A day is counted by the first page that reads it, so the pages\nof one list add up. Absent when there are none.',
+            ge=0,
+        ),
+    ] = None
 
 
 class ResolutionResult(BaseModel):

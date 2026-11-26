@@ -32065,6 +32065,15 @@
           "recording": {
             "description": "`false` when this server does not log requests\n(`LBB_REQUEST_ACTIVITY_ENABLED` is off): there are no entries, which is\nnot a quiet period.",
             "type": "boolean"
+          },
+          "skipped": {
+            "description": "The failures of the days this page read that the log does not list. A\nnode keeps at most 20 entries of a graph for each 30 seconds, and a day\nkeeps its first 100 and newest 400. Counted for all classes of the\ngraph. A day is counted by the first page that reads it, so the pages\nof one list add up. Absent when there are none.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -53879,7 +53888,7 @@
             "bearer": []
           }
         ],
-        "summary": "The single requests of one graph (`graph`, required) that failed (a 5xx or a deadline) or that a limit refused, newest first, over the last 30 days: the time, class, route, status, outcome, error code, duration and request id of each. No query, body or other customer text. The log keeps the newest 500 entries of a graph and a UTC day. A page reads at most three stored days; pass `next_cursor` as `cursor` for the next, older page. Off by default: `recording: false` says the server does not log requests. The answering node adds the entries it has not written yet",
+        "summary": "The single requests of one graph (`graph`, required) that failed (a 5xx or a deadline) or that a limit refused, newest first, over the last 30 days: the time, class, route, status, outcome, error code, duration and request id of each. No query, body or other customer text. The log keeps at most 500 entries of a graph and a UTC day (the first 100 and the newest 400); `skipped` says how many failures of the days a page read are not listed. A page reads at most three stored days; pass `next_cursor` as `cursor` for the next, older page. Off by default: `recording: false` says the server does not log requests. The answering node adds the entries it has not written yet",
         "tags": [
           "system"
         ]
