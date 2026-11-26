@@ -4,6 +4,17 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `Sandbox` has the optional `machine` (`SandboxMachine`), and only a retrieve shows it, once
+  the latest run has ended. It says how the run ended (`end_reason`, a `SandboxRunEnd`: `stop`,
+  `deadline`, `exit`, `killed`, `oom`, `crashed`, `host_restart`, `destroy`, `cell_silent` or
+  `unknown`), the billed time of the run (`billed_ms`), and what the host measured of the VM
+  from its cgroup, never from the guest: `cpu_time_ms`, `peak_memory_bytes` and
+  `memory_limit_bytes` (bytes), `oom_kills`, `exit_code` and `exit_signal`. `oom` is a run that
+  the kernel of the host killed because the VM met its memory limit. A figure that the host did
+  not measure is `None`, so read a figure only when it is there. The `SandboxRunEnd` enum
+  rejects a word it does not know, so update the SDK when the contract adds one. No code needs
+  a change.
+
 ## 0.36.0 (2026-11-24)
 
 - `client.erasures` (sync and async): `preview`, `erase`, `get` and `list` for `/v1/erasures`, the subject erasure of a graph (GDPR). `erase` sends an `Idempotency-Key`; pass `idempotency_key` to make a rerun answer the first erasure. Typed models: `Erasure`, `ErasurePreview`, `ErasureList`, `ErasureCreateRequest`, `ErasureFollowRule`, `ErasureStatus`.
