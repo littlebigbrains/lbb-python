@@ -7498,6 +7498,7 @@ class RequestActivityDropped(BaseModel):
     size. A refused row is not counted for its graph or namespace (the
     environment rows are never refused), so a graph or namespace figure is lower
     than the truth when these are not 0 (`incomplete` says so).
+    In an hour series of a graph, `graph_rows` counts the refused hour rows.
     """
 
     graph_rows: Annotated[int, Field(ge=0)]

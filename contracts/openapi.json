@@ -31667,7 +31667,7 @@
         "type": "string"
       },
       "RequestActivityDropped": {
-        "description": "New graph and namespace rows that the stored counts refused for their\nsize. A refused row is not counted for its graph or namespace (the\nenvironment rows are never refused), so a graph or namespace figure is lower\nthan the truth when these are not 0 (`incomplete` says so).",
+        "description": "New graph and namespace rows that the stored counts refused for their\nsize. A refused row is not counted for its graph or namespace (the\nenvironment rows are never refused), so a graph or namespace figure is lower\nthan the truth when these are not 0 (`incomplete` says so).\nIn an hour series of a graph, `graph_rows` counts the refused hour rows.",
         "properties": {
           "graph_rows": {
             "format": "int64",
@@ -53277,7 +53277,7 @@
             }
           },
           {
-            "description": "yyyy-mm-dd (UTC), first day of a series; default: 30 days before `to` (2 days for hours)",
+            "description": "yyyy-mm-dd (UTC), first day of a series; default: 30 days before `to` (2 days for hours); at most 92 days from `to` (14 for hours)",
             "in": "query",
             "name": "from",
             "required": false,
@@ -53295,7 +53295,7 @@
             }
           },
           {
-            "description": "day (default) or hour; hour is for the environment and keeps the last 48 hours",
+            "description": "day (default) or hour; hour is for the environment and for one graph (`only_graph`), not for a namespace, and keeps the last 14 days",
             "in": "query",
             "name": "granularity",
             "required": false,
@@ -53590,7 +53590,7 @@
             "bearer": []
           }
         ],
-        "summary": "The requests the environment's data routes answered, how they ended (ok, client error, failed, refused by a limit) and how long they took (sum, longest, p50, p95, p99), per period and class: a series of the environment, of one graph (`only_graph`) or of the graphs of one catalog namespace (`only_namespace`), by day or, for the environment, by hour; or a list of the graphs or namespaces of one month (`list`), a bounded part of the month a page with a cursor. A quantile is given only with 20 or more requests. Off by default: `recording: false` says the server does not count requests. An environment read; the answering node adds the counts it has not written yet to a series",
+        "summary": "The requests the environment's data routes answered, how they ended (ok, client error, failed, refused by a limit) and how long they took (sum, longest, p50, p95, p99), per period and class: a series of the environment, of one graph (`only_graph`) or of the graphs of one catalog namespace (`only_namespace`), by day or, for the environment and for one graph, by hour; or a list of the graphs or namespaces of one month (`list`), a bounded part of the month a page with a cursor. A quantile is given only with 20 or more requests. Off by default: `recording: false` says the server does not count requests. An environment read; the answering node adds the counts it has not written yet to a series",
         "tags": [
           "system"
         ]
