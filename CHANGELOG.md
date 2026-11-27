@@ -4,6 +4,15 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `WorkflowWorker` requests a 60-second claim wait by default. Set
+  `claim_wait_ms` to change it; `run_once` still defaults to an immediate
+  claim. An old server's specific wait-limit refusal triggers one 10-second
+  claim, adding a rejected request per old-node cycle; deploy servers first
+  to avoid those rejections. On stop, an in-flight claim is allowed to answer
+  before draining. A claim with a wait carries its own request timeout, the
+  wait plus 15 seconds, so a client `timeout` shorter than the wait no longer
+  ends an idle claim early.
+
 - `Sandbox` has the optional `machine` (`SandboxMachine`), and only a retrieve shows it, once
   the latest run has ended. It says how the run ended (`end_reason`, a `SandboxRunEnd`: `stop`,
   `deadline`, `exit`, `killed`, `oom`, `crashed`, `host_restart`, `destroy`, `cell_silent` or

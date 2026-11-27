@@ -106,6 +106,217 @@ class Fake:
         )
 
 
+def test_claim_waits_and_stop_releases_a_turn_awarded_during_shutdown() -> None:
+    async def main() -> None:
+        started = asyncio.Event()
+        answer = asyncio.Event()
+        waits: list[int] = []
+        fails: list[dict[str, Any]] = []
+
+        async def handle(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            if request.url.path == f"{BASE}/claim":
+                waits.append(body["wait_ms"])
+                if body["wait_ms"] == 60_000:
+                    started.set()
+                    await answer.wait()
+                    return httpx.Response(200, json={"task": task()})
+                return httpx.Response(200, json={"task": None})
+            if request.url.path == f"{BASE}/fail":
+                fails.append(body)
+            return httpx.Response(200, json={})
+
+        @workflow(name="counter", version="v1", initial_state={"count": 0})
+        async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+            raise AssertionError("a turn awarded after stop must not run")
+
+        async with AsyncLbbClient(
+            "http://localhost:7400", transport=httpx.MockTransport(handle)
+        ) as client:
+            worker = WorkflowWorker(client, [counter], worker="w")
+            assert not await worker.run_once()
+            assert not await worker.run_once(wait_ms=250)
+            serving = asyncio.create_task(worker.run_async())
+            await asyncio.wait_for(started.wait(), 1)
+            worker.stop(drain_seconds=0)
+            await asyncio.sleep(0)
+            assert not serving.done()
+            answer.set()
+            await asyncio.wait_for(serving, 1)
+        assert waits == [0, 250, 60_000]
+        assert len(fails) == 1
+        assert fails[0]["token"] == "token-1"
+        assert "retry_at_ms" in fails[0]
+
+    asyncio.run(main())
+
+
+def test_continuous_claim_wait_override_is_sent() -> None:
+    async def main() -> None:
+        fake = Fake([])
+
+        @workflow(name="counter", version="v1", initial_state={"count": 0})
+        async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+            return WorkflowResult(state=state)
+
+        async with fake.client() as client:
+            worker = WorkflowWorker(client, [counter], worker="w", claim_wait_ms=25)
+            serving = asyncio.create_task(worker.run_async())
+            while not fake.bodies("claim"):
+                await asyncio.sleep(0)
+            worker.stop()
+            await serving
+        assert fake.bodies("claim")[0]["wait_ms"] == 25
+
+    asyncio.run(main())
+
+
+def test_old_server_wait_refusal_falls_back_only_for_continuous_default() -> None:
+    async def main() -> None:
+        started = asyncio.Event()
+        answer = asyncio.Event()
+        waits: list[int] = []
+        message = "claim requires a worker, 1–64 workflow type/version pairs and wait_ms <= 10000"
+
+        async def handle(request: httpx.Request) -> httpx.Response:
+            wait = json.loads(request.content)["wait_ms"]
+            waits.append(wait)
+            if wait == 60_000:
+                return httpx.Response(
+                    400,
+                    json={"error": {
+                        "type": "invalid_request_error", "code": "invalid_request", "message": message
+                    }},
+                )
+            started.set()
+            await answer.wait()
+            return httpx.Response(200, json={"task": None})
+
+        @workflow(name="counter", version="v1", initial_state={"count": 0})
+        async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+            return WorkflowResult(state=state)
+
+        async with AsyncLbbClient(
+            "http://localhost:7400", transport=httpx.MockTransport(handle)
+        ) as client:
+            worker = WorkflowWorker(client, [counter], worker="w")
+            with pytest.raises(LbbError):
+                await worker.run_once(wait_ms=60_000)
+            serving = asyncio.create_task(worker.run_async())
+            await asyncio.wait_for(started.wait(), 1)
+            worker.stop()
+            answer.set()
+            await asyncio.wait_for(serving, 1)
+        assert waits == [60_000, 60_000, 10_000]
+
+    asyncio.run(main())
+
+
+def test_legacy_fallback_executes_a_claimed_turn() -> None:
+    async def main() -> None:
+        done = asyncio.Event()
+        waits: list[int] = []
+        runs: list[int] = []
+
+        async def handle(request: httpx.Request) -> httpx.Response:
+            if request.url.path == f"{BASE}/claim":
+                wait = json.loads(request.content)["wait_ms"]
+                waits.append(wait)
+                if wait == 60_000:
+                    message = (
+                        "claim requires a worker, 1–64 workflow type/version pairs "
+                        "and wait_ms <= 10000"
+                    )
+                    return httpx.Response(
+                        400,
+                        json={"error": {
+                            "type": "invalid_request_error", "code": "invalid_request", "message": message
+                        }},
+                    )
+                return httpx.Response(200, json={"task": task()})
+            if request.url.path == f"{BASE}/complete":
+                done.set()
+            return httpx.Response(200, json={})
+
+        @workflow(name="counter", version="v1", initial_state={"count": 0})
+        async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+            runs.append(message["add"])
+            worker.stop()
+            return WorkflowResult(state=state)
+
+        async with AsyncLbbClient(
+            "http://localhost:7400", transport=httpx.MockTransport(handle)
+        ) as client:
+            worker = WorkflowWorker(client, [counter], worker="w")
+            await asyncio.wait_for(worker.run_async(), 1)
+        assert done.is_set()
+        assert runs == [1]
+        assert waits == [60_000, 10_000]
+
+    asyncio.run(main())
+
+
+@pytest.mark.parametrize("failure", ["network", "timeout", "other_refusal"])
+def test_no_fallback_after_an_ambiguous_claim_failure(failure: str) -> None:
+    async def main() -> None:
+        calls = 0
+
+        async def handle(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            worker.stop()
+            if failure == "timeout":
+                # The claim's own deadline is its 60-second wait and a margin,
+                # not the client's 5 ms.
+                assert request.extensions["timeout"]["read"] == 75.0
+                raise httpx.ReadTimeout("timed out", request=request)
+            if failure == "network":
+                raise httpx.ReadError("lost response", request=request)
+            return httpx.Response(400, json={"error": {"message": "invalid claim"}})
+
+        @workflow(name="counter", version="v1", initial_state={"count": 0})
+        async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+            return WorkflowResult(state=state)
+
+        async with AsyncLbbClient(
+            "http://localhost:7400", timeout=0.005, transport=httpx.MockTransport(handle)
+        ) as client:
+            worker = WorkflowWorker(client, [counter], worker="w")
+            if failure in ("network", "timeout"):
+                await asyncio.wait_for(worker.run_async(), 1)
+            else:
+                with pytest.raises(LbbError):
+                    await asyncio.wait_for(worker.run_async(), 1)
+        assert calls == 1
+
+    asyncio.run(main())
+
+
+def test_a_claim_carries_a_deadline_that_outlasts_a_shorter_client_timeout() -> None:
+    async def main() -> None:
+        deadlines: list[tuple[int, float | None]] = []
+
+        async def handle(request: httpx.Request) -> httpx.Response:
+            wait = json.loads(request.content)["wait_ms"]
+            deadlines.append((wait, request.extensions["timeout"]["read"]))
+            return httpx.Response(200, json={"task": None})
+
+        @workflow(name="counter", version="v1", initial_state={"count": 0})
+        async def counter(ctx: WorkflowContext, state: Any, message: Any) -> WorkflowResult[Any]:
+            return WorkflowResult(state=state)
+
+        async with AsyncLbbClient(
+            "http://localhost:7400", timeout=0.005, transport=httpx.MockTransport(handle)
+        ) as client:
+            worker = WorkflowWorker(client, [counter], worker="w")
+            assert await worker.run_once(wait_ms=250) is False
+            # An immediate claim keeps the client's own deadline.
+            assert await worker.run_once() is False
+        assert deadlines == [(250, 15.25), (0, 0.005)]
+
+    asyncio.run(main())
+
+
 def test_the_worker_runs_at_most_concurrency_turns_at_once() -> None:
     fake = Fake([task(1), task(2), task(3)])
     running = 0

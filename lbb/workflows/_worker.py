@@ -44,7 +44,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from .. import models
-from .._client_base import LbbError, _coerce_body, _is_transport_failure
+from .._client_base import LbbError, RequestOptions, _coerce_body, _is_transport_failure
 from .._workflow_execution import AsyncWorkflowTurnReader, WorkflowExecutionError
 from ..sandboxes import UNSET
 from ._results import (
@@ -77,7 +77,13 @@ _PROGRESS_EVERY_MS = 3_000
 # server's) waits a second, so a turn that keeps waiting cannot spin.
 _MIN_WAIT_MS = 1_000
 # How long a claim waits on the server for a turn, in a worker's loop.
-_CLAIM_WAIT_MS = 10_000
+_CLAIM_WAIT_MS = 60_000
+# A claim holds its request open for up to its wait, so the request's own
+# deadline is that wait plus this margin, in seconds. The client's default
+# deadline would end an idle claim early with an error, and the server then
+# holds the abandoned claim until it sees the disconnect: it can take a turn
+# that no worker receives.
+_CLAIM_DEADLINE_MARGIN_S = 15.0
 _RELEASED = "the worker stopped and released the turn"
 # LBB answers that say LBB itself is unavailable or busy, not the request wrong.
 _UNAVAILABLE_STATUSES = frozenset({429, 502, 503, 504})
@@ -97,6 +103,15 @@ _LBB_WAIT_PREFIX = "LBB was unavailable, the turn waits: "
 
 def _now_ms() -> int:
     return time.time_ns() // 1_000_000
+
+
+def _claim_options(wait_ms: int) -> RequestOptions:
+    """The transport options of a claim: never retried, and a deadline that
+    outlasts the wait it asks for (an immediate claim keeps the client's)."""
+    options: RequestOptions = {"retry": False}
+    if wait_ms > 0:
+        options["timeout"] = wait_ms / 1000 + _CLAIM_DEADLINE_MARGIN_S
+    return options
 
 
 class WorkflowError(Exception):
@@ -1667,7 +1682,9 @@ class WorkflowWorker:
             raise WorkflowError("Register distinct workflow name/version pairs")
         self._definitions[key] = definition
 
-    async def _claim(self, wait_ms: int) -> Mapping[str, Any] | None:
+    async def _claim(
+        self, wait_ms: int, *, legacy_fallback: bool = False
+    ) -> Mapping[str, Any] | None:
         body = models.WorkflowTurnClaimRequest(
             worker=self._worker,
             include_execution_credential=True if self._execution_reads else None,
@@ -1677,9 +1694,29 @@ class WorkflowWorker:
             ],
             wait_ms=wait_ms,
         )
-        claimed = await self._client._request(
-            "POST", f"{_BASE}/turns/claim", body=body, options={"retry": False}
-        )
+        try:
+            claimed = await self._client._request(
+                "POST", f"{_BASE}/turns/claim", body=body, options=_claim_options(wait_ms)
+            )
+        except LbbError as error:
+            # Old engines validate before claiming; only this exact refusal
+            # proves a second request cannot duplicate an awarded turn.
+            if (
+                not legacy_fallback
+                or wait_ms <= 10_000
+                or error.status_code != 400
+                or error.type != "invalid_request_error"
+                or error.code != "invalid_request"
+                or str(error)
+                != "claim requires a worker, 1–64 workflow type/version pairs and wait_ms <= 10000"
+            ):
+                raise
+            if self._stopping is not None and self._stopping.is_set():
+                return None
+            body.wait_ms = 10_000
+            claimed = await self._client._request(
+                "POST", f"{_BASE}/turns/claim", body=body, options=_claim_options(10_000)
+            )
         task = claimed.get("task") if isinstance(claimed, Mapping) else None
         return task if isinstance(task, Mapping) else None
 
@@ -1740,7 +1777,11 @@ class WorkflowWorker:
                 if not slot.done():
                     slot.cancel()
                     break
-                claim = asyncio.ensure_future(self._claim(self._claim_wait_ms))
+                claim = asyncio.ensure_future(
+                    self._claim(
+                        self._claim_wait_ms, legacy_fallback=self._claim_wait_ms == _CLAIM_WAIT_MS
+                    )
+                )
                 await asyncio.wait({claim, stopped}, return_when=asyncio.FIRST_COMPLETED)
                 if not claim.done():
                     # The stop came while the claim waits on the server: a
@@ -1769,6 +1810,13 @@ class WorkflowWorker:
                         pass
                     continue
                 backoff = 0.0
+                # Stop and the claim can become ready in the same loop turn.
+                # Do not start a turn that was awarded after shutdown began.
+                if self._stopping.is_set():
+                    slots.release()
+                    if task is not None:
+                        await self._release_claimed(task)
+                    break
                 if task is None:
                     slots.release()
                     continue

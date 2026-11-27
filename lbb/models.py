@@ -11953,7 +11953,10 @@ class WorkflowClaimRequest(BaseModel):
     )
     activities: list[str]
     wait_ms: Annotated[
-        int | None, Field(description='Long-poll timeout, capped at ten seconds.', ge=0)
+        int | None,
+        Field(
+            description='Long-poll timeout in milliseconds, from 0 through 60000.', ge=0
+        ),
     ] = None
     worker: str
 
@@ -21777,7 +21780,13 @@ class WorkflowTurnClaimRequest(BaseModel):
             description='Request a short-lived SELECT/ASK execution credential for the claimed\nturn. Disabled servers refuse this opt-in before changing a claim.\nOrdinary workflow control and SDK defaults remain unchanged.'
         ),
     ] = None
-    wait_ms: Annotated[int | None, Field(ge=0)] = None
+    wait_ms: Annotated[
+        int | None,
+        Field(
+            description='Long-poll timeout in milliseconds, from 0 through 60000. The environment claim accepts at most 10000.',
+            ge=0,
+        ),
+    ] = None
     worker: str
     workflows: list[WorkflowWorkerType]
 
