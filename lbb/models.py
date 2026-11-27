@@ -2089,6 +2089,45 @@ class EvalBox(BaseModel):
     ] = None
 
 
+class EvalCocoAnnotation(BaseModel):
+    """
+    One box. `bbox` is `[x, y, width, height]` in pixels, as COCO has it.
+    """
+
+    area: float
+    bbox: list[float]
+    category_id: Annotated[int, Field(ge=0)]
+    id: Annotated[int, Field(description='1 for the first box of the export.', ge=0)]
+    image_id: Annotated[int, Field(ge=0)]
+    iscrowd: Annotated[
+        int, Field(description='1 for an ignore region, 0 for a box.', ge=0)
+    ]
+    lbb_uncertain: Annotated[
+        bool | None, Field(description='The person who drew it was not sure.')
+    ] = None
+
+
+class EvalCocoCategory(BaseModel):
+    """
+    One label: its id is its place in `install.labels`, from 1.
+    """
+
+    id: Annotated[int, Field(ge=0)]
+    name: str
+
+
+class EvalCocoInfo(BaseModel):
+    """
+    The dataset an export holds.
+    """
+
+    created: Annotated[
+        str, Field(description='When the dataset was created, RFC 3339.')
+    ]
+    dataset: Annotated[str, Field(description="The dataset's id (`ds_…`).")]
+    name: str
+
+
 class EvalDatasetDeleted(BaseModel):
     """
     `DELETE /v1/evals/datasets?id=`: the dataset was deleted. A delete
@@ -15019,6 +15058,37 @@ class EvalAskInput(BaseModel):
     ] = None
 
 
+class EvalCocoImage(BaseModel):
+    """
+    One image: an item of the dataset.
+    """
+
+    file_name: Annotated[
+        str,
+        Field(
+            description="The item's name, unique in the dataset: save the image under it."
+        ),
+    ]
+    height: Annotated[int, Field(ge=0)]
+    id: Annotated[
+        int, Field(description='1 for the first item, in the order of the items.', ge=0)
+    ]
+    lbb_file: Annotated[
+        str,
+        Field(
+            description="The SHA-256 of the graph's file that holds the image\n(`GET /v1/files/content?sha256=`)."
+        ),
+    ]
+    lbb_labels: Annotated[
+        list[str] | None,
+        Field(
+            description='The labels the image is labelled for; absent for every label.'
+        ),
+    ] = None
+    lbb_status: EvalItemStatus
+    width: Annotated[int, Field(ge=0)]
+
+
 class EvalDatasetSource(BaseModel):
     """
     The origin of an item: its kind and the id of the test, review item or
@@ -22463,6 +22533,21 @@ class ErasureCreateResponse(RootModel[Erasure | ErasurePreview]):
             description='The answer to `POST /v1/erasures`: the erasure, or its preview for a dry\nrun.'
         ),
     ]
+
+
+class EvalCocoExport(BaseModel):
+    """
+    `GET /v1/evals/datasets/coco?id=`: a `boxes` dataset in the COCO object
+    detection format, which detector training and scoring tools read. Every
+    item is an image, in the order of the items, whatever its status; each box
+    is an annotation and each ignore region an annotation with `iscrowd: 1`.
+    The `lbb_` fields are LBB's own: COCO readers skip them.
+    """
+
+    annotations: list[EvalCocoAnnotation]
+    categories: list[EvalCocoCategory]
+    images: list[EvalCocoImage]
+    info: EvalCocoInfo
 
 
 class EvalExpectedValue(BaseModel):

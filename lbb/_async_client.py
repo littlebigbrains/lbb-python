@@ -53,6 +53,7 @@ from ._client_base import (
     _BaseLbbClient,
     _body_marks_terminal,
     _ChecksNamespace,
+    _coco_download_plan,
     _discard_download,
     _earlier_params,
     _EarlierList,
@@ -103,6 +104,7 @@ from ._client_base import (
     _workflow_test_open,
     _workflow_test_timeout,
     _WorkflowTestsNamespace,
+    _write_coco_download,
 )
 from ._records import RecordsNamespace
 from ._workflow_execution import AsyncWorkflowTurnReader
@@ -1938,6 +1940,25 @@ class _AsyncEvalDatasetsNamespace(_EvalDatasetsNamespace):
 
     async def export(self, dataset_id: str) -> models.EvalDatasetExport:
         return cast(models.EvalDatasetExport, await super().export(dataset_id))
+
+    async def coco(self, dataset_id: str) -> models.EvalCocoExport:
+        return cast(models.EvalCocoExport, await super().coco(dataset_id))
+
+    async def download(
+        self,
+        dataset_id: str,
+        directory: str | os.PathLike[str],
+        *,
+        only_done: bool = False,
+    ) -> str:
+        """Write a ``boxes`` dataset to ``directory``: ``annotations.json``
+        (COCO), ``items.jsonl`` and each image under ``images/``.
+        ``only_done`` keeps the images labelling marked done."""
+        data, files = _coco_download_plan(await self.coco(dataset_id), only_done=only_done)
+        root = _write_coco_download(directory, data)
+        for sha256, name in files:
+            await _FilesNamespace(self._client).download(sha256, os.path.join(root, "images", name))
+        return root
 
     async def delete(
         self, dataset_id: str, *, idempotency_key: str | None = None

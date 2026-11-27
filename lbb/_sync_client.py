@@ -43,6 +43,7 @@ from ._client_base import (
     _body_marks_terminal,
     _ChecksNamespace,
     _claim_options,
+    _coco_download_plan,
     _earlier_params,
     _EarlierList,
     _EmbeddingsNamespace,
@@ -87,6 +88,7 @@ from ._client_base import (
     _workflow_test_timeout,
     _WorkflowTestsNamespace,
     _write_chunks,
+    _write_coco_download,
 )
 from ._records import RecordsNamespace
 from ._workflow_execution import WorkflowTurnReader
@@ -733,6 +735,25 @@ class _SyncNamedWorkflowsNamespace(_NamedWorkflowsNamespace):
 
 class _SyncEvalDatasetsNamespace(_EvalDatasetsNamespace):
     __doc__ = _EvalDatasetsNamespace.__doc__
+
+    def download(
+        self,
+        dataset_id: str,
+        directory: str | os.PathLike[str],
+        *,
+        only_done: bool = False,
+    ) -> str:
+        """Write a ``boxes`` dataset to ``directory`` for a training or
+        scoring run: ``annotations.json`` (COCO), ``items.jsonl`` (one row
+        per image: ``file``, ``width``, ``height``, ``status``, ``boxes`` and
+        ``ignore`` as ``{label, box: [x0, y0, x1, y1]}``) and each image
+        under ``images/``. ``only_done`` keeps the images labelling marked
+        done. Returns the directory."""
+        data, files = _coco_download_plan(self.coco(dataset_id), only_done=only_done)
+        root = _write_coco_download(directory, data)
+        for sha256, name in files:
+            _FilesNamespace(self._client).download(sha256, os.path.join(root, "images", name))
+        return root
 
     def all(self, *, limit: int | None = None) -> Iterator[models.EvalDataset]:
         """Every dataset, newest first, without their items: :meth:`list`

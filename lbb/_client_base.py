@@ -5313,6 +5313,72 @@ class _SchemaNamespace:
         )
 
 
+_SAFE_FILE_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _coco_download_plan(
+    coco: Any, *, only_done: bool
+) -> tuple[dict[str, Any], list[tuple[str, str]]]:
+    """The annotations a download writes and the images it fetches, as
+    ``(sha256, path under images/)``. An image's file name is its item name
+    with any character outside ``A-Z a-z 0-9 . _ -`` replaced, so no name
+    leaves the folder; a repeat gets ``-2``, ``-3``. ``only_done`` keeps the
+    images labelling marked done, with their annotations."""
+    data = coco.model_dump(mode="json", exclude_none=True) if hasattr(coco, "model_dump") else dict(coco)
+    images = [
+        image
+        for image in data.get("images", [])
+        if not only_done or image.get("lbb_status", "done") == "done"
+    ]
+    kept = {image["id"] for image in images}
+    used: dict[str, int] = {}
+    files: list[tuple[str, str]] = []
+    for image in images:
+        name = _SAFE_FILE_CHARS.sub("_", str(image["file_name"])).strip(".") or "image"
+        n = used.get(name, 0) + 1
+        used[name] = n
+        if n > 1:
+            name = f"{name}-{n}"
+        image["file_name"] = name
+        files.append((str(image["lbb_file"]), name))
+    data["images"] = images
+    data["annotations"] = [a for a in data.get("annotations", []) if a["image_id"] in kept]
+    return data, files
+
+
+def _write_coco_download(
+    directory: str | os.PathLike[str], data: Mapping[str, Any]
+) -> str:
+    """Write ``annotations.json`` (COCO) and ``items.jsonl`` (one row per
+    image with its boxes, ``[x0, y0, x1, y1]``) under ``directory``."""
+    root = os.fspath(directory)
+    os.makedirs(os.path.join(root, "images"), exist_ok=True)
+    with open(os.path.join(root, "annotations.json"), "w", encoding="utf-8") as out:
+        json.dump(data, out)
+    names = {c["id"]: c["name"] for c in data.get("categories", [])}
+    rows: dict[int, dict[str, Any]] = {}
+    for image in data.get("images", []):
+        rows[image["id"]] = {
+            "file": f"images/{image['file_name']}",
+            "width": image["width"],
+            "height": image["height"],
+            "status": image.get("lbb_status", "done"),
+            **({"labels": image["lbb_labels"]} if image.get("lbb_labels") is not None else {}),
+            "boxes": [],
+            "ignore": [],
+        }
+    for a in data.get("annotations", []):
+        x, y, w, h = a["bbox"]
+        box = {"label": names.get(a["category_id"], str(a["category_id"])), "box": [x, y, x + w, y + h]}
+        if a.get("lbb_uncertain"):
+            box["uncertain"] = True
+        rows[a["image_id"]]["ignore" if a.get("iscrowd") else "boxes"].append(box)
+    with open(os.path.join(root, "items.jsonl"), "w", encoding="utf-8") as out:
+        for row in rows.values():
+            out.write(json.dumps(row) + "\n")
+    return root
+
+
 class _EvalDatasetsNamespace:
     """Evals datasets: examples with the outputs a correct run gives, which
     workflow tests, experiments and template evals share. An item of a
@@ -5327,6 +5393,12 @@ class _EvalDatasetsNamespace:
         client.evals.datasets.add_items(dataset.id, [item])
         files = client.evals.datasets.export(dataset.id)
         client.evals.datasets.delete(dataset.id)
+
+    A ``boxes`` dataset holds images with labelled boxes. :meth:`coco` reads
+    it in the COCO format; ``download`` writes it to a folder for a training
+    or scoring run (``annotations.json``, ``items.jsonl``, ``images/``)::
+
+        client.evals.datasets.download("ds_…", "data/plans", only_done=True)
     """
 
     def __init__(self, client: _BaseLbbClient) -> None:
@@ -5416,6 +5488,21 @@ class _EvalDatasetsNamespace:
             models.EvalDatasetExport,
             "GET",
             "/v1/evals/datasets/export",
+            params={"id": dataset_id},
+        )
+
+    def coco(self, dataset_id: str) -> models.EvalCocoExport:
+        """A ``boxes`` dataset in the COCO object detection format
+        (``GET /v1/evals/datasets/coco``): one image per item (``file_name``
+        is the item's name, ``lbb_file`` the SHA-256 of its file,
+        ``lbb_status`` where labelling stands), one annotation per box and
+        per ignore region (``iscrowd`` 1), one category per label. A
+        ``values`` dataset raises :class:`LbbError` 400. :meth:`download`
+        writes it to a folder with its images."""
+        return self._client._model_request(
+            models.EvalCocoExport,
+            "GET",
+            "/v1/evals/datasets/coco",
             params={"id": dataset_id},
         )
 
