@@ -122,6 +122,42 @@ def test_environment_claim_is_not_retried(asynchronous: bool) -> None:
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
+def test_environment_claim_carries_a_deadline_that_outlasts_a_shorter_client_timeout(
+    asynchronous: bool,
+) -> None:
+    seen: list[tuple[int, float | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((json.loads(request.content)["wait_ms"], request.extensions["timeout"]["read"]))
+        return httpx.Response(200, json={"claim": None})
+
+    transport = httpx.MockTransport(handler)
+
+    def claim_of(wait_ms: int) -> models.WorkflowTurnClaimRequest:
+        return models.WorkflowTurnClaimRequest(
+            worker="w1",
+            workflows=[models.WorkflowWorkerType(workflow_type="counter", version="v1")],
+            wait_ms=wait_ms,
+        )
+
+    async def run() -> None:
+        async with AsyncLbbClient(
+            "http://h", graph="main", timeout=0.005, transport=transport
+        ) as client:
+            for wait_ms in (60_000, 250, 0):
+                await client.workflows.claim_environment_turn(claim_of(wait_ms))
+
+    if asynchronous:
+        asyncio.run(run())
+    else:
+        with LbbClient("http://h", graph="main", timeout=0.005, transport=transport) as client:
+            for wait_ms in (60_000, 250, 0):
+                client.workflows.claim_environment_turn(claim_of(wait_ms))
+    # A claim's deadline is its wait and 15 seconds; an immediate claim keeps the client's.
+    assert seen == [(60_000, 75.0), (250, 15.25), (0, 0.005)]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
 def test_environment_summary_reads_the_environment_route(asynchronous: bool) -> None:
     seen: list[httpx.Request] = []
 

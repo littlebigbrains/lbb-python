@@ -21819,8 +21819,7 @@ class WorkflowTurnClaimRequest(BaseModel):
     wait_ms: Annotated[
         int | None,
         Field(
-            description='Long-poll timeout in milliseconds, from 0 through 60000. The environment claim accepts at most 10000.',
-            ge=0,
+            description='Long-poll timeout in milliseconds, from 0 through 60000.', ge=0
         ),
     ] = None
     worker: str

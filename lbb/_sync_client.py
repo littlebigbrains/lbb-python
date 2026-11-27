@@ -42,6 +42,7 @@ from ._client_base import (
     _BaseLbbClient,
     _body_marks_terminal,
     _ChecksNamespace,
+    _claim_options,
     _earlier_params,
     _EarlierList,
     _EmbeddingsNamespace,
@@ -884,6 +885,13 @@ class _SyncWorkflowsNamespace:
         calls go to that graph's own routes, with ``expected_graph_epoch`` set to
         ``graph_epoch``.
 
+        ``wait_ms`` may be up to 60000; a server older than the 60-second claim
+        accepts 10000 and refuses more with 400. The request's own deadline is
+        ``wait_ms`` plus 15 seconds (an immediate claim keeps the client's), so
+        the client's default timeout does not end an idle claim: a claim the
+        client abandons is held by the server until it sees the disconnect, and
+        can take a turn that nobody receives.
+
         The credential must be the environment's (the environment key or a
         console session): a credential of one graph, a worker pool credential
         and an application token get 403. A 404 means this server or this
@@ -898,7 +906,7 @@ class _SyncWorkflowsNamespace:
                 "POST",
                 "/v1/workflows/environment/turns/claim",
                 body=request,
-                options={"retry": False},
+                options=_claim_options(request.wait_ms or 0),
             ),
         )
 
