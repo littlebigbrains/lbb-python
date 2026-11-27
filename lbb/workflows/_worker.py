@@ -44,7 +44,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from .. import models
-from .._client_base import LbbError, RequestOptions, _coerce_body, _is_transport_failure
+from .._client_base import LbbError, _claim_options, _coerce_body, _is_transport_failure
 from .._workflow_execution import AsyncWorkflowTurnReader, WorkflowExecutionError
 from ..sandboxes import UNSET
 from ._results import (
@@ -78,12 +78,6 @@ _PROGRESS_EVERY_MS = 3_000
 _MIN_WAIT_MS = 1_000
 # How long a claim waits on the server for a turn, in a worker's loop.
 _CLAIM_WAIT_MS = 60_000
-# A claim holds its request open for up to its wait, so the request's own
-# deadline is that wait plus this margin, in seconds. The client's default
-# deadline would end an idle claim early with an error, and the server then
-# holds the abandoned claim until it sees the disconnect: it can take a turn
-# that no worker receives.
-_CLAIM_DEADLINE_MARGIN_S = 15.0
 _RELEASED = "the worker stopped and released the turn"
 # LBB answers that say LBB itself is unavailable or busy, not the request wrong.
 _UNAVAILABLE_STATUSES = frozenset({429, 502, 503, 504})
@@ -103,15 +97,6 @@ _LBB_WAIT_PREFIX = "LBB was unavailable, the turn waits: "
 
 def _now_ms() -> int:
     return time.time_ns() // 1_000_000
-
-
-def _claim_options(wait_ms: int) -> RequestOptions:
-    """The transport options of a claim: never retried, and a deadline that
-    outlasts the wait it asks for (an immediate claim keeps the client's)."""
-    options: RequestOptions = {"retry": False}
-    if wait_ms > 0:
-        options["timeout"] = wait_ms / 1000 + _CLAIM_DEADLINE_MARGIN_S
-    return options
 
 
 class WorkflowError(Exception):

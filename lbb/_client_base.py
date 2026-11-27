@@ -115,6 +115,23 @@ def _read_options(options: RequestOptions | None = None) -> RequestOptions:
     return {"retry": True, **(options or {})}
 
 
+# A claim holds its request open for up to its wait, so the request's own
+# deadline is that wait plus this margin, in seconds. The client's default
+# deadline would end an idle claim early with an error, and the server then
+# holds the abandoned claim until it sees the disconnect: it can take a turn
+# that no worker receives.
+_CLAIM_DEADLINE_MARGIN_S = 15.0
+
+
+def _claim_options(wait_ms: int) -> RequestOptions:
+    """The transport options of a claim: never retried, and a deadline that
+    outlasts the wait it asks for (an immediate claim keeps the client's)."""
+    options: RequestOptions = {"retry": False}
+    if wait_ms > 0:
+        options["timeout"] = wait_ms / 1000 + _CLAIM_DEADLINE_MARGIN_S
+    return options
+
+
 class LbbError(RuntimeError):
     """Raised when the server responds with a non-2xx status."""
 
