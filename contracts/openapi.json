@@ -9449,6 +9449,31 @@
         },
         "type": "object"
       },
+      "EvalBox": {
+        "description": "A labelled box on an item's image: `[x0, y0, x1, y1]` in pixels of the\nimage, with `x0 < x1` and `y0 < y1`, inside the image.",
+        "properties": {
+          "box": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "label": {
+            "description": "One of the dataset's `install.labels`.",
+            "type": "string"
+          },
+          "uncertain": {
+            "description": "The person who drew it was not sure. A scorer may leave it out.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label",
+          "box"
+        ],
+        "type": "object"
+      },
       "EvalDataset": {
         "description": "An Evals dataset: a name, a kind, the settings it is graded with, and\nits items. It belongs to a graph and is erased with it.",
         "properties": {
@@ -9612,13 +9637,20 @@
         "type": "object"
       },
       "EvalDatasetInstall": {
-        "description": "The settings a `values` dataset is graded with, as a template answer key\nhas them: the value type of each property (`text`, `keyword`, `i64`,\n`f64`, `bool`), the units, and the context.",
+        "description": "The settings a dataset is graded with. A `values` dataset has them as a\ntemplate answer key does: the value type of each property (`text`,\n`keyword`, `i64`, `f64`, `bool`), the units, and the context. A `boxes`\ndataset has its box labels.",
         "properties": {
           "context": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "labels": {
+            "description": "`boxes`: the labels a box may have, in the order the label page\noffers them (its keys 1 to 9 pick the first nine).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "properties": {
             "additionalProperties": {
@@ -9642,8 +9674,15 @@
         "type": "object"
       },
       "EvalDatasetItem": {
-        "description": "One example of a `values` dataset.",
+        "description": "One example of a dataset: an input text with its values (`values`), or\nan image with its boxes (`boxes`).",
         "properties": {
+          "boxes": {
+            "description": "`boxes`: the boxes a correct detector finds.",
+            "items": {
+              "$ref": "#/components/schemas/EvalBox"
+            },
+            "type": "array"
+          },
           "case": {
             "description": "What the example shows, in one sentence.",
             "type": [
@@ -9651,10 +9690,42 @@
               "null"
             ]
           },
+          "file": {
+            "description": "`boxes`: the SHA-256 of the graph's file that holds the image\n(`GET /v1/files/content?sha256=`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ignore": {
+            "description": "`boxes`: regions where a box of the region's label is neither found\nnor false.",
+            "items": {
+              "$ref": "#/components/schemas/EvalBox"
+            },
+            "type": "array"
+          },
           "iri": {
             "description": "The instance the input was read from, when it came from a graph.",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "labels": {
+            "description": "`boxes`: the labels the item is labelled for; absent for every label\nof the dataset. A scorer counts only these labels on the item.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -9679,6 +9750,16 @@
               }
             ]
           },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalItemStatus"
+              }
+            ]
+          },
           "text": {
             "description": "The input text, at most 40,000 characters. A write needs it; the\n`expected.records` of an export leave it out, because `records`\nholds it, as a template's `records.json` does.",
             "type": "string"
@@ -9689,6 +9770,14 @@
               "$ref": "#/components/schemas/EvalExpectedValue"
             },
             "type": "array"
+          },
+          "width": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -9719,7 +9808,8 @@
       "EvalDatasetKind": {
         "description": "What the items of a dataset hold.",
         "enum": [
-          "values"
+          "values",
+          "boxes"
         ],
         "type": "string"
       },
@@ -10671,6 +10761,15 @@
           "valid"
         ],
         "type": "object"
+      },
+      "EvalItemStatus": {
+        "description": "Where a person is with an item of a `boxes` dataset (`status`): `todo`\nand `skipped` items are left out of scores; an item without a status\ncounts as `done`.",
+        "enum": [
+          "todo",
+          "done",
+          "skipped"
+        ],
+        "type": "string"
       },
       "EvalItems": {
         "description": "The results a query returned, in a form that compares across commits.",

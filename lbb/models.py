@@ -2073,6 +2073,22 @@ class ErasureStatus(Enum):
     failed = 'failed'
 
 
+class EvalBox(BaseModel):
+    """
+    A labelled box on an item's image: `[x0, y0, x1, y1]` in pixels of the
+    image, with `x0 < x1` and `y0 < y1`, inside the image.
+    """
+
+    box: list[float]
+    label: Annotated[str, Field(description="One of the dataset's `install.labels`.")]
+    uncertain: Annotated[
+        bool | None,
+        Field(
+            description='The person who drew it was not sure. A scorer may leave it out.'
+        ),
+    ] = None
+
+
 class EvalDatasetDeleted(BaseModel):
     """
     `DELETE /v1/evals/datasets?id=`: the dataset was deleted. A delete
@@ -2086,12 +2102,19 @@ class EvalDatasetDeleted(BaseModel):
 
 class EvalDatasetInstall(BaseModel):
     """
-    The settings a `values` dataset is graded with, as a template answer key
-    has them: the value type of each property (`text`, `keyword`, `i64`,
-    `f64`, `bool`), the units, and the context.
+    The settings a dataset is graded with. A `values` dataset has them as a
+    template answer key does: the value type of each property (`text`,
+    `keyword`, `i64`, `f64`, `bool`), the units, and the context. A `boxes`
+    dataset has its box labels.
     """
 
     context: str | None = None
+    labels: Annotated[
+        list[str] | None,
+        Field(
+            description='`boxes`: the labels a box may have, in the order the label page\noffers them (its keys 1 to 9 pick the first nine).'
+        ),
+    ] = None
     properties: dict[str, str] | None = None
     units: dict[str, str] | None = None
 
@@ -2102,6 +2125,7 @@ class EvalDatasetKind(Enum):
     """
 
     values = 'values'
+    boxes = 'boxes'
 
 
 class EvalDatasetRecord(BaseModel):
@@ -2324,6 +2348,18 @@ class EvalItemLabelInput(BaseModel):
     valid: Annotated[
         bool, Field(description='True: the result answers the request (thumbs up).')
     ]
+
+
+class EvalItemStatus(Enum):
+    """
+    Where a person is with an item of a `boxes` dataset (`status`): `todo`
+    and `skipped` items are left out of scores; an item without a status
+    counts as `done`.
+    """
+
+    todo = 'todo'
+    done = 'done'
+    skipped = 'skipped'
 
 
 class EvalItems(BaseModel):
@@ -25493,16 +25529,40 @@ class EntityPropertiesInput(BaseModel):
 
 class EvalDatasetItem(BaseModel):
     """
-    One example of a `values` dataset.
+    One example of a dataset: an input text with its values (`values`), or
+    an image with its boxes (`boxes`).
     """
 
+    boxes: Annotated[
+        list[EvalBox] | None,
+        Field(description='`boxes`: the boxes a correct detector finds.'),
+    ] = None
     case: Annotated[
         str | None, Field(description='What the example shows, in one sentence.')
+    ] = None
+    file: Annotated[
+        str | None,
+        Field(
+            description="`boxes`: the SHA-256 of the graph's file that holds the image\n(`GET /v1/files/content?sha256=`)."
+        ),
+    ] = None
+    height: Annotated[int | None, Field(ge=0)] = None
+    ignore: Annotated[
+        list[EvalBox] | None,
+        Field(
+            description="`boxes`: regions where a box of the region's label is neither found\nnor false."
+        ),
     ] = None
     iri: Annotated[
         str | None,
         Field(
             description='The instance the input was read from, when it came from a graph.'
+        ),
+    ] = None
+    labels: Annotated[
+        list[str] | None,
+        Field(
+            description='`boxes`: the labels the item is labelled for; absent for every label\nof the dataset. A scorer counts only these labels on the item.'
         ),
     ] = None
     leave_out: Annotated[
@@ -25516,6 +25576,7 @@ class EvalDatasetItem(BaseModel):
         ),
     ]
     source: EvalDatasetSource | None = None
+    status: EvalItemStatus | None = None
     text: Annotated[
         str | None,
         Field(
@@ -25526,6 +25587,7 @@ class EvalDatasetItem(BaseModel):
         list[EvalExpectedValue] | None,
         Field(description='Values a correct run writes.'),
     ] = None
+    width: Annotated[int | None, Field(ge=0)] = None
 
 
 class EvalDatasetItemsRequest(BaseModel):
