@@ -277,7 +277,16 @@ WorkflowWorker(client, [counter], worker="counter-1", concurrency=4).run()
 ```
 
 `run()` serves until SIGTERM, which drains the held turns and releases the
-rest. `run_async()` serves inside your own event loop until `stop()`. A step's
+rest. The default claim wait is 60 seconds; set `claim_wait_ms` to change it.
+On stop, a pending claim answers before draining, so its wait and network
+latency add to shutdown time. `run_once()` defaults to an immediate claim.
+A claim carries its own request deadline, its wait plus 15 seconds, so a client
+timeout shorter than the wait does not end an idle claim. A claim that does reach
+its deadline is not replayed: a timeout cannot establish whether the server
+awarded a turn. A proxy between the worker and the server must keep the request
+open for the whole wait and pass a disconnect on, or a claim of a worker that
+has gone stays open on the server and can take a turn that no worker receives.
+`run_async()` serves inside your own event loop until `stop()`. A step's
 `effect_id` stays the same on every attempt: pass it to an external service as
 its idempotency key. A sync step function runs in a thread, so a blocking call
 holds no other turn. `lbb_activities(client)` has `reason`, `decide` and
