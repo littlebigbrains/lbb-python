@@ -20,6 +20,18 @@ import lbb
 
 TEST_ID = "wtest_1791967648726a1b2c3d4e5f6"
 IRI = "https://example.com/sink/s-4-1"
+BOXES_COCO: dict[str, Any] = {
+    "info": {"dataset": "", "name": "plans", "created": "2026-11-27T10:00:00.000000Z"},
+    "images": [
+        {"id": 1, "file_name": "plan-1", "width": 100, "height": 80, "lbb_file": "a" * 64, "lbb_status": "done"},
+        {"id": 2, "file_name": "plan-2", "width": 100, "height": 80, "lbb_file": "b" * 64, "lbb_status": "todo"},
+    ],
+    "annotations": [
+        {"id": 1, "image_id": 1, "category_id": 1, "bbox": [1, 2, 10, 10], "area": 100, "iscrowd": 0},
+        {"id": 2, "image_id": 2, "category_id": 1, "bbox": [5, 5, 4, 4], "area": 16, "iscrowd": 0},
+    ],
+    "categories": [{"id": 1, "name": "door"}],
+}
 
 
 def _guide(name: str) -> Path | None:
@@ -210,6 +222,11 @@ class FakeLbb:
                 }
                 return httpx.Response(200, json={"records": records, "expected": expected})
             return httpx.Response(200, json=dataset)
+        if (request.method, path) == ("GET", "/v1/evals/datasets/coco"):
+            # A boxes dataset of two images, one of them still to label.
+            return httpx.Response(200, json=BOXES_COCO | {"info": {**BOXES_COCO["info"], "dataset": params["id"]}})
+        if (request.method, path) == ("GET", "/v1/files/content"):
+            return httpx.Response(200, content=b"\x89PNG" + params["sha256"].encode()[:8])
         if (request.method, path) == ("DELETE", "/v1/evals/datasets"):
             if params["id"] not in self.datasets:
                 return _not_found(f"dataset {params['id']}")
@@ -277,6 +294,10 @@ def test_every_example_of_the_datasets_guide_runs(fake: FakeLbb, tmp_path: Path)
     assert [record["name"] for record in records] == ["S 1", "S 2"]
     assert expected["install"]["units"] == {"width_cm": "cm", "depth_cm": "cm"}
     assert [item["name"] for item in expected["records"]] == ["S 1", "S 2"]
+    # The box dataset's download kept the image labelling marked done.
+    plans = tmp_path / "data" / "plans"
+    assert sorted(path.name for path in (plans / "images").iterdir()) == ["plan-1"]
+    assert json.loads((plans / "annotations.json").read_text())["images"][0]["file_name"] == "plan-1"
     # The delete took the dataset away: a read answers 404.
     assert namespace["deleted"].deleted is True
     with pytest.raises(lbb.LbbError) as raised:

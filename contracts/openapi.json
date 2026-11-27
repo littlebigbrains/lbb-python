@@ -9474,6 +9474,181 @@
         ],
         "type": "object"
       },
+      "EvalCocoAnnotation": {
+        "description": "One box. `bbox` is `[x, y, width, height]` in pixels, as COCO has it.",
+        "properties": {
+          "area": {
+            "format": "double",
+            "type": "number"
+          },
+          "bbox": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "category_id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "description": "1 for the first box of the export.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "image_id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "iscrowd": {
+            "description": "1 for an ignore region, 0 for a box.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lbb_uncertain": {
+            "description": "The person who drew it was not sure.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "image_id",
+          "category_id",
+          "bbox",
+          "area",
+          "iscrowd"
+        ],
+        "type": "object"
+      },
+      "EvalCocoCategory": {
+        "description": "One label: its id is its place in `install.labels`, from 1.",
+        "properties": {
+          "id": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "EvalCocoExport": {
+        "description": "`GET /v1/evals/datasets/coco?id=`: a `boxes` dataset in the COCO object\ndetection format, which detector training and scoring tools read. Every\nitem is an image, in the order of the items, whatever its status; each box\nis an annotation and each ignore region an annotation with `iscrowd: 1`.\nThe `lbb_` fields are LBB's own: COCO readers skip them.",
+        "properties": {
+          "annotations": {
+            "items": {
+              "$ref": "#/components/schemas/EvalCocoAnnotation"
+            },
+            "type": "array"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/EvalCocoCategory"
+            },
+            "type": "array"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/EvalCocoImage"
+            },
+            "type": "array"
+          },
+          "info": {
+            "$ref": "#/components/schemas/EvalCocoInfo"
+          }
+        },
+        "required": [
+          "info",
+          "images",
+          "annotations",
+          "categories"
+        ],
+        "type": "object"
+      },
+      "EvalCocoImage": {
+        "description": "One image: an item of the dataset.",
+        "properties": {
+          "file_name": {
+            "description": "The item's name, unique in the dataset: save the image under it.",
+            "type": "string"
+          },
+          "height": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "description": "1 for the first item, in the order of the items.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lbb_file": {
+            "description": "The SHA-256 of the graph's file that holds the image\n(`GET /v1/files/content?sha256=`).",
+            "type": "string"
+          },
+          "lbb_labels": {
+            "description": "The labels the image is labelled for; absent for every label.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lbb_status": {
+            "$ref": "#/components/schemas/EvalItemStatus"
+          },
+          "width": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "width",
+          "height",
+          "lbb_file",
+          "lbb_status"
+        ],
+        "type": "object"
+      },
+      "EvalCocoInfo": {
+        "description": "The dataset an export holds.",
+        "properties": {
+          "created": {
+            "description": "When the dataset was created, RFC 3339.",
+            "type": "string"
+          },
+          "dataset": {
+            "description": "The dataset's id (`ds_…`).",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset",
+          "name",
+          "created"
+        ],
+        "type": "object"
+      },
       "EvalDataset": {
         "description": "An Evals dataset: a name, a kind, the settings it is graded with, and\nits items. It belongs to a graph and is erased with it.",
         "properties": {
@@ -80386,6 +80561,286 @@
           }
         ],
         "summary": "Create an Evals dataset of kind `values`: a `name` and its first `items` (each a name, the input `text`, the `values` a correct run writes and the ones it must `leave_out`), with the `install` it is graded with. Or create it from a workflow test (`source: {kind: \"test\", id}`): the test's answers become the items. A test has one dataset, which the test names (`dataset`): a save of a test whose dataset exists brings that dataset up to date and answers it. At most 500 items and 8 MiB of items; a write's body is at most 1 MiB. Takes `Idempotency-Key`: the same key with the same body answers the same dataset, with another body 409 `idempotency_conflict`",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/evals/datasets/coco": {
+      "get": {
+        "operationId": "get_v1_evals_datasets_coco",
+        "parameters": [
+          {
+            "description": "Graph name (default `main`)",
+            "in": "query",
+            "name": "graph",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "API contract version to pin: `2026-10-27` for this contract. A date before `2026-10-21` keeps the earlier workflow-list shapes; no header gets the current contract. Status/demo query version, not this header, selects their explicit legacy compatibility.",
+            "in": "header",
+            "name": "Lbb-Version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional managed-environment slug. The bearer and hosted endpoint must authorize the same environment. Environment API keys already select it; account session tokens may need it. In single mode the configured environment applies.",
+            "in": "query",
+            "name": "environment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "deprecated": true,
+            "description": "Deprecated alias of environment. If both selectors are supplied their values must be equal; disagreement returns 400 before work starts.",
+            "in": "query",
+            "name": "stack",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "the dataset's id",
+            "in": "query",
+            "name": "id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCocoExport"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LbbErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable",
+            "headers": {
+              "Lbb-Version": {
+                "description": "API contract version used for the response",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Request-Id": {
+                "description": "Request correlation id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "A `boxes` Evals dataset in the COCO object detection format: one image per item (`file_name` is the item's name, `lbb_file` the SHA-256 of its file, `lbb_status` where labelling stands), one annotation per box (`bbox` as x, y, width, height in pixels) and per ignore region (`iscrowd: 1`), one category per label. A `values` dataset is 400",
         "tags": [
           "system"
         ]

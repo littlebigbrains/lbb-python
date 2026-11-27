@@ -4,6 +4,12 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- `client.evals.datasets.coco(id)` reads a `boxes` dataset in the COCO object
+  detection format (`GET /v1/evals/datasets/coco`).
+- `client.evals.datasets.download(id, directory, only_done=False)` writes a
+  `boxes` dataset to a folder: `annotations.json` (COCO), `items.jsonl` and
+  the images under `images/`. Image file names keep only `A-Z a-z 0-9 . _ -`.
+
 - `WorkflowWorker` requests a 60-second claim wait by default. Set
   `claim_wait_ms` to change it; `run_once` still defaults to an immediate
   claim. An old server's specific wait-limit refusal triggers one 10-second
