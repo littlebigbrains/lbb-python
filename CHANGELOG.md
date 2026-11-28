@@ -4,6 +4,14 @@ All notable changes to the `littlebigbrain` Python SDK are documented here.
 
 ## Unreleased
 
+- A link with `confidence` or `valid_time` is sent as given on a graph that
+  stores RDF, with or without `evidence`, and so is a commit with
+  `observed_at`. The client no longer refuses it before the request. The graph
+  keeps them on the link's own node, and a later write of the link replaces
+  them. Writing the same evidence again with another confidence still adds a
+  second `lbb:confidence` value to the evidence node. A server from before this
+  change drops confidence and valid time without evidence and raises no error.
+
 - `client.evals.datasets.coco(id)` reads a `boxes` dataset in the COCO object
   detection format (`GET /v1/evals/datasets/coco`).
 - `client.evals.datasets.download(id, directory, only_done=False)` writes a

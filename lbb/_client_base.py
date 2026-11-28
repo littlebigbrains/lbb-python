@@ -597,8 +597,8 @@ def _unset_optional_fields(value: Any) -> dict[Any, Any]:
 #   one target and, with ``property_merge="replace"``, the other fields of the
 #   records it names. A record left with no field and no link by such a
 #   replacement loses its type and label. History stays readable.
-# - Confidence and valid time live on a link's evidence. A link without
-#   evidence would lose them, so such a commit is refused before it is sent.
+# - Confidence and valid time go as given. The graph stores them on the link,
+#   with or without evidence.
 # - A retract of entities becomes ``replace_owned.retract_entities``, only when
 #   the caller asks for ``purge_entity_properties``. That removes the whole
 #   record, so it is never done silently.
@@ -715,62 +715,6 @@ def _first_subject(body: Mapping[str, Any]) -> dict[str, Any] | None:
     return subject
 
 
-def _has_evidence(triplet: Mapping[str, Any]) -> bool:
-    """Whether a triplet carries evidence: a string, or an object with a ``text``.
-    The server stores nothing of a link's confidence or valid time without it."""
-    evidence = triplet.get("evidence")
-    if isinstance(evidence, str):
-        return True
-    return isinstance(evidence, Mapping) and isinstance(evidence.get("text"), str)
-
-
-def _lost_without_evidence(triplet: Mapping[str, Any], observed_at: bool) -> list[str]:
-    """What a triplet without evidence would lose, as words; empty when nothing."""
-    lost: list[str] = []
-    confidence = triplet.get("confidence")
-    if confidence is not None and confidence != 1:
-        lost.append("confidence")
-    valid = triplet.get("valid_time")
-    if isinstance(valid, Mapping) and any(value is not None for value in valid.values()):
-        lost.append("valid_time")
-    elif observed_at:
-        lost.append("the valid-time start from observed_at")
-    return lost
-
-
-def _dropped_fields_message(body: Mapping[str, Any]) -> str | None:
-    """The words of the refusal when some link would lose its confidence or valid
-    time, else ``None``. Only a link with evidence keeps them on this graph."""
-    observed_at = bool(str(body.get("observed_at") or "").strip())
-    offenders: list[str] = []
-    count = 0
-    for index, triplet in enumerate(body.get("triplets") or []):
-        if _has_evidence(triplet):
-            continue
-        lost = _lost_without_evidence(triplet, observed_at)
-        if not lost:
-            continue
-        count += 1
-        if len(offenders) < 3:
-            source, target = triplet["source"], triplet["target"]
-            offenders.append(
-                f'triplets[{index}] ({source["type"]} "{source["name"]}" '
-                f'{triplet["relation"]} {target["type"]} "{target["name"]}": '
-                f'{", ".join(lost)})'
-            )
-    if not count:
-        return None
-    plural = "" if count == 1 else "s"
-    return (
-        f"{count} link{plural} of this commit carry confidence or valid time and no "
-        "evidence, and this graph would store none of it. A graph that stores RDF "
-        "statements keeps confidence and valid time on the evidence of a link (the "
-        "observed_at start too). Put the reason for each link in evidence, or leave "
-        f"confidence and valid time out. First: {'; '.join(offenders)}. "
-        "Nothing was written."
-    )
-
-
 def _owned_form_refusal(body: Mapping[str, Any]) -> str | None:
     """Why the commit ``body`` cannot go to an RDF-native graph, as words; ``None``
     when it can. The client sends nothing for such a body."""
@@ -780,7 +724,7 @@ def _owned_form_refusal(body: Mapping[str, Any]) -> str | None:
         return _PRECONDITIONS_MESSAGE
     if _first_subject(body) is None:
         return _EMPTY_COMMIT_MESSAGE
-    return _dropped_fields_message(body)
+    return None
 
 
 def _owned_form_of_commit(
@@ -2290,11 +2234,12 @@ class _BaseLbbClient(_StarterWorkflowMethods):
         fields of the records it names. A record left with no field and no link
         by such a replacement loses its type and label. History stays readable
         with ``as_of_commit_seq``. A link written twice is one statement.
-        Confidence and valid time are stored on a link's evidence only, so a link
-        with them and without evidence is refused before anything is sent.
-        Writing the same evidence again with another confidence adds a second
-        value to the evidence node. ``entity_embeddings`` and ``preconditions``
-        are refused, with the reason in the error.
+        A link keeps its confidence and valid time on its own node, with or
+        without evidence. A later write of the link replaces them, and a link
+        written with the defaults has none. Writing the same evidence again
+        with another confidence adds a second value to the evidence node.
+        ``entity_embeddings`` and ``preconditions`` are refused, with the
+        reason in the error.
         """
         return self._run_flow(
             self._facts_flow(
