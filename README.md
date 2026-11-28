@@ -340,9 +340,8 @@ that it does not name. It replaces the other values of a field it sets, the labe
 of a record it names, the target of a relation that keeps one target and, with
 `property_merge="replace"`, the other fields of the records it names. A record
 left with no field and no link by such a replacement loses its type and label.
-History stays readable. A link with `confidence` or `valid_time` needs an
-`evidence` entry, which stores them; without it the commit is refused before it
-is sent. `retract` with `entities` needs `purge_entity_properties=True` there
+History stays readable. A link with `confidence` or `valid_time` keeps them on
+its own node, with or without `evidence`. `retract` with `entities` needs `purge_entity_properties=True` there
 and removes each record whole; a record left with no link and no field because
 of it loses its type and label too. `entity_embeddings` and `preconditions` are
 refused with the reason in the error. `import_ndjson` and `submit_import_ndjson`

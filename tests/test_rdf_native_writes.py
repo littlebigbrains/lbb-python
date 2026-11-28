@@ -380,63 +380,34 @@ class RdfNativeCommitTests(unittest.TestCase):
             self.assertEqual(len(seen), 1)
             self.assertNotIn("replace_owned", body_of(seen[0]))
 
-    def test_confidence_and_valid_time_without_evidence_are_refused_not_dropped(self) -> None:
-        transport, seen = server("rdf_native")
+    def test_confidence_and_valid_time_without_evidence_are_sent_as_given(self) -> None:
         link = {
             "source": {"type": "SERVICE", "name": "api"},
             "relation": "WRITES_TO",
             "target": {"type": "DATABASE", "name": "primary"},
         }
-        with LbbClient("http://h", graph="main", transport=transport) as client:
-            cases = [
-                ({"triplets": [{**link, "confidence": 0.4}]}, "confidence"),
-                (
-                    {"triplets": [{**link, "valid_time": {"start": "2020-01-01"}}]},
-                    "valid_time",
-                ),
-                (
-                    {"triplets": [link], "observed_at": "2026-11-01T00:00:00Z"},
-                    "observed_at",
-                ),
-            ]
-            for body, words in cases:
-                with self.assertRaises(LbbError) as caught:
-                    client.commit(body)
-                error = caught.exception
-                self.assertEqual(error.code, "rdf_native_graph")
-                self.assertIn("evidence", str(error))
-                self.assertIn(words, str(error))
-                self.assertIn("Nothing was written", str(error))
-            # Only plain requests went out: the owned form was never sent.
-            self.assertTrue(all("replace_owned" not in body_of(r) for r in seen))
-
-    def test_confidence_and_valid_time_with_evidence_go_through(self) -> None:
-        transport, seen = server("rdf_native")
-        link = {
-            "source": {"type": "SERVICE", "name": "api"},
-            "relation": "WRITES_TO",
-            "target": {"type": "DATABASE", "name": "primary"},
-        }
-        triplets = [
+        cases = [
+            {"triplets": [{**link, "confidence": 0.4}]},
+            {"triplets": [{**link, "valid_time": {"start": "2020-01-01"}}]},
+            {"triplets": [link], "observed_at": "2026-11-01T00:00:00Z"},
             {
-                **link,
-                "confidence": 0.4,
-                "valid_time": {"start": "2020-01-01"},
-                "evidence": {"text": "runbook"},
+                "triplets": [
+                    {**link, "confidence": 0.4, "evidence": {"text": "runbook"}},
+                    # A confidence of 1 is the default.
+                    {**link, "confidence": 1},
+                ]
             },
-            # A confidence of 1 is the default: nothing is lost without evidence.
-            {**link, "confidence": 1},
         ]
-        with LbbClient("http://h", graph="main", transport=transport) as client:
-            client.commit({"triplets": triplets})
-            self.assertEqual(len(seen), 2)
-            self.assertIn("replace_owned", body_of(seen[1]))
-            # With observed_at the second link would lose its start.
-            with self.assertRaises(LbbError) as caught:
-                client.commit(
-                    {"triplets": triplets, "observed_at": "2026-11-01T00:00:00Z"}
-                )
-            self.assertIn("observed_at", str(caught.exception))
+        for body in cases:
+            transport, seen = server("rdf_native")
+            with LbbClient("http://h", graph="main", transport=transport) as client:
+                done = client.commit(body)
+            self.assertEqual(done["commit_seq"], 7)
+            owned = body_of(seen[-1])
+            self.assertIn("replace_owned", owned)
+            # The links, the valid time and the observation time are the caller's.
+            self.assertEqual(owned.pop("replace_owned")["relations"], [])
+            self.assertEqual(owned, body)
 
     def test_a_commit_without_a_key_uses_one_key_for_both_attempts(self) -> None:
         transport, seen = server("rdf_native")
