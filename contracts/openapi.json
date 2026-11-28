@@ -8485,6 +8485,17 @@
             },
             "type": "array"
           },
+          "edge_detail": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvidenceCompleteness",
+                "description": "Whether relationship confidence and valid-time data in `rdf_relations`\nare complete. Partial means omitted detail is unknown."
+              }
+            ]
+          },
           "edge_properties": {
             "oneOf": [
               {
@@ -8545,7 +8556,7 @@
               },
               {
                 "$ref": "#/components/schemas/EntityRdfRelations",
-                "description": "Current RDF relationships. Unlike native edge events, these facts carry\nno confidence, valid-time interval, event id or evidence attribution."
+                "description": "Current RDF relationships with their projected link detail and evidence.\nThese are facts rather than native edge events and carry no event id."
               }
             ]
           },
@@ -30376,6 +30387,14 @@
       },
       "RdfEntityRelation": {
         "properties": {
+          "confidence": {
+            "description": "Confidence from the newest current link statement, ordered by its\ncommit and then statement IRI. Omitted for the default 1.0, or when\ndetail was not projected; check the response's `edge_detail` coverage.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "entity": {
             "$ref": "#/components/schemas/EntityView"
           },
@@ -30400,6 +30419,17 @@
           },
           "relation": {
             "$ref": "#/components/schemas/RelationView"
+          },
+          "valid_time": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ValidTime",
+                "description": "Valid-time data from that same link statement. This does not filter the\nrelationship; SPARQL can filter its RDF valid-time predicates."
+              }
+            ]
           }
         },
         "required": [
