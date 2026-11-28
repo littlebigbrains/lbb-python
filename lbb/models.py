@@ -18665,6 +18665,12 @@ class QueryRouteDecision(BaseModel):
 
 
 class RdfEntityRelation(BaseModel):
+    confidence: Annotated[
+        float | None,
+        Field(
+            description="Confidence from the newest current link statement, ordered by its\ncommit and then statement IRI. Omitted for the default 1.0, or when\ndetail was not projected; check the response's `edge_detail` coverage."
+        ),
+    ] = None
     entity: EntityView
     evidence: Annotated[
         list[RelationEvidence] | None,
@@ -18685,6 +18691,7 @@ class RdfEntityRelation(BaseModel):
         ),
     ] = None
     relation: RelationView
+    valid_time: ValidTime | None = None
 
 
 class RdfSchemaSummaryResponse(BaseModel):
@@ -25539,6 +25546,7 @@ class EntityDetailResponse(BaseModel):
         ),
     ] = None
     current_state: list[StateEntry]
+    edge_detail: EvidenceCompleteness | None = None
     edge_properties: EvidenceCompleteness | None = None
     entity: EntityView
     evidence: EvidenceCompleteness | None = None
